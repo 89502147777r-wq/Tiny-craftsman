@@ -1,0 +1,85 @@
+{
+ "results": [
+  {
+   "name": "scene loads, journal empty",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "soil was excavated",
+   "ok": true,
+   "info": "excavated=15.60 cm3"
+  },
+  {
+   "name": "volume conserved (dug soil ends on spoil heap)",
+   "ok": true,
+   "info": "drift=0.011 mm3"
+  },
+  {
+   "name": "each scoop journaled",
+   "ok": true,
+   "info": "actions=6"
+  },
+  {
+   "name": "swipe fills the shovel",
+   "ok": true,
+   "info": "loaded"
+  },
+  {
+   "name": "tap dumps the load",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "undo removes last scoop",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "redo restores it",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "pinch zooms camera",
+   "ok": true,
+   "info": "0.560 -> 0.246"
+  },
+  {
+   "name": "journal replays to saved terrain (Blender)",
+   "ok": true,
+   "info": "start 0 end 0"
+  },
+  {
+   "name": "JSON export round-trips",
+   "ok": true,
+   "info": "668 KB, track floats=7315"
+  },
+  {
+   "name": "project restored after reload",
+   "ok": true,
+   "info": "actions=7, exc 18.2017 -> 18.2017 cm3"
+  },
+  {
+   "name": "undo works after reload",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "stake drag resizes outline",
+   "ok": true,
+   "info": "75 -> 94 mm"
+  },
+  {
+   "name": "undo restores outline",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "no console errors",
+   "ok": true,
+   "info": ""
+  }
+ ],
+ "errors": []
+}
