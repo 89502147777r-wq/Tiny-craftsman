@@ -66,6 +66,9 @@ export class MachineTool {
 
   select(kind) {
     const { app } = this;
+    // the machine left behind stops where it is (and is saved there)
+    const prev = this.machine;
+    if (prev) { prev.throttle = 0; prev.steer = 0; prev.v = 0; prev.yawRate = 0; }
     if (this._driving()) app.journal.commit(app.clock);
     this.active = kind;
     if (!this.machines[kind] || !this.machines[kind].id) {

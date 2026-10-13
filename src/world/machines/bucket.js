@@ -33,7 +33,7 @@ export class BucketPhysics {
     const c = this._c.addVectors(a, b).multiplyScalar(0.5);
     const width = Math.hypot(a.x - b.x, a.z - b.z) + 0.002;
     this.cutting = false;
-    if (this.prev && t.inside(c.x, c.z)) {
+    if (this.cutEnabled !== false && this.prev && t.inside(c.x, c.z)) {
       const dx = c.x - this.prev.x, dz = c.z - this.prev.z, dist = Math.hypot(dx, dz);
       const ground = t.heightAt(c.x, c.z);
       if (c.y < ground - 0.0003 && dist > 1e-6) {

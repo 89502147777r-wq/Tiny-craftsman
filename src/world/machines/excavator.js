@@ -51,6 +51,9 @@ export class Excavator extends Machine {
     for (const x of [tb.min.x * 0.8, 0, tb.max.x * 0.8]) for (const z of [tb.min.z * 0.85, tb.max.z * 0.85]) this.contacts.push([x, z]);
     this.trackLen = tb.max.x - tb.min.x;
     this.travelPose();
+    // the bucket turns ~200° from fully curled to fully open (relative to the stick);
+    // for this model that is j.bucket ∈ [-1.95, 1.55] rad from its rest pose
+    this.bucketRange = [-1.95, 1.55];
     this.applyJoints(1, true);
     this.followGround(0, true);
     return this;
@@ -240,7 +243,8 @@ export class Excavator extends Machine {
     const dBucket = phi - g.a3 - (A2 - g.a2);
     this.t.slew = unwrap(slew - this.slew0, this.j.slew);
     // shortest way from where the joints are now (no swinging over the top)
-    this.t.boom = unwrap(dBoom, this.j.boom); this.t.stick = unwrap(dStick, this.j.stick); this.t.bucket = unwrap(dBucket, this.j.bucket);
+    this.t.boom = unwrap(dBoom, this.j.boom); this.t.stick = unwrap(dStick, this.j.stick); const [lo, hi] = this.bucketRange || [-Math.PI, Math.PI];
+    this.t.bucket = Math.min(hi, Math.max(lo, unwrap(dBucket, (lo + hi) / 2))); // within the bucket's real range
     return reachable;
   }
 
@@ -323,8 +327,18 @@ export class Excavator extends Machine {
       if (this.jointsReached(0.05) || c.time > 7) { c.phase = 'dump'; c.time = 0; }
     } else if (c.phase === 'dump') {
       // open the bucket slowly: the mouth turns down and the soil pours out
-      this.t.bucket = this.j.bucket + wrapPi(this.phiFor(-Math.PI * 0.55) - this.currentPhi());
-      if ((this.bucketPhys.load <= 0 && c.time > 1.2) || c.time > 6) { c.phase = 'home'; c.time = 0; }
+      // a backhoe opens one way only: the cavity turns from "up" past "towards the cab" to "down"
+      const open = this.geo.cav < 0 ? 1 : -1;
+      let d = (this.phiFor(Math.PI * (this.geo.cav < 0 ? 1.38 : -0.38)) - this.currentPhi()) * open;
+      d = ((d % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      if (d > Math.PI * 1.6) d = 0; // already past the target
+      if (c.time < 0.05) c.open = this.j.bucket + d * open;
+      this.t.bucket = c.open;
+      if ((this.bucketPhys.load <= 0 && c.time > 1.2) || c.time > 6) { c.phase = 'raise'; c.time = 0; c.r = this.tipWorld(); }
+    } else if (c.phase === 'raise') {
+      // pull the empty bucket up and in before folding, so it never drags through the heap
+      this.reach(new THREE.Vector3(c.r.x, ground(c.r) + R(1.7), c.r.z), carry);
+      if (this.jointsReached(0.06) || c.time > 4) { c.phase = 'home'; c.time = 0; }
     } else if (c.phase === 'home') {
       this.travelPose();
       if (this.jointsReached(0.06) || c.time > 4) { this.cycle = null; this.app.onShovelState?.(); }
@@ -365,6 +379,9 @@ export class Excavator extends Machine {
     this.applyJoints(dt);
     this.followGround(dt);
     this.root.updateMatrixWorld(true);
+    // the teeth only cut while digging (manual mode: always, like a real machine)
+    const ph = this.cycle?.phase;
+    this.bucketPhys.cutEnabled = this.mode === 'manual' || ph === 'lower' || ph === 'drag' || ph === 'curl';
     this.bucketPhys.update(dt);
     this.moved += Math.abs(this.v * dt);
   }
