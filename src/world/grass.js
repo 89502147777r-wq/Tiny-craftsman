@@ -4,7 +4,7 @@ import { mulberry32 } from '../core/rand.js';
 // Diorama "static grass": little tufts of 2–6 mm fibres on the untouched
 // ground. A tuft disappears as soon as its patch is dug or buried.
 export class Grass {
-  constructor(terrain, count = 420) {
+  constructor(terrain, count = 1100) {
     this.terrain = terrain;
     const rnd = mulberry32(21);
     const geo = makeTuftGeometry(rnd);
@@ -14,12 +14,12 @@ export class Grass {
     this.mesh.receiveShadow = true;
     this.mesh.frustumCulled = false;
     this.tufts = [];
-    const h = terrain.half - 0.004;
+    const hx = terrain.halfX - 0.004, hz = terrain.halfZ - 0.004;
     for (let i = 0; i < count; i++) {
       // clustered placement: patches of grass rather than a uniform lawn
       let x, z, tries = 0;
       do {
-        x = (rnd() * 2 - 1) * h; z = (rnd() * 2 - 1) * h; tries++;
+        x = (rnd() * 2 - 1) * hx; z = (rnd() * 2 - 1) * hz; tries++;
       } while (tries < 8 && patch(x, z) < rnd());
       const s = 0.6 + rnd() * 0.9;
       this.tufts.push({ x, z, s, rot: rnd() * Math.PI * 2, tilt: (rnd() - 0.5) * 0.4 });
@@ -40,8 +40,7 @@ export class Grass {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
     for (let i = 0; i < this.tufts.length; i++) {
       const g = this.tufts[i];
-      const ix = Math.round(t.toCell(g.x)), iz = Math.round(t.toCell(g.z));
-      const k = iz * t.n + ix;
+      const k = t.index(g.x, g.z);
       const dug = t.orig[k] - t.nat[k] > 0.0006 || t.loose[k] > 0.0012;
       if (dug) { s.setScalar(0); } else s.setScalar(g.s);
       p.set(g.x, t.heightAt(g.x, g.z) - 0.0002, g.z);

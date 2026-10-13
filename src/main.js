@@ -1,21 +1,29 @@
 import * as THREE from 'three';
-import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_MARK, TERRAIN_RES } from './config.js';
+import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES } from './config.js';
 import { loadAssets } from './world/assets.js';
 import { buildWorkshop } from './world/workshop.js';
 import { Terrain } from './world/terrain.js';
 import { makeTerrainMaterial } from './world/terrainMaterial.js';
 import { Grass } from './world/grass.js';
 import { SoilParticles } from './world/particles.js';
-import { Marking } from './world/marking.js';
+import { OutlineView, contains, gradeY } from './world/outlines.js';
+import { FormworkView } from './world/formwork.js';
+import { RebarView } from './world/rebar.js';
+import { buildStacks } from './world/stacks.js';
+import { Backdrop } from './world/backdrop.js';
 import { Shovel } from './world/shovel.js';
 import { makeDust } from './world/dust.js';
 import { Pipeline } from './render/pipeline.js';
 import { CameraRig } from './input/cameraRig.js';
 import { Gestures } from './input/gestures.js';
 import { Journal } from './core/journal.js';
+import { ObjectStore } from './core/objects.js';
 import { Recorder, TRACK_FIELDS } from './core/recorder.js';
 import { saveLocal, loadLocal, clearLocal, toJSON, fromJSON, download } from './core/storage.js';
-import { ShovelTool } from './tools/shovelTool.js';
+import { ScoopTool } from './tools/scoopTool.js';
+import { MarkTool } from './tools/markTool.js';
+import { BuildTool } from './tools/buildTool.js';
+import { MachineTool } from './tools/machineTool.js';
 import { Sfx } from './audio/sfx.js';
 import { UI } from './ui/ui.js';
 
@@ -23,7 +31,7 @@ const app = (window.__tc = { ready: false, BUILD });
 
 async function main() {
   const canvas = document.getElementById('view');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: !!window.__TC_TEST });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
@@ -36,38 +44,53 @@ async function main() {
   if (params.get('quality')) app.settings.quality = params.get('quality');
   app.dprOverride = params.get('dpr') ? Number(params.get('dpr')) : 0;
   const scene = (app.scene = new THREE.Scene());
-  const camera = (app.camera = new THREE.PerspectiveCamera(45, 1, 0.008, 30));
+  const camera = (app.camera = new THREE.PerspectiveCamera(45, 1, 0.008, 40));
 
   const tex = await loadAssets(renderer, (f) => { document.getElementById('loadbar').style.width = `${Math.round(f * 100)}%`; });
   app.tex = tex;
   app.workshop = buildWorkshop(scene, renderer, tex);
+  app.stacks = buildStacks(tex);
+  scene.add(app.stacks);
 
   const terrain = (app.terrain = new Terrain());
   app.terrainMat = makeTerrainMaterial(tex);
   scene.add(terrain.buildMesh(app.terrainMat));
   app.grass = new Grass(terrain); scene.add(app.grass.mesh);
   app.particles = new SoilParticles(tex, terrain); scene.add(app.particles.mesh, app.particles.clods);
-  app.marking = new Marking(terrain); scene.add(app.marking.group);
-  app.shovel = new Shovel(tex); scene.add(app.shovel.root);
+  app.shovel = new Shovel(tex, app); scene.add(app.shovel.root);
   app.shovel.setType(app.settings.shovel);
   app.dust = makeDust(); scene.add(app.dust.points);
 
+  app.objects = new ObjectStore();
+  app.outlineView = new OutlineView(terrain, app.objects); scene.add(app.outlineView.group);
+  app.formView = new FormworkView(tex, app.objects, terrain); scene.add(app.formView.group);
+  app.rebarView = new RebarView(app.objects); scene.add(app.rebarView.group);
+  const u = app.terrainMat.userData.uniforms;
+  u.tMask.value = app.outlineView.mask;
+  u.uPlot.value.set(-terrain.halfX, -terrain.halfZ, terrain.sizeX, terrain.sizeZ);
+
   app.pipeline = new Pipeline(renderer);
   app.rig = new CameraRig(camera);
-  app.journal = new Journal(terrain);
+  app.journal = new Journal(terrain, app.objects);
   app.recorder = new Recorder();
   app.sfx = new Sfx();
-  app.shovelTool = new ShovelTool(app);
+  app.shovelTool = new ScoopTool(app, app.shovel);
+  app.markTool = new MarkTool(app);
+  app.formTool = new BuildTool(app, 'form');
+  app.rebarTool = new BuildTool(app, 'rebar');
+  app.machineTool = new MachineTool(app);
+  app.backdrop = new Backdrop(app);
+  app.journal.onBeforeCommit = () => app.machineTool.sync();
   app.clock = 0;
   app.tool = 'shovel';
 
-  // ---- restore the saved project -------------------------------------------------
+  // ---- restore the saved project, or start a fresh plot -------------------------------------
   const saved = await loadLocal();
+  let restored = false;
   if (saved) {
-    try { applyProject(saved); } catch (e) { console.warn('could not restore project', e); }
+    try { applyProject(saved); restored = true; } catch (e) { console.warn('could not restore project', e); }
   }
-  app.marking.setRect(app.marking.rect);
-  syncMarkUniform();
+  if (!restored) freshPlot();
 
   app.ui = new UI(app);
   app.gestures = new Gestures(app, canvas);
@@ -75,6 +98,7 @@ async function main() {
   app.onShovelState = () => app.ui.refresh();
   applySettings();
   setTool(app.tool);
+  if (app.migrated) app.ui.toast(app.migrated);
 
   window.addEventListener('resize', resize);
   window.visualViewport?.addEventListener('resize', resize);
@@ -82,7 +106,6 @@ async function main() {
   document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
   window.addEventListener('pagehide', saveNow);
 
-  // keep the camera from stalling on first frame: settle immediately
   app.rig.update(1);
   renderer.compile(scene, camera);
 
@@ -107,6 +130,7 @@ function step(dt, time) {
   if (!document.hidden) app.clock += dt;
   const { terrain } = app;
   app.shovelTool.update(dt);
+  app.machineTool.update(dt);
   app.particles.update(dt);
   // soil physics gets a time budget per frame (small piles settle in a blink)
   const budget = app.settings.quality === 'low' ? 2.5 : 4;
@@ -114,25 +138,44 @@ function step(dt, time) {
   for (let i = 0; i < 80 && terrain.active && performance.now() - t0 < budget; i++) terrain.relax(1);
   terrain.updateMesh();
   app.grass.update();
-  app.marking.update();
+  app.outlineView.update();
+  app.formView.update();
+  app.rebarView.update();
   app.shovel.update(dt);
   app.dust.update(dt, time);
+  if (app.settings.orbit) app.rig.orbit(-dt * 0.12, 0);
   app.rig.update(dt);
+  app.backdrop.update();
   updateFocus();
   app.terrainMat.userData.uniforms.uTime.value = time;
   app.pipeline.focus = app.rig.focus;
   app.pipeline.render(app.scene, app.camera, time);
-  app.recorder.sample(app.clock, dt, app.camera, app.rig.focus, app.shovel);
+  app.recorder.sample(app.clock, dt, trackRow);
   app.ui.tick(dt);
 }
 
-// Autofocus: on the blade while working, otherwise on the orbit target.
+function trackRow(clock) {
+  const c = app.camera, s = app.shovel;
+  const p = c.position, q = c.quaternion, sp = s.root.position, sq = s.root.quaternion;
+  const row = [clock, p.x, p.y, p.z, q.x, q.y, q.z, q.w, c.fov, app.rig.focus, sp.x, sp.y, sp.z, sq.x, sq.y, sq.z, sq.w, s.fill, s.type === 'scoop' ? 1 : 0];
+  const ex = app.machineTool.machines.excavator, tr = app.machineTool.machines.tractor;
+  if (ex) row.push(1, ex.x, ex.y, ex.z, ex.yaw, ex.pitch, ex.roll, ex.j.slew, ex.j.boom, ex.j.stick, ex.j.bucket, ex.j.blade, ex.trackPhase[0], ex.trackPhase[1], ex.fill);
+  else row.push(...new Array(15).fill(0));
+  if (tr) row.push(1, tr.x, tr.y, tr.z, tr.yaw, tr.pitch, tr.roll, tr.j.steer, tr.j.lift, tr.j.tilt, tr.wheelRot, tr.load);
+  else row.push(...new Array(12).fill(0));
+  return row;
+}
+
+// Autofocus: on the working tool, otherwise on the orbit target.
 const _f = new THREE.Vector3(), _fwd = new THREE.Vector3();
 function updateFocus() {
   const cam = app.camera;
-  const st = app.shovelTool.state;
-  if (app.tool === 'shovel' && st !== 'idle') _f.copy(app.shovel.root.position);
-  else if (app.focusPoint) _f.copy(app.focusPoint);
+  const mt = app.machineTool;
+  if (app.tool === 'shovel' && app.shovelTool.state !== 'idle') _f.copy(app.shovel.root.position);
+  else if (app.tool === 'machine' && mt.machine) {
+    if (mt.active === 'excavator' && mt.scoop?.busy) mt.machine.bucketG.getWorldPosition(_f);
+    else _f.copy(mt.machine.root.position).setY(mt.machine.y + 0.03);
+  } else if (app.focusPoint) _f.copy(app.focusPoint);
   else _f.copy(app.rig.target);
   cam.getWorldDirection(_fwd);
   app.rig.focusGoal = Math.max(0.03, _f.sub(cam.position).dot(_fwd));
@@ -150,14 +193,24 @@ function resize() {
   app.camera.updateProjectionMatrix();
 }
 
-// ---- tools ------------------------------------------------------------------------
+// ---- tools ------------------------------------------------------------------------------
+app.activeTool = () => ({ shovel: app.shovelTool, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, machine: app.machineTool }[app.tool] || null);
+app.busy = () => app.shovelTool.busy || app.machineTool.busy();
+
 function setTool(t) {
   if (app.tool === 'shovel' && t !== 'shovel') app.shovelTool.finish();
+  if (app.tool === 'mark' && t !== 'mark' && app.markTool.trench) app.markTool.finishTrench();
+  if (app.tool === 'machine' && t !== 'machine') { app.machineTool.scoop?.finish(); app.machineTool.joystick(0, 0); }
   app.tool = t;
+  app.outlineView.setHandles(t === 'mark', app.markTool.selected);
   if (t !== 'shovel' && app.shovelTool.state === 'idle') {
     // lean the shovel against the tray corner when it is not in use
-    const p = new THREE.Vector3(-0.128, 0, 0.128);
-    app.shovel.setPose({ pos: new THREE.Vector3(p.x, app.terrain.heightAt(p.x, p.z) - 0.006, p.z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.22, roll: 0 });
+    const x = -app.terrain.halfX + 0.012, z = app.terrain.halfZ - 0.012;
+    app.shovel.setPose({ pos: new THREE.Vector3(x, app.terrain.heightAt(x, z) - 0.006, z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.22, roll: 0 });
+  }
+  if (t === 'machine' && !app.machineTool.active) {
+    const kinds = Object.keys(app.machineTool.machines);
+    if (kinds.length) app.machineTool.active = kinds[0];
   }
   app.ui?.refresh();
 }
@@ -165,26 +218,46 @@ app.setTool = setTool;
 
 function undo() {
   if (app.shovelTool.abort()) { app.ui.refresh(); return; }
-  const rec = app.journal.undo();
-  if (rec?.type === 'mark') { app.marking.setRect(rec.extra.before); syncMarkUniform(); }
+  if (app.machineTool.scoop?.abort()) { app.ui.refresh(); return; }
+  app.journal.undo();
   app.ui.refresh();
 }
 function redo() {
   if (app.shovelTool.busy) app.shovelTool.finish();
-  const rec = app.journal.redo();
-  if (rec?.type === 'mark') { app.marking.setRect(rec.extra.after); syncMarkUniform(); }
+  app.machineTool.scoop?.finish();
+  if (app.journal.pending) app.journal.commit(app.clock);
+  app.journal.redo();
   app.ui.refresh();
 }
 app.undo = undo; app.redo = redo;
-app.gradeY = () => TRAY.soil - app.settings.target / 1000;
 
-function syncMarkUniform() {
-  const r = app.marking.rect;
-  app.terrainMat.userData.uniforms.uMark.value.set(r.x0, r.z0, r.x1, r.z1);
-}
-app.syncMarkUniform = syncMarkUniform;
+// design grade (lowest allowed cut) at a point: the deepest outline containing it
+app.gradeAt = (x, z) => {
+  let g = null;
+  for (const o of app.objects.all('outline')) if (contains(o, x, z)) { const y = gradeY(o); g = g === null ? y : Math.min(g, y); }
+  return g;
+};
 
-// ---- settings ----------------------------------------------------------------------
+// placed object under the finger (formwork / rebar)
+const _ray = new THREE.Raycaster();
+app.pickObject = (cx, cy, kind) => {
+  _ray.setFromCamera(app.gestures.ndc(cx, cy), app.camera);
+  const views = kind === 'form' ? [app.formView] : [app.rebarView];
+  const hits = _ray.intersectObjects(views.map((v) => v.group), true);
+  for (const h of hits) for (const v of views) { const id = v.ownerOf(h); if (id) return id; }
+  // thin bars are hard to hit: try a fat ray against the bar axes
+  if (kind === 'rebar') return app.rebarView.near?.(_ray.ray) ?? null;
+  return null;
+};
+
+app.setBackdrop = async (mode) => {
+  app.settings.backdrop = mode;
+  app.ui?.toast(mode === 'site' ? 'Загружаю панораму стройплощадки…' : '');
+  await app.backdrop.set(mode);
+  applySettings();
+};
+
+// ---- settings ---------------------------------------------------------------------------
 function readSettings() {
   try { return JSON.parse(localStorage.getItem('tc-settings') || '{}'); } catch { return {}; }
 }
@@ -192,32 +265,47 @@ function applySettings() {
   const s = app.settings;
   try { localStorage.setItem('tc-settings', JSON.stringify(s)); } catch { /* private mode */ }
   if (app.shovel.type !== s.shovel && !app.shovelTool.busy) app.shovel.setType(s.shovel);
-  app.terrainMat.userData.uniforms.uTargetY.value = TRAY.soil - s.target / 1000;
   app.terrainMat.userData.uniforms.uLevel.value = s.level ? 1 : 0;
   app.pipeline.dofAmount = s.dof;
   if (app.pipeline.quality !== s.quality || !app.pipeline.target) app.pipeline.setQuality(s.quality);
-  app.workshop.sun.shadow.mapSize.setScalar(s.quality === 'low' ? 1024 : 2048);
-  if (app.workshop.sun.shadow.map) { app.workshop.sun.shadow.map.dispose(); app.workshop.sun.shadow.map = null; }
+  const sm = s.quality === 'low' ? 1024 : s.quality === 'medium' ? 2048 : 4096;
+  if (app.workshop.sun.shadow.mapSize.x !== sm) {
+    app.workshop.sun.shadow.mapSize.setScalar(sm);
+    if (app.workshop.sun.shadow.map) { app.workshop.sun.shadow.map.dispose(); app.workshop.sun.shadow.map = null; }
+  }
   app.rig.shake = s.shake;
   app.sfx.enabled = s.sound;
+  if (app.backdrop.mode !== s.backdrop) app.backdrop.set(s.backdrop);
   resize();
   app.ui?.refresh();
 }
 app.applySettings = applySettings;
 
-// ---- persistence -----------------------------------------------------------------------
+// ---- persistence --------------------------------------------------------------------------
+function freshPlot() {
+  app.terrain.generate(7);
+  app.terrain.active = null;
+  app.objects.load({ nextId: 1, items: [] });
+  for (const o of DEFAULT_OUTLINES) app.objects.add({ type: 'outline', ...o, id: undefined });
+}
+
 function buildProject() {
   const t = app.terrain;
   // an action still in progress (soil on the shovel) is not saved: the ground
-  // is stored as it was before it, so the file always equals its journal
+  // and objects are stored as they were before it, so the file equals its journal
   const base = app.journal.pending ? app.journal.pending.snap : t;
-  const strip = (r) => ({ id: r.id, type: r.type, t0: r.t0, t1: r.t1, meta: r.meta, diff: r.diff, extra: r.extra });
+  const objects = app.objects.toJSON();
+  if (app.journal.pending && app.objects.tx) {
+    const before = new Map(app.objects.tx);
+    objects.items = objects.items.filter((r) => !before.has(r.id)).concat([...before.values()].filter(Boolean));
+  }
+  const strip = (r) => ({ id: r.id, type: r.type, t0: r.t0, t1: r.t1, meta: r.meta, diff: r.diff, objs: r.objs });
   return {
-    format: 'tiny-craftsman-project', version: 1, build: BUILD, stage: STAGE, savedAt: new Date().toISOString(),
+    format: 'tiny-craftsman-project', version: 2, build: BUILD, stage: STAGE, savedAt: new Date().toISOString(),
     clock: app.clock, scale: MODEL_SCALE, units: 'metres (real size of the diorama)',
     tray: TRAY,
-    terrain: { res: t.res, size: t.size, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, orig: t.orig },
-    mark: app.marking.rect,
+    terrain: { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, orig: t.orig },
+    objects,
     settings: app.settings,
     camera: app.rig.state(),
     journal: { nextId: app.journal.nextId, done: app.journal.done.map(strip), undone: app.journal.undone.map(strip) },
@@ -228,20 +316,56 @@ app.buildProject = buildProject;
 
 function applyProject(p) {
   if (p.format !== 'tiny-craftsman-project') throw new Error('not a Tiny Craftsman project');
-  const t = app.terrain;
-  if (p.terrain.res !== TERRAIN_RES) throw new Error('terrain resolution mismatch');
+  const t = app.terrain, j = app.journal;
+  app.particles.clearClods();
+  app.migrated = null;
+  if (p.version === 1 || p.terrain.rx !== t.rx || p.terrain.rz !== t.rz) {
+    // stage-1 project (30 × 30 cm tray): its ground is copied into the middle of the
+    // new plot, the outline becomes a pit outline; the old journal cannot be replayed
+    migrateV1(p);
+    j.pending = null; j.done = []; j.undone = []; j.nextId = 1;
+    app.recorder.load(null);
+    app.clock = p.clock || 0;
+    app.migrated = 'Проект этапа 1 перенесён на участок 60×45 см (журнал начат заново)';
+    return;
+  }
   t.seed = p.terrain.seed;
   t.orig.set(p.terrain.orig); t.nat.set(p.terrain.nat); t.loose.set(p.terrain.loose);
   t.markAll(); t.active = null;
-  app.particles.clearClods();
   app.clock = p.clock || 0;
-  if (p.mark) app.marking.setRect(p.mark);
+  app.objects.load(p.objects);
   if (p.settings) Object.assign(app.settings, p.settings);
   app.rig.setState(p.camera);
-  const j = app.journal;
   j.pending = null;
   j.done = p.journal?.done || []; j.undone = p.journal?.undone || []; j.nextId = p.journal?.nextId || j.done.length + 1;
-  app.recorder.load(p.track?.data);
+  const sameTrack = JSON.stringify(p.track?.fields) === JSON.stringify(TRACK_FIELDS);
+  app.recorder.load(sameTrack ? p.track?.data : null);
+}
+
+function migrateV1(p) {
+  const t = app.terrain;
+  t.generate(p.terrain.seed || 7);
+  const n = p.terrain.res + 1, cell = p.terrain.size / p.terrain.res, half = p.terrain.size / 2;
+  const dy = TRAY.soil - (p.terrain.soilY || 0.056); // the new soil is deeper
+  const at = (arr, x, z) => {
+    const cx = Math.min(n - 1.001, Math.max(0, (x + half) / cell)), cz = Math.min(n - 1.001, Math.max(0, (z + half) / cell));
+    const ix = Math.floor(cx), iz = Math.floor(cz), fx = cx - ix, fz = cz - iz, i = iz * n + ix;
+    return (arr[i] * (1 - fx) + arr[i + 1] * fx) * (1 - fz) + (arr[i + n] * (1 - fx) + arr[i + n + 1] * fx) * fz;
+  };
+  for (let iz = 0; iz <= t.rz; iz++) for (let ix = 0; ix <= t.rx; ix++) {
+    const x = t.toWorldX(ix), z = t.toWorldZ(iz);
+    if (Math.abs(x) > half - cell || Math.abs(z) > half - cell) continue;
+    const i = iz * t.nx + ix;
+    t.orig[i] = at(p.terrain.orig, x, z) + dy;
+    t.nat[i] = at(p.terrain.nat, x, z) + dy;
+    t.loose[i] = at(p.terrain.loose, x, z);
+  }
+  t.markAll();
+  for (let i = 0; i < 4000 && t.active; i++) t.relax(1);
+  t.active = null;
+  app.objects.load({ nextId: 1, items: [] });
+  const r = p.mark || DEFAULT_OUTLINES[0];
+  app.objects.add({ type: 'outline', kind: 'rect', x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, depth: p.settings?.target || 15 });
 }
 
 let saveTimer = 0;
@@ -269,7 +393,7 @@ function saveNow() {
   return saveChain;
 }
 app.saveNow = saveNow;
-// camera/tool track is saved periodically even without terrain edits
+// camera/tool track is saved periodically even without edits
 setInterval(() => { if (app.ready && !document.hidden) saveNow(); }, 20000);
 
 app.exportProject = () => {
@@ -281,23 +405,22 @@ app.exportProject = () => {
 app.importProject = async (file) => {
   const p = fromJSON(await file.text());
   applyProject(p);
-  app.marking.setRect(app.marking.rect);
-  syncMarkUniform();
   applySettings();
+  if (app.migrated) app.ui.toast(app.migrated);
   await saveNow();
 };
 
 app.newProject = async () => {
   app.shovelTool.abort();
   app.shovelTool.finish();
+  app.machineTool.scoop?.abort();
   await clearLocal();
-  app.terrain.generate(7);
   app.particles.clearClods();
   app.journal.done = []; app.journal.undone = []; app.journal.pending = null; app.journal.nextId = 1;
+  freshPlot();
   app.recorder.load(null);
   app.clock = 0;
-  app.marking.setRect(DEFAULT_MARK);
-  syncMarkUniform();
+  app.markTool.select(null);
   app.ui.refresh();
   await saveNow();
 };

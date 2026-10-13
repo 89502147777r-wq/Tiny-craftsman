@@ -6,7 +6,8 @@ import { variant } from './assets.js';
 // A 1:12 shovel. Local frame: blade tip at the origin, handle along +Y,
 // working (front) face of the blade towards +Z.
 export class Shovel {
-  constructor(tex) {
+  constructor(tex, app) {
+    this.app = app;
     this.root = new THREE.Group();
     this.root.name = 'shovel';
     this.tex = tex;
@@ -96,6 +97,27 @@ export class Shovel {
 
   bladeNormal(out = new THREE.Vector3()) {
     return out.set(0, 0, 1).applyQuaternion(this.root.quaternion);
+  }
+
+  // ---- implement interface for ScoopTool -------------------------------------------------
+  get name() { return 'shovel'; }
+  get bite() { return this.app.settings.bite / 1000; }
+  clampReach(p) { return p; }
+  initialDir(p, camDir) { return camDir; }
+  digDir(p, drag, cur) { return cur.clone().lerp(drag, 0.35).normalize(); }
+  poseDig(p, dir, cutY, first) {
+    const L = this.spec.length;
+    const tip = new THREE.Vector3(p.x + dir.x * L * 0.28, cutY + 0.0004, p.z + dir.y * L * 0.28);
+    this.setPose({ pos: tip, dir, tilt: first ? 0.5 : 0.95, roll: 0 });
+  }
+  poseAim(p, dir, groundY) {
+    this.setPose({ pos: new THREE.Vector3(p.x - dir.x * 0.006, groundY + 0.022, p.z - dir.y * 0.006), dir, tilt: 1.02, roll: 0 });
+  }
+  poseDump() { this.setPose({ tilt: 1.12, roll: 1.75 }); }
+  poseRest(p) {
+    const t = this.app.terrain;
+    const h = t.inside(p.x, p.z) ? t.heightAt(p.x, p.z) : 0;
+    this.setPose({ pos: new THREE.Vector3(p.x, h + 0.004, p.z), tilt: 0.28, roll: 0 });
   }
 }
 

@@ -1,18 +1,21 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:12.
-export const BUILD = 1;
-export const STAGE = 1;
+export const BUILD = 2;
+export const STAGE = 2;
 export const MODEL_SCALE = 12;
 
+// Diorama board: 60 × 45 cm inside = a 7.2 × 5.4 m plot at 1:12, room for
+// a mini excavator (≈23 cm long at this scale) to work.
 export const TRAY = {
-  inner: 0.30,        // inner side of the plywood tray (square)
+  innerX: 0.60,       // inner size of the plywood tray along X
+  innerZ: 0.45,       // … and along Z
   wall: 0.012,        // wall thickness
-  height: 0.068,      // wall top above the table
+  height: 0.106,      // wall top above the table
   floor: 0.010,       // top of the tray bottom board (soil cannot go lower)
-  soil: 0.056,        // natural ground level
+  soil: 0.100,        // natural ground level (90 mm of soil = 1.08 m)
 };
 
-export const TERRAIN_RES = 180; // cells per side (≈1.67 mm per cell)
+export const TERRAIN_CELL = 0.002; // 2 mm heightfield cells (300 × 225)
 
 // Soil mechanics (tangent of the angle at which material starts to slide).
 export const REPOSE_LOOSE = Math.tan(37 * Math.PI / 180);  // freshly dug loose soil
@@ -34,6 +37,23 @@ export const DEFAULT_SETTINGS = {
   sound: true,
   level: false,
   stopAtGrade: true, // the shovel stops at the design depth inside the outline
+  slab: 200,         // slab / strip height above the pit floor, mm (real)
+  rebarD: 12,        // bar diameter, mm (real)
+  rebarStep: 200,    // bar spacing, mm (real)
+  cover: 40,         // concrete cover, mm (real)
+  trenchWidth: 400,  // new trench width, mm (real)
+  trenchDepth: 600,  // new trench depth, mm (real)
+  backdrop: 'workshop',
+  orbit: false,      // slow automatic camera fly-around (панорама)
 };
 
-export const DEFAULT_MARK = { x0: -0.075, z0: -0.06, x1: 0.075, z1: 0.06 };
+// the first outline on a new plot: a 1.8 × 1.44 m pit, 15 mm (18 cm) deep
+export const DEFAULT_OUTLINES = [{ id: 1, kind: 'rect', x0: -0.075, z0: -0.06, x1: 0.075, z1: 0.06, depth: 15 }];
+
+// Construction materials, real sizes converted to the model (÷12).
+export const MAT = {
+  board: { t: 0.025 / 12, h: 0.15 / 12 },          // 25 × 150 mm formwork board
+  stake: { s: 0.05 / 12, step: 0.8 / 12 },         // 50 × 50 mm stakes every 0.8 m
+  rebarD: [8, 10, 12, 14],                         // available bar diameters, mm (real)
+  meshCell: 0.1 / 12, meshD: 0.004 / 12,           // welded mesh 100 × 100, Ø4
+};

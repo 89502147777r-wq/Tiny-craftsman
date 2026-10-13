@@ -21,10 +21,11 @@ export function makeTerrainMaterial(tex) {
     uWallScale: { value: 1 / 0.16 },
     uLooseScale: { value: 1 / 0.07 },
     uFloorY: { value: TRAY.floor },
-    uMark: { value: new THREE.Vector4(-0.075, -0.06, 0.075, 0.06) },
+    tMask: { value: null },      // R chalk, G inside outline, B design depth
+    uPlot: { value: new THREE.Vector4(-0.3, -0.225, 0.6, 0.45) }, // x0, z0, sizeX, sizeZ
+    uSoilY: { value: TRAY.soil },
     uChalk: { value: 1 },
     uLevel: { value: 0 },
-    uTargetY: { value: TRAY.soil - 0.015 },
     uTime: { value: 0 },
   };
   mat.userData.uniforms = uniforms;
@@ -44,8 +45,9 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <common>', `#include <common>
         uniform sampler2D tWall;
         uniform sampler2D tFloor;
-        uniform float uWallScale, uLooseScale, uFloorY, uChalk, uLevel, uTargetY, uTime;
-        uniform vec4 uMark;
+        uniform float uWallScale, uLooseScale, uFloorY, uChalk, uLevel, uSoilY, uTime;
+        uniform sampler2D tMask;
+        uniform vec4 uPlot;
         varying vec3 vSoil;
         varying vec3 vWPos;
         varying vec3 vWNrm;
@@ -70,17 +72,16 @@ export function makeTerrainMaterial(tex) {
         float bottom = (1.0 - smoothstep(uFloorY + 0.0002, uFloorY + 0.0009, vWPos.y)) * (1.0 - lse);
         soilC = mix(soilC, texture2D(tFloor, vWPos.xz * 4.0).rgb * 0.8, bottom);
         soilC *= 1.0 - 0.32 * vSoil.z;
-        // setting-out rectangle: signed distance to its border
+        // setting-out: chalk line, outline regions and their design depth
         vec2 q = vWPos.xz;
-        vec2 cMin = uMark.xy, cMax = uMark.zw;
-        vec2 dOut = max(cMin - q, q - cMax);
-        float sd = length(max(dOut, 0.0)) + min(max(dOut.x, dOut.y), 0.0);
+        vec4 mk = texture2D(tMask, (q - uPlot.xy) / uPlot.zw);
         float grain = tcHash(floor(q * 2400.0));
-        float chalk = (1.0 - smoothstep(0.0004, 0.0009, abs(sd))) * (1.0 - dig) * (1.0 - lse) * step(0.25, grain);
+        float chalk = smoothstep(0.25, 0.75, mk.r) * (1.0 - dig) * (1.0 - lse) * step(0.25, grain);
         soilC = mix(soilC, vec3(0.80, 0.79, 0.74), chalk * uChalk * 0.9);
-        // levelling overlay inside the pit outline
-        if (uLevel > 0.5 && sd < 0.0) {
-          float dy = vWPos.y - uTargetY;
+        // levelling overlay inside the outlines
+        if (uLevel > 0.5 && mk.g > 0.5) {
+          float targetY = uSoilY - mk.b * 0.1;
+          float dy = vWPos.y - targetY;
           vec3 tint = dy > 0.001 ? vec3(1.0, 0.45, 0.12) : (dy < -0.001 ? vec3(0.2, 0.45, 1.0) : vec3(0.25, 1.0, 0.35));
           float f = fract(vWPos.y / 0.002);
           float iso = 1.0 - smoothstep(0.0, 0.08, min(f, 1.0 - f));
@@ -94,6 +95,6 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(roughnessFactor, 0.82, smoothstep(0.003, 0.02, vSoil.x));`);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-1';
+  mat.customProgramCacheKey = () => 'tc-terrain-2';
   return mat;
 }

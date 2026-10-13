@@ -73,7 +73,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .chip .save i.pending { background: var(--accent); }
 
 .hint {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 92px);
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 132px);
   max-width: min(92vw, 520px); text-align: center; padding: 8px 14px; border-radius: 14px;
   background: var(--glass); border: 1px solid var(--line); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   transition: opacity .3s; pointer-events: none !important; font-size: 13px;
@@ -88,12 +88,14 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 .tools {
   position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 12px);
-  display: flex; gap: 6px; padding: 6px; border-radius: 20px; background: var(--glass); border: 1px solid var(--line);
+  display: flex; gap: 4px; padding: 5px; border-radius: 20px; background: var(--glass); border: 1px solid var(--line);
   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  max-width: calc(100vw - 16px); overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
+.tools::-webkit-scrollbar { display: none; }
 .tool {
-  width: 72px; height: 62px; border: 0; border-radius: 15px; background: transparent; display: grid; place-items: center;
-  align-content: center; gap: 3px; font-size: 11px; color: var(--ink-dim); padding: 0;
+  flex: 0 0 auto; width: 58px; height: 58px; border: 0; border-radius: 14px; background: transparent; display: grid; place-items: center;
+  align-content: center; gap: 3px; font-size: 10.5px; color: var(--ink-dim); padding: 0;
 }
 .tool svg { width: 24px; height: 24px; }
 .tool.active { background: var(--accent); color: var(--accent-ink); }
@@ -123,5 +125,62 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .film-exit { position: fixed; right: 0; top: 0; width: 64px; height: 64px; opacity: 0; border: 0; background: transparent; z-index: 30; }
 
 @media (min-width: 700px) {
-  .tool { width: 84px; }
+  .tool { width: 76px; }
 }
+
+/* mode chips above the toolbar */
+.subbar {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 86px);
+  display: flex; gap: 6px; max-width: calc(100vw - 16px); overflow-x: auto; scrollbar-width: none; padding: 2px;
+}
+.subbar::-webkit-scrollbar { display: none; }
+.subbar:empty { display: none; }
+.chip-btn {
+  flex: 0 0 auto; height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid var(--line); background: var(--glass);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-size: 12.5px; color: var(--ink); white-space: nowrap;
+}
+.chip-btn.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.chip-btn.warn { color: #ff9b86; }
+
+/* parameters of the selected outline */
+.params {
+  position: absolute; right: calc(var(--safe-r) + 10px); top: calc(var(--safe-t) + 136px); width: min(240px, 60vw);
+  background: var(--glass); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; font-size: 12px;
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+.params[hidden] { display: none; }
+.params label { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 4px 0; }
+.params input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.params output { color: var(--accent); font-variant-numeric: tabular-nums; }
+.params .ttl { color: var(--ink-dim); font-size: 11px; }
+
+.toast {
+  position: absolute; left: 50%; top: calc(var(--safe-t) + 130px); transform: translateX(-50%);
+  padding: 8px 14px; border-radius: 14px; background: var(--glass-strong); border: 1px solid var(--line);
+  font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none !important; white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+
+/* machine joystick + buttons */
+.joy {
+  position: absolute; left: calc(var(--safe-l) + 18px); bottom: calc(var(--safe-b) + 132px);
+  width: 118px; height: 118px; border-radius: 50%; background: rgba(24,19,15,.42); border: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); touch-action: none;
+}
+.joy[hidden], .mbtns[hidden] { display: none; }
+.joy i {
+  position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
+  background: rgba(240,166,58,.9); box-shadow: 0 4px 14px rgba(0,0,0,.45); transition: transform .08s;
+}
+.mbtns {
+  position: absolute; right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 132px);
+  display: grid; gap: 8px; justify-items: end;
+}
+.mbtns button {
+  min-width: 96px; height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--glass);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-size: 13px;
+}
+.mbtns button.on { background: var(--accent); color: var(--accent-ink); }
+
+/* with the joystick on screen the hint moves up under the stats */
+.hint.top { bottom: auto; top: calc(var(--safe-t) + 136px); }

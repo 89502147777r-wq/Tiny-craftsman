@@ -1,9 +1,11 @@
 // Construction journal: every committed action with the exact terrain change
-// it caused (sparse before/after), plus undo/redo. The same records feed the
-// Blender export, so the film can be rebuilt step by step.
+// it caused (sparse before/after) and the objects it added/changed/removed,
+// plus undo/redo. The same records feed the Blender export, so the film can
+// be rebuilt step by step.
 export class Journal {
-  constructor(terrain) {
+  constructor(terrain, objects) {
     this.terrain = terrain;
+    this.objects = objects;
     this.done = [];
     this.undone = [];
     this.pending = null;
@@ -13,7 +15,8 @@ export class Journal {
 
   begin(type, meta = {}, clock = 0) {
     if (this.pending) this.commit(clock);
-    this.pending = { type, meta, t0: clock, snap: this.terrain.snapshot(), extra: null };
+    this.pending = { type, meta, t0: clock, snap: this.terrain.snapshot() };
+    this.objects.begin();
     return this.pending;
   }
 
@@ -21,11 +24,12 @@ export class Journal {
   commit(clock = 0) {
     const p = this.pending;
     if (!p) return null;
+    this.onBeforeCommit?.(p);
     this.pending = null;
     const diff = this.terrain.diffFrom(p.snap);
-    const noTerrain = diff.idx.length === 0;
-    if (noTerrain && !p.extra) return null;
-    const rec = { id: this.nextId++, type: p.type, t0: p.t0, t1: clock, meta: p.meta, diff: noTerrain ? null : diff, extra: p.extra };
+    const objs = this.objects.end();
+    if (diff.idx.length === 0 && !objs) return null;
+    const rec = { id: this.nextId++, type: p.type, t0: p.t0, t1: clock, meta: p.meta, diff: diff.idx.length ? diff : null, objs };
     this.done.push(rec);
     this.undone.length = 0;
     this.onChange?.('commit', rec);
@@ -37,17 +41,15 @@ export class Journal {
     if (!p) return;
     this.pending = null;
     this.terrain.restore(p.snap);
+    this.objects.revert();
     this.onChange?.('cancel', null);
   }
 
-  // Non-terrain actions (e.g. moving the setting-out) carry before/after state.
-  record(type, before, after, clock = 0) {
-    if (this.pending) this.commit(clock);
-    const rec = { id: this.nextId++, type, t0: clock, t1: clock, meta: {}, diff: null, extra: { before, after } };
-    this.done.push(rec);
-    this.undone.length = 0;
-    this.onChange?.('commit', rec);
-    return rec;
+  // One-shot action: run fn() inside its own journal entry.
+  act(type, meta, clock, fn) {
+    this.begin(type, meta, clock);
+    try { fn(); } catch (e) { this.cancel(); throw e; }
+    return this.commit(clock);
   }
 
   undo() {
@@ -55,6 +57,7 @@ export class Journal {
     const rec = this.done.pop();
     if (!rec) return null;
     if (rec.diff) this.terrain.applyDiff(rec.diff, false);
+    if (rec.objs) this.objects.apply(rec.objs, false);
     this.undone.push(rec);
     this.onChange?.('undo', rec);
     return rec;
@@ -64,6 +67,7 @@ export class Journal {
     const rec = this.undone.pop();
     if (!rec) return null;
     if (rec.diff) this.terrain.applyDiff(rec.diff, true);
+    if (rec.objs) this.objects.apply(rec.objs, true);
     this.done.push(rec);
     this.onChange?.('redo', rec);
     return rec;
