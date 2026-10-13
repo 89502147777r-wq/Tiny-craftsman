@@ -278,7 +278,7 @@ export class UI {
       if (mt.active === 'excavator' && mt.scoop && (mt.scoop.state === 'loaded' || mt.scoop.state === 'aim')) hint = 'Коснитесь места в зоне вылета стрелы и отпустите — ковш высыплет грунт';
     }
     if (this._hint !== hint) { $('hint').textContent = hint; this._hint = hint; }
-    $('hint').classList.toggle('top', t === 'machine' || (t === 'mark' && !!app.markTool.selected));
+    $('hint').classList.toggle('top', t === 'machine');
     this.renderChips();
     this.renderParams();
     this.renderMachineControls();

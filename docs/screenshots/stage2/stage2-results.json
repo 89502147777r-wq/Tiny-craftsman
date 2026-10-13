@@ -1,0 +1,80 @@
+{
+ "results": [
+  {
+   "name": "fresh plot has the default pit outline",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "trench outline created",
+   "ok": true,
+   "info": "[{\"kind\":\"rect\",\"depth\":15},{\"kind\":\"trench\",\"pts\":3,\"depth\":50}]"
+  },
+  {
+   "name": "pit + trench dug, volume conserved",
+   "ok": true,
+   "info": "exc=717.9 cm3, drift=20.80 mm3, actions=301"
+  },
+  {
+   "name": "formwork runs placed (pit 4 + trench sides)",
+   "ok": true,
+   "info": "{\"forms\":10,\"cages\":[{\"bars\":36,\"tied\":true},{\"bars\":40,\"tied\":false}],\"mesh\":1,\"bars\":1}"
+  },
+  {
+   "name": "cages laid out, pit cage tied",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "mesh sheet and single bar placed",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "undo/redo of a placed bar",
+   "ok": true,
+   "info": "{\"before\":1,\"afterUndo\":0,\"afterRedo\":1}"
+  },
+  {
+   "name": "excavator drives",
+   "ok": true,
+   "info": "moved 89 mm"
+  },
+  {
+   "name": "excavator bucket digs and dumps",
+   "ok": true,
+   "info": "{\"moved\":0.08931542611446662,\"loaded\":\"loaded\",\"state\":\"idle\",\"dug\":26.041651278734154}"
+  },
+  {
+   "name": "tractor bucket fills when pushing",
+   "ok": true,
+   "info": "{\"load\":92.59259259259258,\"after\":0,\"drift\":0.06822126891181668}"
+  },
+  {
+   "name": "tractor dump empties bucket, soil conserved",
+   "ok": true,
+   "info": "drift 0.07 mm3"
+  },
+  {
+   "name": "journal replays terrain exactly",
+   "ok": true,
+   "info": "start 0 end 0"
+  },
+  {
+   "name": "journal replays objects",
+   "ok": true,
+   "info": "{\"start\":0,\"end\":0,\"sameObjs\":true,\"actions\":314,\"objects\":18,\"kb\":23184}"
+  },
+  {
+   "name": "everything restored after reload",
+   "ok": true,
+   "info": "{\"n\":314,\"o\":18,\"ex\":true} → {\"n\":314,\"o\":18,\"ex\":true}"
+  },
+  {
+   "name": "no console errors",
+   "ok": true,
+   "info": ""
+  }
+ ],
+ "errors": []
+}
