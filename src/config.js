@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS = {
   shake: true,
   sound: true,
   level: false,
+  stopAtGrade: true, // the shovel stops at the design depth inside the outline
 };
 
 export const DEFAULT_MARK = { x0: -0.075, z0: -0.06, x1: 0.075, z1: 0.06 };

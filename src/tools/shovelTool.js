@@ -38,6 +38,8 @@ export class ShovelTool {
     this.path = [];
     this.state = 'dig';
     this.last = p.clone();
+    // the blade scrapes level: one cut height for the whole stroke
+    this.cutY = this._snapHeight(p.x, p.z) - app.settings.bite / 1000;
     app.sfx.stab();
     app.sfx.scrapeStart();
     this._pose(p, 0.5, true);
@@ -92,10 +94,19 @@ export class ShovelTool {
     return (H(i) * (1 - fx) + H(i + 1) * fx) * (1 - fz) + (H(i + n) * (1 - fx) + H(i + n + 1) * fx) * fz;
   }
 
+  // cut height at a point: the stroke's level, but inside the setting-out
+  // never below the design grade (when "stop at design grade" is on)
+  _cutAt(p) {
+    const app = this.app, r = app.marking.rect;
+    let y = Math.max(this.cutY, app.terrain.floorY);
+    if (app.settings.stopAtGrade && p.x >= r.x0 && p.x <= r.x1 && p.z >= r.z0 && p.z <= r.z1) y = Math.max(y, app.gradeY());
+    return y;
+  }
+
   _stamp(p) {
     const app = this.app, t = app.terrain;
     if (!t.inside(p.x, p.z)) return 0;
-    const cutY = this._snapHeight(p.x, p.z) - app.settings.bite / 1000;
+    const cutY = this._cutAt(p);
     const got = t.carve(p.x, p.z, this.dir.x, this.dir.y, this.spec, cutY, this.capacity - this.load);
     if (got > 0) {
       this.load += got;
@@ -115,7 +126,7 @@ export class ShovelTool {
 
   _pose(p, tilt, snap = false) {
     const app = this.app, t = app.terrain, L = this.spec.length;
-    const cutY = t.inside(p.x, p.z) ? Math.max(this._snapHeight(p.x, p.z) - app.settings.bite / 1000, t.floorY) : 0;
+    const cutY = t.inside(p.x, p.z) ? Math.min(this._cutAt(p), this._snapHeight(p.x, p.z)) : 0;
     const tip = new THREE.Vector3(p.x + this.dir.x * L * 0.28, cutY + 0.0004, p.z + this.dir.y * L * 0.28);
     app.shovel.setPose({ pos: tip, dir: this.dir, tilt, roll: 0 }, snap && !app.shovel.root.visible);
   }
@@ -192,11 +203,12 @@ export class ShovelTool {
     const app = this.app;
     if (this.state === 'dump') {
       // emit what is left instantly
-      while (this.emitted < this.total) {
-        const pos = app.shovel.bladePoint(Math.random() * 2 - 1, Math.random());
-        app.terrain.deposit(pos.x, pos.z, this.load / this.total, 0.002);
-        this.emitted++;
-      }
+      // pour the rest straight onto the chosen spot (the model may still be on its way)
+      const rest = this.load * (this.total - this.emitted) / this.total;
+      const t = app.terrain;
+      const x = Math.max(-t.half, Math.min(t.half, this.lastP.x)), z = Math.max(-t.half, Math.min(t.half, this.lastP.z));
+      t.deposit(x, z, rest, 0.004);
+      this.emitted = this.total;
     }
     if (this.state === 'dump' || this.state === 'settle') {
       app.particles.flush();

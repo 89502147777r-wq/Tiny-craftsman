@@ -62,7 +62,7 @@ export class UI {
     bind('set-dof', 'dof', (v) => (v < 0.02 ? 'выкл' : `${Math.round(v * 100)}%`));
     bind('set-shovel', 'shovel', () => '', String);
     bind('set-quality', 'quality', () => '', String);
-    for (const [id, key] of [['set-shake', 'shake'], ['set-sound', 'sound']]) {
+    for (const [id, key] of [['set-shake', 'shake'], ['set-sound', 'sound'], ['set-grade', 'stopAtGrade']]) {
       const el = $(id);
       el.checked = !!s[key];
       el.addEventListener('change', () => { s[key] = el.checked; app.applySettings(); });

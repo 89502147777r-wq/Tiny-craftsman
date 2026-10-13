@@ -176,6 +176,7 @@ function redo() {
   app.ui.refresh();
 }
 app.undo = undo; app.redo = redo;
+app.gradeY = () => TRAY.soil - app.settings.target / 1000;
 
 function syncMarkUniform() {
   const r = app.marking.rect;

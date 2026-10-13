@@ -64,12 +64,12 @@ export function makeTerrainMaterial(tex) {
         float lse = smoothstep(0.00015, 0.0015, vSoil.y);
         vec3 soilC = mix(topC.rgb, wallC * vec3(0.86, 0.80, 0.74), dig);
         // fresh cuts are moister, so darker the deeper you go
-        soilC *= mix(1.0, 0.78, smoothstep(0.002, 0.02, vSoil.x));
+        soilC *= mix(1.0, 0.86, smoothstep(0.002, 0.02, vSoil.x));
         soilC = mix(soilC, looseC, lse);
         // the tray bottom shows through where everything has been dug out
         float bottom = (1.0 - smoothstep(uFloorY + 0.0002, uFloorY + 0.0009, vWPos.y)) * (1.0 - lse);
         soilC = mix(soilC, texture2D(tFloor, vWPos.xz * 4.0).rgb * 0.8, bottom);
-        soilC *= 1.0 - 0.5 * vSoil.z;
+        soilC *= 1.0 - 0.32 * vSoil.z;
         // setting-out rectangle: signed distance to its border
         vec2 q = vWPos.xz;
         vec2 cMin = uMark.xy, cMax = uMark.zw;
