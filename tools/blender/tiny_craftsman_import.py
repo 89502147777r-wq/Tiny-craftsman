@@ -1,5 +1,5 @@
 """
-Tiny Craftsman → Blender importer (stages 1–2: excavation, formwork, rebar, machines).
+Tiny Craftsman → Blender importer (stages 1–3: excavation, formwork, rebar, machines).
 
 Rebuilds a project exported from the game (menu → «Экспорт для Blender») as an
 animated Blender scene, ready for a photoreal Cycles render:
@@ -12,7 +12,7 @@ animated Blender scene, ready for a photoreal Cycles render:
   * shovel proxy following the recorded tool motion
   * formwork boards + stakes, rebar bars / cages / mesh sheets, each shown
     from the moment its journal action was committed (hidden after deletion)
-  * mini excavator / mini tractor proxies following the recorded track
+  * excavator / tractor / truck mixer / concrete pump proxies following the recorded track
 
 Usage (Blender 4.x):
   blender --python tools/blender/tiny_craftsman_import.py -- project.json [--assets /path/to/repo/assets] [--fps 30]
@@ -364,8 +364,12 @@ def build_machines(rows, coll, fps):
         coll.objects.link(ob)
         return ob
 
-    specs = [("ex", "MiniExcavator", (1.58 / 12, 0.99 / 12, 2.3 / 12), (0.94, 0.7, 0.05)),
-             ("tr", "MiniTractor", (2.6 / 12, 1.2 / 12, 1.9 / 12), (0.89, 0.4, 0.1))]
+    # real sizes (length, width, height) at 1:12; replace the boxes with the CC-BY
+    # models from assets/models (see CREDITS.md) for the final render
+    specs = [("ex", "Excavator", (5.6 / 12, 2.0 / 12, 2.5 / 12), (0.94, 0.7, 0.05)),
+             ("tr", "Tractor", (3.3 / 12, 1.9 / 12, 2.5 / 12), (0.7, 0.15, 0.1)),
+             ("mx", "TruckMixer", (7.1 / 12, 2.5 / 12, 3.6 / 12), (0.92, 0.92, 0.9)),
+             ("pu", "ConcretePump", (3.9 / 12, 1.9 / 12, 1.55 / 12), (0.95, 0.8, 0.1))]
     for key, name, size, color in specs:
         if not rows or key + "_on" not in rows[0]:
             continue

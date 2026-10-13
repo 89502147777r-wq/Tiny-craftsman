@@ -38,7 +38,10 @@ async function main() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   app.renderer = renderer;
 
-  app.settings = { ...DEFAULT_SETTINGS, ...readSettings() };
+  const stored = readSettings();
+  // BUILD 3: the construction-site panorama becomes the default background once
+  if ((stored.build || 0) < 3) { delete stored.backdrop; delete stored.orbit; }
+  app.settings = { ...DEFAULT_SETTINGS, ...stored, build: BUILD };
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
   const params = new URLSearchParams(location.search);
   if (params.get('quality')) app.settings.quality = params.get('quality');
@@ -126,7 +129,7 @@ async function main() {
   requestAnimationFrame(frame);
 }
 
-function step(dt, time) {
+function step(dt, time, render = true) {
   if (!document.hidden) app.clock += dt;
   const { terrain } = app;
   app.shovelTool.update(dt);
@@ -145,24 +148,35 @@ function step(dt, time) {
   app.dust.update(dt, time);
   if (app.settings.orbit) app.rig.orbit(-dt * 0.12, 0);
   app.rig.update(dt);
+  app.workshop.followShadow(app.workshop.sun, app.rig.target, app.rig.dist);
   app.backdrop.update();
   updateFocus();
   app.terrainMat.userData.uniforms.uTime.value = time;
   app.pipeline.focus = app.rig.focus;
-  app.pipeline.render(app.scene, app.camera, time);
+  if (render) app.pipeline.render(app.scene, app.camera, time);
   app.recorder.sample(app.clock, dt, trackRow);
   app.ui.tick(dt);
 }
+
+// run the simulation ahead without drawing (tests, slow software renderers)
+app.simulate = (seconds, dt = 1 / 30) => {
+  for (let t = 0; t < seconds; t += dt) step(dt, performance.now() / 1000, false);
+};
 
 function trackRow(clock) {
   const c = app.camera, s = app.shovel;
   const p = c.position, q = c.quaternion, sp = s.root.position, sq = s.root.quaternion;
   const row = [clock, p.x, p.y, p.z, q.x, q.y, q.z, q.w, c.fov, app.rig.focus, sp.x, sp.y, sp.z, sq.x, sq.y, sq.z, sq.w, s.fill, s.type === 'scoop' ? 1 : 0];
-  const ex = app.machineTool.machines.excavator, tr = app.machineTool.machines.tractor;
-  if (ex) row.push(1, ex.x, ex.y, ex.z, ex.yaw, ex.pitch, ex.roll, ex.j.slew, ex.j.boom, ex.j.stick, ex.j.bucket, ex.j.blade, ex.trackPhase[0], ex.trackPhase[1], ex.fill);
-  else row.push(...new Array(15).fill(0));
-  if (tr) row.push(1, tr.x, tr.y, tr.z, tr.yaw, tr.pitch, tr.roll, tr.j.steer, tr.j.lift, tr.j.tilt, tr.wheelRot, tr.load);
+  const M = app.machineTool.machines, ex = M.excavator, tr = M.tractor, mx = M.mixer, pu = M.pump;
+  const pose = (m) => [1, m.x, m.y, m.z, m.yaw, m.pitch, m.roll];
+  if (ex) row.push(...pose(ex), ex.j.slew, ex.j.boom, ex.j.stick, ex.j.bucket, ex.trackPhase[0], ex.trackPhase[1], ex.bucketPhys ? ex.bucketPhys.fill : 0);
+  else row.push(...new Array(14).fill(0));
+  if (tr) row.push(...pose(tr), tr.steerAngle, tr.j.lift, tr.j.tilt, tr.wheelRot, tr.load);
   else row.push(...new Array(12).fill(0));
+  if (mx) row.push(...pose(mx), mx.steerAngle, mx.wheelRot, mx.drumSpin ? mx.drumSpin.rotation.y : 0, mx.chute);
+  else row.push(...new Array(11).fill(0));
+  if (pu) row.push(...pose(pu));
+  else row.push(...new Array(7).fill(0));
   return row;
 }
 
@@ -173,8 +187,8 @@ function updateFocus() {
   const mt = app.machineTool;
   if (app.tool === 'shovel' && app.shovelTool.state !== 'idle') _f.copy(app.shovel.root.position);
   else if (app.tool === 'machine' && mt.machine) {
-    if (mt.active === 'excavator' && mt.scoop?.busy) mt.machine.bucketG.getWorldPosition(_f);
-    else _f.copy(mt.machine.root.position).setY(mt.machine.y + 0.03);
+    if (mt.active === 'excavator' && mt.machine.busy) mt.machine.bucketWorld(_f);
+    else _f.copy(mt.machine.root.position).setY(mt.machine.y + 0.08);
   } else if (app.focusPoint) _f.copy(app.focusPoint);
   else _f.copy(app.rig.target);
   cam.getWorldDirection(_fwd);
@@ -200,7 +214,7 @@ app.busy = () => app.shovelTool.busy || app.machineTool.busy();
 function setTool(t) {
   if (app.tool === 'shovel' && t !== 'shovel') app.shovelTool.finish();
   if (app.tool === 'mark' && t !== 'mark' && app.markTool.trench) app.markTool.finishTrench();
-  if (app.tool === 'machine' && t !== 'machine') { app.machineTool.scoop?.finish(); app.machineTool.joystick(0, 0); }
+  if (app.tool === 'machine' && t !== 'machine') app.machineTool.finish();
   app.tool = t;
   app.outlineView.setHandles(t === 'mark', app.markTool.selected);
   if (t !== 'shovel' && app.shovelTool.state === 'idle') {
@@ -208,23 +222,20 @@ function setTool(t) {
     const x = -app.terrain.halfX + 0.012, z = app.terrain.halfZ - 0.012;
     app.shovel.setPose({ pos: new THREE.Vector3(x, app.terrain.heightAt(x, z) - 0.006, z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.22, roll: 0 });
   }
-  if (t === 'machine' && !app.machineTool.active) {
-    const kinds = Object.keys(app.machineTool.machines);
-    if (kinds.length) app.machineTool.active = kinds[0];
-  }
+  if (t === 'machine' && !app.machineTool.active) app.machineTool.active = 'excavator';
   app.ui?.refresh();
 }
 app.setTool = setTool;
 
 function undo() {
   if (app.shovelTool.abort()) { app.ui.refresh(); return; }
-  if (app.machineTool.scoop?.abort()) { app.ui.refresh(); return; }
+  if (app.machineTool.abort()) { app.ui.refresh(); return; }
   app.journal.undo();
   app.ui.refresh();
 }
 function redo() {
   if (app.shovelTool.busy) app.shovelTool.finish();
-  app.machineTool.scoop?.finish();
+  app.machineTool.finish();
   if (app.journal.pending) app.journal.commit(app.clock);
   app.journal.redo();
   app.ui.refresh();
@@ -287,6 +298,7 @@ function freshPlot() {
   app.terrain.active = null;
   app.objects.load({ nextId: 1, items: [] });
   for (const o of DEFAULT_OUTLINES) app.objects.add({ type: 'outline', ...o, id: undefined });
+  for (const r of MachineTool.parkedRecords()) app.objects.add(r);
 }
 
 function buildProject() {
@@ -301,7 +313,7 @@ function buildProject() {
   }
   const strip = (r) => ({ id: r.id, type: r.type, t0: r.t0, t1: r.t1, meta: r.meta, diff: r.diff, objs: r.objs });
   return {
-    format: 'tiny-craftsman-project', version: 2, build: BUILD, stage: STAGE, savedAt: new Date().toISOString(),
+    format: 'tiny-craftsman-project', version: 3, build: BUILD, stage: STAGE, savedAt: new Date().toISOString(),
     clock: app.clock, scale: MODEL_SCALE, units: 'metres (real size of the diorama)',
     tray: TRAY,
     terrain: { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, orig: t.orig },
@@ -320,13 +332,15 @@ function applyProject(p) {
   app.particles.clearClods();
   app.migrated = null;
   if (p.version === 1 || p.terrain.rx !== t.rx || p.terrain.rz !== t.rz) {
-    // stage-1 project (30 × 30 cm tray): its ground is copied into the middle of the
-    // new plot, the outline becomes a pit outline; the old journal cannot be replayed
-    migrateV1(p);
+    // a project from an earlier, smaller tray: its ground goes into the middle of
+    // the new plot, its outlines / formwork / rebar stay, the machines are parked
+    // afresh; the old journal cannot be replayed on the new grid
+    migrateGrid(p);
     j.pending = null; j.done = []; j.undone = []; j.nextId = 1;
     app.recorder.load(null);
     app.clock = p.clock || 0;
-    app.migrated = 'Проект этапа 1 перенесён на участок 60×45 см (журнал начат заново)';
+    if (p.settings) Object.assign(app.settings, p.settings, { backdrop: app.settings.backdrop });
+    app.migrated = `Проект этапа ${p.stage || 1} перенесён в центр участка ${Math.round(TRAY.innerX * 100)}×${Math.round(TRAY.innerZ * 100)} см (журнал начат заново)`;
     return;
   }
   t.seed = p.terrain.seed;
@@ -342,30 +356,40 @@ function applyProject(p) {
   app.recorder.load(sameTrack ? p.track?.data : null);
 }
 
-function migrateV1(p) {
-  const t = app.terrain;
-  t.generate(p.terrain.seed || 7);
-  const n = p.terrain.res + 1, cell = p.terrain.size / p.terrain.res, half = p.terrain.size / 2;
-  const dy = TRAY.soil - (p.terrain.soilY || 0.056); // the new soil is deeper
+function migrateGrid(p) {
+  const t = app.terrain, pt = p.terrain;
+  t.generate(pt.seed || 7);
+  // old grid: v1 = square (size, res), v2+ = rx × rz cells of `cell`
+  const rx = pt.rx ?? pt.res, rz = pt.rz ?? pt.res, n = rx + 1;
+  const cell = pt.cell ?? pt.size / pt.res, hx = rx * cell / 2, hz = rz * cell / 2;
+  const dy = TRAY.soil - (pt.soilY || 0.056);
   const at = (arr, x, z) => {
-    const cx = Math.min(n - 1.001, Math.max(0, (x + half) / cell)), cz = Math.min(n - 1.001, Math.max(0, (z + half) / cell));
+    const cx = Math.min(rx - 1e-3, Math.max(0, (x + hx) / cell)), cz = Math.min(rz - 1e-3, Math.max(0, (z + hz) / cell));
     const ix = Math.floor(cx), iz = Math.floor(cz), fx = cx - ix, fz = cz - iz, i = iz * n + ix;
     return (arr[i] * (1 - fx) + arr[i + 1] * fx) * (1 - fz) + (arr[i + n] * (1 - fx) + arr[i + n + 1] * fx) * fz;
   };
   for (let iz = 0; iz <= t.rz; iz++) for (let ix = 0; ix <= t.rx; ix++) {
     const x = t.toWorldX(ix), z = t.toWorldZ(iz);
-    if (Math.abs(x) > half - cell || Math.abs(z) > half - cell) continue;
+    if (Math.abs(x) > hx - cell || Math.abs(z) > hz - cell) continue;
     const i = iz * t.nx + ix;
-    t.orig[i] = at(p.terrain.orig, x, z) + dy;
-    t.nat[i] = at(p.terrain.nat, x, z) + dy;
-    t.loose[i] = at(p.terrain.loose, x, z);
+    t.orig[i] = at(pt.orig, x, z) + dy;
+    t.nat[i] = at(pt.nat, x, z) + dy;
+    t.loose[i] = at(pt.loose, x, z);
   }
   t.markAll();
-  for (let i = 0; i < 4000 && t.active; i++) t.relax(1);
+  for (let i = 0; i < 6000 && t.active; i++) t.relax(1);
   t.active = null;
-  app.objects.load({ nextId: 1, items: [] });
-  const r = p.mark || DEFAULT_OUTLINES[0];
-  app.objects.add({ type: 'outline', kind: 'rect', x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, depth: p.settings?.target || 15 });
+  if (p.objects?.items) {
+    // keep the setting-out and everything built on it; machines get parked
+    const items = p.objects.items.filter((r) => r.type !== 'machine');
+    const next = Math.max(p.objects.nextId || 1, ...items.map((r) => r.id + 1));
+    app.objects.load({ nextId: next, items });
+  } else {
+    app.objects.load({ nextId: 1, items: [] });
+    const r = p.mark || DEFAULT_OUTLINES[0];
+    app.objects.add({ type: 'outline', kind: 'rect', x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, depth: p.settings?.target || 15 });
+  }
+  for (const r of MachineTool.parkedRecords()) app.objects.add(r);
 }
 
 let saveTimer = 0;
@@ -413,7 +437,8 @@ app.importProject = async (file) => {
 app.newProject = async () => {
   app.shovelTool.abort();
   app.shovelTool.finish();
-  app.machineTool.scoop?.abort();
+  app.machineTool.abort();
+  app.machineTool.finish();
   await clearLocal();
   app.particles.clearClods();
   app.journal.done = []; app.journal.undone = []; app.journal.pending = null; app.journal.nextId = 1;

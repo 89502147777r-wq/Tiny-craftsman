@@ -4,10 +4,14 @@ export const TRACK_FIELDS = [
   't',
   'cam_px', 'cam_py', 'cam_pz', 'cam_qx', 'cam_qy', 'cam_qz', 'cam_qw', 'cam_vfov', 'cam_focus',
   'tool_px', 'tool_py', 'tool_pz', 'tool_qx', 'tool_qy', 'tool_qz', 'tool_qw', 'tool_fill', 'tool_type',
-  // mini excavator: on-plot flag, pose, joints (rad), dozer blade (0 down … 1 up), belt travel, bucket fill
-  'ex_on', 'ex_x', 'ex_y', 'ex_z', 'ex_yaw', 'ex_pitch', 'ex_roll', 'ex_slew', 'ex_boom', 'ex_stick', 'ex_bucket', 'ex_blade', 'ex_trackL', 'ex_trackR', 'ex_fill',
-  // mini tractor: pose, steering, loader lift/tilt (rad), wheel travel (m), soil in bucket (m³)
+  // mini excavator: on-plot flag, pose, joints (rad, offsets from the model's rest pose), belt travel (m), soil in bucket (0…1)
+  'ex_on', 'ex_x', 'ex_y', 'ex_z', 'ex_yaw', 'ex_pitch', 'ex_roll', 'ex_slew', 'ex_boom', 'ex_stick', 'ex_bucket', 'ex_trackL', 'ex_trackR', 'ex_fill',
+  // tractor: pose, steering, loader lift/tilt (rad), wheel travel (m), soil in bucket (m³)
   'tr_on', 'tr_x', 'tr_y', 'tr_z', 'tr_yaw', 'tr_pitch', 'tr_roll', 'tr_steer', 'tr_lift', 'tr_tilt', 'tr_wheel', 'tr_load',
+  // truck mixer: pose, steering, wheel travel, drum angle (rad), chute swing (rad)
+  'mx_on', 'mx_x', 'mx_y', 'mx_z', 'mx_yaw', 'mx_pitch', 'mx_roll', 'mx_steer', 'mx_wheel', 'mx_drum', 'mx_chute',
+  // trailer concrete pump: pose
+  'pu_on', 'pu_x', 'pu_y', 'pu_z', 'pu_yaw', 'pu_pitch', 'pu_roll',
 ];
 const F = TRACK_FIELDS.length;
 

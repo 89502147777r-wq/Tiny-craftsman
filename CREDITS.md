@@ -19,6 +19,21 @@
 | `assets/hdri/carpentry_shop_02_1k.hdr` | Carpentry Shop 02 | Greg Zaal | CC0 | https://polyhaven.com/a/carpentry_shop_02 |
 | `assets/hdri/construction_yard_2k.hdr` — панорама стройплощадки 360° | Construction Yard | Sergej Majboroda | CC0 | https://polyhaven.com/a/construction_yard |
 
+## 3D-модели техники (Sketchfab, CC BY 4.0)
+
+Модели взяты из открытого набора Objaverse (только файлы с лицензией CC BY 4.0) и **изменены**: оптимизированы
+glTF-Transform (текстуры WebP ≤ 1024 px, геометрия meshopt), приведены к масштабу 1:12; у КАМАЗа скрыт кузов-тент,
+вместо него кодом добавлены барабан миксера, лоток, бак, лестница и рама; к трактору кодом добавлен фронтальный погрузчик;
+у экскаватора детали стрелы, рукояти и ковша управляются кинематикой игры.
+
+| Файл | Модель | Автор | Лицензия | Источник |
+|---|---|---|---|---|
+| `assets/models/excavator.glb` | Excavator animation | tori1243 | CC BY 4.0 | https://sketchfab.com/3d-models/940258497f9f4eba9710bb359a9e777e |
+| `assets/models/kamaz.glb` — шасси автобетоносмесителя | KAMAZ 5330 | davidbroutian | CC BY 4.0 | https://sketchfab.com/3d-models/e86a62f4b8c84e03b2c6e32c51474bc7 |
+| `assets/models/tractor.glb` | Tractor | le0tard | CC BY 4.0 | https://sketchfab.com/3d-models/278fc1e0516c401eba358d3aa2e55635 |
+| `assets/models/concrete-pump.glb` | Concrete pump | rhymone | CC BY 4.0 | https://sketchfab.com/3d-models/8e883fffc1b14e089304c41c5d9b484a |
+| `assets/models/site-mixer.glb` | Hormigonera | rafarelo | CC BY 4.0 | https://sketchfab.com/3d-models/7eb177b8abec4735b6644d74bb10ba82 |
+
 ## Фото-задники
 
 | Файл | Источник |
@@ -29,11 +44,12 @@
 
 | Компонент | Автор | Лицензия |
 |---|---|---|
-| three.js r180 (`vendor/three/`, включая `addons/loaders/HDRLoader.js`, `addons/utils/BufferGeometryUtils.js`) | three.js authors | MIT (`vendor/three/LICENSE`) |
+| three.js r180 (`vendor/three/`, включая `addons/loaders/HDRLoader.js`, `addons/loaders/GLTFLoader.js`, `addons/utils/BufferGeometryUtils.js`) | three.js authors | MIT (`vendor/three/LICENSE`) |
+| meshoptimizer decoder (`vendor/three/addons/libs/meshopt_decoder.module.js`) | Arseny Kapoulkine | MIT |
 
 ## Сгенерировано процедурно (наше, без внешних источников)
 
 Лопаты, колышки, шнур-причалка, линейка (шкала нарисована кодом), карандаш, статическая трава,
-комья грунта, пылинки, звуки (синтез шума WebAudio), иконки приложения; мини-экскаватор и мини-трактор
-(геометрия, гусеницы с протектором, шины с грунтозацепами, гидроцилиндры), арматура периодического
+комья грунта, пылинки, звуки (синтез шума WebAudio), иконки приложения; фронтальный погрузчик трактора (рамы, ковш,
+гидроцилиндры), барабан автобетоносмесителя со спиралью и полосами, лоток, бак, лестница; арматура периодического
 профиля (карта нормалей рисуется кодом), пластиковые стульчики, «лягушки», вязальная проволока, кладочная сетка.

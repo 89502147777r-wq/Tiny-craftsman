@@ -6,10 +6,10 @@ import * as THREE from 'three';
 export class CameraRig {
   constructor(camera) {
     this.camera = camera;
-    this.target = new THREE.Vector3(0, 0.09, 0);
-    this.yaw = 0.42; this.pitch = 0.6; this.dist = 0.78;
+    this.target = new THREE.Vector3(0, 0.1, 0.1);
+    this.yaw = 0.42; this.pitch = 0.36; this.dist = 1.5;
     this.goal = { target: this.target.clone(), yaw: this.yaw, pitch: this.pitch, dist: this.dist };
-    this.limits = { minDist: 0.06, maxDist: 1.2, minPitch: 0.1, maxPitch: 1.45, box: 0.42 };
+    this.limits = { minDist: 0.06, maxDist: 4, minPitch: 0.08, maxPitch: 1.5, boxX: 1.5, boxZ: 1.2 };
     this.shake = true;
     this.t = 0;
     this.focusGoal = 0.36;
@@ -25,19 +25,26 @@ export class CameraRig {
     this.goal.dist = THREE.MathUtils.clamp(this.goal.dist * f, this.limits.minDist, this.limits.maxDist);
   }
 
-  // pan in the camera's screen plane, scaled by distance
+  // slide the target over the plot so the ground follows the fingers
+  // (dx, dy in screen heights); works at any zoom
   pan(dx, dy) {
-    const cam = this.camera;
-    const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
-    const fwd = new THREE.Vector3(Math.sin(this.goal.yaw), 0, Math.cos(this.goal.yaw)).negate();
-    const k = this.goal.dist;
-    this.goal.target.addScaledVector(right, -dx * k).addScaledVector(fwd, dy * k);
-    const b = this.limits.box;
-    this.goal.target.x = THREE.MathUtils.clamp(this.goal.target.x, -b, b);
-    this.goal.target.z = THREE.MathUtils.clamp(this.goal.target.z, -b, b);
+    const yaw = this.goal.yaw;
+    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+    // visible ground height at the target ≈ 2·dist·tan(fov/2), foreshortened by the pitch
+    const h = 2 * this.goal.dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const k = h, kf = h / Math.max(0.25, Math.sin(this.goal.pitch));
+    this.goal.target.addScaledVector(right, -dx * k).addScaledVector(fwd, dy * kf);
+    this.clampTarget();
   }
 
-  lookAtPoint(p) { this.goal.target.copy(p); }
+  clampTarget() {
+    const g = this.goal.target, l = this.limits;
+    g.x = THREE.MathUtils.clamp(g.x, -l.boxX, l.boxX);
+    g.z = THREE.MathUtils.clamp(g.z, -l.boxZ, l.boxZ);
+  }
+
+  lookAtPoint(p) { this.goal.target.copy(p); this.clampTarget(); }
 
   update(dt) {
     const k = 1 - Math.exp(-dt * 10);

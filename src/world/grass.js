@@ -4,7 +4,7 @@ import { mulberry32 } from '../core/rand.js';
 // Diorama "static grass": little tufts of 2–6 mm fibres on the untouched
 // ground. A tuft disappears as soon as its patch is dug or buried.
 export class Grass {
-  constructor(terrain, count = 1100) {
+  constructor(terrain, count = 4800) {
     this.terrain = terrain;
     const rnd = mulberry32(21);
     const geo = makeTuftGeometry(rnd);
@@ -58,7 +58,7 @@ function patch(x, z) {
 
 function makeTuftGeometry(rnd) {
   const pos = [], col = [], idx = [];
-  const blades = 22;
+  const blades = 14;
   for (let b = 0; b < blades; b++) {
     const a = rnd() * Math.PI * 2;
     const lean = 0.25 + rnd() * 0.5;

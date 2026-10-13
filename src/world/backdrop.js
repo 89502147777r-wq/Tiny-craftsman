@@ -20,7 +20,7 @@ export class Backdrop {
     // ground that continues the plot in "site" mode
     // a big disc with a hole exactly where the plot is
     const ring = new THREE.Shape();
-    ring.absarc(0, 0, 9, 0, Math.PI * 2, false);
+    ring.absarc(0, 0, 14, 0, Math.PI * 2, false);
     const hx = TRAY.innerX / 2 - 0.0005, hz = TRAY.innerZ / 2 - 0.0005;
     ring.holes.push(new THREE.Path([new THREE.Vector2(-hx, -hz), new THREE.Vector2(hx, -hz), new THREE.Vector2(hx, hz), new THREE.Vector2(-hx, hz)]));
     const g = new THREE.ShapeGeometry(ring, 64);
@@ -31,7 +31,7 @@ export class Backdrop {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;')
         .replace('#include <uv_vertex>', '#include <uv_vertex>\nvec4 gw = modelMatrix * vec4(position, 1.0); vGW = gw.xyz; vMapUv = gw.xz / 0.2; vNormalMapUv = vMapUv;');
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;\nuniform vec3 uFade;')
-        .replace('#include <map_fragment>', '#include <map_fragment>\n float fd = smoothstep(1.5, 8.5, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd);');
+        .replace('#include <map_fragment>', '#include <map_fragment>\n float fd = smoothstep(2.5, 13.0, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd);');
       sh.uniforms.uFade = this.fadeU;
     };
     this.fadeU = { value: new THREE.Color(0.55, 0.5, 0.44) };
@@ -41,7 +41,7 @@ export class Backdrop {
     this.ground.visible = false;
     app.scene.add(this.ground);
     // curved photo print
-    const R = 0.85, arc = 1.25, H = R * arc / 1.5;
+    const R = 2.6, arc = 1.35, H = R * arc / 1.5;
     const pg = new THREE.CylinderGeometry(R, R, H, 48, 1, true, Math.PI - arc / 2, arc);
     pg.translate(0, H / 2 - 0.02, 0);
     this.photoMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide, toneMapped: true });
@@ -75,16 +75,14 @@ export class Backdrop {
       s.backgroundIntensity = mode === 'site' ? 1.0 : 0.6;
       s.backgroundRotation.set(0, 0, 0); s.environmentRotation.set(0, 0, 0);
       ws.sun.color.set(0xfff0dc); ws.sun.intensity = 3.4;
-      ws.sun.position.copy(this.sunDir).multiplyScalar(1.1);
+      ws.sun.userData.dir.copy(this.sunDir);
     } else {
       s.environment = this.workshopEnv; s.environmentIntensity = 0.8;
       s.background = this.workshopBg; s.backgroundBlurriness = 0.12; s.backgroundIntensity = 0.75;
       s.backgroundRotation.set(0, 2.2, 0); s.environmentRotation.set(0, 2.2, 0);
       ws.sun.color.set(0xffd6ad); ws.sun.intensity = 2.7;
-      ws.sun.position.set(-0.5, 0.95, -0.34);
+      ws.sun.userData.dir.set(-0.5, 0.95, -0.34).normalize();
     }
-    // the site is big: let the camera pull further back there
-    app.rig.limits.maxDist = mode === 'site' ? 2.2 : 1.2;
   }
 
   update() {
