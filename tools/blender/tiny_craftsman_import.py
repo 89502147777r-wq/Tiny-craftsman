@@ -1,5 +1,5 @@
 """
-Tiny Craftsman → Blender importer (stage 1: excavation).
+Tiny Craftsman → Blender importer (stages 1–2: excavation, formwork, rebar, machines).
 
 Rebuilds a project exported from the game (menu → «Экспорт для Blender») as an
 animated Blender scene, ready for a photoreal Cycles render:
@@ -10,6 +10,9 @@ animated Blender scene, ready for a photoreal Cycles render:
   * camera with the recorded path, orientation, field of view and focus
     distance (depth of field enabled)
   * shovel proxy following the recorded tool motion
+  * formwork boards + stakes, rebar bars / cages / mesh sheets, each shown
+    from the moment its journal action was committed (hidden after deletion)
+  * mini excavator / mini tractor proxies following the recorded track
 
 Usage (Blender 4.x):
   blender --python tools/blender/tiny_craftsman_import.py -- project.json [--assets /path/to/repo/assets] [--fps 30]
@@ -137,12 +140,13 @@ def build(project, assets="", fps=FPS):
     link(table)
 
     ply = image_mat("Plywood", "plywood", 0.5, (0.75, 0.6, 0.42))
-    W, inner, H, floor = tray["wall"], tray["inner"], tray["height"], tray["floor"]
-    out = inner + 2 * W
-    parts = [((out, floor, out), (0, floor / 2, 0))]
-    for s in (-1, 1):
-        parts.append(((out, H - floor, W), (0, floor + (H - floor) / 2, s * (inner / 2 + W / 2))))
-        parts.append(((W, H - floor, inner), (s * (inner / 2 + W / 2), floor + (H - floor) / 2, 0)))
+    W, H, floor = tray["wall"], tray["height"], tray["floor"]
+    ix_, iz_ = tray.get("innerX", tray.get("inner")), tray.get("innerZ", tray.get("inner"))
+    ox, oz = ix_ + 2 * W, iz_ + 2 * W
+    parts = [((ox, floor, oz), (0, floor / 2, 0))]
+    for sg in (-1, 1):
+        parts.append(((ox, H - floor, W), (0, floor + (H - floor) / 2, sg * (iz_ / 2 + W / 2))))
+        parts.append(((W, H - floor, iz_), (sg * (ix_ / 2 + W / 2), floor + (H - floor) / 2, 0)))
     for k, (size, pos) in enumerate(parts):
         bpy.ops.mesh.primitive_cube_add(size=1)
         ob = bpy.context.active_object
@@ -156,20 +160,23 @@ def build(project, assets="", fps=FPS):
 
     # ---- terrain with one shape key per action ----------------------------------------
     t = project["terrain"]
-    res, size = t["res"], t["size"]
-    n = res + 1
-    half = size / 2
-    cell = size / res
+    if "rx" in t:
+        rx, rz, cell = t["rx"], t["rz"], t["cell"]
+    else:  # stage-1 square tray
+        rx = rz = t["res"]
+        cell = t["size"] / t["res"]
+    n, nz = rx + 1, rz + 1
+    hx, hz = rx * cell / 2, rz * cell / 2
     states = reconstruct_states(project)
     _, nat0, loose0 = states[0]
     verts = []
-    for iz in range(n):
+    for iz in range(nz):
         for ix in range(n):
             i = iz * n + ix
-            verts.append(to_bl(ix * cell - half, nat0[i] + loose0[i], iz * cell - half))
+            verts.append(to_bl(ix * cell - hx, nat0[i] + loose0[i], iz * cell - hz))
     faces = []
-    for iz in range(res):
-        for ix in range(res):
+    for iz in range(rz):
+        for ix in range(rx):
             a = iz * n + ix
             faces.append((a, a + n, a + n + 1, a + 1))
     me = bpy.data.meshes.new("Soil")
@@ -183,7 +190,7 @@ def build(project, assets="", fps=FPS):
     keys = []
     for k, (time_s, nat, loose) in enumerate(states[1:], 1):
         sk = soil.shape_key_add(name="action_%03d" % k, from_mix=False)
-        for i in range(n * n):
+        for i in range(n * nz):
             sk.data[i].co.z = nat[i] + loose[i]
         keys.append((time_s, sk))
     for k, (time_s, sk) in enumerate(keys):
@@ -234,9 +241,145 @@ def build(project, assets="", fps=FPS):
         shovel.rotation_quaternion = conv @ Quaternion((r["tool_qw"], r["tool_qx"], r["tool_qy"], r["tool_qz"]))
         shovel.keyframe_insert("location", frame=f)
         shovel.keyframe_insert("rotation_quaternion", frame=f)
+    build_objects(project, coll, fps, image_mat)
+    build_machines(rows, coll, fps)
     scene.frame_start = 1
     scene.frame_end = int(max(last, 1 + (states[-1][0] if states else 0) * fps)) + fps
     return coll
+
+
+def object_versions(project):
+    """{id: [(time, record or None), …]} from the journal's object operations."""
+    vers = {}
+    for rec in project["journal"]["done"]:
+        for op in rec.get("objs") or []:
+            vers.setdefault(op["id"], []).append((float(rec.get("t1") or 0.0), op.get("after")))
+    # objects that exist without a journal entry (e.g. the default outline) are there from the start
+    for r in (project.get("objects") or {}).get("items", []):
+        vers.setdefault(r["id"], [(0.0, r)])
+    return vers
+
+
+def build_objects(project, coll, fps, image_mat):
+    import bpy
+    from mathutils import Vector
+
+    wood = image_mat("Board", "raw_plank_wall", 0.3, (0.6, 0.45, 0.3))
+    steel = bpy.data.materials.new("Rebar")
+    steel.use_nodes = True
+    b = steel.node_tree.nodes.get("Principled BSDF")
+    b.inputs["Base Color"].default_value = (0.18, 0.13, 0.1, 1)
+    b.inputs["Metallic"].default_value = 0.6
+    b.inputs["Roughness"].default_value = 0.6
+
+    def rod(name, a, b_, d, mat, parent):
+        A, B = Vector(to_bl(*a)), Vector(to_bl(*b_))
+        L = (B - A).length
+        if L < 1e-6:
+            return
+        bpy.ops.mesh.primitive_cylinder_add(radius=d / 2, depth=L, vertices=8, location=(A + B) / 2)
+        ob = bpy.context.active_object
+        ob.name = name
+        ob.rotation_mode = "QUATERNION"
+        ob.rotation_quaternion = Vector((0, 0, 1)).rotation_difference((B - A).normalized())
+        ob.data.materials.append(mat)
+        for c in ob.users_collection:
+            c.objects.unlink(ob)
+        coll.objects.link(ob)
+        ob.parent = parent
+
+    def board_box(name, center, size, yaw, mat, parent):
+        bpy.ops.mesh.primitive_cube_add(size=1, location=to_bl(*center))
+        ob = bpy.context.active_object
+        ob.name = name
+        ob.scale = (size[0], size[2], size[1])
+        ob.rotation_euler = (0, 0, yaw)
+        ob.data.materials.append(mat)
+        for c in ob.users_collection:
+            c.objects.unlink(ob)
+        coll.objects.link(ob)
+        ob.parent = parent
+
+    board_t, board_h = 0.025 / 12, 0.15 / 12
+    for oid, versions in object_versions(project).items():
+        for k, (t_on, rec) in enumerate(versions):
+            if not rec or rec.get("type") not in ("form", "bar", "cage", "mesh"):
+                continue
+            root = bpy.data.objects.new("%s_%d_v%d" % (rec["type"], oid, k), None)
+            coll.objects.link(root)
+            if rec["type"] == "form":
+                (ax, az), (bx, bz), (nx, nz) = rec["a"], rec["b"], rec["n"]
+                L = math.hypot(bx - ax, bz - az)
+                yaw = math.atan2(bz - az, bx - ax)  # Blender: -z_three = y
+                count = max(1, math.ceil((rec["y1"] - rec["y0"]) / board_h - 0.05))
+                for j in range(count):
+                    y = rec["y1"] - board_h / 2 - j * board_h
+                    c = ((ax + bx) / 2 + nx * board_t / 2, y, (az + bz) / 2 + nz * board_t / 2)
+                    board_box("board", c, (L + board_t, board_h, board_t), -yaw, wood, root)
+            elif rec["type"] == "bar":
+                rod("bar", rec["a"], rec["b"], rec["d"], steel, root)
+            elif rec["type"] == "cage":
+                for bb in rec["bars"]:
+                    rod("bar", bb[0:3], bb[3:6], bb[6], steel, root)
+            elif rec["type"] == "mesh":
+                z = rec["z0"]
+                while z <= rec["z1"] + 1e-6:
+                    rod("wire", (rec["x0"], rec["y"], z), (rec["x1"], rec["y"], z), rec["d"], steel, root)
+                    z += rec["cell"]
+                x = rec["x0"]
+                while x <= rec["x1"] + 1e-6:
+                    rod("wire", (x, rec["y"] + rec["d"], rec["z0"]), (x, rec["y"] + rec["d"], rec["z1"]), rec["d"], steel, root)
+                    x += rec["cell"]
+            # visible from this version's time until the next version of the same object
+            t_off = versions[k + 1][0] if k + 1 < len(versions) else None
+            for ob in [root] + list(root.children):
+                ob.hide_render = ob.hide_viewport = True
+                ob.keyframe_insert("hide_render", frame=1)
+                ob.keyframe_insert("hide_viewport", frame=1)
+                ob.hide_render = ob.hide_viewport = False
+                ob.keyframe_insert("hide_render", frame=max(1, 1 + t_on * fps))
+                ob.keyframe_insert("hide_viewport", frame=max(1, 1 + t_on * fps))
+                if t_off is not None:
+                    ob.hide_render = ob.hide_viewport = True
+                    ob.keyframe_insert("hide_render", frame=1 + t_off * fps)
+                    ob.keyframe_insert("hide_viewport", frame=1 + t_off * fps)
+
+
+def build_machines(rows, coll, fps):
+    """Simple proxies (boxes) for the machines, keyed from the recorded track."""
+    import bpy
+    from mathutils import Euler
+
+    def proxy(name, size, color):
+        bpy.ops.mesh.primitive_cube_add(size=1)
+        ob = bpy.context.active_object
+        ob.name = name
+        ob.scale = size
+        m = bpy.data.materials.new(name)
+        m.use_nodes = True
+        m.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = (*color, 1)
+        ob.data.materials.append(m)
+        for c in ob.users_collection:
+            c.objects.unlink(ob)
+        coll.objects.link(ob)
+        return ob
+
+    specs = [("ex", "MiniExcavator", (1.58 / 12, 0.99 / 12, 2.3 / 12), (0.94, 0.7, 0.05)),
+             ("tr", "MiniTractor", (2.6 / 12, 1.2 / 12, 1.9 / 12), (0.89, 0.4, 0.1))]
+    for key, name, size, color in specs:
+        if not rows or key + "_on" not in rows[0]:
+            continue
+        ob = None
+        for r in rows:
+            if not r.get(key + "_on"):
+                continue
+            if ob is None:
+                ob = proxy(name, size, color)
+            f = 1 + r["t"] * fps
+            ob.location = to_bl(r[key + "_x"], r[key + "_y"] + size[2] / 2, r[key + "_z"])
+            ob.rotation_euler = Euler((r[key + "_roll"], r[key + "_pitch"], r[key + "_yaw"]), "XYZ")
+            ob.keyframe_insert("location", frame=f)
+            ob.keyframe_insert("rotation_euler", frame=f)
 
 
 def _args():

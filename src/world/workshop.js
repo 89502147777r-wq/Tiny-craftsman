@@ -24,12 +24,12 @@ export function buildWorkshop(scene, renderer, tex) {
 
   // ---- lamp ------------------------------------------------------------------
   const sun = new THREE.DirectionalLight(0xffd6ad, 2.7);
-  sun.position.set(-0.32, 0.62, -0.22);
+  sun.position.set(-0.5, 0.95, -0.34);
   sun.target.position.set(0, 0.03, 0);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(4096, 4096);
   const sc = sun.shadow.camera;
-  sc.left = -0.3; sc.right = 0.3; sc.top = 0.3; sc.bottom = -0.3; sc.near = 0.2; sc.far = 1.4;
+  sc.left = -0.5; sc.right = 0.5; sc.top = 0.5; sc.bottom = -0.5; sc.near = 0.2; sc.far = 2.2;
   sun.shadow.bias = -0.00025;
   sun.shadow.normalBias = 0.0007;
   group.add(sun, sun.target);
@@ -38,7 +38,7 @@ export function buildWorkshop(scene, renderer, tex) {
   group.add(rim);
 
   // ---- workbench ---------------------------------------------------------------
-  const TW = 1.7, TD = 0.85, TT = 0.045;
+  const TW = 2.2, TD = 1.1, TT = 0.045;
   const tableMat = new THREE.MeshStandardMaterial({
     map: variant(tex.table.diff, TW / 0.55, TD / 0.55),
     normalMap: variant(tex.table.nor, TW / 0.55, TD / 0.55),
@@ -47,7 +47,7 @@ export function buildWorkshop(scene, renderer, tex) {
     color: 0xd9cfc4,
   });
   const table = new THREE.Mesh(new THREE.BoxGeometry(TW, TT, TD), tableMat);
-  table.position.set(0.05, -TT / 2, -0.12);
+  table.position.set(0.1, -TT / 2, -0.1);
   table.receiveShadow = true;
   table.name = 'table';
   group.add(table);
@@ -59,24 +59,24 @@ export function buildWorkshop(scene, renderer, tex) {
   });
   const edgeH = new THREE.MeshStandardMaterial({ map: plyEdgeTexture(false), roughness: 0.85, color: 0xeee2d2 });
   const edgeV = new THREE.MeshStandardMaterial({ map: plyEdgeTexture(true), roughness: 0.85, color: 0xeee2d2 });
-  const W = TRAY.wall, OUT = TRAY.inner + 2 * W;
+  const W = TRAY.wall, OX = TRAY.innerX + 2 * W, OZ = TRAY.innerZ + 2 * W;
   const tray = new THREE.Group();
   tray.name = 'tray';
   // bottom board
-  const bottom = new THREE.Mesh(new THREE.BoxGeometry(OUT, TRAY.floor, OUT), [edgeV, edgeV, plyFace, plyFace, edgeV, edgeV]);
+  const bottom = new THREE.Mesh(new THREE.BoxGeometry(OX, TRAY.floor, OZ), [edgeV, edgeV, plyFace, plyFace, edgeV, edgeV]);
   bottom.position.y = TRAY.floor / 2;
   tray.add(bottom);
   // walls: px, nx, py, ny, pz, nz
   const wallH = TRAY.height - TRAY.floor;
-  const longGeo = new THREE.BoxGeometry(OUT, wallH, W);
-  const shortGeo = new THREE.BoxGeometry(TRAY.inner, wallH, W);
+  const longGeo = new THREE.BoxGeometry(OX, wallH, W);
+  const shortGeo = new THREE.BoxGeometry(TRAY.innerZ, wallH, W);
   const wallMats = [edgeV, edgeV, edgeH, plyFace, plyFace, plyFace];
   for (const s of [-1, 1]) {
     const a = new THREE.Mesh(longGeo, wallMats);
-    a.position.set(0, TRAY.floor + wallH / 2, s * (TRAY.inner / 2 + W / 2));
+    a.position.set(0, TRAY.floor + wallH / 2, s * (TRAY.innerZ / 2 + W / 2));
     const b = new THREE.Mesh(shortGeo, wallMats);
     b.rotation.y = Math.PI / 2;
-    b.position.set(s * (TRAY.inner / 2 + W / 2), TRAY.floor + wallH / 2, 0);
+    b.position.set(s * (TRAY.innerX / 2 + W / 2), TRAY.floor + wallH / 2, 0);
     tray.add(a, b);
   }
   tray.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -86,15 +86,17 @@ export function buildWorkshop(scene, renderer, tex) {
   const rulerTop = new THREE.MeshStandardMaterial({ map: rulerTexture(), metalness: 0.85, roughness: 0.38, color: 0xd8dde2 });
   const rulerSide = new THREE.MeshStandardMaterial({ color: 0xb8bec4, metalness: 0.9, roughness: 0.3 });
   const ruler = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.0009, 0.026), [rulerSide, rulerSide, rulerTop, rulerSide, rulerSide, rulerSide]);
-  ruler.position.set(-0.02, 0.00045, 0.235);
+  ruler.position.set(-0.08, 0.00045, 0.30);
   ruler.rotation.y = 0.05;
   ruler.castShadow = true; ruler.receiveShadow = true;
+  ruler.userData.prop = true;
   group.add(ruler);
 
   // ---- pencil ---------------------------------------------------------------------
   const pencil = makePencil();
-  pencil.position.set(0.255, 0.0037, 0.11);
+  pencil.position.set(0.40, 0.0037, 0.20);
   pencil.rotation.y = 1.1;
+  pencil.userData.prop = true;
   group.add(pencil);
 
   // ---- soil crumbs that missed the tray ------------------------------------------
@@ -105,9 +107,8 @@ export function buildWorkshop(scene, renderer, tex) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
   for (let i = 0; i < crumbs.count; i++) {
     const side = rnd() < 0.6 ? 1 : -1;
-    const along = (rnd() - 0.5) * 0.3;
-    const off = OUT / 2 + 0.004 + Math.pow(rnd(), 2.2) * 0.05;
-    if (rnd() < 0.5) p.set(along, 0, side * off); else p.set(side * off, 0, along);
+    const spill = 0.004 + Math.pow(rnd(), 2.2) * 0.05;
+    if (rnd() < 0.5) p.set((rnd() - 0.5) * OX, 0, side * (OZ / 2 + spill)); else p.set(side * (OX / 2 + spill), 0, (rnd() - 0.5) * OZ);
     const r = 0.0004 + Math.pow(rnd(), 3) * 0.0016;
     s.set(r * (0.8 + rnd() * 0.5), r * (0.5 + rnd() * 0.3), r * (0.8 + rnd() * 0.5));
     p.y = s.y * 0.6;
@@ -115,6 +116,7 @@ export function buildWorkshop(scene, renderer, tex) {
     crumbs.setMatrixAt(i, m.compose(p, q, s));
   }
   crumbs.castShadow = true; crumbs.receiveShadow = true;
+  crumbs.userData.prop = true;
   group.add(crumbs);
 
   return { group, sun, table, tray };

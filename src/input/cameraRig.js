@@ -6,10 +6,10 @@ import * as THREE from 'three';
 export class CameraRig {
   constructor(camera) {
     this.camera = camera;
-    this.target = new THREE.Vector3(0, 0.05, 0);
-    this.yaw = 0.42; this.pitch = 0.56; this.dist = 0.56;
+    this.target = new THREE.Vector3(0, 0.09, 0);
+    this.yaw = 0.42; this.pitch = 0.6; this.dist = 0.78;
     this.goal = { target: this.target.clone(), yaw: this.yaw, pitch: this.pitch, dist: this.dist };
-    this.limits = { minDist: 0.07, maxDist: 0.9, minPitch: 0.12, maxPitch: 1.45, box: 0.25 };
+    this.limits = { minDist: 0.06, maxDist: 1.2, minPitch: 0.1, maxPitch: 1.45, box: 0.42 };
     this.shake = true;
     this.t = 0;
     this.focusGoal = 0.36;

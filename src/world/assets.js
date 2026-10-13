@@ -6,6 +6,7 @@ const SETS = {
   wall: 'excavated_soil_wall',
   table: 'wood_table_worn',
   ply: 'plywood',
+  plank: 'raw_plank_wall',
 };
 
 export async function loadAssets(renderer, onProgress) {

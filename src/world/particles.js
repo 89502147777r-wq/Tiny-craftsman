@@ -79,7 +79,7 @@ export class SoilParticles {
       const inside = t.inside(it.p.x, it.p.z);
       const ground = inside ? t.heightAt(it.p.x, it.p.z) : 0;
       if (it.p.y - it.size * 0.5 <= ground || it.age > 3) {
-        const cx = Math.max(-t.half, Math.min(t.half, it.p.x)), cz = Math.max(-t.half, Math.min(t.half, it.p.z));
+        const cx = t.clampX(it.p.x), cz = t.clampZ(it.p.z);
         this._land(it, cx, cz);
         continue;
       }
@@ -105,8 +105,7 @@ export class SoilParticles {
     const m = this._m, q = this._q, s = this._s, p = new THREE.Vector3();
     let w = 0;
     for (const c of this.clodList) {
-      const ix = Math.round(t.toCell(c.x)), iz = Math.round(t.toCell(c.z));
-      const i = iz * t.n + ix;
+      const i = t.index(c.x, c.z);
       if (t.loose[i] < 0.0006) continue;
       this.clodList[w++] = c;
     }

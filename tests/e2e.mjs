@@ -27,12 +27,12 @@ const toScreen = (x, y, z) => page.evaluate(([x, y, z]) => {
 }, [x, y, z]);
 async function touch(type, pts) { await cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], i) => ({ x, y, id: i })) }); }
 async function swipe(world) {
-  const pts = []; for (const [x, z] of world) pts.push(await toScreen(x, 0.056, z));
+  const pts = []; for (const [x, z] of world) pts.push(await toScreen(x, 0.1, z));
   await touch('touchStart', [pts[0]]);
   for (let k = 1; k < pts.length; k++) { const [ax, ay] = pts[k - 1], [bx, by] = pts[k]; for (let s = 1; s <= 4; s++) { await touch('touchMove', [[ax + (bx - ax) * s / 4, ay + (by - ay) * s / 4]]); } }
   await touch('touchEnd', []);
 }
-async function tapAt(x, z) { const p = await toScreen(x, 0.056, z); await touch('touchStart', [p]); await page.waitForTimeout(60); await touch('touchEnd', []); }
+async function tapAt(x, z) { const p = await toScreen(x, 0.1, z); await touch('touchStart', [p]); await page.waitForTimeout(60); await touch('touchEnd', []); }
 async function settle() { await page.waitForFunction(() => window.__tc.shovelTool.state === 'idle' || window.__tc.shovelTool.state === 'loaded', null, { timeout: 60000 }); await page.waitForTimeout(300); }
 const stat = () => page.evaluate(() => { const t = window.__tc.terrain; return { exc: t.excavatedVolume(), total: t.totalVolume(), journal: window.__tc.journal.done.length, state: window.__tc.shovelTool.state }; });
 
@@ -40,12 +40,14 @@ await page.goto(url);
 await page.evaluate(() => indexedDB.deleteDatabase('tiny-craftsman'));
 await page.reload();
 await ready();
+await page.evaluate(() => window.__tc.rig.setState({ target: [0, 0.09, 0], yaw: 0.42, pitch: 0.75, dist: 0.5 }));
+await page.waitForTimeout(800);
 await page.screenshot({ path: `${outDir}/01-start.png` });
 const s0 = await stat();
 check('scene loads, journal empty', s0.journal === 0 && s0.exc === 0);
 
 // dig several passes inside the outline, dump each scoop on a spoil heap outside it
-const dumps = [[0.105, 0.095], [0.11, 0.07], [0.09, 0.105]];
+const dumps = [[-0.02, -0.105], [0.03, -0.1], [-0.07, -0.1]]; // behind the pit, on screen, clear of the panels
 let n = 0;
 for (let row = 0; row < 6; row++) {
   const z = -0.045 + row * 0.018;
@@ -67,7 +69,7 @@ await page.waitForTimeout(800);
 await page.screenshot({ path: `${outDir}/03-loaded-shovel.png` });
 const sL = await stat();
 check('swipe fills the shovel', sL.state === 'loaded' || sL.state === 'idle', sL.state);
-if (sL.state === 'loaded') { await tapAt(0.1, -0.1); await settle(); }
+if (sL.state === 'loaded') { await tapAt(0.0, -0.12); await settle(); }
 check('tap dumps the load', (await stat()).state === 'idle');
 
 // undo / redo
@@ -90,7 +92,7 @@ await page.waitForTimeout(1200);
 await page.screenshot({ path: `${outDir}/04-macro-closeup.png` });
 
 // level overlay
-await page.evaluate(() => { window.__tc.rig.setState({ target: [0, 0.045, 0], yaw: 0.42, pitch: 0.75, dist: 0.42 }); window.__tc.settings.level = true; window.__tc.applySettings(); });
+await page.evaluate(() => { window.__tc.rig.setState({ target: [0, 0.09, 0], yaw: 0.42, pitch: 0.75, dist: 0.42 }); window.__tc.settings.level = true; window.__tc.applySettings(); });
 await page.waitForTimeout(1500);
 await page.screenshot({ path: `${outDir}/05-level-overlay.png` });
 await page.evaluate(() => { window.__tc.settings.level = false; window.__tc.applySettings(); });
@@ -123,19 +125,19 @@ const pu = await stat();
 check('undo works after reload', pu.journal === p.journal - 1);
 await page.evaluate(() => window.__tc.redo());
 
-// marking tool: drag a stake
-await page.evaluate(() => window.__tc.setTool('mark'));
-const rect0 = await page.evaluate(() => ({ ...window.__tc.marking.rect }));
-const c = await toScreen(rect0.x1 + 0.007, 0.06, rect0.z1 + 0.007);
-const c2 = await toScreen(rect0.x1 + 0.025, 0.056, rect0.z1 + 0.02);
+// marking tool: drag a corner handle of the pit outline
+await page.evaluate(() => { window.__tc.setTool('mark'); window.__tc.markTool.setMode('edit'); });
+const rect0 = await page.evaluate(() => ({ ...window.__tc.objects.all('outline')[0] }));
+const c = await toScreen(rect0.x1, 0.1, rect0.z1);
+const c2 = await toScreen(rect0.x1 + 0.02, 0.1, rect0.z1 + 0.012);
 await touch('touchStart', [c]); for (let s = 1; s <= 6; s++) { await touch('touchMove', [[c[0] + (c2[0] - c[0]) * s / 6, c[1] + (c2[1] - c[1]) * s / 6]]); await page.waitForTimeout(16); }
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${outDir}/06-marking.png` });
 await touch('touchEnd', []);
-const rect1 = await page.evaluate(() => ({ ...window.__tc.marking.rect }));
-check('stake drag resizes outline', rect1.x1 > rect0.x1 + 0.005, `${(rect0.x1 * 1000).toFixed(0)} -> ${(rect1.x1 * 1000).toFixed(0)} mm`);
+const rect1 = await page.evaluate(() => ({ ...window.__tc.objects.all('outline')[0] }));
+check('handle drag resizes outline', rect1.x1 > rect0.x1 + 0.005, `${(rect0.x1 * 1000).toFixed(0)} -> ${(rect1.x1 * 1000).toFixed(0)} mm`);
 await page.evaluate(() => window.__tc.undo());
-const rect2 = await page.evaluate(() => ({ ...window.__tc.marking.rect }));
+const rect2 = await page.evaluate(() => ({ ...window.__tc.objects.all('outline')[0] }));
 check('undo restores outline', Math.abs(rect2.x1 - rect0.x1) < 1e-9);
 
 check('no console errors', errors.length === 0, errors.join(' | '));

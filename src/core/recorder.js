@@ -4,6 +4,10 @@ export const TRACK_FIELDS = [
   't',
   'cam_px', 'cam_py', 'cam_pz', 'cam_qx', 'cam_qy', 'cam_qz', 'cam_qw', 'cam_vfov', 'cam_focus',
   'tool_px', 'tool_py', 'tool_pz', 'tool_qx', 'tool_qy', 'tool_qz', 'tool_qw', 'tool_fill', 'tool_type',
+  // mini excavator: on-plot flag, pose, joints (rad), dozer blade (0 down … 1 up), belt travel, bucket fill
+  'ex_on', 'ex_x', 'ex_y', 'ex_z', 'ex_yaw', 'ex_pitch', 'ex_roll', 'ex_slew', 'ex_boom', 'ex_stick', 'ex_bucket', 'ex_blade', 'ex_trackL', 'ex_trackR', 'ex_fill',
+  // mini tractor: pose, steering, loader lift/tilt (rad), wheel travel (m), soil in bucket (m³)
+  'tr_on', 'tr_x', 'tr_y', 'tr_z', 'tr_yaw', 'tr_pitch', 'tr_roll', 'tr_steer', 'tr_lift', 'tr_tilt', 'tr_wheel', 'tr_load',
 ];
 const F = TRACK_FIELDS.length;
 
@@ -20,12 +24,12 @@ export class Recorder {
   get samples() { return this.chunks.reduce((s, c) => s + c.length / F, 0) + this.len; }
   get duration() { return this.lastT || 0; }
 
-  sample(clock, dt, camera, focus, shovel) {
+  // build(clock) returns the row (TRACK_FIELDS order); called only when a sample is due
+  sample(clock, dt, build) {
     this.acc += dt;
     if (this.acc < this.interval) return;
     this.acc = 0;
-    const p = camera.position, q = camera.quaternion, sp = shovel.root.position, sq = shovel.root.quaternion;
-    const row = [clock, p.x, p.y, p.z, q.x, q.y, q.z, q.w, camera.fov, focus, sp.x, sp.y, sp.z, sq.x, sq.y, sq.z, sq.w, shovel.fill, shovel.type === 'scoop' ? 1 : 0];
+    const row = build(clock);
     // skip samples where nothing moved
     if (this.last) {
       let moved = false;
