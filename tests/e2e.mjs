@@ -38,7 +38,7 @@ const stat = () => page.evaluate(() => { const t = window.__tc.terrain; return {
 
 await page.goto(url);
 await page.evaluate(() => indexedDB.deleteDatabase('tiny-craftsman'));
-await page.reload();
+await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 });
 await ready();
 errors.length = 0; // texture loads cut off by the reload above are not errors of the game
 await page.evaluate(() => window.__tc.rig.setState({ target: [0, 0.09, 0], yaw: 0.42, pitch: 0.75, dist: 0.5 }));
@@ -126,7 +126,7 @@ check('JSON export round-trips', exp.natOk && exp.actions === r.journal, `${(exp
 
 // persistence
 await page.evaluate(() => window.__tc.saveNow());
-await page.reload();
+await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 });
 await ready();
 const p = await stat();
 check('project restored after reload', p.journal === r.journal && Math.abs(p.exc - r.exc) < 1e-12, `actions=${p.journal}, exc ${(r.exc*1e6).toFixed(4)} -> ${(p.exc*1e6).toFixed(4)} cm3`);

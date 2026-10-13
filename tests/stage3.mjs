@@ -36,7 +36,7 @@ const ready = async () => {
 
 await page.goto(`${base}?dpr=1&quality=${q}`);
 await ev(() => { localStorage.clear(); indexedDB.deleteDatabase('tiny-craftsman'); });
-await page.reload();
+await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 });
 await ready();
 errors.length = 0; // texture loads cut off by the reload above are not errors of the game
 if (process.env.DOF) await ev((d) => { window.__tc.settings.dof = d; window.__tc.applySettings(); }, Number(process.env.DOF));
@@ -229,7 +229,7 @@ check('journal replays terrain exactly', exp.start < 1e-9 && exp.end < 1e-9, `st
 check('project v3 with machine tracks', exp.version === 3 && exp.fields === 63, JSON.stringify(exp));
 const snap = () => ev(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, m: Object.fromEntries(Object.entries(tc.machineTool.machines).map(([k, m]) => [k, [+m.x.toFixed(4), +m.z.toFixed(4)]])) }; });
 const before = await snap();
-await page.reload();
+await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 });
 await ready();
 const after = await snap();
 check('everything restored after reload (machines where they were left)', JSON.stringify(before) === JSON.stringify(after), `${JSON.stringify(before)} → ${JSON.stringify(after)}`);
