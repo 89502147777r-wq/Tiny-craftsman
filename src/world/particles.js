@@ -1,0 +1,131 @@
+import * as THREE from 'three';
+import { mulberry32 } from '../core/rand.js';
+import { variant } from './assets.js';
+
+const G = -9.81;
+
+// Falling soil crumbs. Each crumb carries a share of soil volume and hands it
+// to the heightfield where it lands, so a dumped scoop builds a real pile.
+// A fraction of the crumbs stays on top of the pile as visible clods.
+export class SoilParticles {
+  constructor(tex, terrain, max = 1400) {
+    this.terrain = terrain;
+    this.max = max;
+    this.rnd = mulberry32(99);
+    const geo = new THREE.IcosahedronGeometry(1, 1);
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const k = 0.75 + 0.5 * hash3(p.getX(i), p.getY(i), p.getZ(i));
+      p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.8, p.getZ(i) * k);
+    }
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({ map: variant(tex.wall.diff, 0.15, 0.15), roughness: 1, color: 0x8d7d6d });
+    this.mesh = new THREE.InstancedMesh(geo, mat, max);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+    this.mesh.frustumCulled = false;
+    this.mesh.count = 0;
+    this.items = [];
+
+    // clods resting on the ground
+    this.clodMax = 1600;
+    this.clods = new THREE.InstancedMesh(geo, mat, this.clodMax);
+    this.clods.castShadow = true; this.clods.receiveShadow = true;
+    this.clods.frustumCulled = false;
+    this.clods.count = 0;
+    this.clodList = [];
+    this._seenVersion = -1;
+    this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new THREE.Vector3(); this._e = new THREE.Euler();
+  }
+
+  get busy() { return this.items.length > 0; }
+
+  emit(pos, vel, vol, size, keep = 0.25) {
+    if (this.items.length >= this.max) { this.terrain.deposit(pos.x, pos.z, vol, 0.002); return; }
+    const r = this.rnd;
+    this.items.push({
+      p: pos.clone(), v: vel.clone(), vol, size: size * (0.6 + r() * 0.8),
+      rot: new THREE.Euler(r() * 6, r() * 6, r() * 6), spin: (r() - 0.5) * 30, keep: r() < keep, age: 0,
+    });
+  }
+
+  // Land everything immediately (used before committing an action).
+  flush() {
+    for (const it of this.items) this._land(it, it.p.x, it.p.z);
+    this.items.length = 0;
+    this.mesh.count = 0;
+  }
+
+  _land(it, x, z) {
+    this.terrain.deposit(x, z, it.vol, Math.max(0.0012, it.size * 1.2));
+    if (it.keep && this.terrain.inside(x, z) && this.clodList.length < this.clodMax) {
+      this.clodList.push({ x, z, size: it.size, rot: it.rot.clone(), sink: 0.35 + this.rnd() * 0.35 });
+      this._seenVersion = -1;
+    }
+  }
+
+  update(dt) {
+    const t = this.terrain;
+    const items = this.items;
+    let w = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      it.age += dt;
+      it.v.y += G * dt;
+      it.v.multiplyScalar(1 - 0.6 * dt);
+      it.p.addScaledVector(it.v, dt);
+      it.rot.x += it.spin * dt; it.rot.z += it.spin * 0.7 * dt;
+      const inside = t.inside(it.p.x, it.p.z);
+      const ground = inside ? t.heightAt(it.p.x, it.p.z) : 0;
+      if (it.p.y - it.size * 0.5 <= ground || it.age > 3) {
+        const cx = Math.max(-t.half, Math.min(t.half, it.p.x)), cz = Math.max(-t.half, Math.min(t.half, it.p.z));
+        this._land(it, cx, cz);
+        continue;
+      }
+      items[w++] = it;
+    }
+    items.length = w;
+    const m = this._m, q = this._q, s = this._s;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      q.setFromEuler(it.rot);
+      s.setScalar(it.size);
+      this.mesh.setMatrixAt(i, m.compose(it.p, q, s));
+    }
+    this.mesh.count = items.length;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    if (t.version !== this._seenVersion) this._refreshClods();
+  }
+
+  // Clods ride on the surface; they vanish when their loose soil is dug away.
+  _refreshClods() {
+    const t = this.terrain;
+    this._seenVersion = t.version;
+    const m = this._m, q = this._q, s = this._s, p = new THREE.Vector3();
+    let w = 0;
+    for (const c of this.clodList) {
+      const ix = Math.round(t.toCell(c.x)), iz = Math.round(t.toCell(c.z));
+      const i = iz * t.n + ix;
+      if (t.loose[i] < 0.0006) continue;
+      this.clodList[w++] = c;
+    }
+    this.clodList.length = w;
+    for (let i = 0; i < w; i++) {
+      const c = this.clodList[i];
+      p.set(c.x, t.heightAt(c.x, c.z) + c.size * (0.5 - c.sink), c.z);
+      q.setFromEuler(c.rot);
+      s.setScalar(c.size);
+      this.clods.setMatrixAt(i, m.compose(p, q, s));
+    }
+    this.clods.count = w;
+    this.clods.instanceMatrix.needsUpdate = true;
+  }
+
+  clearClods() { this.clodList.length = 0; this._seenVersion = -1; }
+}
+
+function hash3(x, y, z) {
+  const s = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+  return s - Math.floor(s);
+}

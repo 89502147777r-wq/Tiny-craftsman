@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tiny Craftsman">
+  <meta name="theme-color" content="#14110e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png">
+  <link rel="icon" href="assets/icons/icon-180.png">
+  <title>Tiny Craftsman — мини-стройка</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="importmap">
+    { "imports": {
+        "three": "./vendor/three/three.module.min.js",
+        "three/addons/": "./vendor/three/addons/"
+    } }
+  </script>
+</head>
+<body>
+  <canvas id="view"></canvas>
+
+  <div id="loading">
+    <div class="brand">TINY CRAFTSMAN</div>
+    <div class="sub">готовим мастерскую…</div>
+    <div class="bar"><i id="loadbar"></i></div>
+  </div>
+
+  <div id="ui" hidden>
+    <header class="top">
+      <div class="title">
+        <b>TINY CRAFTSMAN</b>
+        <span>Этап 1 · Котлован · <em id="build"></em></span>
+      </div>
+      <div class="top-actions">
+        <button id="btn-undo" class="icon" aria-label="Отменить" title="Отменить"><svg viewBox="0 0 24 24"><path d="M9 7H4v5M4.6 11.4A8 8 0 1 1 6 17"/></svg></button>
+        <button id="btn-redo" class="icon" aria-label="Вернуть" title="Вернуть"><svg viewBox="0 0 24 24"><path d="M15 7h5v5M19.4 11.4A8 8 0 1 0 18 17"/></svg></button>
+        <button id="btn-menu" class="icon" aria-label="Меню" title="Меню"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </div>
+    </header>
+
+    <div id="stats" class="chip">
+      <div><span>Вынуто грунта</span><b id="st-vol">0</b></div>
+      <div><span>Глубина котлована</span><b id="st-depth">0</b></div>
+      <div class="save"><i id="st-save"></i><span id="st-save-text">сохранено</span></div>
+    </div>
+
+    <div id="hint" class="hint"></div>
+    <div id="measure" class="measure" hidden></div>
+
+    <nav class="tools">
+      <button data-tool="camera" class="tool"><svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="4"/></svg><span>Камера</span></button>
+      <button data-tool="shovel" class="tool"><svg viewBox="0 0 24 24"><path d="M14 4l6 6M17 7l-6.5 6.5"/><path d="M10.5 13.5l-3.8-1.2-3.2 3.2c-1 1-1 4 0 5s4 1 5 0l3.2-3.2z"/></svg><span>Лопата</span></button>
+      <button data-tool="mark" class="tool"><svg viewBox="0 0 24 24"><path d="M5 19V8M19 19V8M5 10h14M5 17h14"/><path d="M4 8l1-3 1 3M18 8l1-3 1 3"/></svg><span>Разметка</span></button>
+      <button id="btn-level" class="tool toggle"><svg viewBox="0 0 24 24"><rect x="3" y="9" width="18" height="6" rx="1"/><circle cx="12" cy="12" r="1.6"/><path d="M9 9v6M15 9v6"/></svg><span>Нивелир</span></button>
+    </nav>
+  </div>
+
+  <aside id="menu" class="sheet" hidden>
+    <div class="sheet-head"><b>Мастерская</b><button id="menu-close" class="icon" aria-label="Закрыть"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <section>
+      <h4>Инструмент</h4>
+      <label class="row">Лопата
+        <select id="set-shovel">
+          <option value="spade">Штыковая</option>
+          <option value="scoop">Совковая</option>
+        </select>
+      </label>
+      <label class="row">Захват за проход <output id="o-bite"></output>
+        <input id="set-bite" type="range" min="2" max="8" step="0.5">
+      </label>
+      <label class="row">Проектная глубина котлована <output id="o-target"></output>
+        <input id="set-target" type="range" min="6" max="35" step="1">
+      </label>
+    </section>
+    <section>
+      <h4>Камера</h4>
+      <label class="row">Боке (макро-размытие) <output id="o-dof"></output>
+        <input id="set-dof" type="range" min="0" max="2" step="0.05">
+      </label>
+      <label class="row">Качество
+        <select id="set-quality">
+          <option value="high">Высокое</option>
+          <option value="medium">Среднее</option>
+          <option value="low">Экономное</option>
+        </select>
+      </label>
+      <label class="row check"><input id="set-shake" type="checkbox"> «Ручная» камера (лёгкое дыхание)</label>
+      <label class="row check"><input id="set-sound" type="checkbox"> Звук</label>
+    </section>
+    <section class="buttons">
+      <button id="act-film">🎬 Режим съёмки (скрыть интерфейс)</button>
+      <button id="act-export">⬇︎ Экспорт для Blender (.json)</button>
+      <button id="act-import">⬆︎ Открыть проект…</button>
+      <button id="act-new" class="danger">Новый участок</button>
+      <input id="import-file" type="file" accept=".json,application/json" hidden>
+    </section>
+    <p class="fine">Журнал: <b id="journal-count">0</b> действий · трек камеры <b id="track-len">0</b> с<br>
+      Масштаб диорамы 1:12. Всё сохраняется автоматически на этом устройстве.<br>
+      Ассеты — CC0, см. CREDITS.md</p>
+  </aside>
+
+  <button id="film-exit" class="film-exit" hidden aria-label="Показать интерфейс"></button>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
