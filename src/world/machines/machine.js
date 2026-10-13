@@ -22,6 +22,20 @@ export class Machine {
     this.id = null;                        // object-store id
   }
 
+  // Models are measured and assembled with the machine at the origin, unturned
+  // (a turned model gives inflated world bounding boxes). _zero() → build → _unzero().
+  _zero() {
+    const saved = { q: this.root.quaternion.clone(), p: this.root.position.clone(), b: this.body.quaternion.clone() };
+    this.root.quaternion.identity(); this.root.position.set(0, 0, 0); this.body.quaternion.identity();
+    this.root.updateMatrixWorld(true);
+    return saved;
+  }
+
+  _unzero(s) {
+    this.root.quaternion.copy(s.q); this.root.position.copy(s.p); this.body.quaternion.copy(s.b);
+    this.root.updateMatrixWorld(true);
+  }
+
   forward(out = new THREE.Vector2()) { return out.set(Math.cos(this.yaw), -Math.sin(this.yaw)); }
   local(lx, lz, out = new THREE.Vector3()) {
     const c = Math.cos(this.yaw), s = Math.sin(this.yaw);

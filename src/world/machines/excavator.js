@@ -34,6 +34,7 @@ export class Excavator extends Machine {
 
   async build() {
     const { scene } = await loadModel('excavator');
+    const zero = this._zero();
     const n = (name) => findNode(scene, name);
     this.nodes = { under: n('Tread_GEO'), upper: n('Body_GEO'), boom: n('arm_01_GEO1'), stick: n('Arm_2_GEO'), bucket: n('shovel_GEO'), claw: n('claw_GEO') };
     // undo the clip's baked offsets: the model's own animation also moved the tracks
@@ -50,12 +51,13 @@ export class Excavator extends Machine {
     tb.applyMatrix4(inv);
     for (const x of [tb.min.x * 0.8, 0, tb.max.x * 0.8]) for (const z of [tb.min.z * 0.85, tb.max.z * 0.85]) this.contacts.push([x, z]);
     this.trackLen = tb.max.x - tb.min.x;
-    this.travelPose();
     // the bucket turns ~200° from fully curled to fully open (relative to the stick);
     // for this model that is j.bucket ∈ [-1.95, 1.55] rad from its rest pose
     this.bucketRange = [-1.95, 1.55];
-    this.applyJoints(1, true);
+    this._unzero(zero);
     this.followGround(0, true);
+    this.travelPose();
+    this.applyJoints(1, true);
     return this;
   }
 

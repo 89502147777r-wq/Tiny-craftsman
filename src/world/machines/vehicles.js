@@ -20,9 +20,7 @@ class WheeledMachine extends Machine {
 
   // footprint contacts + keep-inside radius from the model's bounding box
   fitContacts() {
-    const box = new THREE.Box3().setFromObject(this.holder);
-    const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
-    box.applyMatrix4(inv);
+    const box = new THREE.Box3().setFromObject(this.holder); // the machine is at rest here (see _zero)
     const x0 = box.min.x * 0.8, x1 = box.max.x * 0.8, z = Math.min(Math.abs(box.min.z), box.max.z) * 0.85;
     this.contacts = [[x0, -z], [x0, z], [x1, -z], [x1, z]];
     this.radius = Math.max(Math.abs(box.min.x), box.max.x) * 0.9;
@@ -76,6 +74,7 @@ export class Tractor extends WheeledMachine {
 
   async build() {
     const { scene } = await loadModel('tractor');
+    const zero = this._zero();
     const { holder } = normalise(scene, { forward: '+x', length: R(3.3) });
     this.holder = holder;
     this.body.add(holder);
@@ -86,6 +85,7 @@ export class Tractor extends WheeledMachine {
     this._loader();
     this.setBucket('carry');
     this.updateJoints(1, true);
+    this._unzero(zero);
     this.followGround(0, true);
     return this;
   }
@@ -204,6 +204,7 @@ export class MixerTruck extends WheeledMachine {
 
   async build() {
     const { scene } = await loadModel('kamaz');
+    const zero = this._zero();
     // the canvas cargo body goes; the drum goes on the bare chassis
     for (const n of ['Kung_1', 'Object_6']) { const o = findNode(scene, n); if (o) o.visible = false; }
     const { holder } = normalise(scene, { forward: '+z', length: R(7.1) });
@@ -212,6 +213,7 @@ export class MixerTruck extends WheeledMachine {
     this.root.updateMatrixWorld(true);
     this.fitContacts();
     this._drum();
+    this._unzero(zero);
     this.followGround(0, true);
     return this;
   }
@@ -294,11 +296,13 @@ export class ConcretePump extends WheeledMachine {
 
   async build() {
     const { scene } = await loadModel('concrete-pump');
+    const zero = this._zero();
     const { holder } = normalise(scene, { forward: '+x', height: R(1.55) });
     this.holder = holder;
     this.body.add(holder);
     this.root.updateMatrixWorld(true);
     this.fitContacts();
+    this._unzero(zero);
     this.followGround(0, true);
     return this;
   }
@@ -315,6 +319,7 @@ export class SiteMixer extends Machine {
     this.radius = R(0.9);
     this.ready = (async () => {
       const { scene } = await loadModel('site-mixer');
+      const zero = this._zero();
       const { holder } = normalise(scene, { forward: '+x', height: R(1.45) });
       this.holder = holder;
       this.body.add(holder);
@@ -322,6 +327,7 @@ export class SiteMixer extends Machine {
       const b = new THREE.Box3().setFromObject(holder);
       const s = b.getSize(new THREE.Vector3());
       this.contacts = [[-s.x * 0.35, -s.z * 0.35], [-s.x * 0.35, s.z * 0.35], [s.x * 0.35, 0]];
+      this._unzero(zero);
       this.followGround(0, true);
       return this;
     })();
