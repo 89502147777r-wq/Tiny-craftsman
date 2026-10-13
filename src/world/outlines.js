@@ -161,7 +161,7 @@ export class OutlineView {
     this.lineGeo = new THREE.CylinderGeometry(0.00022, 0.00022, 1, 6, 1);
     this.handleGeo = new THREE.RingGeometry(0.0035, 0.0052, 24).rotateX(-Math.PI / 2);
 
-    const W = 1536, H = Math.round(W * terrain.sizeZ / terrain.sizeX);
+    const W = 2048, H = Math.round(W * terrain.sizeZ / terrain.sizeX);
     this.canvas = document.createElement('canvas');
     this.canvas.width = W; this.canvas.height = H;
     this.ctx = this.canvas.getContext('2d');
@@ -265,7 +265,7 @@ export class OutlineView {
     // chalk lines on top (additive into R)
     ctx.globalCompositeOperation = 'lighter';
     ctx.strokeStyle = 'rgb(255,0,0)';
-    ctx.lineWidth = 0.0011 * sx;
+    ctx.lineWidth = Math.max(1.6, 0.0011 * sx);
     ctx.lineJoin = 'miter';
     for (const o of os) {
       ctx.beginPath();

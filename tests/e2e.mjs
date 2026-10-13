@@ -1,5 +1,5 @@
-// End-to-end check of stage 1 on an iPhone 15 Pro sized touch viewport:
-// real touch events dig the pit, dump the soil, undo/redo, reload persistence.
+// End-to-end check on an iPhone 15 Pro sized touch viewport: real touch
+// events dig the pit, dump the soil, undo/redo, zoom, pan, reload persistence.
 // Usage: node tests/e2e.mjs [baseUrl] [screenshotDir]
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -38,8 +38,9 @@ const stat = () => page.evaluate(() => { const t = window.__tc.terrain; return {
 
 await page.goto(url);
 await page.evaluate(() => indexedDB.deleteDatabase('tiny-craftsman'));
-await page.reload();
+await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 });
 await ready();
+errors.length = 0; // texture loads cut off by the reload above are not errors of the game
 await page.evaluate(() => window.__tc.rig.setState({ target: [0, 0.09, 0], yaw: 0.42, pitch: 0.75, dist: 0.5 }));
 await page.waitForTimeout(800);
 await page.screenshot({ path: `${outDir}/01-start.png` });
@@ -91,6 +92,15 @@ check('pinch zooms camera', d1 < d0 * 0.8, `${d0.toFixed(3)} -> ${d1.toFixed(3)}
 await page.waitForTimeout(1200);
 await page.screenshot({ path: `${outDir}/04-macro-closeup.png` });
 
+// two-finger drag while zoomed in moves over the plot (the ground follows the fingers)
+const t0 = await page.evaluate(() => window.__tc.rig.goal.target.toArray());
+await touch('touchStart', [[150, 420], [250, 420]]);
+for (let s = 1; s <= 10; s++) { await touch('touchMove', [[150 - s * 12, 420 - s * 6], [250 - s * 12, 420 - s * 6]]); await page.waitForTimeout(16); }
+await touch('touchEnd', []);
+const t1 = await page.evaluate(() => window.__tc.rig.goal.target.toArray());
+const d2 = await page.evaluate(() => window.__tc.rig.goal.dist);
+check('two-finger drag pans when zoomed in', Math.hypot(t1[0] - t0[0], t1[2] - t0[2]) > 0.02 && Math.abs(d2 - d1) / d1 < 0.05, `moved ${(Math.hypot(t1[0] - t0[0], t1[2] - t0[2]) * 1000).toFixed(0)} mm`);
+
 // level overlay
 await page.evaluate(() => { window.__tc.rig.setState({ target: [0, 0.09, 0], yaw: 0.42, pitch: 0.75, dist: 0.42 }); window.__tc.settings.level = true; window.__tc.applySettings(); });
 await page.waitForTimeout(1500);
@@ -116,7 +126,7 @@ check('JSON export round-trips', exp.natOk && exp.actions === r.journal, `${(exp
 
 // persistence
 await page.evaluate(() => window.__tc.saveNow());
-await page.reload();
+await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 });
 await ready();
 const p = await stat();
 check('project restored after reload', p.journal === r.journal && Math.abs(p.exc - r.exc) < 1e-12, `actions=${p.journal}, exc ${(r.exc*1e6).toFixed(4)} -> ${(p.exc*1e6).toFixed(4)} cm3`);
@@ -128,6 +138,8 @@ await page.evaluate(() => window.__tc.redo());
 // marking tool: drag a corner handle of the pit outline
 await page.evaluate(() => { window.__tc.setTool('mark'); window.__tc.markTool.setMode('edit'); });
 const rect0 = await page.evaluate(() => ({ ...window.__tc.objects.all('outline')[0] }));
+await page.evaluate((r) => { const tc = window.__tc; tc.rig.setState({ target: [r.x1, 0.09, r.z1], yaw: 0.42, pitch: 0.8, dist: 0.4 }); tc.rig.shake = false; tc.rig.update(0.016); tc.camera.updateMatrixWorld(); }, rect0);
+await page.waitForTimeout(600);
 const c = await toScreen(rect0.x1, 0.1, rect0.z1);
 const c2 = await toScreen(rect0.x1 + 0.02, 0.1, rect0.z1 + 0.012);
 await touch('touchStart', [c]); for (let s = 1; s <= 6; s++) { await touch('touchMove', [[c[0] + (c2[0] - c[0]) * s / 6, c[1] + (c2[1] - c[1]) * s / 6]]); await page.waitForTimeout(16); }

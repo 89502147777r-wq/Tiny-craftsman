@@ -180,6 +180,8 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
   min-width: 96px; height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--glass);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-size: 13px;
 }
+.joy-r { left: auto; right: calc(var(--safe-r) + 18px); }
+.mbtns.up { bottom: calc(var(--safe-b) + 262px); grid-auto-flow: row; }
 .mbtns button.on { background: var(--accent); color: var(--accent-ink); }
 
 /* with the joystick on screen the hint moves up under the stats */

@@ -1,301 +1,405 @@
 import * as THREE from 'three';
 import { Machine } from './machine.js';
-import { R, machineMaterials, box, cyl, profile, roundedBox, Hydraulic, makeTrack, ik2 } from './parts.js';
+import { loadModel, findNode, normalise } from './models.js';
+import { BucketPhysics } from './bucket.js';
+import { R } from './parts.js';
 
-// 1:12 mini excavator (≈1.7 t class, rubber tracks, canopy).
-// Real dimensions in metres, converted with R(). Local frame: +X forward.
-const D = {
-  trackL: 1.58, trackH: 0.36, trackW: 0.23, gauge: 0.76,
-  slewH: 0.40,                       // top of the slew ring above ground
-  pivot: [0.42, 0.22],               // boom foot in the upper frame (x, y)
-  L1: 1.62, L2: 0.92, Lk: 0.46,      // boom chord, stick, bucket pin → tip
-  bucketW: 0.36,
-};
-
+// Mini excavator on the CC-BY "Excavator" model by tori1243 (see CREDITS).
+// Its parts form the real kinematic chain:
+//   undercarriage → slewing upper → boom → stick → bucket (+ thumb)
+// Joint axes and lengths are measured from the model at load time, so the
+// inverse kinematics matches the geometry exactly. The bucket teeth cut the
+// ground wherever they actually travel (BucketPhysics).
+//
+// Work cycle in "auto" mode (one finger on the ground):
+//   swing to the stroke → reach out with the bucket open → teeth into the
+//   ground → drag towards the cab while curling → lift the full bucket →
+//   (tap) swing over the dump spot → open the bucket → back to travel pose.
+// "Manual" mode: two ISO joysticks like in a real cab
+//   left:  ← → swing, ↑ ↓ stick out / in      right: ← → bucket curl / dump, ↑ ↓ boom down / up
 export class Excavator extends Machine {
   constructor(app) {
     super(app, 'excavator');
-    this.mats = machineMaterials(0xf0b40c);
+    this.radius = R(1.2);
     this.contacts = [];
-    for (const s of [-1, 1]) for (const x of [-0.6, 0, 0.6]) this.contacts.push([R(x), R(s * D.gauge / 2)]);
-    this.radius = R(1.0);
-    // joint state (current and target)
-    this.j = { slew: 0, boom: 0.55, stick: -1.9, bucket: -1.2, blade: 1 };
+    this.j = { slew: 0, boom: 0, stick: 0, bucket: 0, claw: 0 };   // joint offsets from the model's rest pose (rad)
     this.t = { ...this.j };
+    this.speed = { slew: 0.7, boom: 0.45, stick: 0.6, bucket: 1.1, claw: 0.6 }; // rad/s, like a real mini excavator
+    this.mode = 'auto';
+    this.cycle = null;       // current auto work cycle
+    this.manual = { lx: 0, ly: 0, rx: 0, ry: 0 };
     this.trackPhase = [0, 0];
-    this._fill = 0;
-    this.build();
-    this.rest();
-    this.updateJoints(1, true);
+    this.ready = this.build();
   }
 
-  // ---- model --------------------------------------------------------------------------------
-  build() {
-    const m = this.mats;
-    const under = (this.under = new THREE.Group());
-    this.body.add(under);
-    // tracks
-    this.tracks = [];
-    for (const s of [-1, 1]) {
-      const tr = makeTrack(R(D.trackL), R(D.trackH - 0.07), R(D.trackW), R(0.035), m);
-      tr.position.set(0, R(0.0), R(s * D.gauge / 2));
-      under.add(tr);
-      this.tracks.push(tr);
-      // sprocket (rear), idler (front), rollers and the track frame
-      const z = R(s * D.gauge / 2);
-      const sp = cyl(R(0.13), R(D.trackW * 0.7), m.dark, 'z', 14); sp.position.set(R(-D.trackL / 2 + 0.17), R(0.18), z);
-      const id = cyl(R(0.12), R(D.trackW * 0.6), m.steel, 'z', 14); id.position.set(R(D.trackL / 2 - 0.17), R(0.17), z);
-      const fr = box(R(D.trackL - 0.36), R(0.15), R(D.trackW * 0.55), m.paint, 0, R(0.17), z, R(0.02));
-      under.add(sp, id, fr);
-      for (const x of [-0.32, 0, 0.32]) { const r = cyl(R(0.05), R(D.trackW * 0.5), m.dark, 'z', 10); r.position.set(R(x), R(0.07), z); under.add(r); }
-      const motor = cyl(R(0.09), R(0.12), m.dark, 'z', 12); motor.position.set(R(-D.trackL / 2 + 0.17), R(0.18), z + R(s * -0.13)); under.add(motor);
-    }
-    under.add(box(R(0.62), R(0.2), R(D.gauge - D.trackW * 0.4), m.paint, 0, R(0.28), 0, R(0.03)));
-    const ring = cyl(R(0.33), R(0.05), m.dark, 'y', 28); ring.position.y = R(D.slewH - 0.025); under.add(ring);
-    // dozer blade on two arms
-    this.bladeG = new THREE.Group();
-    this.bladeG.position.set(R(0.32), R(0.28), 0);
-    under.add(this.bladeG);
-    for (const s of [-1, 1]) this.bladeG.add(box(R(0.55), R(0.07), R(0.07), m.paint, R(0.27), 0, R(s * 0.3), R(0.01)));
-    const bladeProf = [[0, 0], [0.04, 0], [0.06, 0.06], [0.05, 0.18], [0.02, 0.27], [-0.03, 0.28], [-0.01, 0.17], [0.0, 0.06]].map(([x, y]) => [R(x), R(y)]);
-    const blade = profile(bladeProf, R(1.0), m.paint);
-    blade.position.set(R(0.55), R(-0.26), 0);
-    this.bladeG.add(blade);
-    const edge = box(R(0.02), R(0.03), R(1.0), m.steel, R(0.57), R(-0.255), 0);
-    this.bladeG.add(edge);
-
-    // ---- upper structure -------------------------------------------------------------------
-    const up = (this.upper = new THREE.Group());
-    up.position.y = R(D.slewH);
-    this.body.add(up);
-    const arc = [];
-    const rr = 0.52, a0 = Math.asin(0.47 / rr);
-    for (let i = 0; i <= 20; i++) { const a = a0 + (Math.PI * 2 - 2 * a0) * i / 20; arc.push([rr * Math.cos(a), rr * Math.sin(a)]); }
-    const deck = [[0.44, -0.47], [0.44, 0.47], ...arc.reverse()];
-    up.add(topExtrude(deck, 0.0, 0.08, m.dark));
-    // engine hood + counterweight (rear half)
-    const hood = arc.filter(([x]) => x < 0.05);
-    const hoodPoly = [[0.05, 0.47], [0.05, -0.47], ...hood.filter(([x, z]) => z < 0).reverse(), ...hood.filter(([x, z]) => z >= 0).reverse()];
-    up.add(topExtrude(sortLoop(hoodPoly), 0.08, 0.36, m.paint, R(0.03)));
-    up.add(topExtrude(sortLoop(hoodPoly).map(([x, z]) => [x * 0.96, z * 0.96]), 0.44, 0.06, m.paint, R(0.025)));
-    const cw = topExtrude(arc.filter(([x]) => x < -0.25).map(([x, z]) => [x * 1.02, z * 1.02]).concat(arc.filter(([x]) => x < -0.25).map(([x, z]) => [x * 0.8, z * 0.8]).reverse()), 0.06, 0.2, m.dark);
-    up.add(cw);
-    // grille, exhaust, step
-    up.add(box(R(0.02), R(0.18), R(0.5), m.dark, R(-0.5), R(0.3), 0));
-    const ex = cyl(R(0.03), R(0.28), m.dark, 'y', 10); ex.position.set(R(-0.25), R(0.62), R(-0.32)); up.add(ex);
-    // operator station: floor, seat, consoles, levers
-    up.add(box(R(0.36), R(0.04), R(0.8), m.dark, R(0.25), R(0.1), 0));
-    const seat = new THREE.Group(); seat.position.set(R(-0.05), R(0.5), R(0.06)); up.add(seat);
-    seat.add(box(R(0.42), R(0.08), R(0.44), m.seat, 0, 0, 0, R(0.03)));
-    const back = box(R(0.08), R(0.5), R(0.44), m.seat, R(-0.2), R(0.27), 0, R(0.03)); back.rotation.z = -0.15; seat.add(back);
-    for (const s of [-1, 1]) {
-      up.add(box(R(0.3), R(0.22), R(0.1), m.dark, R(0.05), R(0.6), R(0.06 + s * 0.3), R(0.02)));
-      const lever = cyl(R(0.012), R(0.14), m.dark, 'y', 6); lever.position.set(R(0.12), R(0.78), R(0.06 + s * 0.3)); up.add(lever);
-      const knob = new THREE.Mesh(new THREE.SphereGeometry(R(0.025), 8, 6), m.seat); knob.position.set(R(0.12), R(0.85), R(0.06 + s * 0.3)); up.add(knob);
-      const tl = cyl(R(0.012), R(0.3), m.dark, 'y', 6); tl.position.set(R(0.36), R(0.25), R(s * 0.08)); tl.rotation.z = 0.3; up.add(tl);
-    }
-    // canopy (ROPS/FOPS)
-    for (const [x, z, y0] of [[0.38, 0.42, 0.08], [0.38, -0.42, 0.08], [-0.3, 0.4, 0.5], [-0.3, -0.4, 0.5]]) {
-      const post = box(R(0.06), R(1.92 - y0), R(0.06), m.dark, R(x), R((1.92 + y0) / 2), R(z), R(0.01));
-      up.add(post);
-    }
-    up.add(box(R(0.9), R(0.06), R(1.0), m.paint, R(0.04), R(1.93), 0, R(0.03)));
-    up.add(box(R(0.86), R(0.02), R(0.92), m.dark, R(0.04), R(1.9), 0));
-    const lamp = box(R(0.08), R(0.06), R(0.05), m.lamp, R(0.46), R(1.86), R(0.3)); up.add(lamp);
-    // boom swing bracket
-    up.add(box(R(0.18), R(0.32), R(0.26), m.paint, R(0.42), R(0.22), 0, R(0.02)));
-    const bp = cyl(R(0.05), R(0.3), m.steel, 'z', 12); bp.position.set(R(D.pivot[0]), R(D.pivot[1]), 0); up.add(bp);
-
-    // ---- arm ------------------------------------------------------------------------------
-    const L1 = R(D.L1), L2 = R(D.L2), Lk = R(D.Lk);
-    this.boom = new THREE.Group(); this.boom.position.set(R(D.pivot[0]), R(D.pivot[1]), 0); up.add(this.boom);
-    const boomProf = [[0, -0.06], [0.5, 0.06], [0.95, 0.12], [1.32, 0.04], [1.62, -0.05], [1.62, 0.06], [1.32, 0.17], [0.95, 0.27], [0.5, 0.21], [0, 0.07]].map(([x, y]) => [R(x), R(y)]);
-    this.boom.add(profile(boomProf, R(0.17), m.paint));
-    const bpin = cyl(R(0.045), R(0.22), m.steel, 'z', 10); bpin.position.set(L1, 0, 0); this.boom.add(bpin);
-    this.stick = new THREE.Group(); this.stick.position.set(L1, 0, 0); this.boom.add(this.stick);
-    const stickProf = [[-0.2, 0.04], [-0.05, 0.1], [0.3, 0.07], [0.92, 0.035], [0.92, -0.035], [0.3, -0.07], [-0.05, -0.08], [-0.2, -0.02]].map(([x, y]) => [R(x), R(y)]);
-    this.stick.add(profile(stickProf, R(0.13), m.paint));
-    this.bucketG = new THREE.Group(); this.bucketG.position.set(L2, 0, 0); this.stick.add(this.bucketG);
-    this.buildBucket(Lk);
-    // cylinder anchors
-    const anchor = (parent, x, y) => { const o = new THREE.Object3D(); o.position.set(R(x), R(y), 0); parent.add(o); return o; };
-    this.cyl = [
-      new Hydraulic(R(0.05), R(0.03), R(0.7), m).attach(anchor(up, D.pivot[0] + 0.12, D.pivot[1] - 0.14), anchor(this.boom, 0.62, -0.02)),
-      new Hydraulic(R(0.045), R(0.026), R(0.62), m).attach(anchor(this.boom, 0.42, 0.24), anchor(this.stick, -0.2, 0.07)),
-      new Hydraulic(R(0.038), R(0.022), R(0.5), m).attach(anchor(this.stick, 0.12, 0.1), anchor(this.bucketG, -0.04, 0.12)),
-    ];
-    for (const c of this.cyl) up.add(c.group);
-    // blade cylinder
-    this.bladeCyl = new Hydraulic(R(0.035), R(0.02), R(0.22), m).attach(anchor(under, 0.28, 0.33), anchor(this.bladeG, 0.42, 0.12));
-    under.add(this.bladeCyl.group);
-    this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  async build() {
+    const { scene } = await loadModel('excavator');
+    const zero = this._zero();
+    const n = (name) => findNode(scene, name);
+    this.nodes = { under: n('Tread_GEO'), upper: n('Body_GEO'), boom: n('arm_01_GEO1'), stick: n('Arm_2_GEO'), bucket: n('shovel_GEO'), claw: n('claw_GEO') };
+    // undo the clip's baked offsets: the model's own animation also moved the tracks
+    const { holder } = normalise(scene, { forward: '-z', length: null, height: R(2.5), pivot: this.nodes.upper });
+    this.body.add(holder);
+    this.holder = holder;
+    for (const k of Object.keys(this.nodes)) this.nodes[k].userData.rest = this.nodes[k].quaternion.clone();
+    this.root.updateMatrixWorld(true);
+    this._measure();
+    this._buildBucket();
+    // ground contacts: corners of the track footprint
+    const tb = new THREE.Box3().setFromObject(this.nodes.under);
+    const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
+    tb.applyMatrix4(inv);
+    for (const x of [tb.min.x * 0.8, 0, tb.max.x * 0.8]) for (const z of [tb.min.z * 0.85, tb.max.z * 0.85]) this.contacts.push([x, z]);
+    this.trackLen = tb.max.x - tb.min.x;
+    // the bucket turns ~200° from fully curled to fully open (relative to the stick);
+    // for this model that is j.bucket ∈ [-1.95, 1.55] rad from its rest pose
+    this.bucketRange = [-1.95, 1.55];
+    this._unzero(zero);
+    this.followGround(0, true);
+    this.travelPose();
+    this.applyJoints(1, true);
+    return this;
   }
 
-  buildBucket(Lk) {
-    const m = this.mats, W = R(D.bucketW);
-    // side profile: pin at origin, cutting edge at (Lk, 0); mouth faces −y
-    const outer = [[0.0, 0.07], [0.08, 0.19], [0.2, 0.26], [0.33, 0.24], [0.42, 0.14], [0.47, 0.0]];
-    const t = 0.02;
-    const inner = outer.map(([x, y]) => [x * 0.96 + 0.01, y - t]).reverse();
-    const shell = profile([...outer, ...inner].map(([x, y]) => [R(x), R(y)]), W, m.dark);
-    this.bucketG.add(shell);
-    for (const s of [-1, 1]) {
-      const side = profile([...outer, [0.06, -0.03]].map(([x, y]) => [R(x), R(y)]), R(0.012), m.dark);
-      side.position.z = s * (W / 2);
-      this.bucketG.add(side);
-      this.bucketG.add(box(R(0.12), R(0.12), R(0.02), m.paint, R(-0.02), R(0.08), s * R(0.07)));
-    }
-    for (let i = 0; i < 4; i++) {
-      const tooth = profile([[0, -0.012], [0.07, -0.004], [0.07, 0.004], [0, 0.016]].map(([x, y]) => [R(x), R(y)]), R(0.035), m.steel);
-      tooth.position.set(R(0.45), R(0.0), (i - 1.5) * W / 4);
-      tooth.rotation.z = -0.25;
-      this.bucketG.add(tooth);
-    }
-    const pin = cyl(R(0.04), R(0.2), m.steel, 'z', 10); this.bucketG.add(pin);
-    // soil load inside the bucket
-    const heap = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2);
-    this.heap = new THREE.Mesh(heap, this.app.shovel.loadMat);
-    this.heap.rotation.z = Math.PI; // dome bulges out of the mouth (−y)
-    this.heap.position.set(R(0.24), R(0.1), 0);
-    this.heap.visible = false;
-    this.bucketG.add(this.heap);
-    // where soil leaves the bucket
-    this.mouth = new THREE.Object3D(); this.mouth.position.set(R(0.3), R(0.0), 0); this.bucketG.add(this.mouth);
+  // ---- geometry measured from the model ----------------------------------------------------
+  _measure() {
+    const w = (o) => o.getWorldPosition(new THREE.Vector3());
+    const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
+    const N = this.nodes;
+    // "arm frame": the machine frame turned so the arm of the rest pose points
+    // along +x (in this model the upper rests turned to the back)
+    const raw = (o) => w(o).applyMatrix4(inv);
+    this.armDir = raw(N.stick).x < raw(N.boom).x ? -1 : 1;
+    this.slew0 = this.armDir < 0 ? Math.PI : 0;
+    const toArm = (p) => { p.x *= this.armDir; p.z *= this.armDir; return p; };
+    this.toArm = toArm;
+    const L = (o) => toArm(raw(o)); // arm frame (x out along the arm, y up)
+    // joint axis of each arm node: the local axis whose rotation moves the child mostly within the arm plane
+    const pick = (node, child) => {
+      let best = null;
+      for (const ax of [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)]) {
+        const p0 = L(child);
+        node.quaternion.copy(node.userData.rest).multiply(new THREE.Quaternion().setFromAxisAngle(ax, 0.1));
+        this.root.updateMatrixWorld(true);
+        const p1 = L(child);
+        node.quaternion.copy(node.userData.rest);
+        this.root.updateMatrixWorld(true);
+        const d = p1.sub(p0);
+        const inPlane = Math.hypot(d.x, d.y), lateral = Math.abs(d.z);
+        const score = inPlane - 3 * lateral;
+        if (!best || score > best.score) best = { ax, score };
+      }
+      return best.ax;
+    };
+    this.axis = { boom: pick(N.boom, N.stick), stick: pick(N.stick, N.bucket), claw: new THREE.Vector3(1, 0, 0) };
+    // bucket: farthest vertex from its pivot = the teeth; also its width and cavity side
+    const bk = N.bucket;
+    const pts = [];
+    bk.traverse((o) => {
+      if (!o.isMesh) return;
+      const pos = o.geometry.attributes.position, v = new THREE.Vector3();
+      const step = Math.max(1, Math.floor(pos.count / 1500));
+      for (let i = 0; i < pos.count; i += step) { v.fromBufferAttribute(pos, i); o.localToWorld(v); pts.push(toArm(v.clone().applyMatrix4(inv))); }
+    });
+    const piv = L(bk);
+    let tip = piv, far = 0;
+    for (const p of pts) { const d = Math.hypot(p.x - piv.x, p.y - piv.y); if (d > far) { far = d; tip = p; } }
+    let zmin = 1e9, zmax = -1e9, cx = 0, cy = 0;
+    for (const p of pts) { zmin = Math.min(zmin, p.z); zmax = Math.max(zmax, p.z); cx += p.x; cy += p.y; }
+    cx /= pts.length; cy /= pts.length;
+    tip = tip.clone().setZ((zmin + zmax) / 2); // middle of the cutting edge, not a corner tooth
+    this.bucketAxis = this.axis.stick.clone();
+    // plane geometry (rest): boom pivot B, stick pivot S, bucket pivot K, tip T
+    const B = L(N.boom), S = L(N.stick), K = piv, T = tip;
+    this.geo = {
+      B, armZ: (B.z + S.z + K.z) / 3,
+      L1: Math.hypot(S.x - B.x, S.y - B.y), a1: Math.atan2(S.y - B.y, S.x - B.x),
+      L2: Math.hypot(K.x - S.x, K.y - S.y), a2: Math.atan2(K.y - S.y, K.x - S.x),
+      L3: Math.hypot(T.x - K.x, T.y - K.y), a3: Math.atan2(T.y - K.y, T.x - K.x),
+      width: zmax - zmin, tipLocal: bk.worldToLocal(toArm(tip.clone()).applyMatrix4(this.root.matrixWorld)),
+    };
+    // which side of the pivot→teeth line the cavity opens to (opposite the shell)
+    const side = (cx - K.x) * -(T.y - K.y) + (cy - K.y) * (T.x - K.x);
+    this.geo.cav = side > 0 ? -Math.PI / 2 : Math.PI / 2; // cavity normal angle relative to the teeth vector
+    // signs: does +rotation about the joint axis turn the arm counter-clockwise in the plane?
+    const sgn = (node, ax, child, ref) => {
+      const p0 = L(child), r0 = L(ref);
+      node.quaternion.copy(node.userData.rest).multiply(new THREE.Quaternion().setFromAxisAngle(ax, 0.05));
+      this.root.updateMatrixWorld(true);
+      const p1 = L(child);
+      node.quaternion.copy(node.userData.rest);
+      this.root.updateMatrixWorld(true);
+      const a0 = Math.atan2(p0.y - r0.y, p0.x - r0.x), a1 = Math.atan2(p1.y - r0.y, p1.x - r0.x);
+      return Math.sign(a1 - a0) || 1;
+    };
+    const tipAnchor = new THREE.Object3D(); tipAnchor.position.copy(this.geo.tipLocal); bk.add(tipAnchor);
+    this.root.updateMatrixWorld(true);
+    this.sign = { boom: sgn(N.boom, this.axis.boom, N.stick, N.boom), stick: sgn(N.stick, this.axis.stick, N.bucket, N.stick), bucket: sgn(bk, this.bucketAxis, tipAnchor, bk) };
+    this.tipAnchor = tipAnchor;
+    // slew: rotation of the upper about its local Y; sign so that +slew turns the arm left (CCW from above)
+    this.slewAxis = new THREE.Vector3(0, 1, 0);
+    const p0 = L(N.bucket);
+    N.upper.quaternion.copy(N.upper.userData.rest).multiply(new THREE.Quaternion().setFromAxisAngle(this.slewAxis, 0.1));
+    this.root.updateMatrixWorld(true);
+    const p1 = L(N.bucket);
+    N.upper.quaternion.copy(N.upper.userData.rest);
+    this.root.updateMatrixWorld(true);
+    this.sign.slew = Math.sign(Math.atan2(-p1.z, p1.x) - Math.atan2(-p0.z, p0.x)) || 1;
   }
 
-  // ---- joints & IK ---------------------------------------------------------------------------
-  // Aim the bucket tip at a world point with the bucket at absolute angle phi.
+  _buildBucket() {
+    const bk = this.nodes.bucket, g = this.geo;
+    // anchors at the outer teeth and in the cavity (in bucket-local space)
+    const inv = new THREE.Matrix4().copy(bk.matrixWorld).invert();
+    const toLocal = (p) => p.clone().applyMatrix4(this.root.matrixWorld).applyMatrix4(inv);
+    const K = this.toArm(new THREE.Vector3().setFromMatrixPosition(bk.matrixWorld).applyMatrix4(new THREE.Matrix4().copy(this.root.matrixWorld).invert()));
+    const ang = g.a3, cav = g.a3 + g.cav;
+    const tip = new THREE.Vector3(K.x + Math.cos(ang) * g.L3, K.y + Math.sin(ang) * g.L3, g.armZ);
+    const half = g.width * 0.42;
+    const mk = (p) => { const o = new THREE.Object3D(); o.position.copy(toLocal(this.toArm(p))); bk.add(o); return o; };
+    const edgeL = mk(tip.clone().setZ(g.armZ - half)), edgeR = mk(tip.clone().setZ(g.armZ + half));
+    const inside = new THREE.Vector3(K.x + Math.cos(ang) * g.L3 * 0.55 + Math.cos(cav) * g.L3 * 0.25, K.y + Math.sin(ang) * g.L3 * 0.55 + Math.sin(cav) * g.L3 * 0.25, g.armZ);
+    const mouth = mk(inside);
+    // mouth +Z must point out of the cavity: look along the cavity normal
+    const outW = this.toArm(new THREE.Vector3(Math.cos(cav), Math.sin(cav), 0)).transformDirection(this.root.matrixWorld);
+    const mw = mouth.getWorldPosition(new THREE.Vector3());
+    mouth.lookAt(mw.clone().add(outW));
+    // the load: a heaped dome of soil sitting in the cavity
+    const heapG = new THREE.Group();
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), this.app.shovel.loadMat);
+    dome.rotation.x = Math.PI / 2;
+    dome.scale.set(g.width * 0.42, g.L3 * 0.3, g.L3 * 0.3);
+    heapG.add(dome);
+    mouth.add(heapG);
+    heapG.visible = false;
+    this.bucketPhys = new BucketPhysics(this.app, { edgeL, edgeR, mouth, capacity: Math.pow(R(1), 3) * 0.16, heap: heapG });
+  }
+
+  // ---- joints ---------------------------------------------------------------------------------
+  applyJoints(dt, snap = false) {
+    if (!this.nodes) return;
+    for (const k of ['slew', 'boom', 'stick', 'bucket', 'claw']) {
+      const d = this.t[k] - this.j[k], mx = this.speed[k] * dt;
+      // hydraulics: ease in/out near the target, otherwise move at full speed
+      this.j[k] += snap ? d : Math.sign(d) * Math.min(Math.abs(d), mx, Math.abs(d) * Math.min(1, dt * 6) + mx * 0.15);
+    }
+    this._pose();
+  }
+
+  // set the model's parts from the joint values j
+  _pose() {
+    const N = this.nodes, q = new THREE.Quaternion();
+    N.upper.quaternion.copy(N.upper.userData.rest).multiply(q.setFromAxisAngle(this.slewAxis, this.j.slew * this.sign.slew));
+    N.boom.quaternion.copy(N.boom.userData.rest).multiply(q.setFromAxisAngle(this.axis.boom, this.j.boom * this.sign.boom));
+    N.stick.quaternion.copy(N.stick.userData.rest).multiply(q.setFromAxisAngle(this.axis.stick, this.j.stick * this.sign.stick));
+    N.bucket.quaternion.copy(N.bucket.userData.rest).multiply(q.setFromAxisAngle(this.bucketAxis, this.j.bucket * this.sign.bucket));
+    N.claw.quaternion.copy(N.claw.userData.rest).multiply(q.setFromAxisAngle(this.axis.claw, this.j.claw));
+    this.root.updateMatrixWorld(true);
+  }
+
+  jointsReached(tol = 0.02) { return ['slew', 'boom', 'stick', 'bucket'].every((k) => Math.abs(this.t[k] - this.j[k]) < tol); }
+
+  // Inverse kinematics: teeth at world point p with the teeth vector at plane angle phi.
+  // The analytic plane solution is refined against the real model (forward
+  // kinematics) so the teeth land where they are told to.
   reach(p, phi) {
-    this.root.updateMatrixWorld(true);
-    const v = this.body.worldToLocal(p.clone());
-    v.y -= R(D.slewH);
-    const slew = Math.atan2(-v.z, v.x);
-    const rh = Math.hypot(v.x, v.z) - R(D.pivot[0]);
-    const y = v.y - R(D.pivot[1]);
-    const Lk = R(D.Lk);
-    const wx = rh - Math.cos(phi) * Lk, wy = y - Math.sin(phi) * Lk;
-    const [a1, a2] = ik2(wx, wy, R(D.L1), R(D.L2));
-    this.t.slew = unwrap(slew, this.j.slew);
-    this.t.boom = a1; this.t.stick = a2 - a1; this.t.bucket = phi - a2;
-  }
-
-  rest() { this.t.boom = 0.65; this.t.stick = -2.0; this.t.bucket = -1.6; }
-
-  updateJoints(dt, snap = false) {
-    const lim = { slew: 1.3, boom: 1.0, stick: 1.4, bucket: 2.6, blade: 1.5 };
-    for (const k of Object.keys(lim)) {
-      const d = this.t[k] - this.j[k], mx = lim[k] * dt;
-      this.j[k] += snap ? d : Math.max(-mx, Math.min(mx, d * Math.min(1, dt * 9)));
+    if (!this.geo) return false;
+    let ok = this._solve(p, phi);
+    const goal = p.clone(), aim = p.clone(), save = { ...this.j }, tip = new THREE.Vector3();
+    for (let i = 0; i < 3; i++) {
+      Object.assign(this.j, this.t);
+      this._pose();
+      this.tipWorld(tip);
+      const ex = goal.x - tip.x, ey = goal.y - tip.y, ez = goal.z - tip.z;
+      if (Math.abs(ex) + Math.abs(ey) + Math.abs(ez) < 2e-4) break;
+      aim.x += ex; aim.y += ey; aim.z += ez;
+      ok = this._solve(aim, phi);
     }
-    this.upper.rotation.y = this.j.slew;
-    this.boom.rotation.z = this.j.boom;
-    this.stick.rotation.z = this.j.stick;
-    this.bucketG.rotation.z = this.j.bucket;
-    this.bladeG.position.y = R(0.28) + this.j.blade * R(0.12);
-    this.bladeG.rotation.z = -this.j.blade * 0.12;
-    this.root.updateMatrixWorld(true);
-    for (const c of this.cyl) c.update();
-    this.bladeCyl.update();
+    Object.assign(this.j, save);
+    this._pose();
+    return ok;
   }
 
-  // ---- driving --------------------------------------------------------------------------------
-  update(dt) {
-    const vmax = R(0.7), wmax = 0.55;
-    const tv = this.throttle * vmax, tw = -this.steer * wmax;
-    this.v += (tv - this.v) * Math.min(1, dt * 4);
-    this.yawRate += (tw - this.yawRate) * Math.min(1, dt * 4);
-    const f = this.forward();
-    const dx = f.x * this.v * dt, dz = f.y * this.v * dt;
-    this.x += dx; this.z += dz; this.yaw += this.yawRate * dt;
-    this.keepInside();
-    const dist = Math.hypot(dx, dz);
-    this.moved += dist;
-    // track belts: left/right speeds differ when turning
-    const half = R(D.gauge / 2);
-    const vl = this.v - this.yawRate * half, vr = this.v + this.yawRate * half;
-    this.trackPhase[0] += vl * dt; this.trackPhase[1] += vr * dt;
-    this.tracks.forEach((tr, i) => { tr.material.map.offset.x = -this.trackPhase[i] / tr.userData.perimeter; tr.material.normalMap.offset.x = tr.material.map.offset.x; });
-    // dozer blade lowered → it pushes soil when driving forward
-    if (this.t.blade < 0.5 && this.v > 0 && dist > 0) {
-      const c = this.local(R(0.88), 0);
-      const g = this.groundAt(this.x, this.z);
-      this.bulldoze(c, R(1.0), g - R(0.02), dist, 0);
-    }
-    this.followGround(dt);
-    this.updateJoints(dt);
-    this.updateHeap();
+  _solve(p, phi) {
+    const g = this.geo;
+    const v = p.clone().applyMatrix4(new THREE.Matrix4().copy(this.root.matrixWorld).invert());
+    // swing so that the (laterally offset) arm plane passes through the point
+    const rho = Math.hypot(v.x, v.z), theta = Math.atan2(-v.z, v.x);
+    const off = Math.asin(Math.max(-0.99, Math.min(0.99, -g.armZ / Math.max(rho, 1e-4))));
+    const slew = theta - off;
+    const f = Math.sqrt(Math.max(1e-8, rho * rho - g.armZ * g.armZ));
+    // in-plane target relative to the boom pivot
+    const X = f - g.B.x, Y = v.y - g.B.y;
+    const wx = X - Math.cos(phi) * g.L3, wy = Y - Math.sin(phi) * g.L3;
+    let D = Math.hypot(wx, wy);
+    const reachable = D <= g.L1 + g.L2 - 1e-4 && D >= Math.abs(g.L1 - g.L2) + 1e-4;
+    D = Math.min(Math.max(D, Math.abs(g.L1 - g.L2) + 1e-4), g.L1 + g.L2 - 1e-4);
+    const th = Math.atan2(wy, wx);
+    const k = Math.acos(Math.min(1, Math.max(-1, (g.L1 * g.L1 + D * D - g.L2 * g.L2) / (2 * g.L1 * D))));
+    const A1 = th + k;                                   // elbow up: boom high, stick down
+    const ex = Math.cos(A1) * g.L1, ey = Math.sin(A1) * g.L1;
+    const A2 = Math.atan2(Math.sin(th) * D - ey, Math.cos(th) * D - ex);
+    // joint values are plane-angle changes; applyJoints() maps them onto each node's own axis/sign
+    const dBoom = A1 - g.a1;
+    const dStick = A2 - g.a2 - (A1 - g.a1);
+    const dBucket = phi - g.a3 - (A2 - g.a2);
+    this.t.slew = unwrap(slew - this.slew0, this.j.slew);
+    // shortest way from where the joints are now (no swinging over the top)
+    this.t.boom = unwrap(dBoom, this.j.boom); this.t.stick = unwrap(dStick, this.j.stick); const [lo, hi] = this.bucketRange || [-Math.PI, Math.PI];
+    this.t.bucket = Math.min(hi, Math.max(lo, unwrap(dBucket, (lo + hi) / 2))); // within the bucket's real range
+    return reachable;
   }
 
-  updateHeap() {
-    this._shown = (this._shown || 0) + (this._fill - (this._shown || 0)) * 0.2;
-    const f = this._shown;
-    this.heap.visible = f > 0.02;
-    if (this.heap.visible) { const s = Math.cbrt(f); this.heap.scale.set(R(0.17) * s, R(0.13) * s, R(D.bucketW * 0.42) * s); }
-  }
+  // teeth angle for a cavity orientation (radians in the arm plane: 0 = forward, π/2 = up)
+  phiFor(cavityAngle) { return cavityAngle - this.geo.cav; }
 
-  // ---- implement interface for ScoopTool -----------------------------------------------------
-  get name() { return 'excavator'; }
-  get spec() { return { width: R(D.bucketW), length: R(0.3), capacity: Math.pow(R(1), 3) * 0.045, pointed: false }; }
-  get bite() { return R(0.12); }
-  get fill() { return this._fill; }
-  set fill(v) { this._fill = v; }
-  get dumpDelay() { return 0.45; }
-  get dumpTime() { return 0.7; }
-  get crumbScale() { return 1.7; }
+  travelPose() { if (!this.geo) return; const c = this.slewCenter(); this.reach(new THREE.Vector3(c.x + Math.cos(this.yaw) * R(2.0), this.y + R(0.6), c.z - Math.sin(this.yaw) * R(2.0)), this.phiFor(Math.PI * 0.42)); }
 
   slewCenter() { return this.local(0, 0); }
+  tipWorld(out = new THREE.Vector3()) { return this.tipAnchor ? this.tipAnchor.getWorldPosition(out) : out.copy(this.root.position); }
+  bucketWorld(out = new THREE.Vector3()) { return this.nodes ? this.nodes.bucket.getWorldPosition(out) : out.copy(this.root.position); }
+
+  // ---- auto work cycle ---------------------------------------------------------------------------
+  maxReach() { return this.geo ? this.geo.B.x + this.geo.L1 + this.geo.L2 * 0.95 : R(3); }
+  minReach() { return this.geo ? this.geo.B.x + R(0.9) : R(1.2); }
+
   clampReach(p) {
     const c = this.slewCenter();
     const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz) || 1e-6;
-    const r = Math.max(R(1.25), Math.min(R(2.9), d));
-    p.x = c.x + dx / d * r; p.z = c.z + dz / d * r;
-    return p;
-  }
-  // the bucket always drags towards the cab
-  initialDir(p) { const c = this.slewCenter(); return new THREE.Vector2(c.x - p.x, c.z - p.z).normalize(); }
-  digDir(p) { return this.initialDir(p); }
-  poseDig(p, dir, cutY) { this.reach(new THREE.Vector3(p.x, cutY, p.z), -1.75); }
-  poseAim(p, dir, groundY) { this.reach(new THREE.Vector3(p.x, groundY + R(0.9), p.z), -2.85); } // curled: mouth up
-  poseDump() { this.t.bucket += 2.4; } // open the bucket
-  poseRest() { this.rest(); }
-  bladePoint(u, v, out = new THREE.Vector3()) {
-    out.set(R(0.12 + v * 0.25), R(0.02), u * R(D.bucketW) * 0.42);
-    return this.bucketG.localToWorld(out);
-  }
-  bladeNormal(out = new THREE.Vector3()) {
-    out.set(0.3, -1, 0).normalize();
-    return out.transformDirection(this.bucketG.matrixWorld);
+    const r = Math.max(this.minReach(), Math.min(this.maxReach(), d));
+    return new THREE.Vector3(c.x + dx / d * r, p.y, c.z + dz / d * r);
   }
 
-  // ---- persistence -------------------------------------------------------------------------------
-  record() { return { ...this.baseRecord(), slew: +this.t.slew.toFixed(4), blade: this.t.blade }; }
+  // dig a stroke from a (far) towards b (near the cab)
+  startDig(a, b, bite) {
+    const t = this.app.terrain;
+    a = this.clampReach(a); b = this.clampReach(b);
+    if (Math.hypot(a.x - b.x, a.z - b.z) < R(0.6)) {
+      // a tap: pull about a metre towards the cab
+      const c = this.slewCenter(), d = Math.hypot(a.x - c.x, a.z - c.z) || 1;
+      b = this.clampReach(new THREE.Vector3(a.x - (a.x - c.x) / d * R(1.2), 0, a.z - (a.z - c.z) / d * R(1.2)));
+    }
+    const ga = t.heightAt(a.x, a.z);
+    this.cycle = { phase: 'swing', a, b, bite, depth: ga - bite, s: 0, time: 0 };
+    this.bucketPhys.reset();
+  }
+
+  dumpAt(p) {
+    if (!this.cycle || this.cycle.phase !== 'hold') return false;
+    p = this.clampReach(p);
+    this.cycle.phase = 'toDump';
+    this.cycle.d = p;
+    return true;
+  }
+
+  get busy() { return !!this.cycle; }
+
+  _cycleStep(dt) {
+    const c = this.cycle, t = this.app.terrain, g = this.geo;
+    if (!c) return;
+    c.time += dt;
+    const ground = (p) => (t.inside(p.x, p.z) ? t.heightAt(p.x, p.z) : t.heightAt(t.clampX(p.x), t.clampZ(p.z)));
+    const open = this.phiFor(Math.PI * 0.92);      // cavity faces the cab: teeth point down/forward
+    const curled = this.phiFor(Math.PI * 0.5);     // cavity faces up
+    const carry = this.phiFor(Math.PI * 0.42);
+    if (c.phase === 'swing') {
+      this.reach(new THREE.Vector3(c.a.x, ground(c.a) + R(0.9), c.a.z), open);
+      if (this.jointsReached(0.05) || c.time > 6) { c.phase = 'lower'; c.time = 0; }
+    } else if (c.phase === 'lower') {
+      this.reach(new THREE.Vector3(c.a.x, c.depth, c.a.z), open);
+      if (this.jointsReached(0.03) || c.time > 4) { c.phase = 'drag'; c.time = 0; }
+    } else if (c.phase === 'drag') {
+      const L = Math.hypot(c.b.x - c.a.x, c.b.z - c.a.z);
+      c.s = Math.min(1, c.s + dt * R(0.45) / Math.max(L, 1e-4)); // ≈0.45 m/s at the teeth
+      const p = new THREE.Vector3().lerpVectors(c.a, c.b, c.s);
+      const lvl = Math.max(this.app.gradeAt(p.x, p.z) ?? -1, Math.min(c.depth, ground(p) - c.bite * 0.3));
+      const phi = open + (curled - open) * Math.pow(c.s, 1.6) * 0.75;
+      this.reach(new THREE.Vector3(p.x, Math.max(lvl, t.floorY + 0.002), p.z), phi);
+      if (c.s >= 1 || this.bucketPhys.fill >= 0.98) { c.phase = 'curl'; c.time = 0; }
+    } else if (c.phase === 'curl') {
+      const tip = this.tipWorld();
+      this.reach(new THREE.Vector3(tip.x, ground(tip) + R(0.25), tip.z), curled);
+      if (this.jointsReached(0.05) || c.time > 2.5) { c.phase = 'lift'; c.time = 0; }
+    } else if (c.phase === 'lift') {
+      const tip = this.tipWorld();
+      this.reach(new THREE.Vector3(tip.x, ground(tip) + R(1.3), tip.z), carry);
+      if (this.jointsReached(0.05) || c.time > 3) { c.phase = this.bucketPhys.load > 0 ? 'hold' : 'home'; c.time = 0; this.app.onShovelState?.(); }
+    } else if (c.phase === 'toDump') {
+      this.reach(new THREE.Vector3(c.d.x, ground(c.d) + R(1.2), c.d.z), carry);
+      if (this.jointsReached(0.05) || c.time > 7) { c.phase = 'dump'; c.time = 0; }
+    } else if (c.phase === 'dump') {
+      // open the bucket slowly: the mouth turns down and the soil pours out
+      // a backhoe opens one way only: the cavity turns from "up" past "towards the cab" to "down"
+      const open = this.geo.cav < 0 ? 1 : -1;
+      let d = (this.phiFor(Math.PI * (this.geo.cav < 0 ? 1.38 : -0.38)) - this.currentPhi()) * open;
+      d = ((d % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      if (d > Math.PI * 1.6) d = 0; // already past the target
+      if (c.time < 0.05) c.open = this.j.bucket + d * open;
+      this.t.bucket = c.open;
+      if ((this.bucketPhys.load <= 0 && c.time > 1.2) || c.time > 6) { c.phase = 'raise'; c.time = 0; c.r = this.tipWorld(); }
+    } else if (c.phase === 'raise') {
+      // pull the empty bucket up and in before folding, so it never drags through the heap
+      this.reach(new THREE.Vector3(c.r.x, ground(c.r) + R(1.7), c.r.z), carry);
+      if (this.jointsReached(0.06) || c.time > 4) { c.phase = 'home'; c.time = 0; }
+    } else if (c.phase === 'home') {
+      this.travelPose();
+      if (this.jointsReached(0.06) || c.time > 4) { this.cycle = null; this.app.onShovelState?.(); }
+    }
+  }
+
+  currentPhi() {
+    const g = this.geo;
+    return g.a3 + this.j.boom + this.j.stick + this.j.bucket;
+  }
+
+  // ---- per frame ---------------------------------------------------------------------------------
+  update(dt) {
+    if (!this.nodes) return;
+    // driving (tracks: counter-rotate to turn on the spot)
+    const vmax = R(0.8), wmax = 0.45;
+    const drive = this.mode === 'manual' && this.manualTravel ? { th: -this.manual.ly, st: this.manual.lx } : { th: this.throttle, st: this.steer };
+    this.v += (drive.th * vmax - this.v) * Math.min(1, dt * 3);
+    this.yawRate += (-drive.st * wmax - this.yawRate) * Math.min(1, dt * 3);
+    if (!drive.th && Math.abs(this.v) < R(0.01)) this.v = 0;
+    if (!drive.st && Math.abs(this.yawRate) < 0.005) this.yawRate = 0;
+    if (!this.cycle) {
+      const f = this.forward();
+      this.x += f.x * this.v * dt; this.z += f.y * this.v * dt; this.yaw += this.yawRate * dt;
+      this.keepInside();
+      const half = R(0.55);
+      this.trackPhase[0] += (this.v - this.yawRate * half) * dt; this.trackPhase[1] += (this.v + this.yawRate * half) * dt;
+    }
+    if (this.mode === 'manual' && !this.cycle) {
+      const m = this.manual;
+      const rate = (v, s) => v * this.speed[s] * dt * 1.1;
+      // ISO pattern: left ← → swing, ↑ stick out / ↓ stick in; right ↑ boom down / ↓ boom up, ← curl / → dump
+      if (!this.manualTravel) { this.t.slew = this.j.slew - rate(m.lx, 'slew'); this.t.stick = this.j.stick - rate(m.ly, 'stick'); }
+      this.t.boom = this.j.boom + rate(m.ry, 'boom');
+      this.t.bucket = this.j.bucket + rate(m.rx, 'bucket') * (this.geo.cav < 0 ? 1 : -1); // curl turns the cavity up
+    }
+    this._cycleStep(dt);
+    this.applyJoints(dt);
+    this.followGround(dt);
+    this.root.updateMatrixWorld(true);
+    // the teeth only cut while digging (manual mode: always, like a real machine)
+    const ph = this.cycle?.phase;
+    this.bucketPhys.cutEnabled = this.mode === 'manual' || ph === 'lower' || ph === 'drag' || ph === 'curl';
+    this.bucketPhys.update(dt);
+    this.moved += Math.abs(this.v * dt);
+  }
+
+  // ---- persistence ---------------------------------------------------------------------------------
+  record() {
+    return { ...this.baseRecord(), slew: +this.t.slew.toFixed(4), boom: +this.t.boom.toFixed(4), stick: +this.t.stick.toFixed(4), bucket: +this.t.bucket.toFixed(4), load: this.bucketPhys ? this.bucketPhys.load : 0 };
+  }
   apply(r) {
     this.applyBase(r);
-    this.t.slew = r.slew || 0; this.t.blade = r.blade ?? 1;
-    this.rest();
-    this.updateJoints(1, true);
+    this.cycle = null;
+    if (r.boom !== undefined) { this.t.slew = r.slew; this.t.boom = r.boom; this.t.stick = r.stick; this.t.bucket = r.bucket; }
+    if (this.bucketPhys) { this.bucketPhys.load = r.load || 0; this.bucketPhys.reset(); }
+    this.applyJoints(1, true);
   }
 }
 
 function unwrap(a, ref) { while (a - ref > Math.PI) a -= Math.PI * 2; while (a - ref < -Math.PI) a += Math.PI * 2; return a; }
-
-// Extrude a top-view polygon [x, z] (real metres) upwards from y0 by h.
-function topExtrude(poly, y0, h, mat, bevel = 0) {
-  const s = new THREE.Shape(poly.map(([x, z]) => new THREE.Vector2(R(x), -R(z))));
-  const g = new THREE.ExtrudeGeometry(s, { depth: R(h) - 2 * bevel, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 6 });
-  g.translate(0, 0, bevel);
-  g.rotateX(-Math.PI / 2);
-  g.translate(0, R(y0), 0);
-  g.computeVertexNormals();
-  const mesh = new THREE.Mesh(g, mat);
-  mesh.castShadow = mesh.receiveShadow = true;
-  return mesh;
-}
-
-// order points around their centroid (robust for the hood outline)
-function sortLoop(pts) {
-  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cz = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-  return pts.slice().sort((a, b) => Math.atan2(a[1] - cz, a[0] - cx) - Math.atan2(b[1] - cz, b[0] - cx));
-}
-
-export { roundedBox };
+function wrapPi(a) { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; }

@@ -1,21 +1,21 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:12.
-export const BUILD = 2;
-export const STAGE = 2;
+export const BUILD = 3;
+export const STAGE = 3;
 export const MODEL_SCALE = 12;
 
-// Diorama board: 60 × 45 cm inside = a 7.2 × 5.4 m plot at 1:12, room for
-// a mini excavator (≈23 cm long at this scale) to work.
+// Diorama board: 2.4 × 1.8 m inside = a 28.8 × 21.6 m building plot at 1:12:
+// room for the house, the machines parked along the back edge and a truck.
 export const TRAY = {
-  innerX: 0.60,       // inner size of the plywood tray along X
-  innerZ: 0.45,       // … and along Z
-  wall: 0.012,        // wall thickness
+  innerX: 2.4,        // inner size of the plywood tray along X
+  innerZ: 1.8,        // … and along Z
+  wall: 0.018,        // wall thickness
   height: 0.106,      // wall top above the table
   floor: 0.010,       // top of the tray bottom board (soil cannot go lower)
   soil: 0.100,        // natural ground level (90 mm of soil = 1.08 m)
 };
 
-export const TERRAIN_CELL = 0.002; // 2 mm heightfield cells (300 × 225)
+export const TERRAIN_CELL = 0.004; // 4 mm heightfield cells (600 × 450)
 
 // Soil mechanics (tangent of the angle at which material starts to slide).
 export const REPOSE_LOOSE = Math.tan(37 * Math.PI / 180);  // freshly dug loose soil
@@ -30,7 +30,7 @@ export const SHOVELS = {
 export const DEFAULT_SETTINGS = {
   shovel: 'spade',
   bite: 5,          // mm the blade goes in per pass
-  target: 15,       // design depth of the pit, mm (model)
+  target: 25,       // design depth of the pit, mm (model)
   dof: 1,
   quality: 'high',
   shake: true,
@@ -43,12 +43,15 @@ export const DEFAULT_SETTINGS = {
   cover: 40,         // concrete cover, mm (real)
   trenchWidth: 400,  // new trench width, mm (real)
   trenchDepth: 600,  // new trench depth, mm (real)
-  backdrop: 'workshop',
+  backdrop: 'site',
   orbit: false,      // slow automatic camera fly-around (панорама)
 };
 
-// the first outline on a new plot: a 1.8 × 1.44 m pit, 15 mm (18 cm) deep
-export const DEFAULT_OUTLINES = [{ id: 1, kind: 'rect', x0: -0.075, z0: -0.06, x1: 0.075, z1: 0.06, depth: 15 }];
+// the first outline on a new plot: a 9 × 7.2 m house pit, 25 mm (30 cm) deep
+export const DEFAULT_OUTLINES = [{ id: 1, kind: 'rect', x0: -0.375, z0: -0.2, x1: 0.375, z1: 0.4, depth: 25 }];
+
+// where the machines wait, along the back edge of the plot (x, z, yaw)
+export const PARKING = { excavator: [-0.85, -0.68, -Math.PI / 2], tractor: [-0.42, -0.7, -Math.PI / 2], mixer: [0.2, -0.72, 0], pump: [0.82, -0.7, 0], siteMixer: [1.02, -0.3, 0.4] };
 
 // Construction materials, real sizes converted to the model (÷12).
 export const MAT = {

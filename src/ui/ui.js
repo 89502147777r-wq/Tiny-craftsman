@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
 
 const HINTS = {
-  camera: 'Один палец — облёт, два — масштаб. Двойной тап — навести фокус.',
+  camera: 'Один палец — облёт и наклон. Два пальца — двигать участок, щипок — масштаб, поворот. Двойной тап — фокус.',
   shovel: 'Проведите пальцем по земле — лопата срежет слой грунта',
   loaded: 'Коснитесь места для отвала и отпустите — грунт высыплется',
   mark: {
@@ -26,9 +26,15 @@ const HINTS = {
     delete: 'Коснитесь стержня, сетки или стульчика, чтобы убрать',
   },
   machine: {
-    none: 'Выберите машину — она заедет на участок',
-    excavator: 'Джойстик — ехать. Палец по земле — копать ковшом к себе, тап — высыпать',
-    tractor: 'Джойстик — ехать. «Копать» опускает ковш: трактор срезает грунт и толкает его',
+    none: 'Выберите машину — вся техника стоит на стоянке у дальнего края',
+    excavator: 'Джойстик — ехать. Проведите пальцем по земле от дальней точки к кабине — экскаватор сделает копок',
+    exHold: 'Ковш полон. Коснитесь места в зоне вылета стрелы — повернёт и высыплет',
+    exBusy: 'Экскаватор работает… (отмена — стрелка назад)',
+    exManual: 'Левый: ←→ поворот, ↑↓ рукоять. Правый: ↑↓ стрела, ←→ ковш (как в кабине, ISO)',
+    exTravel: 'Левый джойстик — ехать на гусеницах. Правый: ↑↓ стрела, ←→ ковш',
+    tractor: 'Джойстик — ехать. «Ковш вниз» — срезает грунт по пути, «Высыпать» — опрокинуть ковш',
+    mixer: 'Джойстик — ехать. Барабан: замес или выгрузка, лоток — поворот',
+    pump: 'Джойстик — перекатить прицепной бетононасос',
   },
 };
 
@@ -66,6 +72,7 @@ export class UI {
     });
     this.bindSettings();
     this.bindJoystick();
+    this.bindJoystick('joy2', 'joy2-knob', (x, y) => this.app.machineTool.manual('r', x, y));
     this.refresh();
   }
 
@@ -97,8 +104,8 @@ export class UI {
   }
 
   // virtual joystick for the machines (its own pointer, so the canvas gestures stay free)
-  bindJoystick() {
-    const el = $('joy'), knob = $('joy-knob');
+  bindJoystick(elId = 'joy', knobId = 'joy-knob', cb = (x, y) => this.app.machineTool.joystick(x, y)) {
+    const el = $(elId), knob = $(knobId);
     let id = null;
     const set = (e) => {
       const r = el.getBoundingClientRect();
@@ -108,11 +115,11 @@ export class UI {
       knob.style.transform = `translate(${x * 34}px, ${y * 34}px)`;
       // small dead zone, then a soft curve for fine control
       const f = (v) => Math.sign(v) * Math.max(0, Math.abs(v) - 0.12) / 0.88;
-      this.app.machineTool.joystick(f(x) * Math.abs(f(x)) ** 0.5, f(y));
+      cb(f(x) * Math.abs(f(x)) ** 0.5, f(y));
     };
     el.addEventListener('pointerdown', (e) => { id = e.pointerId; el.setPointerCapture(id); this.app.sfx.unlock(); set(e); });
     el.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });
-    const end = (e) => { if (e.pointerId !== id) return; id = null; knob.style.transform = ''; this.app.machineTool.joystick(0, 0); };
+    const end = (e) => { if (e.pointerId !== id) return; id = null; knob.style.transform = ''; cb(0, 0); };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', end);
   }
@@ -180,8 +187,10 @@ export class UI {
     if (t === 'machine') {
       const mt = app.machineTool;
       return [
-        C('Мини-экскаватор', mt.active === 'excavator', () => mt.select('excavator')),
-        C('Мини-трактор', mt.active === 'tractor', () => mt.select('tractor')),
+        C('Экскаватор', mt.active === 'excavator', () => mt.select('excavator')),
+        C('Трактор', mt.active === 'tractor', () => mt.select('tractor')),
+        C('Миксер', mt.active === 'mixer', () => mt.select('mixer')),
+        C('Бетононасос', mt.active === 'pump', () => mt.select('pump')),
       ];
     }
     return [];
@@ -234,15 +243,25 @@ export class UI {
   renderMachineControls() {
     const app = this.app, mt = app.machineTool;
     const show = app.tool === 'machine' && !!mt.machine;
+    const m = mt.machine;
+    const manual = show && m.kind === 'excavator' && m.mode === 'manual';
     $('joy').hidden = !show;
+    $('joy2').hidden = !manual;
     const box = $('mbtns');
     box.hidden = !show;
+    box.classList.toggle('up', manual);
     if (!show) { this._mKey = null; return; }
-    const m = mt.machine;
-    const btns = m.kind === 'excavator'
-      ? [[m.t.blade > 0.5 ? 'Отвал ↓' : 'Отвал ↑', () => mt.blade(), m.t.blade < 0.5]]
-      : [['Копать', () => mt.loader('dig'), m.mode === 'dig'], ['Везти', () => mt.loader('carry'), m.mode === 'carry'],
+    let btns = [];
+    if (m.kind === 'excavator') {
+      btns = [['Авто', () => mt.setExMode('auto'), m.mode === 'auto'], ['Ручное', () => mt.setExMode('manual'), m.mode === 'manual']];
+      if (manual) btns.push([m.manualTravel ? 'Левый: ход' : 'Левый: стрела', () => mt.toggleTravel(), !!m.manualTravel]);
+    } else if (m.kind === 'tractor') {
+      btns = [['Ковш вниз', () => mt.loader('dig'), m.mode === 'dig'], ['Везти', () => mt.loader('carry'), m.mode === 'carry'],
         ['Поднять', () => mt.loader('raise'), m.mode === 'raise'], ['Высыпать', () => mt.loader('dump'), m.mode === 'dump']];
+    } else if (m.kind === 'mixer') {
+      btns = [['Замес', () => mt.drum(1), m.drumSpeed > 0], ['Выгрузка', () => mt.drum(-1), m.drumSpeed < 0],
+        ['Лоток ←', () => mt.chute(0.35), false], ['Лоток →', () => mt.chute(-0.35), false]];
+    }
     const key = JSON.stringify(btns.map((b) => [b[0], b[2]]));
     if (key === this._mKey) return;
     this._mKey = key;
@@ -275,7 +294,13 @@ export class UI {
     if (t === 'machine') {
       const mt = app.machineTool;
       hint = HINTS.machine[mt.active || 'none'];
-      if (mt.active === 'excavator' && mt.scoop && (mt.scoop.state === 'loaded' || mt.scoop.state === 'aim')) hint = 'Коснитесь места в зоне вылета стрелы и отпустите — ковш высыплет грунт';
+      const ex = mt.machines.excavator;
+      if (mt.active === 'excavator' && ex) {
+        if (!ex.nodes) hint = 'Загружаю модель экскаватора…';
+        else if (ex.mode === 'manual') hint = ex.manualTravel ? HINTS.machine.exTravel : HINTS.machine.exManual;
+        else if (mt.excavatorState === 'hold') hint = HINTS.machine.exHold;
+        else if (mt.excavatorState !== 'idle') hint = HINTS.machine.exBusy;
+      }
     }
     if (this._hint !== hint) { $('hint').textContent = hint; this._hint = hint; }
     $('hint').classList.toggle('top', t === 'machine');

@@ -2,10 +2,11 @@ import * as THREE from 'three';
 
 // Touch-first input:
 //   1 finger  → the active tool (shovel, marking, formwork, rebar, excavator);
-//               if the tool does not take it, it orbits the camera
-//   2 fingers → pinch = zoom, drag = orbit, always (any tool)
+//               if the tool does not take it, it orbits the camera (turn + tilt)
+//   2 fingers → the plot follows the fingers (any tool, any zoom):
+//               drag = move over the plot, pinch = zoom, twist = turn around
 //   double tap in camera mode → focus & centre on that spot
-// Mouse: left = tool, right/middle = orbit, wheel = zoom, shift+drag = pan.
+// Mouse: left = tool, right = orbit, middle or shift+drag = pan, wheel = zoom.
 // A tool receives down(p, e) → true if it takes the gesture, move(p, e),
 // up(p, e) and interrupt() (a second finger arrived).
 export class Gestures {
@@ -48,7 +49,7 @@ export class Gestures {
   down(e) {
     const app = this.app;
     app.sfx.unlock();
-    this.el.setPointerCapture?.(e.pointerId);
+    try { this.el.setPointerCapture?.(e.pointerId); } catch { /* synthetic or already released pointer */ }
     this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), button: e.button });
     if (this.ptrs.size === 2) {
       // second finger: always a camera gesture
@@ -63,7 +64,8 @@ export class Gestures {
       return;
     }
     if (this.ptrs.size > 2) return;
-    if (e.pointerType === 'mouse' && (e.button === 1 || e.button === 2)) { this.mode = 'orbit'; return; }
+    if (e.pointerType === 'mouse' && e.button === 2) { this.mode = 'orbit'; return; }
+    if (e.pointerType === 'mouse' && e.button === 1) { this.mode = 'pan'; return; }
     if (e.pointerType === 'mouse' && e.shiftKey) { this.mode = 'pan'; return; }
     const tool = app.activeTool();
     if (tool) {
@@ -89,9 +91,14 @@ export class Gestures {
     if (this.mode === 'orbit') { app.rig.orbit(dx / H * 3.2, dy / H * 2.4); return; }
     if (this.mode === 'pan') { app.rig.pan(dx / H, dy / H); return; }
     if (this.mode === 'pinch' && this.ptrs.size >= 2) {
-      const s = this.pinchState();
-      if (this.pinch.d > 0 && s.d > 0) app.rig.zoom(this.pinch.d / s.d);
-      app.rig.orbit((s.mx - this.pinch.mx) / H * 2.6, (s.my - this.pinch.my) / H * 2.0);
+      // the ground follows the fingers: midpoint drag = move over the plot,
+      // spread = zoom, twist = turn around
+      const s = this.pinchState(), q = this.pinch;
+      if (q.d > 0 && s.d > 0) app.rig.zoom(q.d / s.d);
+      let da = s.a - q.a;
+      if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2;
+      app.rig.pan((s.mx - q.mx) / H, (s.my - q.my) / H);
+      app.rig.orbit(-da, 0);
       this.pinch = s;
       return;
     }
@@ -126,6 +133,6 @@ export class Gestures {
 
   pinchState() {
     const [a, b] = [...this.ptrs.values()];
-    return { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+    return { d: Math.hypot(a.x - b.x, a.y - b.y), a: Math.atan2(b.y - a.y, b.x - a.x), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, ax: a.x, ay: a.y, bx: b.x, by: b.y };
   }
 }

@@ -26,10 +26,11 @@ export function buildWorkshop(scene, renderer, tex) {
   const sun = new THREE.DirectionalLight(0xffd6ad, 2.7);
   sun.position.set(-0.5, 0.95, -0.34);
   sun.target.position.set(0, 0.03, 0);
+  sun.userData.dir = sun.position.clone().normalize();
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
   const sc = sun.shadow.camera;
-  sc.left = -0.5; sc.right = 0.5; sc.top = 0.5; sc.bottom = -0.5; sc.near = 0.2; sc.far = 2.2;
+  sc.left = -0.5; sc.right = 0.5; sc.top = 0.5; sc.bottom = -0.5; sc.near = 0.05; sc.far = 6;
   sun.shadow.bias = -0.00025;
   sun.shadow.normalBias = 0.0007;
   group.add(sun, sun.target);
@@ -38,7 +39,7 @@ export function buildWorkshop(scene, renderer, tex) {
   group.add(rim);
 
   // ---- workbench ---------------------------------------------------------------
-  const TW = 2.2, TD = 1.1, TT = 0.045;
+  const TW = 3.8, TD = 2.8, TT = 0.045;
   const tableMat = new THREE.MeshStandardMaterial({
     map: variant(tex.table.diff, TW / 0.55, TD / 0.55),
     normalMap: variant(tex.table.nor, TW / 0.55, TD / 0.55),
@@ -47,7 +48,7 @@ export function buildWorkshop(scene, renderer, tex) {
     color: 0xd9cfc4,
   });
   const table = new THREE.Mesh(new THREE.BoxGeometry(TW, TT, TD), tableMat);
-  table.position.set(0.1, -TT / 2, -0.1);
+  table.position.set(0.1, -TT / 2, -0.05);
   table.receiveShadow = true;
   table.name = 'table';
   group.add(table);
@@ -86,7 +87,7 @@ export function buildWorkshop(scene, renderer, tex) {
   const rulerTop = new THREE.MeshStandardMaterial({ map: rulerTexture(), metalness: 0.85, roughness: 0.38, color: 0xd8dde2 });
   const rulerSide = new THREE.MeshStandardMaterial({ color: 0xb8bec4, metalness: 0.9, roughness: 0.3 });
   const ruler = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.0009, 0.026), [rulerSide, rulerSide, rulerTop, rulerSide, rulerSide, rulerSide]);
-  ruler.position.set(-0.08, 0.00045, 0.30);
+  ruler.position.set(-0.35, 0.00045, TRAY.innerZ / 2 + TRAY.wall + 0.09);
   ruler.rotation.y = 0.05;
   ruler.castShadow = true; ruler.receiveShadow = true;
   ruler.userData.prop = true;
@@ -94,7 +95,7 @@ export function buildWorkshop(scene, renderer, tex) {
 
   // ---- pencil ---------------------------------------------------------------------
   const pencil = makePencil();
-  pencil.position.set(0.40, 0.0037, 0.20);
+  pencil.position.set(0.25, 0.0037, TRAY.innerZ / 2 + TRAY.wall + 0.14);
   pencil.rotation.y = 1.1;
   pencil.userData.prop = true;
   group.add(pencil);
@@ -119,7 +120,25 @@ export function buildWorkshop(scene, renderer, tex) {
   crumbs.userData.prop = true;
   group.add(crumbs);
 
-  return { group, sun, table, tray };
+  return { group, sun, table, tray, followShadow };
+}
+
+// The shadow map covers what the camera sees around its target: close-ups get
+// crisp shadows, the whole plot still gets shadows when zoomed out.
+const _c = new THREE.Vector3();
+function followShadow(sun, target, dist) {
+  const ext = Math.min(2.2, Math.max(0.22, dist * 0.85));
+  const sc = sun.shadow.camera;
+  if (Math.abs(sc.right - ext) > ext * 0.08) {
+    sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext;
+    sc.updateProjectionMatrix();
+  }
+  // snap to whole shadow texels so the edges do not crawl while panning
+  const texel = (2 * sc.right) / sun.shadow.mapSize.x;
+  _c.set(Math.round(target.x / texel) * texel, Math.max(0.03, target.y - 0.04), Math.round(target.z / texel) * texel);
+  sun.target.position.copy(_c);
+  sun.position.copy(_c).addScaledVector(sun.userData.dir, 3);
+  sun.target.updateMatrixWorld();
 }
 
 function plyEdgeTexture(vertical) {

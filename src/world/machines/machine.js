@@ -22,6 +22,20 @@ export class Machine {
     this.id = null;                        // object-store id
   }
 
+  // Models are measured and assembled with the machine at the origin, unturned
+  // (a turned model gives inflated world bounding boxes). _zero() → build → _unzero().
+  _zero() {
+    const saved = { q: this.root.quaternion.clone(), p: this.root.position.clone(), b: this.body.quaternion.clone() };
+    this.root.quaternion.identity(); this.root.position.set(0, 0, 0); this.body.quaternion.identity();
+    this.root.updateMatrixWorld(true);
+    return saved;
+  }
+
+  _unzero(s) {
+    this.root.quaternion.copy(s.q); this.root.position.copy(s.p); this.body.quaternion.copy(s.b);
+    this.root.updateMatrixWorld(true);
+  }
+
   forward(out = new THREE.Vector2()) { return out.set(Math.cos(this.yaw), -Math.sin(this.yaw)); }
   local(lx, lz, out = new THREE.Vector3()) {
     const c = Math.cos(this.yaw), s = Math.sin(this.yaw);
@@ -34,6 +48,13 @@ export class Machine {
   }
 
   followGround(dt, snap = false) {
+    if (!this.contacts.length) {
+      // model not built yet: just stand on the ground
+      this.y = this.groundAt(this.x, this.z);
+      this.root.position.set(this.x, this.y, this.z);
+      this.root.rotation.set(0, this.yaw, 0);
+      return;
+    }
     const pts = this.contacts.map(([lx, lz]) => { const p = this.local(lx, lz); return [lx, lz, this.groundAt(p.x, p.z)]; });
     // fit a plane through the contacts (least squares on local x / z)
     let sx = 0, sz = 0, sy = 0, sxx = 0, szz = 0, sxy = 0, szy = 0;
@@ -54,9 +75,15 @@ export class Machine {
   }
 
   keepInside() {
-    const t = this.app.terrain, r = this.radius;
-    this.x = Math.max(-t.halfX + r, Math.min(t.halfX - r, this.x));
-    this.z = Math.max(-t.halfZ + r, Math.min(t.halfZ - r, this.z));
+    const t = this.app.terrain;
+    let rx = this.radius, rz = this.radius;
+    if (this.half) {
+      // long vehicles: the footprint box turned by the heading
+      const c = Math.abs(Math.cos(this.yaw)), s = Math.abs(Math.sin(this.yaw)), [hx, hz] = this.half;
+      rx = c * hx + s * hz; rz = s * hx + c * hz;
+    }
+    this.x = Math.max(-t.halfX + rx, Math.min(t.halfX - rx, this.x));
+    this.z = Math.max(-t.halfZ + rz, Math.min(t.halfZ - rz, this.z));
   }
 
   // Cut everything above cutY under a blade edge (centre, lateral width) that
