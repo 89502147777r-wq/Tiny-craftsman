@@ -80,12 +80,12 @@ const ex = await ev(() => {
     run(() => mt.excavatorState !== 'idle' || tc.journal.pending, 60);
   }
   tc.particles.flush();
-  return { moved, fills, phases: [...phases], dug: (tc.terrain.excavatedVolume() - vol0) * 1e6, drift: (tc.terrain.totalVolume() - tot0) * 1e9, actions: tc.journal.done.map((r) => r.type) };
+  return { moved, fills, phases: [...phases], load: m.bucketPhys.load * 1e9, state: mt.excavatorState, dug: (tc.terrain.excavatedVolume() - vol0) * 1e6, drift: (tc.terrain.totalVolume() + m.bucketPhys.load - tot0) * 1e9, actions: tc.journal.done.map((r) => r.type) };
 });
 check('excavator drives on its tracks', ex.moved > 0.05, `moved ${(ex.moved * 1000).toFixed(0)} mm`);
 check('dig cycle: swing → lower → drag → curl → lift → dump → home', ['swing', 'lower', 'drag', 'curl', 'lift', 'toDump', 'dump', 'home'].every((p) => ex.phases.includes(p)), ex.phases.join(','));
 check('bucket fills on each stroke', ex.fills.every((f) => f > 0.6), JSON.stringify(ex.fills));
-check('soil dug and conserved', ex.dug > 50 && Math.abs(ex.drift) < 50, `dug ${ex.dug.toFixed(1)} cm3, drift ${ex.drift.toFixed(2)} mm3`);
+check('soil dug and conserved', ex.dug > 50 && Math.abs(ex.drift) < 50, `dug ${ex.dug.toFixed(1)} cm3, drift ${ex.drift.toFixed(2)} mm3, left in bucket ${ex.load.toFixed(1)} mm3, ${ex.state}`);
 check('each dig cycle is one journal action', ex.actions.filter((t) => t === 'excavate').length === 2, ex.actions.join(','));
 
 // undo/redo of a dig cycle
