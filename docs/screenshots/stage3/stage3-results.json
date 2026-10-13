@@ -1,0 +1,130 @@
+{
+ "results": [
+  {
+   "name": "plot is 2.4 × 1.8 m",
+   "ok": true,
+   "info": "[2.4,1.8]"
+  },
+  {
+   "name": "fleet parked at the back edge, models loaded",
+   "ok": true,
+   "info": "{\"excavator\":[-0.85,-0.68,true],\"tractor\":[-0.42,-0.7,true],\"mixer\":[0.2,-0.72,true],\"pump\":[0.82,-0.7,true],\"siteMixer\":[1.02,-0.3,true]}"
+  },
+  {
+   "name": "site panorama is the default background",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "excavator drives on its tracks",
+   "ok": true,
+   "info": "moved 235 mm"
+  },
+  {
+   "name": "dig cycle: swing → lower → drag → curl → lift → dump → home",
+   "ok": true,
+   "info": "swing,lower,drag,curl,lift,hold,toDump,dump,raise,home,idle"
+  },
+  {
+   "name": "bucket fills on each stroke",
+   "ok": true,
+   "info": "[1,1]"
+  },
+  {
+   "name": "soil dug and conserved",
+   "ok": true,
+   "info": "dug 230.8 cm3, drift 0.70 mm3, left in bucket 0.0 mm3, idle"
+  },
+  {
+   "name": "each dig cycle is one journal action",
+   "ok": true,
+   "info": "drive,excavate,excavate"
+  },
+  {
+   "name": "undo/redo of a dig cycle",
+   "ok": true,
+   "info": "{\"undone\":true,\"err\":0}"
+  },
+  {
+   "name": "manual: right stick back raises the boom",
+   "ok": true,
+   "info": "0.0205"
+  },
+  {
+   "name": "manual: left stick right swings right",
+   "ok": true,
+   "info": "-0.268"
+  },
+  {
+   "name": "manual work is journaled when the machine stops",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "tractor bucket fills when pushing",
+   "ok": true,
+   "info": "{\"load\":115.74074074074072,\"after\":0,\"mode\":\"raise\",\"drift\":0.028543334362751693}"
+  },
+  {
+   "name": "tractor lifts and dumps everything, soil conserved",
+   "ok": true,
+   "info": "drift 0.03 mm3, mode raise"
+  },
+  {
+   "name": "truck mixer drives and steers",
+   "ok": true,
+   "info": "{\"moved\":0.7017817258998199,\"turned\":0.39808401900213114,\"drum\":4.530000000000172,\"discharge\":true,\"chute\":0.6999971704470064,\"pumpMoved\":0.14962277175598138}"
+  },
+  {
+   "name": "mixer drum turns, discharge + chute swing",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "concrete pump can be moved",
+   "ok": true,
+   "info": ""
+  },
+  {
+   "name": "trench outline, formwork, cage and mesh placed",
+   "ok": true,
+   "info": "{\"trench\":3,\"forms\":6,\"cages\":1,\"mesh\":1}"
+  },
+  {
+   "name": "two-finger drag pans at macro zoom (no dig)",
+   "ok": true,
+   "info": "{\"x\":0.04098265188813656,\"z\":0,\"dist\":0.25,\"journal\":true}"
+  },
+  {
+   "name": "journal replays terrain exactly",
+   "ok": true,
+   "info": "start 0 end 0"
+  },
+  {
+   "name": "project v3 with machine tracks",
+   "ok": true,
+   "info": "{\"start\":0,\"end\":0,\"version\":3,\"fields\":63,\"actions\":13,\"kb\":5252}"
+  },
+  {
+   "name": "everything restored after reload (machines where they were left)",
+   "ok": false,
+   "info": "{\"n\":13,\"o\":15,\"m\":{\"excavator\":[-0.85,-0.4447],\"tractor\":[-0.7419,0.1417],\"mixer\":[0.8857,-0.5706],\"pump\":[0.9696,-0.7],\"siteMixer\":[1.02,-0.3]}} → {\"n\":13,\"o\":15,\"m\":{\"excavator\":[-0.85,-0.4447],\"tractor\":[-0.7419,0.1417],\"mixer\":[0.7418,-0.4674],\"pump\":[0.9696,-0.7],\"siteMixer\":[1.02,-0.3]}}"
+  },
+  {
+   "name": "total soil volume conserved over the session",
+   "ok": true,
+   "info": "1.4 mm3"
+  },
+  {
+   "name": "stage-2 project migrates into the centre, fleet re-parked",
+   "ok": true,
+   "info": "{\"msg\":\"Проект этапа 2 перенесён в центр участка 240×180 см (журнал начат заново)\",\"pit\":0.07999999821186066,\"edge\":0.09972276538610458,\"outlines\":1,\"machines\":5}"
+  },
+  {
+   "name": "no console errors",
+   "ok": true,
+   "info": ""
+  }
+ ],
+ "errors": []
+}
