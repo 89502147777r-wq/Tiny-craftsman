@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../core/rand.js';
 
-// Diorama "static grass": little tufts of 2–6 mm fibres on the untouched
-// ground. A tuft disappears as soon as its patch is dug or buried.
+// Diorama "static grass": little tufts of 2–5 mm fibres on the untouched
+// ground — a building site is bare earth, so weeds grow in clumps mostly
+// along the edges. A tuft disappears as soon as its patch is dug or buried.
 export class Grass {
-  constructor(terrain, count = 3200) {
+  constructor(terrain, count = 1100) {
     this.terrain = terrain;
     const rnd = mulberry32(21);
     const geo = makeTuftGeometry(rnd);
@@ -20,8 +21,8 @@ export class Grass {
       let x, z, tries = 0;
       do {
         x = (rnd() * 2 - 1) * hx; z = (rnd() * 2 - 1) * hz; tries++;
-      } while (tries < 8 && patch(x, z) < rnd());
-      const s = 0.6 + rnd() * 0.9;
+      } while (tries < 12 && patch(x, z) * (Math.min(hx - Math.abs(x), hz - Math.abs(z)) < 0.14 ? 1 : 0.12) < rnd());
+      const s = 0.5 + rnd() * 0.55;
       this.tufts.push({ x, z, s, rot: rnd() * Math.PI * 2, tilt: (rnd() - 0.5) * 0.4 });
     }
     this._seen = -1;
@@ -75,7 +76,7 @@ function makeTuftGeometry(rnd) {
       const cx = ox + dx * bend * len, cz = oz + dz * bend * len, cy = len * f * (1 - 0.25 * lean * f);
       const ww = w * (1 - f * 0.9);
       pos.push(cx - px * ww, cy, cz - pz * ww, cx + px * ww, cy, cz + pz * ww);
-      const shade = 0.72 + 0.28 * f; // darker at the root
+      const shade = 0.4 + 0.6 * f; // dark, dusty root
       col.push(shade, shade, shade, shade, shade, shade);
     }
     for (let s = 0; s < segs; s++) {

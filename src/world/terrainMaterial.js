@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAY } from '../config.js';
+import { TRAY, LOAM_TILE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 
 // Topsoil photo texture on undisturbed ground, triplanar "excavated soil wall"
@@ -9,7 +9,7 @@ export function makeTerrainMaterial(tex) {
   const mat = new THREE.MeshStandardMaterial({
     map: tex.top.diff,
     normalMap: tex.top.nor,
-    normalScale: new THREE.Vector2(1.1, 1.1),
+    normalScale: new THREE.Vector2(1.7, 1.7),
     roughnessMap: tex.top.arm,
     aoMap: tex.top.arm,
     aoMapIntensity: 0.8,
@@ -18,6 +18,8 @@ export function makeTerrainMaterial(tex) {
   });
   const uniforms = {
     tWall: { value: tex.wall.diff },
+    tLoam: { value: tex.loam.diff },
+    uLoamScale: { value: 1 / LOAM_TILE },
     tFloor: { value: tex.ply.diff },
     uWallScale: { value: 1 / 0.16 },
     uLooseScale: { value: 1 / 0.07 },
@@ -45,7 +47,8 @@ export function makeTerrainMaterial(tex) {
         vWNrm = normalize(mat3(modelMatrix) * objectNormal);`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform sampler2D tWall;
+        uniform sampler2D tWall, tLoam;
+        uniform float uLoamScale;
         uniform sampler2D tFloor;
         uniform float uWallScale, uLooseScale, uFloorY, uChalk, uLevel, uSoilY, uTime;
         uniform sampler2D tMask;
@@ -66,20 +69,21 @@ export function makeTerrainMaterial(tex) {
           topC.rgb *= mix(0.80, 1.12, m1) * mix(0.9, 1.06, m3);
           topC.rgb = mix(topC.rgb, topC.rgb * vec3(1.08, 0.97, 0.86), smoothstep(0.45, 0.75, m2));        // warmer clay
           topC.rgb = mix(topC.rgb, vec3(dot(topC.rgb, vec3(0.33))) * vec3(0.98, 0.96, 0.93), smoothstep(0.55, 0.8, 1.0 - m2) * 0.2); // dusty grey
-          vec3 sec = tcStoch(tWall, vWPos.xz * 3.1).rgb * vec3(0.95, 0.9, 0.84);
-          topC.rgb = mix(topC.rgb, sec, smoothstep(0.58, 0.82, tcFbm(vWPos.xz * 1.7 + 23.0)) * 0.55);
+          // patches of darker loam (trodden, damper ground)
+          vec3 sec = tcStoch(tLoam, vWPos.xz * uLoamScale).rgb;
+          topC.rgb = mix(topC.rgb, sec, smoothstep(0.5, 0.78, tcFbm(vWPos.xz * 1.7 + 23.0)) * 0.7);
         }
         vec3 bw = pow(abs(wn), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
         vec3 wallC = texture2D(tWall, vWPos.zy * uWallScale).rgb * bw.x
                    + texture2D(tWall, vWPos.xz * uWallScale).rgb * bw.y
                    + texture2D(tWall, vWPos.xy * uWallScale).rgb * bw.z;
         vec3 looseC = texture2D(tWall, vWPos.xz * uLooseScale + 0.37).rgb;
-        looseC = mix(looseC, texture2D(map, vWPos.xz * 7.3 + 0.21).rgb, 0.45) * vec3(0.74, 0.68, 0.62);
+        looseC = mix(looseC, texture2D(map, vWPos.xz * 7.3 + 0.21).rgb, 0.45) * vec3(0.66, 0.58, 0.5); // freshly turned spoil: dark and crumbly
         float dig = smoothstep(0.0003, 0.0022, vSoil.x);
         float lse = smoothstep(0.00015, 0.0015, vSoil.y);
-        vec3 soilC = mix(topC.rgb, wallC * vec3(0.86, 0.80, 0.74), dig);
-        // fresh cuts are moister, so darker the deeper you go
-        soilC *= mix(1.0, 0.86, smoothstep(0.002, 0.02, vSoil.x));
+        vec3 soilC = mix(topC.rgb, wallC * vec3(0.78, 0.70, 0.62), dig);
+        // fresh cuts are moist: clearly darker than the sun-dried crust, more so the deeper you go
+        soilC *= mix(1.0, 0.7, dig) * mix(1.0, 0.82, smoothstep(0.002, 0.02, vSoil.x));
         soilC = mix(soilC, looseC, lse);
         // the tray bottom shows through where everything has been dug out
         float bottom = (1.0 - smoothstep(uFloorY + 0.0002, uFloorY + 0.0009, vWPos.y)) * (1.0 - lse);

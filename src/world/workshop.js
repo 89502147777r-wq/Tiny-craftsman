@@ -39,7 +39,7 @@ export function buildWorkshop(scene, renderer, tex) {
   group.add(rim);
 
   // ---- workbench ---------------------------------------------------------------
-  const TW = 3.8, TD = 2.8, TT = 0.045;
+  const TW = 3.8, TD = 3.3, TT = 0.045;
   const tableMat = new THREE.MeshStandardMaterial({
     map: variant(tex.table.diff, TW / 0.55, TD / 0.55),
     normalMap: variant(tex.table.nor, TW / 0.55, TD / 0.55),
@@ -48,7 +48,7 @@ export function buildWorkshop(scene, renderer, tex) {
     color: 0xd9cfc4,
   });
   const table = new THREE.Mesh(new THREE.BoxGeometry(TW, TT, TD), tableMat);
-  table.position.set(0.1, -TT / 2, -0.05);
+  table.position.set(0.1, -TT / 2, -0.2);
   table.receiveShadow = true;
   table.name = 'table';
   group.add(table);
@@ -123,21 +123,25 @@ export function buildWorkshop(scene, renderer, tex) {
   return { group, sun, table, tray, followShadow };
 }
 
-// The shadow map covers what the camera sees around its target: close-ups get
-// crisp shadows, the whole plot still gets shadows when zoomed out.
+// The shadow map covers what the camera sees: an area around the target that
+// grows with the distance and reaches further ahead of the camera (where the
+// view widens), so every machine, clod and tuft on screen stands in its shadow.
 const _c = new THREE.Vector3();
-function followShadow(sun, target, dist) {
-  const ext = Math.min(2.2, Math.max(0.22, dist * 0.85));
+function followShadow(sun, target, dist, yaw = 0) {
+  const ext = Math.min(2.6, Math.max(0.3, dist * 1.5));
   const sc = sun.shadow.camera;
   if (Math.abs(sc.right - ext) > ext * 0.08) {
     sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext;
+    sc.far = 6 + ext * 2;
     sc.updateProjectionMatrix();
   }
+  // shift the box away from the camera: the far side of the frame is wider
+  const ax = target.x - Math.sin(yaw) * ext * 0.35, az = target.z - Math.cos(yaw) * ext * 0.35;
   // snap to whole shadow texels so the edges do not crawl while panning
   const texel = (2 * sc.right) / sun.shadow.mapSize.x;
-  _c.set(Math.round(target.x / texel) * texel, Math.max(0.03, target.y - 0.04), Math.round(target.z / texel) * texel);
+  _c.set(Math.round(ax / texel) * texel, Math.max(0.03, target.y - 0.04), Math.round(az / texel) * texel);
   sun.target.position.copy(_c);
-  sun.position.copy(_c).addScaledVector(sun.userData.dir, 3);
+  sun.position.copy(_c).addScaledVector(sun.userData.dir, 3 + ext);
   sun.target.updateMatrixWorld();
 }
 

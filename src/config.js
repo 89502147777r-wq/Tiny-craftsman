@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:12.
-export const BUILD = 4;
+export const BUILD = 5;
 export const STAGE = 3;
 export const MODEL_SCALE = 12;
 
@@ -15,7 +15,11 @@ export const TRAY = {
   soil: 0.100,        // natural ground level (90 mm of soil = 1.08 m)
 };
 
-export const TERRAIN_CELL = 0.004; // 4 mm heightfield cells (600 × 450)
+// real size of one soil photo tile at 1:12 (Poly Haven: brown_mud_dry covers 1.3 m, forest_ground_06 2.1 m)
+export const SOIL_TILE = 1.3 / 12;
+export const LOAM_TILE = 2.1 / 12;
+
+export const TERRAIN_CELL = 0.003; // 800 × 600
 
 // Soil mechanics (tangent of the angle at which material starts to slide).
 export const REPOSE_LOOSE = Math.tan(37 * Math.PI / 180);  // freshly dug loose soil
