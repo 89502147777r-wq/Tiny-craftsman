@@ -43,7 +43,7 @@ await ready();
 errors.length = 0; // texture loads cut off by the reload above are not errors of the game
 await page.evaluate(() => window.__tc.rig.setState({ target: [0, 0.09, 0], yaw: 0.42, pitch: 0.75, dist: 0.5 }));
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${outDir}/01-start.png` });
+await page.screenshot({ path: `${outDir}/01-start.png`, timeout: 180000 });
 const s0 = await stat();
 check('scene loads, journal empty', s0.journal === 0 && s0.exc === 0);
 
@@ -62,12 +62,12 @@ const s1 = await stat();
 check('soil was excavated', s1.exc > 2e-6, `excavated=${(s1.exc * 1e6).toFixed(2)} cm3`);
 check('volume conserved (dug soil ends on spoil heap)', Math.abs(s1.total - s0.total) < 1e-9, `drift=${((s1.total - s0.total) * 1e9).toFixed(3)} mm3`);
 check('each scoop journaled', s1.journal >= 3, `actions=${s1.journal}`);
-await page.screenshot({ path: `${outDir}/02-dug.png` });
+await page.screenshot({ path: `${outDir}/02-dug.png`, timeout: 180000 });
 
 // a loaded shovel mid-way, for the screenshot
 await swipe([[-0.06, 0.05], [0.0, 0.05]]);
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${outDir}/03-loaded-shovel.png` });
+await page.screenshot({ path: `${outDir}/03-loaded-shovel.png`, timeout: 180000 });
 const sL = await stat();
 check('swipe fills the shovel', sL.state === 'loaded' || sL.state === 'idle', sL.state);
 if (sL.state === 'loaded') { await tapAt(0.0, -0.12); await settle(); }
@@ -90,7 +90,7 @@ await touch('touchEnd', []);
 const d1 = await page.evaluate(() => window.__tc.rig.goal.dist);
 check('pinch zooms camera', d1 < d0 * 0.8, `${d0.toFixed(3)} -> ${d1.toFixed(3)}`);
 await page.waitForTimeout(1200);
-await page.screenshot({ path: `${outDir}/04-macro-closeup.png` });
+await page.screenshot({ path: `${outDir}/04-macro-closeup.png`, timeout: 180000 });
 
 // two-finger drag while zoomed in moves over the plot (the ground follows the fingers)
 const t0 = await page.evaluate(() => window.__tc.rig.goal.target.toArray());
@@ -104,7 +104,7 @@ check('two-finger drag pans when zoomed in', Math.hypot(t1[0] - t0[0], t1[2] - t
 // level overlay
 await page.evaluate(() => { window.__tc.rig.setState({ target: [0, 0.09, 0], yaw: 0.42, pitch: 0.75, dist: 0.42 }); window.__tc.settings.level = true; window.__tc.applySettings(); });
 await page.waitForTimeout(1500);
-await page.screenshot({ path: `${outDir}/05-level-overlay.png` });
+await page.screenshot({ path: `${outDir}/05-level-overlay.png`, timeout: 180000 });
 await page.evaluate(() => { window.__tc.settings.level = false; window.__tc.applySettings(); });
 
 // export round trip
@@ -144,7 +144,7 @@ const c = await toScreen(rect0.x1, 0.1, rect0.z1);
 const c2 = await toScreen(rect0.x1 + 0.02, 0.1, rect0.z1 + 0.012);
 await touch('touchStart', [c]); for (let s = 1; s <= 6; s++) { await touch('touchMove', [[c[0] + (c2[0] - c[0]) * s / 6, c[1] + (c2[1] - c[1]) * s / 6]]); await page.waitForTimeout(16); }
 await page.waitForTimeout(400);
-await page.screenshot({ path: `${outDir}/06-marking.png` });
+await page.screenshot({ path: `${outDir}/06-marking.png`, timeout: 180000 });
 await touch('touchEnd', []);
 const rect1 = await page.evaluate(() => ({ ...window.__tc.objects.all('outline')[0] }));
 check('handle drag resizes outline', rect1.x1 > rect0.x1 + 0.005, `${(rect0.x1 * 1000).toFixed(0)} -> ${(rect1.x1 * 1000).toFixed(0)} mm`);

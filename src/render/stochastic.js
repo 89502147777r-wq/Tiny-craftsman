@@ -22,20 +22,24 @@ export const STOCHASTIC_GLSL = /* glsl */ `
     if (t.z > 0.0) { w = vec3(t.z, t.y, t.x); v1 = b; v2 = b + vec2(0.0, 1.0); v3 = b + vec2(1.0, 0.0); }
     else { w = vec3(-t.z, 1.0 - t.y, 1.0 - t.x); v1 = b + vec2(1.0); v2 = b + vec2(1.0, 0.0); v3 = b + vec2(0.0, 1.0); }
   }
-  vec3 tcW; vec2 tcO1, tcO2, tcO3; float tcCell = 0.55;
+  vec3 tcW; vec2 tcO1, tcO2, tcO3; float tcCell = 0.6;
   // call once per fragment with the base UV
   void tcStochSetup(vec2 uv) {
     vec2 v1, v2, v3;
     tcTriGrid(uv / tcCell, tcW, v1, v2, v3);
     tcO1 = tcHash2(v1) * 7.31; tcO2 = tcHash2(v2) * 7.31; tcO3 = tcHash2(v3) * 7.31;
-    vec3 w = pow(tcW, vec3(5.0));
+    vec3 w = tcW * tcW;
     tcW = w / (w.x + w.y + w.z);
   }
+  // Variance-preserving blend: the mix of three samples keeps the contrast
+  // of the photo (a plain average would look washed out, "like plywood").
   vec4 tcStoch(sampler2D t, vec2 uv) {
     vec2 dx = dFdx(uv), dy = dFdy(uv);
-    return textureGrad(t, uv + tcO1, dx, dy) * tcW.x
-         + textureGrad(t, uv + tcO2, dx, dy) * tcW.y
-         + textureGrad(t, uv + tcO3, dx, dy) * tcW.z;
+    vec4 mean = textureLod(t, vec2(0.5), 12.0);
+    vec4 c = (textureGrad(t, uv + tcO1, dx, dy) - mean) * tcW.x
+           + (textureGrad(t, uv + tcO2, dx, dy) - mean) * tcW.y
+           + (textureGrad(t, uv + tcO3, dx, dy) - mean) * tcW.z;
+    return clamp(mean + c * inversesqrt(dot(tcW, tcW)), 0.0, 1.0);
   }
   // smooth value noise for large-scale colour patches
   float tcNoise(vec2 p) {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAY, TERRAIN_CELL, REPOSE_LOOSE, REPOSE_NATIVE } from '../config.js';
+import { TRAY, SOIL_TILE, TERRAIN_CELL, REPOSE_LOOSE, REPOSE_NATIVE } from '../config.js';
 import { makeNoise2 } from '../core/rand.js';
 
 // Two-layer soil heightfield inside the tray:
@@ -324,7 +324,7 @@ export class Terrain {
     for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < n; ix++) {
       const i = iz * n + ix;
       pos[i * 3] = this.toWorldX(ix); pos[i * 3 + 2] = this.toWorldZ(iz);
-      uv[i * 2] = pos[i * 3] / 0.2; uv[i * 2 + 1] = -pos[i * 3 + 2] / 0.2;
+      uv[i * 2] = pos[i * 3] / SOIL_TILE; uv[i * 2 + 1] = -pos[i * 3 + 2] / SOIL_TILE;
       nor[i * 3 + 1] = 1;
     }
     const idx = new Uint32Array(this.rx * this.rz * 6);

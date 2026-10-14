@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-import { TRAY } from '../config.js';
+import { TRAY, SOIL_TILE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 
 // Background / lighting modes:
 //   workshop – the diorama on the bench in the carpentry shop (HDRI + lamp)
 //   site     – "life-size" illusion: 360° construction-site panorama, daylight,
 //              no table, the plot continues into surrounding ground
-//   photo1/2 – miniature-photography trick: a printed photo backdrop filling
-//              the frame behind the diorama, in daylight
+//   posters  – miniature-photography trick: two photo prints standing on the
+//              table behind the diorama (crane left, billboard right), daylight
 export class Backdrop {
   constructor(app) {
     this.app = app;
@@ -30,7 +30,7 @@ export class Backdrop {
     const mat = new THREE.MeshStandardMaterial({ map: tex.diff, normalMap: tex.nor, roughness: 1, color: 0xcfc2b2 });
     mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;')
-        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvec4 gw = modelMatrix * vec4(position, 1.0); vGW = gw.xyz; vMapUv = gw.xz / 0.2; vNormalMapUv = vMapUv;');
+        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvec4 gw = modelMatrix * vec4(position, 1.0); vGW = gw.xyz; vMapUv = gw.xz / ' + SOIL_TILE.toFixed(5) + '; vNormalMapUv = vMapUv;');
       const ch = stochasticChunks();
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;\nuniform vec3 uFade;\n' + STOCHASTIC_GLSL)
         .replace('#include <map_fragment>', 'tcStochSetup(vMapUv);\n' + ch.map + '\n diffuseColor.rgb *= mix(0.82, 1.1, tcFbm(vGW.xz * 2.6));\n float fd = smoothstep(2.5, 13.0, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd);')
@@ -46,6 +46,7 @@ export class Backdrop {
   }
 
   async set(mode) {
+    if (mode === 'photo1' || mode === 'photo2') mode = 'posters'; // older projects
     const app = this.app, ws = app.workshop;
     this.mode = mode;
     const day = mode !== 'workshop';
@@ -56,21 +57,17 @@ export class Backdrop {
     if (app.stacks) app.stacks.visible = mode !== 'site';
     ws.tray.traverse((o) => { if (o.isMesh) o.visible = mode !== 'site'; });
     this.ground.visible = mode === 'site';
-    // photo backdrop: the print fills the whole frame behind the diorama (like a
-    // real backdrop sheet), so there are never edges or gaps around it
-    this.photoTex = null;
-    if (mode === 'photo1' || mode === 'photo2') {
-      const t = await this._photo(mode === 'photo1' ? 'assets/backdrops/site-billboard.jpg' : 'assets/backdrops/site-crane.jpg');
-      if (this.mode !== mode) return;
-      this.photoTex = t;
-    }
+    // printed posters standing on the table behind the diorama
+    if (mode === 'posters' && !this.posters) await this._buildPosters();
+    if (this.mode !== mode) return;
+    if (this.posters) this.posters.visible = mode === 'posters';
     const s = app.scene;
     if (day) {
       s.environment = this.dayEnv;
       s.environmentIntensity = 0.9;
-      s.background = mode === 'site' ? this.dayTex : this.photoTex || this.workshopBg;
+      s.background = mode === 'site' ? this.dayTex : this.workshopBg;
       s.backgroundBlurriness = mode === 'site' ? 0.02 : 0.12;
-      s.backgroundIntensity = mode === 'site' ? 1.0 : 0.95;
+      s.backgroundIntensity = mode === 'site' ? 1.0 : 0.6;
       s.backgroundRotation.set(0, 0, 0); s.environmentRotation.set(0, 0, 0);
       ws.sun.color.set(0xfff0dc); ws.sun.intensity = 3.4;
       ws.sun.userData.dir.copy(this.sunDir);
@@ -83,17 +80,41 @@ export class Backdrop {
     }
   }
 
-  update() {
-    const t = this.photoTex;
-    if (!t) return;
-    // "cover" the screen with the print, zoomed a little so it can slide:
-    // turning / tilting the camera shifts it slightly (parallax of a distant sheet)
-    const cam = this.app.camera, rig = this.app.rig;
-    const ia = t.image.width / t.image.height, sa = cam.aspect, k = 0.86;
-    const rx = (sa < ia ? sa / ia : 1) * k, ry = (sa < ia ? 1 : ia / sa) * k;
-    t.repeat.set(rx, ry);
-    const yaw = rig.yaw, pitch = rig.pitch;
-    t.offset.set((1 - rx) * (0.5 + 0.45 * Math.sin(yaw * 0.5)), (1 - ry) * Math.min(1, Math.max(0, 0.15 + pitch * 0.7)));
+  update() {}
+
+  // Two photo prints, the way miniature photographers do it: each sheet stands
+  // upright behind the tray and its lower edge bends forward onto the table,
+  // where it is taped down (a paper "sweep", so there is no seam between the
+  // print and the table). Crane on the left, billboard on the right.
+  async _buildPosters() {
+    const [crane, board] = await Promise.all([this._photo('assets/backdrops/site-crane.jpg'), this._photo('assets/backdrops/site-billboard.jpg')]);
+    const g = new THREE.Group();
+    g.name = 'posters';
+    const back = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.85, side: THREE.BackSide });
+    const tape = new THREE.MeshStandardMaterial({ color: 0xd9cfae, roughness: 0.5, transparent: true, opacity: 0.75 });
+    const zBack = -(TRAY.innerZ / 2 + TRAY.wall) - 0.4; // feet clear of the tray even where the sheets turn inwards
+    const W = 1.6;
+    [[crane, -0.78, 0.2], [board, 0.78, -0.2]].forEach(([tex, x, turn]) => {
+      const H = W / (tex.image.width / tex.image.height);
+      const sheet = makeSweep(W, H, 0.14, 0.09);
+      const front = new THREE.Mesh(sheet, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55, side: THREE.FrontSide }));
+      const rear = new THREE.Mesh(sheet, back);
+      const p = new THREE.Group();
+      p.add(front, rear);
+      // two strips of masking tape over the flat foot
+      for (const s of [-1, 1]) {
+        const t = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.0004, 0.07), tape);
+        t.position.set(s * W * 0.38, 0.0002, 0.14 + 0.05);
+        p.add(t);
+      }
+      p.position.set(x, 0.0003, zBack);
+      p.rotation.y = turn;
+      p.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      g.add(p);
+    });
+    g.visible = false;
+    this.app.scene.add(g);
+    this.posters = g;
   }
 
   async _loadDay() {
@@ -153,4 +174,36 @@ function groundColour(t) {
   }
   c.multiplyScalar(1 / n);
   return c;
+}
+
+// A sheet of photo paper: upright part of height h, a bend of radius r and a
+// flat foot of length f lying on the table (towards +z). The image runs from
+// the top edge down over the bend; the foot carries its last rows.
+function makeSweep(w, h, r, f) {
+  const prof = [];
+  const n = 18;
+  prof.push([0, h + r, 0]);
+  for (let i = 0; i <= n; i++) { const a = (i / n) * Math.PI / 2; prof.push([0, r - Math.sin(a) * r + 0, r - Math.cos(a) * r]); }
+  prof.push([0, 0, r + f]);
+  // arc length along the profile → v
+  const len = [0];
+  for (let i = 1; i < prof.length; i++) len.push(len[i - 1] + Math.hypot(prof[i][1] - prof[i - 1][1], prof[i][2] - prof[i - 1][2]));
+  const L = len[len.length - 1], img = h + r * Math.PI / 2; // the photo covers the upright part and the bend
+  const pos = [], uv = [], idx = [];
+  const cols = 8;
+  for (let i = 0; i < prof.length; i++) for (let c = 0; c <= cols; c++) {
+    const x = (c / cols - 0.5) * w;
+    pos.push(x, prof[i][1], prof[i][2]);
+    uv.push(c / cols, Math.max(0, 1 - len[i] / img));
+  }
+  for (let i = 0; i < prof.length - 1; i++) for (let c = 0; c < cols; c++) {
+    const a = i * (cols + 1) + c, b = a + 1, d = a + cols + 1, e = d + 1;
+    idx.push(a, d, b, b, d, e);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
 }

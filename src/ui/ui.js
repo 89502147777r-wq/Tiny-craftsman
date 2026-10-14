@@ -156,8 +156,7 @@ export class UI {
         C(app.settings.orbit ? '■ Стоп облёт' : '▶ Облёт', app.settings.orbit, () => { app.settings.orbit = !app.settings.orbit; app.applySettings(); }),
         C('Мастерская', b === 'workshop', () => app.setBackdrop('workshop')),
         C('Стройплощадка 360°', b === 'site', () => app.setBackdrop('site')),
-        C('Фото: билборд', b === 'photo1', () => app.setBackdrop('photo1')),
-        C('Фото: кран', b === 'photo2', () => app.setBackdrop('photo2')),
+        C('Плакаты на столе', b === 'posters', () => app.setBackdrop('posters')),
       ];
     }
     if (t === 'shovel') {

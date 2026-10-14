@@ -41,6 +41,7 @@ async function main() {
   const stored = readSettings();
   // BUILD 3: the construction-site panorama becomes the default background once
   if ((stored.build || 0) < 3) { delete stored.backdrop; delete stored.orbit; }
+  if (stored.backdrop === 'photo1' || stored.backdrop === 'photo2') stored.backdrop = 'posters'; // two prints on the table since BUILD 5
   app.settings = { ...DEFAULT_SETTINGS, ...stored, build: BUILD };
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
   const params = new URLSearchParams(location.search);
@@ -148,7 +149,7 @@ function step(dt, time, render = true) {
   app.dust.update(dt, time);
   if (app.settings.orbit) app.rig.orbit(-dt * 0.12, 0);
   app.rig.update(dt);
-  app.workshop.followShadow(app.workshop.sun, app.rig.target, app.rig.dist);
+  app.workshop.followShadow(app.workshop.sun, app.rig.target, app.rig.dist, app.rig.yaw);
   app.backdrop.update();
   updateFocus();
   app.terrainMat.userData.uniforms.uTime.value = time;
@@ -355,7 +356,9 @@ function applyProject(p) {
     app.recorder.load(null);
     app.clock = p.clock || 0;
     if (p.settings) Object.assign(app.settings, p.settings, { backdrop: app.settings.backdrop });
-    app.migrated = `Проект этапа ${p.stage || 1} перенесён в центр участка ${Math.round(TRAY.innerX * 100)}×${Math.round(TRAY.innerZ * 100)} см (журнал начат заново)`;
+    app.migrated = app.migratedSame
+      ? 'Участок пересчитан на более мелкую сетку грунта (3 мм) — журнал отмен начат заново'
+      : `Проект этапа ${p.stage || 1} перенесён в центр участка ${Math.round(TRAY.innerX * 100)}×${Math.round(TRAY.innerZ * 100)} см (журнал начат заново)`;
     return;
   }
   t.seed = p.terrain.seed;
@@ -377,6 +380,8 @@ function migrateGrid(p) {
   // old grid: v1 = square (size, res), v2+ = rx × rz cells of `cell`
   const rx = pt.rx ?? pt.res, rz = pt.rz ?? pt.res, n = rx + 1;
   const cell = pt.cell ?? pt.size / pt.res, hx = rx * cell / 2, hz = rz * cell / 2;
+  // same plot, only a finer grid: everything stays where it is (machines too)
+  app.migratedSame = Math.abs(hx - t.halfX) < 1e-6 && Math.abs(hz - t.halfZ) < 1e-6;
   const dy = TRAY.soil - (pt.soilY || 0.056);
   const at = (arr, x, z) => {
     const cx = Math.min(rx - 1e-3, Math.max(0, (x + hx) / cell)), cz = Math.min(rz - 1e-3, Math.max(0, (z + hz) / cell));
@@ -385,7 +390,7 @@ function migrateGrid(p) {
   };
   for (let iz = 0; iz <= t.rz; iz++) for (let ix = 0; ix <= t.rx; ix++) {
     const x = t.toWorldX(ix), z = t.toWorldZ(iz);
-    if (Math.abs(x) > hx - cell || Math.abs(z) > hz - cell) continue;
+    if (!app.migratedSame && (Math.abs(x) > hx - cell || Math.abs(z) > hz - cell)) continue;
     const i = iz * t.nx + ix;
     t.orig[i] = at(pt.orig, x, z) + dy;
     t.nat[i] = at(pt.nat, x, z) + dy;
@@ -396,7 +401,7 @@ function migrateGrid(p) {
   t.active = null;
   if (p.objects?.items) {
     // keep the setting-out and everything built on it; machines get parked
-    const items = p.objects.items.filter((r) => r.type !== 'machine');
+    const items = app.migratedSame ? p.objects.items : p.objects.items.filter((r) => r.type !== 'machine');
     const next = Math.max(p.objects.nextId || 1, ...items.map((r) => r.id + 1));
     app.objects.load({ nextId: next, items });
   } else {
@@ -404,7 +409,7 @@ function migrateGrid(p) {
     const r = p.mark || DEFAULT_OUTLINES[0];
     app.objects.add({ type: 'outline', kind: 'rect', x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, depth: p.settings?.target || 15 });
   }
-  for (const r of MachineTool.parkedRecords()) app.objects.add(r);
+  if (!app.migratedSame || !p.objects?.items) for (const r of MachineTool.parkedRecords()) app.objects.add(r);
 }
 
 let saveTimer = 0;
