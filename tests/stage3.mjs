@@ -41,6 +41,8 @@ await ready();
 errors.length = 0; // texture loads cut off by the reload above are not errors of the game
 if (process.env.DOF) await ev((d) => { window.__tc.settings.dof = d; window.__tc.applySettings(); }, Number(process.env.DOF));
 const total0 = await ev(() => window.__tc.terrain.totalVolume());
+// machines can be switched off in config (MACHINES_ENABLED): then the tool button is hidden
+const MACH = await ev(() => !document.querySelector('[data-tool="machine"]')?.hasAttribute('hidden'));
 
 // ---- fresh plot: 2.4 × 1.8 m, pit outline, the fleet parked along the back edge ------------
 const fresh = await ev(() => {
@@ -52,12 +54,48 @@ const fresh = await ev(() => {
   };
 });
 check('plot is 2.4 × 1.8 m', fresh.size[0] === 2.4 && fresh.size[1] === 1.8, JSON.stringify(fresh.size));
-check('fleet parked at the back edge, models loaded', Object.keys(fresh.machines).length === 5 && Object.values(fresh.machines).every(([x, z, ok]) => ok && z < -0.25), JSON.stringify(fresh.machines));
+if (MACH) check('fleet parked at the back edge, models loaded', Object.keys(fresh.machines).length === 5 && Object.values(fresh.machines).every(([x, z, ok]) => ok && z < -0.25), JSON.stringify(fresh.machines));
+else check('machines are switched off: none on the plot', Object.keys(fresh.machines).length === 0, JSON.stringify(fresh.machines));
 check('site panorama is the default background', fresh.backdrop === 'site');
 await page.waitForFunction(() => window.__tc.backdrop.dayTex, null, { timeout: 60000 });
 await shot('01-overview', { target: [0, 0.1, 0.0], yaw: 0.35, pitch: 0.42, dist: 2.2 }, 4000);
-await shot('02-parking', { target: [0.05, 0.12, -0.62], yaw: 0.25, pitch: 0.3, dist: 1.05 }, 3000);
+if (MACH) await shot('02-parking', { target: [0.05, 0.12, -0.62], yaw: 0.25, pitch: 0.3, dist: 1.05 }, 3000);
 
+// ---- hand digging at the model scale: the shovel cuts a visible pit, undo/redo -----------------
+{
+  const dig = await ev(() => {
+    const tc = window.__tc, V = tc.camera.position.constructor;
+    tc.setTool('shovel');
+    const tot0 = tc.terrain.totalVolume();
+    const wait = () => { for (let i = 0; i < 400 && tc.shovelTool.state !== 'idle'; i++) tc.simulate(0.05); };
+    for (let z = -0.15; z <= 0.0; z += 0.05) {
+      let t = 0;
+      while (t < 1) {
+        const ts = t;
+        tc.shovelTool.down(new V(-0.3 + 0.3 * t, 0.1, z));
+        while (tc.shovelTool.state === 'dig' && t < 1) { t += 0.01; tc.shovelTool.move(new V(-0.3 + 0.3 * t, 0.1, z)); }
+        tc.shovelTool.up();
+        if (tc.shovelTool.state === 'loaded') { tc.shovelTool.down(new V(0.55, 0.1, 0.55)); tc.shovelTool.up(); }
+        wait();
+        if (t === ts) t += 0.04;
+      }
+    }
+    tc.particles.flush();
+    for (let i = 0; i < 3000 && tc.terrain.active; i++) tc.terrain.relax(1);
+    const depth = tc.terrain.orig[tc.terrain.index(-0.15, -0.08)] - tc.terrain.heightAt(-0.15, -0.08);
+    const n = tc.journal.done.length, snap = tc.terrain.nat.slice();
+    tc.undo(); const undone = tc.journal.done.length === n - 1; tc.redo();
+    let err = 0; for (let i = 0; i < snap.length; i++) err = Math.max(err, Math.abs(snap[i] - tc.terrain.nat[i]));
+    return { depth, scoops: n, drift: (tc.terrain.totalVolume() - tot0) * 1e9, undone, err, blade: tc.shovel.spec.width };
+  });
+  check('shovel at 1:3.5: a 6 cm blade', Math.abs(dig.blade - 0.06) < 1e-3, dig.blade.toFixed(4));
+  check('hand-dug pit reaches the design grade (40 mm)', dig.depth > 0.03, `${(dig.depth * 1000).toFixed(1)} mm, ${dig.scoops} scoops`);
+  check('soil conserved while digging', Math.abs(dig.drift) < 50, `${dig.drift.toFixed(2)} mm3`);
+  check('undo/redo of a scoop', dig.undone && dig.err < 1e-9, JSON.stringify(dig));
+  await shot('03-shovel-pit', { target: [-0.12, 0.09, -0.05], yaw: 0.5, pitch: 0.6, dist: 0.9 }, 3000);
+}
+
+if (MACH) {
 // ---- excavator: drive out, two auto dig cycles inside the pit outline, dump beside it -------
 const ex = await ev(() => {
   const tc = window.__tc, mt = tc.machineTool, V = tc.camera.position.constructor;
@@ -174,6 +212,8 @@ check('mixer drum turns, discharge + chute swing', mx.drum > 1 && mx.discharge &
 check('concrete pump can be moved', mx.pumpMoved > 0.03);
 await shot('07-mixer-pump', await ev(() => { const m = window.__tc.machineTool.machines.mixer; return { target: [m.x, m.y + 0.12, m.z], yaw: m.yaw + 0.5, pitch: 0.25, dist: 1.0 }; }), 3000);
 
+}
+
 // ---- trench with formwork and rebar (right of the pit) -------------------------------------
 const fw = await ev(() => {
   const tc = window.__tc, V = tc.camera.position.constructor, e = { clientX: 0, clientY: 0 };
@@ -248,7 +288,7 @@ const mig = await ev(async () => {
   await tc.importProject(new File([st.toJSON(p)], 'stage2.json'));
   return { msg: tc.migrated, pit: tc.terrain.heightAt(0, 0), edge: tc.terrain.heightAt(0.9, 0.6), outlines: tc.objects.all('outline').length, machines: tc.objects.all('machine').length };
 });
-check('stage-2 project migrates into the centre, fleet re-parked', Math.abs(mig.pit - 0.08) < 1e-4 && Math.abs(mig.edge - 0.1) < 0.01 && mig.outlines === 1 && mig.machines === 5, JSON.stringify(mig));
+check('stage-2 project migrates into the centre', Math.abs(mig.pit - 0.08) < 1e-4 && Math.abs(mig.edge - 0.1) < 0.01 && mig.outlines === 1 && mig.machines === (MACH ? 5 : 0), JSON.stringify(mig));
 
 check('no console errors', errors.length === 0, errors.slice(0, 5).join(' | '));
 fs.writeFileSync(`${outDir}/stage3-results.json`, JSON.stringify({ results, errors }, null, 1));

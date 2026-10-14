@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { SHOVELS } from '../config.js';
+import { SHOVELS, K } from '../config.js';
 import { makeNoise2 } from '../core/rand.js';
 import { variant } from './assets.js';
 
-// A 1:12 shovel. Local frame: blade tip at the origin, handle along +Y,
-// working (front) face of the blade towards +Z.
+// A scale shovel. Local frame: blade tip at the origin, handle along +Y,
+// working (front) face of the blade towards +Z. The parts are drawn at the
+// original 1:12 size and the whole model is scaled by K.
 export class Shovel {
   constructor(tex, app) {
     this.app = app;
@@ -32,7 +33,8 @@ export class Shovel {
     this.type = type;
     this.spec = SHOVELS[type];
     this.model.clear();
-    const { width: w, length: L, pointed } = this.spec;
+    const w = this.spec.width / K, L = this.spec.length / K, pointed = this.spec.pointed;
+    this.model.scale.setScalar(K);
     const blade = new THREE.Mesh(makeBladeGeometry(w, L, pointed), this.metal);
     const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.0016, 0.0021, 0.013, 16, 1), this.metal);
     socket.position.set(0, L + 0.0055, -0.0011);
@@ -71,7 +73,7 @@ export class Shovel {
     this.load.visible = f > 0.01;
     if (this.load.visible) {
       const s = Math.cbrt(f);
-      const { width: w, length: L } = this.spec;
+      const w = this.spec.width / K, L = this.spec.length / K;
       // (sphere is rotated: local Y = heap height, local Z = along the blade)
       this.load.scale.set(w * 0.46 * s, 0.0062 * s, L * 0.36 * s);
     }
@@ -91,7 +93,7 @@ export class Shovel {
   // World position of a point on the blade face (for spilling soil).
   bladePoint(u, v, out = new THREE.Vector3()) {
     const { width: w, length: L } = this.spec;
-    out.set(u * w * 0.4, L * (0.3 + v * 0.35), 0.002);
+    out.set(u * w * 0.4, L * (0.3 + v * 0.35), 0.002 * K);
     return this.root.localToWorld(out);
   }
 
@@ -107,17 +109,17 @@ export class Shovel {
   digDir(p, drag, cur) { return cur.clone().lerp(drag, 0.35).normalize(); }
   poseDig(p, dir, cutY, first) {
     const L = this.spec.length;
-    const tip = new THREE.Vector3(p.x + dir.x * L * 0.28, cutY + 0.0004, p.z + dir.y * L * 0.28);
+    const tip = new THREE.Vector3(p.x + dir.x * L * 0.28, cutY + 0.0004 * K, p.z + dir.y * L * 0.28);
     this.setPose({ pos: tip, dir, tilt: first ? 0.5 : 0.95, roll: 0 });
   }
   poseAim(p, dir, groundY) {
-    this.setPose({ pos: new THREE.Vector3(p.x - dir.x * 0.006, groundY + 0.022, p.z - dir.y * 0.006), dir, tilt: 1.02, roll: 0 });
+    this.setPose({ pos: new THREE.Vector3(p.x - dir.x * 0.006 * K, groundY + 0.022 * K, p.z - dir.y * 0.006 * K), dir, tilt: 1.02, roll: 0 });
   }
   poseDump() { this.setPose({ tilt: 1.12, roll: 1.75 }); }
   poseRest(p) {
     const t = this.app.terrain;
     const h = t.inside(p.x, p.z) ? t.heightAt(p.x, p.z) : 0;
-    this.setPose({ pos: new THREE.Vector3(p.x, h + 0.004, p.z), tilt: 0.28, roll: 0 });
+    this.setPose({ pos: new THREE.Vector3(p.x, h + 0.004 * K, p.z), tilt: 0.28, roll: 0 });
   }
 }
 

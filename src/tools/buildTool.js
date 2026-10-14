@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODEL_SCALE, TRAY, MAT } from '../config.js';
+import { MODEL_SCALE, TRAY, MAT, K } from '../config.js';
 import { edges, gradeY, contains } from '../world/outlines.js';
 import { cageForRect, cageForTrench, meshPanel, singleBar } from '../world/rebar.js';
 
@@ -64,7 +64,7 @@ export class BuildTool {
     app.ui.hideMeasure();
     if (!d) return;
     const a = [d.a.x, d.a.z], b = [d.b.x, d.b.z];
-    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.008) return;
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.008 * K) return;
     if (this.mode === 'board') this.boardRun(a, b);
     else if (this.mode === 'bar') app.journal.act('rebar-bar', {}, app.clock, () => app.objects.add(singleBar(a, b, app.terrain, app.settings)));
     else if (this.mode === 'mesh') app.journal.act('rebar-mesh', {}, app.clock, () => app.objects.add(meshPanel(a[0], a[1], b[0], b[1], app.terrain, app.settings)));
@@ -82,7 +82,7 @@ export class BuildTool {
     app.journal.act('formwork', { outlineId: o.id }, app.clock, () => {
       for (const e of edges(o)) {
         // boards stand on the lowest point just inside the edge
-        const ix = -e.n[0] * 0.002, iz = -e.n[1] * 0.002;
+        const ix = -e.n[0] * 0.002 * K, iz = -e.n[1] * 0.002 * K;
         const y0 = t.minAlong(e.a[0] + ix, e.a[1] + iz, e.b[0] + ix, e.b[1] + iz);
         app.objects.add({ type: 'form', outlineId: o.id, a: e.a, b: e.b, n: e.n, y0, y1: Math.max(y1, y0 + MAT.board.h) });
       }
@@ -132,15 +132,15 @@ export class BuildTool {
     this.line.visible = on && !!this.drag;
     if (!this.line.visible) return;
     const { a, b } = this.drag, t = app.terrain;
-    const ya = t.heightAt(a.x, a.z) + 0.002, yb = t.heightAt(b.x, b.z) + 0.002;
+    const ya = t.heightAt(a.x, a.z) + 0.002 * K, yb = t.heightAt(b.x, b.z) + 0.002 * K;
     if (this.mode === 'mesh') {
       this.line.position.set((a.x + b.x) / 2, Math.max(ya, yb), (a.z + b.z) / 2);
-      this.line.scale.set(Math.abs(b.x - a.x) + 1e-4, 0.0004, Math.abs(b.z - a.z) + 1e-4);
+      this.line.scale.set(Math.abs(b.x - a.x) + 1e-4, 0.0004 * K, Math.abs(b.z - a.z) + 1e-4);
       this.line.rotation.set(0, 0, 0);
     } else {
       const L = Math.hypot(b.x - a.x, b.z - a.z);
       this.line.position.set((a.x + b.x) / 2, (ya + yb) / 2, (a.z + b.z) / 2);
-      this.line.scale.set(L + 1e-4, 0.0008, 0.0008);
+      this.line.scale.set(L + 1e-4, 0.0008 * K, 0.0008 * K);
       this.line.rotation.set(0, Math.atan2(-(b.z - a.z), b.x - a.x), 0);
     }
   }

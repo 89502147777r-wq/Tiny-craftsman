@@ -21,7 +21,7 @@ export function buildStacks(tex) {
   boards.geometry.setAttribute('aBoard', aB);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
   let k = 0;
-  const bx = X0 - 0.05, bz = -0.08;
+  const bx = X0 - 0.2, bz = -0.6;
   for (const dz of [-L * 0.35, L * 0.35]) { // bearers across the stack
     p.set(bx, H / 2, bz + dz); q.setFromEuler(e.set(0, 0, 0)); s.set(6 * H + 0.006, H, T * 2);
     boards.setMatrixAt(k, m.compose(p, q, s)); aB.setXYZ(k, rnd(), 0.5, 0.6); k++;
@@ -43,7 +43,7 @@ export function buildStacks(tex) {
   const geo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
   geo.setAttribute('aRib', new THREE.InstancedBufferAttribute(new Float32Array(n).fill(L / (d * 3)), 1));
   const bars = new THREE.InstancedMesh(geo, makeRebarMaterial(), n);
-  const cx = X0 - 0.02, cz = 0.13;
+  const cx = X0 - 0.2, cz = 0.35;
   let i = 0;
   for (let row = 0; row < 4 && i < n; row++) {
     const cnt = [8, 7, 6, 5][row];
@@ -70,7 +70,7 @@ export function buildStacks(tex) {
   const sheetW = 2 / MODEL_SCALE, sheetD = 1 / MODEL_SCALE, cell = MAT.meshCell, md = MAT.meshD;
   const wires = [];
   for (let sh = 0; sh < 4; sh++) {
-    const ox = X0 - 0.05 + (rnd() - 0.5) * 0.004, oz = 0.30 + (rnd() - 0.5) * 0.004, y = sh * md * 2.2 + md;
+    const ox = X0 - 0.4 + (rnd() - 0.5) * 0.004, oz = 1.1 + (rnd() - 0.5) * 0.004, y = sh * md * 2.2 + md;
     const rot = (rnd() - 0.5) * 0.04;
     for (let z = 0; z <= sheetD + 1e-6; z += cell) wires.push([ox, y, oz, sheetW, z, 0, rot]);
     for (let x = 0; x <= sheetW + 1e-6; x += cell) wires.push([ox, y + md, oz, sheetD, x, 1, rot]);
@@ -87,5 +87,8 @@ export function buildStacks(tex) {
   });
   mw.castShadow = mw.receiveShadow = true;
   g.add(mw);
+  // laid out on the left, then turned round onto the free right side of the bench
+  // (the photo backdrop covers the left and far sides of the box)
+  g.rotation.y = Math.PI;
   return g;
 }

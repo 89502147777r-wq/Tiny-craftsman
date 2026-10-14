@@ -3,6 +3,8 @@ import { MAT, MODEL_SCALE, TRAY } from '../config.js';
 import { contains, bbox, gradeY, offsetPolyline } from './outlines.js';
 
 const MM = (v) => v / 1000 / MODEL_SCALE; // real millimetres → model metres
+const CHAIR_R = MM(25) / 0.81;            // plastic chair: Ø50 mm footprint (geometry base radius 0.81)
+const chairH = (h) => Math.min(MM(120), Math.max(MM(15), h));
 
 // Records:
 //   bar  { a: [x,y,z], b: [x,y,z], d }                     – a single bar
@@ -65,7 +67,7 @@ export class RebarView {
         for (const b of r.bars) rod(b[0], b[1], b[2], b[3], b[4], b[5], b[6], r.id);
         for (const c of r.chairs) {
           if (nc >= this.max.chairs) break;
-          p.set(c[0], c[1], c[2]); s.set(c[3], c[3], c[3]);
+          p.set(c[0], c[1], c[2]); s.set(CHAIR_R, c[3], CHAIR_R); // fixed Ø50 mm base, height to the bars
           this.chairs.setMatrixAt(nc, m.compose(p, q.identity(), s));
           o.chairs[nc++] = r.id;
         }
@@ -78,7 +80,7 @@ export class RebarView {
         if (r.tied) {
           for (const t of r.ties) {
             if (nt >= this.max.ties) break;
-            p.set(t[0], t[1], t[2]); q.setFromEuler(e.set(Math.PI / 2, 0, t[4] || 0.785)); s.setScalar(t[3] || 0.0006);
+            p.set(t[0], t[1], t[2]); q.setFromEuler(e.set(Math.PI / 2, 0, t[4] || 0.785)); s.setScalar(t[3] || MM(7));
             this.ties.setMatrixAt(nt, m.compose(p, q, s));
             o.ties[nt++] = r.id;
           }
@@ -99,15 +101,19 @@ export class RebarView {
 const _up = new THREE.Vector3(0, 1, 0);
 
 // ---- builders --------------------------------------------------------------------------
+// Level the bottom bars are laid from: the pit floor under the cage. A high
+// quantile, not the maximum — a lump or a spoil heap must not lift the cage.
 function groundMax(terrain, bb, inside) {
-  let mx = -1e9;
-  const step = 0.003;
+  const hs = [];
+  const step = 0.004;
   for (let z = bb.z0; z <= bb.z1; z += step) for (let x = bb.x0; x <= bb.x1; x += step) {
     if (inside && !inside(x, z)) continue;
     if (!terrain.inside(x, z)) continue;
-    mx = Math.max(mx, terrain.heightAt(x, z));
+    hs.push(terrain.heightAt(x, z));
   }
-  return mx > -1e8 ? mx : TRAY.soil;
+  if (!hs.length) return TRAY.soil;
+  hs.sort((a, b) => a - b);
+  return hs[Math.floor((hs.length - 1) * 0.7)];
 }
 
 // Two-layer slab cage inside a rectangular outline.
@@ -132,7 +138,7 @@ export function cageForRect(o, terrain, st) {
   xs.forEach((x, i) => zs.forEach((z, j) => {
     if ((i + j) % 2 === 0) {
       const g = terrain.inside(x, z) ? terrain.heightAt(x, z) : floor;
-      chairs.push([x, g, z, Math.max(0.0008, yb - d / 2 - g)]);
+      chairs.push([x, g, z, chairH(yb - d / 2 - g)]);
     }
     if (twoLayers && i % 3 === 1 && j % 3 === 1) frogs.push([x + step * 0.25, yb + d * 1.5, z, (i % 2) * Math.PI / 2, yt - yb - 2 * d]);
   }));
@@ -166,8 +172,8 @@ export function cageForTrench(o, terrain, st) {
       bars.push([p2[0], yb, p2[1], p2[0], yt, p2[1], ds]);
       for (const pp of [p1, p2]) for (const y of [yb + ds, yt - ds]) ties.push([pp[0] - nx * ds * (pp === p1 ? 1 : -1), y, pp[1] - nz * ds * (pp === p1 ? 1 : -1), d * 0.9, 0.785]);
       const g = terrain.inside(cx, cz) ? terrain.heightAt(cx, cz) : floor;
-      chairs.push([cx + nx * half * 0.6, g, cz + nz * half * 0.6, Math.max(0.0008, yb - g)]);
-      chairs.push([cx - nx * half * 0.6, g, cz - nz * half * 0.6, Math.max(0.0008, yb - g)]);
+      chairs.push([cx + nx * half * 0.6, g, cz + nz * half * 0.6, chairH(yb - g)]);
+      chairs.push([cx - nx * half * 0.6, g, cz - nz * half * 0.6, chairH(yb - g)]);
     }
   }
   return { type: 'cage', outlineId: o.id, bars, chairs, frogs, ties, tied: false, d, step };

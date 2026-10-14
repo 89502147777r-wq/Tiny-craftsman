@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES } from './config.js';
+import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K } from './config.js';
 import { loadAssets } from './world/assets.js';
 import { buildWorkshop } from './world/workshop.js';
 import { Terrain } from './world/terrain.js';
@@ -49,6 +49,8 @@ async function main() {
   const stored = readSettings();
   // BUILD 3: the construction-site panorama becomes the default background once
   if ((stored.build || 0) < 3) { delete stored.backdrop; delete stored.orbit; }
+  // BUILD 8: model scale 1:3.5 — the dig / trench presets of 1:12 no longer fit
+  if ((stored.build || 0) < 8) { delete stored.bite; delete stored.target; delete stored.trenchWidth; delete stored.trenchDepth; }
   if (stored.backdrop === 'photo1' || stored.backdrop === 'photo2') stored.backdrop = 'posters'; // two prints on the table since BUILD 5
   app.settings = { ...DEFAULT_SETTINGS, ...stored, build: BUILD };
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
@@ -273,8 +275,8 @@ function setTool(t) {
   app.outlineView.setHandles(t === 'mark', app.markTool.selected);
   if (t !== 'shovel' && app.shovelTool.state === 'idle') {
     // lean the shovel against the tray corner when it is not in use
-    const x = -app.terrain.halfX + 0.012, z = app.terrain.halfZ - 0.012;
-    app.shovel.setPose({ pos: new THREE.Vector3(x, app.terrain.heightAt(x, z) - 0.006, z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.22, roll: 0 });
+    const x = -app.terrain.halfX + 0.012 * K, z = app.terrain.halfZ - 0.012 * K;
+    app.shovel.setPose({ pos: new THREE.Vector3(x, app.terrain.heightAt(x, z) - 0.006 * K, z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.22, roll: 0 });
   }
   if (t === 'machine' && !app.machineTool.active) app.machineTool.active = 'excavator';
   app.ui?.refresh();
@@ -352,7 +354,7 @@ function freshPlot() {
   app.terrain.active = null;
   app.objects.load({ nextId: 1, items: [] });
   for (const o of DEFAULT_OUTLINES) app.objects.add({ type: 'outline', ...o, id: undefined });
-  for (const r of MachineTool.parkedRecords()) app.objects.add(r);
+  if (MACHINES_ENABLED) for (const r of MachineTool.parkedRecords()) app.objects.add(r);
 }
 
 function buildProject() {
@@ -403,7 +405,22 @@ function applyProject(p) {
   t.orig.set(p.terrain.orig); t.nat.set(p.terrain.nat); t.loose.set(p.terrain.loose);
   t.markAll(); t.active = null;
   app.clock = p.clock || 0;
-  app.objects.load(p.objects);
+  const rescaled = (p.scale || 12) !== MODEL_SCALE;
+  if (rescaled || !MACHINES_ENABLED) {
+    // another model scale: boards and bars were cut for it, so only the ground and
+    // the setting-out stay (and machines are off for now)
+    const keep = (r) => (r.type === 'machine' ? false : rescaled ? r.type === 'outline' : true);
+    const items = (p.objects?.items || []).filter(keep);
+    app.objects.load({ nextId: p.objects?.nextId || 1, items });
+  } else app.objects.load(p.objects);
+  if (rescaled) {
+    if (p.settings) Object.assign(app.settings, p.settings, { bite: DEFAULT_SETTINGS.bite, trenchWidth: DEFAULT_SETTINGS.trenchWidth, trenchDepth: DEFAULT_SETTINGS.trenchDepth, backdrop: p.settings.backdrop });
+    app.rig.setState(p.camera);
+    j.pending = null; j.done = []; j.undone = []; j.nextId = 1;
+    app.recorder.load(null);
+    app.migrated = `Масштаб изменён на 1:${MODEL_SCALE}: грунт и разметка сохранены, опалубку и арматуру поставьте заново (журнал начат заново)`;
+    return;
+  }
   if (p.settings) Object.assign(app.settings, p.settings);
   app.rig.setState(p.camera);
   j.pending = null;
@@ -439,7 +456,7 @@ function migrateGrid(p) {
   t.active = null;
   if (p.objects?.items) {
     // keep the setting-out and everything built on it; machines get parked
-    const items = app.migratedSame ? p.objects.items : p.objects.items.filter((r) => r.type !== 'machine');
+    const items = app.migratedSame && MACHINES_ENABLED ? p.objects.items : p.objects.items.filter((r) => r.type !== 'machine');
     const next = Math.max(p.objects.nextId || 1, ...items.map((r) => r.id + 1));
     app.objects.load({ nextId: next, items });
   } else {
@@ -447,7 +464,7 @@ function migrateGrid(p) {
     const r = p.mark || DEFAULT_OUTLINES[0];
     app.objects.add({ type: 'outline', kind: 'rect', x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, depth: p.settings?.target || 15 });
   }
-  if (!app.migratedSame || !p.objects?.items) for (const r of MachineTool.parkedRecords()) app.objects.add(r);
+  if (MACHINES_ENABLED && (!app.migratedSame || !p.objects?.items)) for (const r of MachineTool.parkedRecords()) app.objects.add(r);
 }
 
 let saveTimer = 0;

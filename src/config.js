@@ -1,11 +1,15 @@
 // Global constants. All world units are metres: the diorama is a real-size
-// object on a real-size workshop table, built at model scale 1:12.
-export const BUILD = 7;
+// object on a real-size workshop table, built at model scale 1:3.5.
+export const BUILD = 8;
 export const STAGE = 3;
-export const MODEL_SCALE = 12;
+export const MODEL_SCALE = 3.5;
+// Many sizes were first designed at 1:12; K = how much bigger everything built
+// on the plot is now (shovel, pegs, string line, boards, bars, crumbs …).
+export const K = 12 / MODEL_SCALE;
+// machines are switched off for now (they cost a lot of video memory on phones)
+export const MACHINES_ENABLED = false;
 
-// Diorama board: 2.4 × 1.8 m inside = a 28.8 × 21.6 m building plot at 1:12:
-// room for the house, the machines parked along the back edge and a truck.
+// Diorama board: 2.4 × 1.8 m inside = an 8.4 × 6.3 m building plot at 1:3.5.
 // Photo backdrop, as on the real table: one continuous sheet glued to the
 // outside of the box along two sides that meet at a rounded corner
 // (sx, sz = which corner: -x left, -z far side). Side 1 = the left side
@@ -19,12 +23,13 @@ export const TRAY = {
   wall: 0.018,        // wall thickness
   height: 0.106,      // wall top above the table
   floor: 0.010,       // top of the tray bottom board (soil cannot go lower)
-  soil: 0.100,        // natural ground level (90 mm of soil = 1.08 m)
+  soil: 0.100,        // natural ground level (90 mm of soil = 31.5 cm at 1:3.5)
 };
 
-// real size of one soil photo tile at 1:12 (Poly Haven: gravelly_sand covers 2.48 m, forest_ground_06 2.1 m)
-export const SOIL_TILE = 2.48 / 12;
-export const LOAM_TILE = 2.1 / 12;
+// size of one soil photo tile on the table (the sand is real sand of the
+// diorama, so this does not follow the model scale)
+export const SOIL_TILE = 0.207;
+export const LOAM_TILE = 0.175;
 
 export const TERRAIN_CELL = 0.003; // 800 × 600
 
@@ -33,15 +38,16 @@ export const REPOSE_LOOSE = Math.tan(37 * Math.PI / 180);  // freshly dug loose 
 export const REPOSE_NATIVE = Math.tan(78 * Math.PI / 180); // undisturbed cohesive ground
 
 export const SHOVELS = {
-  // 1:12 copies of a Russian штыковая (ЛКО) and совковая (ЛСП) shovel.
-  spade: { name: 'Штыковая', width: 0.0175, length: 0.024, capacity: 2.6e-6, pointed: true },
-  scoop: { name: 'Совковая', width: 0.0225, length: 0.026, capacity: 4.2e-6, pointed: false },
+  // scale copies of a Russian штыковая (ЛКО) and совковая (ЛСП) shovel
+  // (blade 21 × 29 cm and 27 × 31 cm real; capacity in m³ of the model)
+  spade: { name: 'Штыковая', width: 0.0175 * K, length: 0.024 * K, capacity: 2.6e-6 * K ** 3, pointed: true },
+  scoop: { name: 'Совковая', width: 0.0225 * K, length: 0.026 * K, capacity: 4.2e-6 * K ** 3, pointed: false },
 };
 
 export const DEFAULT_SETTINGS = {
   shovel: 'spade',
-  bite: 5,          // mm the blade goes in per pass
-  target: 25,       // design depth of the pit, mm (model)
+  bite: 12,         // mm the blade goes in per pass
+  target: 40,       // design depth of the pit, mm (model) = 14 cm real
   dof: 1,
   quality: 'high',
   shake: true,
@@ -52,22 +58,22 @@ export const DEFAULT_SETTINGS = {
   rebarD: 12,        // bar diameter, mm (real)
   rebarStep: 200,    // bar spacing, mm (real)
   cover: 40,         // concrete cover, mm (real)
-  trenchWidth: 400,  // new trench width, mm (real)
-  trenchDepth: 600,  // new trench depth, mm (real)
+  trenchWidth: 300,  // new trench width, mm (real)
+  trenchDepth: 250,  // new trench depth, mm (real) — the box holds 31 cm of soil
   backdrop: 'site',
   orbit: false,      // slow automatic camera fly-around (панорама)
 };
 
-// the first outline on a new plot: a 9 × 7.2 m house pit, 25 mm (30 cm) deep
-export const DEFAULT_OUTLINES = [{ id: 1, kind: 'rect', x0: -0.375, z0: -0.2, x1: 0.375, z1: 0.4, depth: 25 }];
+// the first outline on a new plot: a 2.6 × 2.1 m slab pit, 40 mm (14 cm) deep
+export const DEFAULT_OUTLINES = [{ id: 1, kind: 'rect', x0: -0.375, z0: -0.2, x1: 0.375, z1: 0.4, depth: 40 }];
 
 // where the machines wait, along the back edge of the plot (x, z, yaw)
 export const PARKING = { excavator: [-0.85, -0.68, -Math.PI / 2], tractor: [-0.42, -0.7, -Math.PI / 2], mixer: [0.2, -0.72, 0], pump: [0.82, -0.7, 0], siteMixer: [1.02, -0.3, 0.4] };
 
-// Construction materials, real sizes converted to the model (÷12).
+// Construction materials, real sizes converted to the model.
 export const MAT = {
-  board: { t: 0.025 / 12, h: 0.15 / 12 },          // 25 × 150 mm formwork board
-  stake: { s: 0.05 / 12, step: 0.8 / 12 },         // 50 × 50 mm stakes every 0.8 m
-  rebarD: [8, 10, 12, 14],                         // available bar diameters, mm (real)
-  meshCell: 0.1 / 12, meshD: 0.004 / 12,           // welded mesh 100 × 100, Ø4
+  board: { t: 0.025 / MODEL_SCALE, h: 0.15 / MODEL_SCALE },      // 25 × 150 mm formwork board
+  stake: { s: 0.05 / MODEL_SCALE, step: 0.8 / MODEL_SCALE },     // 50 × 50 mm stakes every 0.8 m
+  rebarD: [8, 10, 12, 14],                                       // available bar diameters, mm (real)
+  meshCell: 0.1 / MODEL_SCALE, meshD: 0.004 / MODEL_SCALE,       // welded mesh 100 × 100, Ø4
 };

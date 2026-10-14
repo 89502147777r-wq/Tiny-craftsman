@@ -186,3 +186,4 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 
 /* with the joystick on screen the hint moves up under the stats */
 .hint.top { bottom: auto; top: calc(var(--safe-t) + 136px); }
+.tool[hidden] { display: none; }

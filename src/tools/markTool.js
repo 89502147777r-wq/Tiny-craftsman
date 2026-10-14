@@ -1,4 +1,4 @@
-import { MODEL_SCALE } from '../config.js';
+import { MODEL_SCALE, K } from '../config.js';
 import { moveHandle, sizeText } from '../world/outlines.js';
 
 const MM = (v) => v / 1000 / MODEL_SCALE;
@@ -34,7 +34,7 @@ export class MarkTool {
 
   down(p) {
     const { app } = this, ov = app.outlineView;
-    const snap = (v) => Math.round(v / 0.001) * 0.001; // 1 mm model grid (12 mm real)
+    const snap = (v) => Math.round(v / 0.001) * 0.001; // 1 mm model grid
     if (this.mode === 'edit') {
       const h = ov.pickHandle(p.x, p.z, this.reach());
       if (h) {
@@ -98,7 +98,7 @@ export class MarkTool {
     else if (this.creating) {
       const o = app.objects.get(this.creating.id);
       this.creating = null;
-      if (o && o.x1 - o.x0 > 0.012 && o.z1 - o.z0 > 0.012) app.journal.commit(app.clock);
+      if (o && o.x1 - o.x0 > 0.012 * K && o.z1 - o.z0 > 0.012 * K) app.journal.commit(app.clock);
       else { app.journal.cancel(); this.select(null); }
     }
     app.ui.refresh();
@@ -112,7 +112,7 @@ export class MarkTool {
     this.trench = null;
     if (!t) return;
     const o = app.objects.get(t.id);
-    const pts = (o?.pts || []).filter((p, i, a) => i === 0 || Math.hypot(p[0] - a[i - 1][0], p[1] - a[i - 1][1]) > 0.004);
+    const pts = (o?.pts || []).filter((p, i, a) => i === 0 || Math.hypot(p[0] - a[i - 1][0], p[1] - a[i - 1][1]) > 0.004 * K);
     if (pts.length >= 2) { app.objects.update(t.id, { pts }); app.journal.commit(app.clock); }
     else { app.journal.cancel(); this.select(null); }
     app.ui.refresh();
@@ -130,7 +130,7 @@ export class MarkTool {
     return Math.abs(ang - k) < 0.105 ? [a[0] + Math.cos(k) * L, a[1] + Math.sin(k) * L] : pt;
   }
 
-  reach() { return Math.max(0.008, this.app.rig.dist * 0.035); }
+  reach() { return Math.max(0.008 * K, this.app.rig.dist * 0.035); }
 
   deleteSelected() {
     const { app } = this;

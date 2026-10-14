@@ -388,9 +388,13 @@ export class Terrain {
       soil[i * 3 + 2] = occ[i];
     }
     const start = oz0 * n, count = (oz1 - oz0 + 1) * n;
+    // ranges pile up until three uploads them (several updates between two frames
+    // must all reach the GPU): keep one range covering all of them
     for (const a of [this.aPos, this.aNor, this.aSoil]) {
+      let s0 = start * a.itemSize, s1 = (start + count) * a.itemSize;
+      for (const r of a.updateRanges) { s0 = Math.min(s0, r.start); s1 = Math.max(s1, r.start + r.count); }
       a.clearUpdateRanges();
-      a.addUpdateRange(start * a.itemSize, count * a.itemSize);
+      a.addUpdateRange(s0, s1 - s0);
       a.needsUpdate = true;
     }
     return true;
