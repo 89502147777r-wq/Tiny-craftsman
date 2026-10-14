@@ -6,10 +6,10 @@
 
 | Файл в проекте | Ассет | Авторы | Лицензия | Источник |
 |---|---|---|---|---|
-| `assets/textures/brown_mud_dry/` (diff, nor_gl, arm, 2k) | Brown Mud Dry | Rob Tuytel | CC0 | https://polyhaven.com/a/brown_mud_dry |
+| `assets/textures/gravelly_sand/` (diff, nor_gl, arm, 2k) — песок участка | Gravelly Sand | Dario Barresi | CC0 | https://polyhaven.com/a/gravelly_sand |
 | `assets/textures/excavated_soil_wall/` (1k) | Excavated Soil Wall | Amal Kumar | CC0 | https://polyhaven.com/a/excavated_soil_wall |
 | `assets/textures/wood_table_worn/` (1k) | Wood Table Worn | Dimitrios Savva (фото), Rico Cilliers (обработка) | CC0 | https://polyhaven.com/a/wood_table_worn |
-| `assets/textures/plywood/` (1k) | Plywood | Rob Tuytel | CC0 | https://polyhaven.com/a/plywood |
+| `assets/textures/plywood/` (1k) — фанера (дно, отвалы) | Plywood | Rob Tuytel | CC0 | https://polyhaven.com/a/plywood |
 | `assets/textures/raw_plank_wall/` (1k) — доски опалубки | Raw Plank Wall | Dimitrios Savva | CC0 | https://polyhaven.com/a/raw_plank_wall |
 | `assets/textures/forest_ground_06/` (1k) — пятна тёмного суглинка на участке | Forest Ground 06 | Charlotte Baglioni | CC0 | https://polyhaven.com/a/forest_ground_06 |
 
@@ -50,7 +50,7 @@ glTF-Transform (текстуры WebP ≤ 1024 px, геометрия meshopt), 
 
 ## Сгенерировано процедурно (наше, без внешних источников)
 
-Лопаты, колышки, шнур-причалка, линейка (шкала нарисована кодом), карандаш, статическая трава,
+Лопаты, колышки, ламинат бортиков коробки и серая столешница (текстуры рисуются кодом), шнур-причалка, линейка (шкала нарисована кодом), карандаш, статическая трава,
 комья грунта, пылинки, звуки (синтез шума WebAudio), иконки приложения; фронтальный погрузчик трактора (рамы, ковш,
 гидроцилиндры), барабан автобетоносмесителя со спиралью и полосами, лоток, бак, лестница; арматура периодического
 профиля (карта нормалей рисуется кодом), пластиковые стульчики, «лягушки», вязальная проволока, кладочная сетка.

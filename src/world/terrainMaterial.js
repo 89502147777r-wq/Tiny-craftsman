@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TRAY, LOAM_TILE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
+import { innerCorner } from './plotShape.js';
 
 // Topsoil photo texture on undisturbed ground, triplanar "excavated soil wall"
 // texture on cut faces, crumbly dark loose soil on spoil, a lime chalk line for
@@ -30,6 +31,8 @@ export function makeTerrainMaterial(tex) {
     uChalk: { value: 1 },
     uLevel: { value: 0 },
     uTime: { value: 0 },
+    uCorner: { value: (() => { const c = innerCorner(); return new THREE.Vector4(c.cx, c.cz, c.r, 0); })() },
+    uCornerSign: { value: (() => { const c = innerCorner(); return new THREE.Vector2(c.sx, c.sz); })() },
   };
   mat.userData.uniforms = uniforms;
   const ch = stochasticChunks();
@@ -53,12 +56,19 @@ export function makeTerrainMaterial(tex) {
         uniform float uWallScale, uLooseScale, uFloorY, uChalk, uLevel, uSoilY, uTime;
         uniform sampler2D tMask;
         uniform vec4 uPlot;
+        uniform vec4 uCorner;
+        uniform vec2 uCornerSign;
         varying vec3 vSoil;
         varying vec3 vWPos;
         varying vec3 vWNrm;
         float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         ${STOCHASTIC_GLSL}`)
       .replace('#include <map_fragment>', `
+        // the soil ends at the rounded corner of the tray
+        {
+          vec2 dc = (vWPos.xz - uCorner.xy) * uCornerSign;
+          if (dc.x > 0.0 && dc.y > 0.0 && length(dc) > uCorner.z) discard;
+        }
         tcStochSetup(vMapUv);
         vec3 wn = normalize(vWNrm);
         float steepF = smoothstep(0.25, 0.75, 1.0 - wn.y);
@@ -66,12 +76,12 @@ export function makeTerrainMaterial(tex) {
         // large patches: drier / damper / more clayey ground, so the plot never looks stamped
         {
           float m1 = tcFbm(vWPos.xz * 2.6), m2 = tcFbm(vWPos.xz * 0.8 + 11.0), m3 = tcFbm(vWPos.xz * 9.0 + 5.0);
-          topC.rgb *= mix(0.80, 1.12, m1) * mix(0.9, 1.06, m3);
+          topC.rgb *= mix(0.88, 1.08, m1) * mix(0.93, 1.05, m3);
           topC.rgb = mix(topC.rgb, topC.rgb * vec3(1.08, 0.97, 0.86), smoothstep(0.45, 0.75, m2));        // warmer clay
           topC.rgb = mix(topC.rgb, vec3(dot(topC.rgb, vec3(0.33))) * vec3(0.98, 0.96, 0.93), smoothstep(0.55, 0.8, 1.0 - m2) * 0.2); // dusty grey
           // patches of darker loam (trodden, damper ground)
           vec3 sec = tcStoch(tLoam, vWPos.xz * uLoamScale).rgb;
-          topC.rgb = mix(topC.rgb, sec, smoothstep(0.5, 0.78, tcFbm(vWPos.xz * 1.7 + 23.0)) * 0.7);
+          topC.rgb = mix(topC.rgb, sec, smoothstep(0.55, 0.8, tcFbm(vWPos.xz * 1.7 + 23.0)) * 0.3);
         }
         vec3 bw = pow(abs(wn), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
         vec3 wallC = texture2D(tWall, vWPos.zy * uWallScale).rgb * bw.x
@@ -113,6 +123,6 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <roughnessmap_fragment>', `${ch.rough}
         roughnessFactor = mix(max(roughnessFactor, 0.94), 0.82, smoothstep(0.003, 0.02, vSoil.x)); // dry earth has no sheen`);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-3';
+  mat.customProgramCacheKey = () => 'tc-terrain-4';
   return mat;
 }

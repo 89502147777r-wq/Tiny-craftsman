@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
 const SETS = {
-  top: 'brown_mud_dry',
+  top: 'gravelly_sand',     // fine sandy soil, like the sand in the real diorama
   loam: 'forest_ground_06',
   wall: 'excavated_soil_wall',
   table: 'wood_table_worn',

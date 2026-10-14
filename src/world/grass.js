@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../core/rand.js';
+import { insideTray } from './plotShape.js';
 
 // Diorama "static grass": little tufts of 2–5 mm fibres on the untouched
 // ground — a building site is bare earth, so weeds grow in clumps mostly
@@ -21,7 +22,8 @@ export class Grass {
       let x, z, tries = 0;
       do {
         x = (rnd() * 2 - 1) * hx; z = (rnd() * 2 - 1) * hz; tries++;
-      } while (tries < 12 && patch(x, z) * (Math.min(hx - Math.abs(x), hz - Math.abs(z)) < 0.14 ? 1 : 0.12) < rnd());
+      } while (tries < 12 && (!insideTray(x, z, 0.006) || patch(x, z) * (Math.min(hx - Math.abs(x), hz - Math.abs(z)) < 0.14 ? 1 : 0.12) < rnd()));
+      if (!insideTray(x, z, 0.006)) { x = 0; z = 0; }
       const s = 0.5 + rnd() * 0.55;
       this.tufts.push({ x, z, s, rot: rnd() * Math.PI * 2, tilt: (rnd() - 0.5) * 0.4 });
     }
