@@ -11,6 +11,7 @@
 | `assets/textures/wood_table_worn/` (1k) | Wood Table Worn | Dimitrios Savva (фото), Rico Cilliers (обработка) | CC0 | https://polyhaven.com/a/wood_table_worn |
 | `assets/textures/plywood/` (1k) | Plywood | Rob Tuytel | CC0 | https://polyhaven.com/a/plywood |
 | `assets/textures/raw_plank_wall/` (1k) — доски опалубки | Raw Plank Wall | Dimitrios Savva | CC0 | https://polyhaven.com/a/raw_plank_wall |
+| `assets/textures/forest_ground_06/` (1k) — пятна тёмного суглинка на участке | Forest Ground 06 | Charlotte Baglioni | CC0 | https://polyhaven.com/a/forest_ground_06 |
 
 ## HDRI (Poly Haven, CC0 1.0)
 
