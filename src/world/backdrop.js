@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { TRAY } from '../config.js';
+import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 
 // Background / lighting modes:
 //   workshop – the diorama on the bench in the carpentry shop (HDRI + lamp)
 //   site     – "life-size" illusion: 360° construction-site panorama, daylight,
 //              no table, the plot continues into surrounding ground
-//   photo1/2 – miniature-photography trick: a printed photo backdrop curved
-//              behind the diorama, always opposite the camera, in daylight
+//   photo1/2 – miniature-photography trick: a printed photo backdrop filling
+//              the frame behind the diorama, in daylight
 export class Backdrop {
   constructor(app) {
     this.app = app;
@@ -30,8 +31,10 @@ export class Backdrop {
     mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;')
         .replace('#include <uv_vertex>', '#include <uv_vertex>\nvec4 gw = modelMatrix * vec4(position, 1.0); vGW = gw.xyz; vMapUv = gw.xz / 0.2; vNormalMapUv = vMapUv;');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;\nuniform vec3 uFade;')
-        .replace('#include <map_fragment>', '#include <map_fragment>\n float fd = smoothstep(2.5, 13.0, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd);');
+      const ch = stochasticChunks();
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;\nuniform vec3 uFade;\n' + STOCHASTIC_GLSL)
+        .replace('#include <map_fragment>', 'tcStochSetup(vMapUv);\n' + ch.map + '\n diffuseColor.rgb *= mix(0.82, 1.1, tcFbm(vGW.xz * 2.6));\n float fd = smoothstep(2.5, 13.0, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd);')
+        .replace('#include <normal_fragment_maps>', ch.normal);
       sh.uniforms.uFade = this.fadeU;
     };
     this.fadeU = { value: new THREE.Color(0.55, 0.5, 0.44) };
@@ -40,14 +43,6 @@ export class Backdrop {
     this.ground.receiveShadow = true;
     this.ground.visible = false;
     app.scene.add(this.ground);
-    // curved photo print
-    const R = 2.6, arc = 1.35, H = R * arc / 1.5;
-    const pg = new THREE.CylinderGeometry(R, R, H, 48, 1, true, Math.PI - arc / 2, arc);
-    pg.translate(0, H / 2 - 0.02, 0);
-    this.photoMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide, toneMapped: true });
-    this.photo = new THREE.Mesh(pg, this.photoMat);
-    this.photo.visible = false;
-    app.scene.add(this.photo);
   }
 
   async set(mode) {
@@ -61,18 +56,21 @@ export class Backdrop {
     if (app.stacks) app.stacks.visible = mode !== 'site';
     ws.tray.traverse((o) => { if (o.isMesh) o.visible = mode !== 'site'; });
     this.ground.visible = mode === 'site';
-    this.photo.visible = mode === 'photo1' || mode === 'photo2';
-    if (this.photo.visible) {
+    // photo backdrop: the print fills the whole frame behind the diorama (like a
+    // real backdrop sheet), so there are never edges or gaps around it
+    this.photoTex = null;
+    if (mode === 'photo1' || mode === 'photo2') {
       const t = await this._photo(mode === 'photo1' ? 'assets/backdrops/site-billboard.jpg' : 'assets/backdrops/site-crane.jpg');
-      this.photoMat.map = t; this.photoMat.needsUpdate = true;
+      if (this.mode !== mode) return;
+      this.photoTex = t;
     }
     const s = app.scene;
     if (day) {
       s.environment = this.dayEnv;
       s.environmentIntensity = 0.9;
-      s.background = mode === 'site' ? this.dayTex : this.workshopBg;
+      s.background = mode === 'site' ? this.dayTex : this.photoTex || this.workshopBg;
       s.backgroundBlurriness = mode === 'site' ? 0.02 : 0.12;
-      s.backgroundIntensity = mode === 'site' ? 1.0 : 0.6;
+      s.backgroundIntensity = mode === 'site' ? 1.0 : 0.95;
       s.backgroundRotation.set(0, 0, 0); s.environmentRotation.set(0, 0, 0);
       ws.sun.color.set(0xfff0dc); ws.sun.intensity = 3.4;
       ws.sun.userData.dir.copy(this.sunDir);
@@ -86,10 +84,16 @@ export class Backdrop {
   }
 
   update() {
-    if (!this.photo.visible) return;
-    // keep the print behind the diorama as the camera orbits
-    const cam = this.app.camera.position;
-    this.photo.rotation.y = Math.atan2(cam.x, cam.z);
+    const t = this.photoTex;
+    if (!t) return;
+    // "cover" the screen with the print, zoomed a little so it can slide:
+    // turning / tilting the camera shifts it slightly (parallax of a distant sheet)
+    const cam = this.app.camera, rig = this.app.rig;
+    const ia = t.image.width / t.image.height, sa = cam.aspect, k = 0.86;
+    const rx = (sa < ia ? sa / ia : 1) * k, ry = (sa < ia ? 1 : ia / sa) * k;
+    t.repeat.set(rx, ry);
+    const yaw = rig.yaw, pitch = rig.pitch;
+    t.offset.set((1 - rx) * (0.5 + 0.45 * Math.sin(yaw * 0.5)), (1 - ry) * Math.min(1, Math.max(0, 0.15 + pitch * 0.7)));
   }
 
   async _loadDay() {
@@ -107,7 +111,6 @@ export class Backdrop {
     if (this.cache[url]) return Promise.resolve(this.cache[url]);
     return new Promise((res, rej) => new THREE.TextureLoader().load(url, (t) => {
       t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
-      t.wrapS = THREE.RepeatWrapping; t.repeat.x = -1; t.offset.x = 1; // seen from inside the curve
       this.cache[url] = t; res(t);
     }, undefined, rej));
   }
