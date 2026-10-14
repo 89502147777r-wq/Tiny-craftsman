@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { K } from '../config.js';
 
 // Scoop workflow, shared by the hand shovel and the excavator bucket:
 //   swipe on the ground  → the blade cuts a layer (bite) along the swipe until
@@ -124,7 +125,7 @@ export class ScoopTool {
       // a few crumbs kicked up by the blade (visual only, no volume)
       if (Math.random() < 0.5) {
         const v = new THREE.Vector3(this.dir.x * 0.12 + (Math.random() - 0.5) * 0.1, 0.25 + Math.random() * 0.2, this.dir.y * 0.12 + (Math.random() - 0.5) * 0.1);
-        app.particles.emit(new THREE.Vector3(p.x, t.heightAt(p.x, p.z) + 0.001, p.z), v, 0, 0.0006, 0);
+        app.particles.emit(new THREE.Vector3(p.x, t.heightAt(p.x, p.z) + 0.001, p.z), v, 0, 0.0006 * K, 0);
       }
     }
     this.imp.fill = this.load / this.capacity;
@@ -182,8 +183,8 @@ export class ScoopTool {
         while (this.emitted < want) {
           const r = Math.random;
           const pos = s.bladePoint(r() * 2 - 1, r());
-          const v = n.clone().multiplyScalar(0.05 + r() * 0.08).add(new THREE.Vector3((r() - 0.5) * 0.08, -0.05, (r() - 0.5) * 0.08));
-          app.particles.emit(pos, v, per, (0.0007 + Math.pow(r(), 3) * 0.0014) * (s.crumbScale ?? 1), 0.32);
+          const v = n.clone().multiplyScalar((0.05 + r() * 0.08) * Math.sqrt(K)).add(new THREE.Vector3((r() - 0.5) * 0.08, -0.05, (r() - 0.5) * 0.08));
+          app.particles.emit(pos, v, per, (0.0007 + Math.pow(r(), 3) * 0.0014) * K * (s.crumbScale ?? 1), 0.32);
           this.emitted++;
         }
         s.fill = Math.max(0, 1 - this.emitted / this.total) * (this.load / this.capacity);
@@ -193,7 +194,7 @@ export class ScoopTool {
         this.settleT = 0;
         s.fill = 0;
         this.load = 0;
-        this._rest(new THREE.Vector3(this.lastP.x - this.dir.x * 0.025, 0, this.lastP.z - this.dir.y * 0.025));
+        this._rest(new THREE.Vector3(this.lastP.x - this.dir.x * 0.025 * K, 0, this.lastP.z - this.dir.y * 0.025 * K));
         app.onShovelState?.();
       }
     } else if (this.state === 'settle') {
@@ -211,7 +212,7 @@ export class ScoopTool {
       const rest = this.load * (this.total - this.emitted) / this.total;
       const t = app.terrain;
       const x = t.clampX(this.lastP.x), z = t.clampZ(this.lastP.z);
-      t.deposit(x, z, rest, 0.004);
+      t.deposit(x, z, rest, 0.004 * K);
       this.emitted = this.total;
     }
     if (this.state === 'dump' || this.state === 'settle') {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MAT, MODEL_SCALE } from '../config.js';
+import { MAT, MODEL_SCALE, K } from '../config.js';
 import { variant } from './assets.js';
 import { mulberry32 } from '../core/rand.js';
 
@@ -73,7 +73,7 @@ export class FormworkView {
         const t = nSt === 1 ? 0.5 : (0.06 + 0.88 * k / (nSt - 1));
         const x = ax + dx * t + nx * (T + MAT.stake.s / 2), z = az + dz * t + nz * (T + MAT.stake.s / 2);
         const g = this.terrain.inside(x, z) ? this.terrain.heightAt(x, z) : r.y0;
-        const top = r.y1 + 0.0015, bottom = Math.min(g, r.y0) - 0.008;
+        const top = r.y1 + 0.0015 * K, bottom = Math.min(g, r.y0) - 0.008 * K;
         p.set(x, bottom, z);
         q.setFromEuler(e.set(0, yaw + (rnd() - 0.5) * 0.05, 0));
         s.set(MAT.stake.s, top - bottom, MAT.stake.s);
@@ -82,7 +82,7 @@ export class FormworkView {
         ns++;
         // brace: from the stake top down to the ground outside, every second stake
         if (k % 2 === 0 && nr < this.max.braces) {
-          const reach = (r.y1 - g) + 0.012;
+          const reach = (r.y1 - g) + 0.012 * K;
           const fx = x + nx * reach, fz = z + nz * reach;
           const fg = this.terrain.inside(fx, fz) ? this.terrain.heightAt(fx, fz) : g;
           const A = new THREE.Vector3(x + nx * MAT.stake.s * 0.5, top - 0.002, z + nz * MAT.stake.s * 0.5), B = new THREE.Vector3(fx, fg - 0.001, fz);

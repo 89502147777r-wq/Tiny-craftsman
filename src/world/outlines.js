@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAY } from '../config.js';
+import { TRAY, K } from '../config.js';
 
 // ---- geometry ------------------------------------------------------------------------
 // Outline records (type 'outline'):
@@ -148,7 +148,7 @@ export class OutlineView {
     this.group = new THREE.Group();
     this.group.name = 'outlines';
     this.items = new Map();
-    this.offset = 0.007;
+    this.offset = 0.007 * K;
     this.showHandles = false;
     this.selected = null;
     this.wood = new THREE.MeshStandardMaterial({ color: 0xcaa274, roughness: 0.8 });
@@ -157,9 +157,9 @@ export class OutlineView {
     this.handleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthTest: false });
     this.handleSelMat = new THREE.MeshBasicMaterial({ color: 0xf0a63a, transparent: true, opacity: 0.95, depthTest: false });
     this.stakeGeo = makeStakeGeometry();
-    this.capGeo = new THREE.BoxGeometry(0.00205, 0.0018, 0.00205);
-    this.lineGeo = new THREE.CylinderGeometry(0.00022, 0.00022, 1, 6, 1);
-    this.handleGeo = new THREE.RingGeometry(0.0035, 0.0052, 24).rotateX(-Math.PI / 2);
+    this.capGeo = new THREE.BoxGeometry(0.00205 * K, 0.0018 * K, 0.00205 * K);
+    this.lineGeo = new THREE.CylinderGeometry(0.00022 * K, 0.00022 * K, 1, 6, 1);
+    this.handleGeo = new THREE.RingGeometry(0.0035 * K, 0.0052 * K, 24).rotateX(-Math.PI / 2);
 
     const W = 2048, H = Math.round(W * terrain.sizeZ / terrain.sizeX);
     this.canvas = document.createElement('canvas');
@@ -187,7 +187,7 @@ export class OutlineView {
       const s = new THREE.Group();
       const body = new THREE.Mesh(this.stakeGeo, this.wood);
       const cap = new THREE.Mesh(this.capGeo, this.paint);
-      cap.position.y = 0.0105;
+      cap.position.y = 0.0105 * K;
       body.castShadow = cap.castShadow = true;
       s.add(body, cap);
       g.add(s);
@@ -208,9 +208,9 @@ export class OutlineView {
   _place(it) {
     const t = this.terrain;
     const tops = it.loop.map(([x, z], i) => {
-      const y = (t.inside(x, z) ? t.heightAt(x, z) : TRAY.soil) - 0.002;
+      const y = (t.inside(x, z) ? t.heightAt(x, z) : TRAY.soil) - 0.002 * K;
       it.stakes[i].position.set(x, y, z);
-      return new THREE.Vector3(x, y + 0.0085, z);
+      return new THREE.Vector3(x, y + 0.0085 * K, z);
     });
     for (let i = 0; i < tops.length; i++) {
       const a = tops[i], b = tops[(i + 1) % tops.length], l = it.lines[i];
@@ -265,7 +265,7 @@ export class OutlineView {
     // chalk lines on top (additive into R)
     ctx.globalCompositeOperation = 'lighter';
     ctx.strokeStyle = 'rgb(255,0,0)';
-    ctx.lineWidth = Math.max(1.6, 0.0011 * sx);
+    ctx.lineWidth = Math.max(1.6, 0.0011 * K * sx);
     ctx.lineJoin = 'miter';
     for (const o of os) {
       ctx.beginPath();
@@ -278,7 +278,7 @@ export class OutlineView {
   }
 
   // nearest drag handle to a ground point → { id, i } or null
-  pickHandle(x, z, reach = 0.012) {
+  pickHandle(x, z, reach = 0.012 * K) {
     let best = null, bd = reach;
     for (const it of this.items.values()) {
       handles(it.rec).forEach(([hx, hz], i) => {
@@ -291,7 +291,7 @@ export class OutlineView {
 
   // outline under a ground point (deepest first)
   pickOutline(x, z) {
-    const hits = this.outlines().filter((o) => contains(o, x, z) || distToEdge(o, x, z) < 0.006);
+    const hits = this.outlines().filter((o) => contains(o, x, z) || distToEdge(o, x, z) < 0.006 * K);
     hits.sort((a, b) => b.depth - a.depth);
     return hits[0] || null;
   }
@@ -305,12 +305,12 @@ function distToEdge(o, x, z) {
 const _up = new THREE.Vector3(0, 1, 0);
 
 function makeStakeGeometry() {
-  // square 2 mm stake, 12 mm long, sharpened point
-  const g = new THREE.CylinderGeometry(0.00095 * Math.SQRT2, 0.00095 * Math.SQRT2, 0.012, 4, 1);
+  // square stake (2 × 12 mm at 1:12, scaled by K), sharpened point
+  const g = new THREE.CylinderGeometry(0.00095 * K * Math.SQRT2, 0.00095 * K * Math.SQRT2, 0.012 * K, 4, 1);
   g.rotateY(Math.PI / 4);
-  g.translate(0, 0.006 - 0.001, 0);
+  g.translate(0, (0.006 - 0.001) * K, 0);
   const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) if (p.getY(i) < 0) p.setXYZ(i, p.getX(i) * 0.15, p.getY(i) - 0.0025, p.getZ(i) * 0.15);
+  for (let i = 0; i < p.count; i++) if (p.getY(i) < 0) p.setXYZ(i, p.getX(i) * 0.15, p.getY(i) - 0.0025 * K, p.getZ(i) * 0.15);
   g.computeVertexNormals();
   return g;
 }

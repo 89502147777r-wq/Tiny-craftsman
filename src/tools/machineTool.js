@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Excavator } from '../world/machines/excavator.js';
 import { Tractor, MixerTruck, ConcretePump, SiteMixer } from '../world/machines/vehicles.js';
-import { PARKING } from '../config.js';
+import { PARKING, MACHINES_ENABLED } from '../config.js';
 import { R } from '../world/machines/parts.js';
 
 const CLASSES = { excavator: Excavator, tractor: Tractor, mixer: MixerTruck, pump: ConcretePump, siteMixer: SiteMixer };
@@ -26,7 +26,7 @@ export class MachineTool {
     this.stroke = null;      // finger stroke for the excavator
     app.objects.on((id, rec) => {
       if (this.syncing) return;
-      if (rec?.type === 'machine') this._ensure(rec.kind, rec.id).apply(rec);
+      if (rec?.type === 'machine') { if (MACHINES_ENABLED) this._ensure(rec.kind, rec.id).apply(rec); }
       else if (!rec) for (const [k, m] of Object.entries(this.machines)) if (m.id === id) this._despawn(k);
     });
   }

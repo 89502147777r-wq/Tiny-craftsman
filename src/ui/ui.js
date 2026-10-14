@@ -1,4 +1,4 @@
-import { BUILD, MODEL_SCALE } from '../config.js';
+import { BUILD, MODEL_SCALE, MACHINES_ENABLED } from '../config.js';
 import { bbox, contains } from '../world/outlines.js';
 
 const $ = (id) => document.getElementById(id);
@@ -43,6 +43,7 @@ export class UI {
     this.app = app;
     this.statT = 0;
     $('build').textContent = `BUILD ${BUILD}`;
+    if (!MACHINES_ENABLED) document.querySelector('[data-tool="machine"]')?.setAttribute('hidden', '');
     document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => app.setTool(b.dataset.tool)));
     $('btn-undo').addEventListener('click', () => app.undo());
     $('btn-redo').addEventListener('click', () => app.redo());
