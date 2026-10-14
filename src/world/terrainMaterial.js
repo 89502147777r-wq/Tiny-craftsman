@@ -76,12 +76,12 @@ export function makeTerrainMaterial(tex) {
         // large patches: drier / damper / more clayey ground, so the plot never looks stamped
         {
           float m1 = tcFbm(vWPos.xz * 2.6), m2 = tcFbm(vWPos.xz * 0.8 + 11.0), m3 = tcFbm(vWPos.xz * 9.0 + 5.0);
-          topC.rgb *= mix(0.80, 1.12, m1) * mix(0.9, 1.06, m3);
+          topC.rgb *= mix(0.88, 1.08, m1) * mix(0.93, 1.05, m3);
           topC.rgb = mix(topC.rgb, topC.rgb * vec3(1.08, 0.97, 0.86), smoothstep(0.45, 0.75, m2));        // warmer clay
           topC.rgb = mix(topC.rgb, vec3(dot(topC.rgb, vec3(0.33))) * vec3(0.98, 0.96, 0.93), smoothstep(0.55, 0.8, 1.0 - m2) * 0.2); // dusty grey
           // patches of darker loam (trodden, damper ground)
           vec3 sec = tcStoch(tLoam, vWPos.xz * uLoamScale).rgb;
-          topC.rgb = mix(topC.rgb, sec, smoothstep(0.5, 0.78, tcFbm(vWPos.xz * 1.7 + 23.0)) * 0.7);
+          topC.rgb = mix(topC.rgb, sec, smoothstep(0.55, 0.8, tcFbm(vWPos.xz * 1.7 + 23.0)) * 0.3);
         }
         vec3 bw = pow(abs(wn), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
         vec3 wallC = texture2D(tWall, vWPos.zy * uWallScale).rgb * bw.x

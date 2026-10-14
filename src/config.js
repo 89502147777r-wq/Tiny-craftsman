@@ -6,11 +6,12 @@ export const MODEL_SCALE = 12;
 
 // Diorama board: 2.4 × 1.8 m inside = a 28.8 × 21.6 m building plot at 1:12:
 // room for the house, the machines parked along the back edge and a truck.
-// Photo backdrop: one continuous sheet glued to the outside of the box along
-// two sides that meet at a rounded corner (sx, sz = which corner: +x right,
-// -z far side). Side 1 (along x, far side) gets the crane photo, side 2
-// (along z, right side) the billboard; they blend over the rounded corner.
-export const BACKDROP = { sx: 1, sz: -1, radius: 0.24, height: 1.35 };
+// Photo backdrop, as on the real table: one continuous sheet glued to the
+// outside of the box along two sides that meet at a rounded corner
+// (sx, sz = which corner: -x left, -z far side). Side 1 = the left side
+// (crane photo), side 2 = the far side (billboard); `first` = the axis side 1
+// runs along. The photos blend over the rounded corner, so there is no seam.
+export const BACKDROP = { sx: -1, sz: -1, first: 'z', radius: 0.24, height: 1.35 };
 
 export const TRAY = {
   innerX: 2.4,        // inner size of the plywood tray along X
@@ -21,8 +22,8 @@ export const TRAY = {
   soil: 0.100,        // natural ground level (90 mm of soil = 1.08 m)
 };
 
-// real size of one soil photo tile at 1:12 (Poly Haven: brown_mud_dry covers 1.3 m, forest_ground_06 2.1 m)
-export const SOIL_TILE = 1.3 / 12;
+// real size of one soil photo tile at 1:12 (Poly Haven: gravelly_sand covers 2.48 m, forest_ground_06 2.1 m)
+export const SOIL_TILE = 2.48 / 12;
 export const LOAM_TILE = 2.1 / 12;
 
 export const TERRAIN_CELL = 0.003; // 800 × 600

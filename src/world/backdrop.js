@@ -176,23 +176,32 @@ function groundColour(t) {
 // photo 2 (billboard), aMix → 0 on side 1 … 1 on side 2 (blend over the corner).
 // Each photo "covers" its part (cropped, ground kept), starting at the rim.
 function makeWrapSheet(aspect1, aspect2) {
-  const { sx, sz, radius, height: H } = BACKDROP;
+  const { sx, sz, radius, height: H, first = 'x' } = BACKDROP;
   const e = 0.0012; // paper on the plywood
   const ox = TRAY.innerX / 2 + TRAY.wall + e, oz = TRAY.innerZ / 2 + TRAY.wall + e, R = radius + e;
-  const path = [];
-  const side1 = [], arc = [], side2 = [];
-  for (let i = 0; i <= 40; i++) { const t = i / 40; side1.push([-sx * ox + (sx * (ox - R) + sx * ox) * t, sz * oz]); }
   const cx = sx * (ox - R), cz = sz * (oz - R);
-  const a0 = Math.atan2(sz, 0), a1 = Math.atan2(0, sx);
-  let da = a1 - a0; if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2;
-  for (let i = 1; i <= 24; i++) { const a = a0 + da * (i / 24); arc.push([cx + Math.cos(a) * R, cz + Math.sin(a) * R]); }
-  for (let i = 1; i <= 30; i++) { const t = i / 30; side2.push([sx * ox, sz * (oz - R) + (-sz * oz - sz * (oz - R)) * t]); }
-  path.push(...side1, ...arc, ...side2);
+  const side1 = [], arc = [], side2 = [];
+  // side 1 runs from its far end to the corner, side 2 from the corner away
+  let n1, n2; // outward normals (x, z)
+  if (first === 'x') {
+    for (let i = 0; i <= 40; i++) side1.push([-sx * ox + (cx + sx * ox) * (i / 40), sz * oz]);
+    for (let i = 1; i <= 30; i++) side2.push([sx * ox, cz + (-sz * oz - cz) * (i / 30)]);
+    n1 = [0, sz]; n2 = [sx, 0];
+  } else {
+    for (let i = 0; i <= 40; i++) side1.push([sx * ox, -sz * oz + (cz + sz * oz) * (i / 40)]);
+    for (let i = 1; i <= 30; i++) side2.push([cx + (-sx * ox - cx) * (i / 30), sz * oz]);
+    n1 = [sx, 0]; n2 = [0, sz];
+  }
+  const a0 = Math.atan2(n1[1], n1[0]);
+  let da = Math.atan2(n2[1], n2[0]) - a0; if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2;
+  for (let i = 1; i < 24; i++) { const a = a0 + da * (i / 24); arc.push([cx + Math.cos(a) * R, cz + Math.sin(a) * R]); }
+  const path = [...side1, ...arc, ...side2];
   const s = [0];
   for (let i = 1; i < path.length; i++) s.push(s[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
-  const L1 = s[side1.length - 1], L2 = s[side1.length + arc.length - 1], total = s[s.length - 1];
-  // the picture runs to the viewer's right along the path (mirror otherwise)
-  const flip = sx !== -sz;
+  const L1 = s[side1.length - 1], L2 = s[side1.length + arc.length], total = s[s.length - 1];
+  // the picture must run to the right of someone looking at side 1 from inside the box
+  const d0 = [path[1][0] - path[0][0], path[1][1] - path[0][1]], right = [-n1[1], n1[0]];
+  const flip = d0[0] * right[0] + d0[1] * right[1] < 0;
   const rim = TRAY.height;
   const cover = (s0, s1, aspect) => {
     const W = s1 - s0, k = Math.max(W / aspect, H);

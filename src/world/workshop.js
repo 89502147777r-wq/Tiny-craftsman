@@ -41,24 +41,22 @@ export function buildWorkshop(scene, renderer, tex) {
 
   // ---- workbench ---------------------------------------------------------------
   const TW = 3.8, TD = 3.3, TT = 0.045;
+  // dark grey worn laminate top, as on the real workbench (dust, scratches)
   const tableMat = new THREE.MeshStandardMaterial({
-    map: variant(tex.table.diff, TW / 0.55, TD / 0.55),
-    normalMap: variant(tex.table.nor, TW / 0.55, TD / 0.55),
-    roughnessMap: variant(tex.table.arm, TW / 0.55, TD / 0.55),
-    roughness: 1, metalness: 0,
-    color: 0xd9cfc4,
+    map: worktopTexture(), roughness: 0.62, metalness: 0.05, color: 0xffffff,
+    normalMap: variant(tex.table.nor, TW / 0.55, TD / 0.55), normalScale: new THREE.Vector2(0.15, 0.15),
   });
+  tableMat.map.repeat.set(TW / 1.2, TD / 1.2);
   const table = new THREE.Mesh(new THREE.BoxGeometry(TW, TT, TD), tableMat);
   table.position.set(0.1, -TT / 2, -0.2);
   table.receiveShadow = true;
   table.name = 'table';
   group.add(table);
 
-  // ---- plywood tray --------------------------------------------------------------
-  const plyFace = new THREE.MeshStandardMaterial({
-    map: variant(tex.ply.diff, 0.6, 0.25), normalMap: variant(tex.ply.nor, 0.6, 0.25),
-    roughnessMap: variant(tex.ply.arm, 0.6, 0.25), roughness: 1, metalness: 0, color: 0xe8ddd0,
-  });
+  // ---- the box --------------------------------------------------------------
+  // the box: light grey wood-grain laminate boards, as on the real table
+  const plyFace = new THREE.MeshStandardMaterial({ map: laminateTexture(), roughness: 0.7, metalness: 0 });
+  plyFace.map.repeat.set(1 / 0.6, 1 / 0.1);
   const W = TRAY.wall, OX = TRAY.innerX + 2 * W, OZ = TRAY.innerZ + 2 * W;
   const tray = new THREE.Group();
   tray.name = 'tray';
@@ -77,7 +75,7 @@ export function buildWorkshop(scene, renderer, tex) {
   plies.wrapS = plies.wrapT = THREE.RepeatWrapping;
   const sideBottom = new THREE.MeshStandardMaterial({ map: plies, roughness: 0.85, color: 0xeee2d2 });
   sideBottom.map = plies.clone(); sideBottom.map.repeat.set(20, 1 / TRAY.floor); sideBottom.map.needsUpdate = true;
-  const rimMat = new THREE.MeshStandardMaterial({ color: 0xd8bd92, roughness: 0.82 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xe2ded5, roughness: 0.75 });
   const bottom = new THREE.Mesh(extrude(shapeOf(outer), TRAY.floor), [plyFace, sideBottom]);
   tray.add(bottom);
   const wallH = TRAY.height - TRAY.floor;
@@ -215,4 +213,49 @@ function makePencil() {
   g.add(body, wood, lead, cap, eraser);
   g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return g;
+}
+
+// light grey laminate with a fine horizontal wood grain (u: 0.6 m, v: 0.1 m per tile)
+function laminateTexture() {
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#cfccc5'; g.fillRect(0, 0, c.width, c.height);
+  for (let i = 0; i < 520; i++) {
+    const y = Math.random() * c.height, a = 0.03 + Math.random() * 0.12;
+    g.strokeStyle = Math.random() < 0.7 ? `rgba(90,86,78,${a})` : `rgba(255,255,250,${a})`;
+    g.lineWidth = 0.6 + Math.random() * 1.6;
+    g.beginPath();
+    const x0 = Math.random() * c.width - 200, len = 200 + Math.random() * 900;
+    g.moveTo(x0, y);
+    for (let x = x0; x < x0 + len; x += 40) g.lineTo(x, y + Math.sin(x * 0.01 + i) * 1.5);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  return t;
+}
+
+// dark grey worktop: mottled, with fine scratches and specks of sand
+function worktopTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 1024;
+  const g = c.getContext('2d');
+  g.fillStyle = '#4b4d50'; g.fillRect(0, 0, 1024, 1024);
+  for (let i = 0; i < 260; i++) {
+    const r = 20 + Math.random() * 120;
+    const gr = g.createRadialGradient(0, 0, 0, 0, 0, r);
+    const v = Math.random() < 0.5 ? '255,255,255' : '0,0,0';
+    gr.addColorStop(0, `rgba(${v},0.05)`); gr.addColorStop(1, `rgba(${v},0)`);
+    g.save(); g.translate(Math.random() * 1024, Math.random() * 1024); g.fillStyle = gr; g.fillRect(-r, -r, 2 * r, 2 * r); g.restore();
+  }
+  for (let i = 0; i < 400; i++) {
+    g.strokeStyle = `rgba(220,220,215,${0.04 + Math.random() * 0.1})`; g.lineWidth = 0.5 + Math.random();
+    const x = Math.random() * 1024, y = Math.random() * 1024, a = Math.random() * Math.PI, l = 10 + Math.random() * 90;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+  for (let i = 0; i < 1500; i++) { g.fillStyle = `rgba(${170 + Math.random() * 40},${140 + Math.random() * 30},${90 + Math.random() * 20},${0.3 + Math.random() * 0.5})`; g.fillRect(Math.random() * 1024, Math.random() * 1024, 1 + Math.random() * 2, 1 + Math.random() * 2); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  return t;
 }
