@@ -3,7 +3,7 @@ import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES } f
 import { loadAssets } from './world/assets.js';
 import { buildWorkshop } from './world/workshop.js';
 import { Terrain } from './world/terrain.js';
-import { makeTerrainMaterial } from './world/terrainMaterial.js';
+import { makeTerrainMaterial, makeFallbackTerrainMaterial } from './world/terrainMaterial.js';
 import { Grass } from './world/grass.js';
 import { SoilParticles } from './world/particles.js';
 import { OutlineView, contains, gradeY } from './world/outlines.js';
@@ -37,6 +37,14 @@ async function main() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   app.renderer = renderer;
+  // shader problems on a device are shown on screen (so they can be reported) instead of
+  // silently leaving an object undrawn; the soil then falls back to a plain material
+  app.shaderErrors = [];
+  renderer.debug.onShaderError = (gl, program, vs, fs) => {
+    const log = [gl.getProgramInfoLog(program), gl.getShaderInfoLog(vs), gl.getShaderInfoLog(fs)].filter(Boolean).join(' | ').trim();
+    console.error('shader error', log);
+    app.shaderErrors.push(log || 'link failed');
+  };
 
   const stored = readSettings();
   // BUILD 3: the construction-site panorama becomes the default background once
@@ -112,6 +120,7 @@ async function main() {
 
   app.rig.update(1);
   renderer.compile(scene, camera);
+  checkTerrainShader();
 
   let last = performance.now();
   let fpsAcc = 0, fpsN = 0;
@@ -128,6 +137,34 @@ async function main() {
   document.getElementById('ui').hidden = false;
   app.ready = true;
   requestAnimationFrame(frame);
+}
+
+// if the soil shader could not be built on this device, use the plain one
+function checkTerrainShader() {
+  const t = app.terrain.mesh, mat = t?.material;
+  if (!mat || mat === app.fallbackMat) return;
+  const prog = app.renderer.properties.get(mat).currentProgram;
+  if (prog && prog.diagnostics && prog.diagnostics.runnable === false) {
+    app.fallbackMat = makeFallbackTerrainMaterial(app.tex);
+    t.material = app.fallbackMat;
+    const msg = 'Упрощённый грунт: устройство не собрало шейдер. ' + (app.shaderErrors[0] || '').slice(0, 160);
+    console.error(msg);
+    setTimeout(() => app.ui?.toast(msg), 1500);
+  }
+}
+let shaderCheckT = 0;
+
+// Out of video memory (iPhones, in-app browsers): a buffer that did not fit is
+// silently not drawn. Step the quality down and upload the soil mesh again.
+function checkGpuMemory() {
+  const gl = app.renderer.getContext();
+  const e = gl.getError();
+  if (e !== gl.OUT_OF_MEMORY) return;
+  const q = app.settings.quality, next = q === 'high' ? 'medium' : 'low';
+  console.error('WebGL out of memory, quality', q, '→', next);
+  if (q !== 'low') { app.settings.quality = next; applySettings(); }
+  app.terrain.mesh.geometry.dispose();   // re-created on the next frame
+  app.ui?.toast(q !== 'low' ? `Не хватило видеопамяти — качество снижено до «${next === 'medium' ? 'среднее' : 'низкое'}»` : 'Не хватает видеопамяти устройства');
 }
 
 function step(dt, time, render = true) {
@@ -155,6 +192,7 @@ function step(dt, time, render = true) {
   app.terrainMat.userData.uniforms.uTime.value = time;
   app.pipeline.focus = app.rig.focus;
   if (render) app.pipeline.render(app.scene, app.camera, time);
+  if (render && (shaderCheckT += dt) > 1) { shaderCheckT = 0; checkTerrainShader(); checkGpuMemory(); }
   app.recorder.sample(app.clock, dt, trackRow);
   app.ui.tick(dt);
 }
@@ -295,7 +333,7 @@ function applySettings() {
   app.terrainMat.userData.uniforms.uLevel.value = s.level ? 1 : 0;
   app.pipeline.dofAmount = s.dof;
   if (app.pipeline.quality !== s.quality || !app.pipeline.target) app.pipeline.setQuality(s.quality);
-  const sm = s.quality === 'low' ? 1024 : s.quality === 'medium' ? 2048 : 4096;
+  const sm = s.quality === 'low' ? 1024 : s.quality === 'medium' ? 2048 : 3072;
   if (app.workshop.sun.shadow.mapSize.x !== sm) {
     app.workshop.sun.shadow.mapSize.setScalar(sm);
     if (app.workshop.sun.shadow.map) { app.workshop.sun.shadow.map.dispose(); app.workshop.sun.shadow.map = null; }
