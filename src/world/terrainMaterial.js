@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TRAY } from '../config.js';
+import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 
 // Topsoil photo texture on undisturbed ground, triplanar "excavated soil wall"
 // texture on cut faces, crumbly dark loose soil on spoil, a lime chalk line for
@@ -29,6 +30,7 @@ export function makeTerrainMaterial(tex) {
     uTime: { value: 0 },
   };
   mat.userData.uniforms = uniforms;
+  const ch = stochasticChunks();
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
@@ -51,11 +53,22 @@ export function makeTerrainMaterial(tex) {
         varying vec3 vSoil;
         varying vec3 vWPos;
         varying vec3 vWNrm;
-        float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
+        float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        ${STOCHASTIC_GLSL}`)
       .replace('#include <map_fragment>', `
+        tcStochSetup(vMapUv);
         vec3 wn = normalize(vWNrm);
         float steepF = smoothstep(0.25, 0.75, 1.0 - wn.y);
-        vec4 topC = texture2D(map, vMapUv);
+        vec4 topC = tcStoch(map, vMapUv);
+        // large patches: drier / damper / more clayey ground, so the plot never looks stamped
+        {
+          float m1 = tcFbm(vWPos.xz * 2.6), m2 = tcFbm(vWPos.xz * 0.8 + 11.0), m3 = tcFbm(vWPos.xz * 9.0 + 5.0);
+          topC.rgb *= mix(0.80, 1.12, m1) * mix(0.9, 1.06, m3);
+          topC.rgb = mix(topC.rgb, topC.rgb * vec3(1.08, 0.97, 0.86), smoothstep(0.45, 0.75, m2));        // warmer clay
+          topC.rgb = mix(topC.rgb, vec3(dot(topC.rgb, vec3(0.33))) * vec3(0.98, 0.96, 0.93), smoothstep(0.55, 0.8, 1.0 - m2) * 0.2); // dusty grey
+          vec3 sec = tcStoch(tWall, vWPos.xz * 3.1).rgb * vec3(0.95, 0.9, 0.84);
+          topC.rgb = mix(topC.rgb, sec, smoothstep(0.58, 0.82, tcFbm(vWPos.xz * 1.7 + 23.0)) * 0.55);
+        }
         vec3 bw = pow(abs(wn), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
         vec3 wallC = texture2D(tWall, vWPos.zy * uWallScale).rgb * bw.x
                    + texture2D(tWall, vWPos.xz * uWallScale).rgb * bw.y
@@ -90,11 +103,12 @@ export function makeTerrainMaterial(tex) {
         }
         diffuseColor.rgb *= soilC;
       `)
-      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      .replace('#include <normal_fragment_maps>', `${ch.normal}
         normal = normalize(mix(normal, normalize(vNormal) * faceDirection, max(steepF * 0.8, smoothstep(0.0, 0.0012, vSoil.y) * 0.45)));`)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(roughnessFactor, 0.82, smoothstep(0.003, 0.02, vSoil.x));`);
+      .replace('#include <aomap_fragment>', ch.ao)
+      .replace('#include <roughnessmap_fragment>', `${ch.rough}
+        roughnessFactor = mix(max(roughnessFactor, 0.94), 0.82, smoothstep(0.003, 0.02, vSoil.x)); // dry earth has no sheen`);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-2';
+  mat.customProgramCacheKey = () => 'tc-terrain-3';
   return mat;
 }

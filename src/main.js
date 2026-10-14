@@ -195,8 +195,23 @@ function updateFocus() {
   app.rig.focusGoal = Math.max(0.03, _f.sub(cam.position).dot(_fwd));
 }
 
+// Size of the screen we draw on. iOS home-screen apps with a translucent status
+// bar report a viewport that is short by the status-bar height (a black band
+// at the bottom): there the whole screen is used.
+function viewportSize() {
+  let w = window.innerWidth, h = window.innerHeight;
+  if (navigator.standalone && window.screen) {
+    const a = Math.min(screen.width, screen.height), b = Math.max(screen.width, screen.height);
+    if (w < h) { w = a; h = Math.max(h, b); } else { w = Math.max(w, b); h = a; }
+  }
+  const root = document.documentElement.style;
+  root.setProperty('--app-w', `${w}px`);
+  root.setProperty('--app-h', `${h}px`);
+  return [w, h];
+}
+
 function resize() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const [w, h] = viewportSize();
   const q = app.settings.quality;
   const dprCap = q === 'high' ? 2 : q === 'medium' ? 1.5 : 1.15;
   app.renderer.setPixelRatio(app.dprOverride || Math.min(window.devicePixelRatio || 1, dprCap));

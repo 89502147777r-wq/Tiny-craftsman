@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:12.
-export const BUILD = 3;
+export const BUILD = 4;
 export const STAGE = 3;
 export const MODEL_SCALE = 12;
 
