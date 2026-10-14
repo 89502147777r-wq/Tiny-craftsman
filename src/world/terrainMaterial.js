@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TRAY, LOAM_TILE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
+import { innerCorner } from './plotShape.js';
 
 // Topsoil photo texture on undisturbed ground, triplanar "excavated soil wall"
 // texture on cut faces, crumbly dark loose soil on spoil, a lime chalk line for
@@ -30,6 +31,8 @@ export function makeTerrainMaterial(tex) {
     uChalk: { value: 1 },
     uLevel: { value: 0 },
     uTime: { value: 0 },
+    uCorner: { value: (() => { const c = innerCorner(); return new THREE.Vector4(c.cx, c.cz, c.r, 0); })() },
+    uCornerSign: { value: (() => { const c = innerCorner(); return new THREE.Vector2(c.sx, c.sz); })() },
   };
   mat.userData.uniforms = uniforms;
   const ch = stochasticChunks();
@@ -53,12 +56,19 @@ export function makeTerrainMaterial(tex) {
         uniform float uWallScale, uLooseScale, uFloorY, uChalk, uLevel, uSoilY, uTime;
         uniform sampler2D tMask;
         uniform vec4 uPlot;
+        uniform vec4 uCorner;
+        uniform vec2 uCornerSign;
         varying vec3 vSoil;
         varying vec3 vWPos;
         varying vec3 vWNrm;
         float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         ${STOCHASTIC_GLSL}`)
       .replace('#include <map_fragment>', `
+        // the soil ends at the rounded corner of the tray
+        {
+          vec2 dc = (vWPos.xz - uCorner.xy) * uCornerSign;
+          if (dc.x > 0.0 && dc.y > 0.0 && length(dc) > uCorner.z) discard;
+        }
         tcStochSetup(vMapUv);
         vec3 wn = normalize(vWNrm);
         float steepF = smoothstep(0.25, 0.75, 1.0 - wn.y);
@@ -113,6 +123,6 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <roughnessmap_fragment>', `${ch.rough}
         roughnessFactor = mix(max(roughnessFactor, 0.94), 0.82, smoothstep(0.003, 0.02, vSoil.x)); // dry earth has no sheen`);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-3';
+  mat.customProgramCacheKey = () => 'tc-terrain-4';
   return mat;
 }

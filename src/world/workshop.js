@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { TRAY } from '../config.js';
+import { TRAY, BACKDROP } from '../config.js';
+import { roundedOutline } from './plotShape.js';
 import { variant } from './assets.js';
 import { mulberry32 } from '../core/rand.js';
 
@@ -58,28 +59,33 @@ export function buildWorkshop(scene, renderer, tex) {
     map: variant(tex.ply.diff, 0.6, 0.25), normalMap: variant(tex.ply.nor, 0.6, 0.25),
     roughnessMap: variant(tex.ply.arm, 0.6, 0.25), roughness: 1, metalness: 0, color: 0xe8ddd0,
   });
-  const edgeH = new THREE.MeshStandardMaterial({ map: plyEdgeTexture(false), roughness: 0.85, color: 0xeee2d2 });
-  const edgeV = new THREE.MeshStandardMaterial({ map: plyEdgeTexture(true), roughness: 0.85, color: 0xeee2d2 });
   const W = TRAY.wall, OX = TRAY.innerX + 2 * W, OZ = TRAY.innerZ + 2 * W;
   const tray = new THREE.Group();
   tray.name = 'tray';
-  // bottom board
-  const bottom = new THREE.Mesh(new THREE.BoxGeometry(OX, TRAY.floor, OZ), [edgeV, edgeV, plyFace, plyFace, edgeV, edgeV]);
-  bottom.position.y = TRAY.floor / 2;
+  // bottom board and walls: one plywood frame with a rounded corner where the
+  // photo backdrop wraps round the box (extruded outlines, caps = ply edges)
+  const shapeOf = (pts) => new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z)));
+  const outer = roundedOutline(OX / 2, OZ / 2, BACKDROP.radius);
+  const inner = roundedOutline(TRAY.innerX / 2, TRAY.innerZ / 2, BACKDROP.radius - W);
+  const extrude = (shape, h) => {
+    const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, curveSegments: 24 });
+    g.rotateX(-Math.PI / 2);
+    return g;
+  };
+  // plywood end grain: layered stripes along the thickness
+  const plies = plyEdgeTexture(false);
+  plies.wrapS = plies.wrapT = THREE.RepeatWrapping;
+  const sideBottom = new THREE.MeshStandardMaterial({ map: plies, roughness: 0.85, color: 0xeee2d2 });
+  sideBottom.map = plies.clone(); sideBottom.map.repeat.set(20, 1 / TRAY.floor); sideBottom.map.needsUpdate = true;
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xd8bd92, roughness: 0.82 });
+  const bottom = new THREE.Mesh(extrude(shapeOf(outer), TRAY.floor), [plyFace, sideBottom]);
   tray.add(bottom);
-  // walls: px, nx, py, ny, pz, nz
   const wallH = TRAY.height - TRAY.floor;
-  const longGeo = new THREE.BoxGeometry(OX, wallH, W);
-  const shortGeo = new THREE.BoxGeometry(TRAY.innerZ, wallH, W);
-  const wallMats = [edgeV, edgeV, edgeH, plyFace, plyFace, plyFace];
-  for (const s of [-1, 1]) {
-    const a = new THREE.Mesh(longGeo, wallMats);
-    a.position.set(0, TRAY.floor + wallH / 2, s * (TRAY.innerZ / 2 + W / 2));
-    const b = new THREE.Mesh(shortGeo, wallMats);
-    b.rotation.y = Math.PI / 2;
-    b.position.set(s * (TRAY.innerX / 2 + W / 2), TRAY.floor + wallH / 2, 0);
-    tray.add(a, b);
-  }
+  const frame = shapeOf(outer);
+  frame.holes.push(new THREE.Path(inner.map(([x, z]) => new THREE.Vector2(x, -z))));
+  const walls = new THREE.Mesh(extrude(frame, wallH), [rimMat, plyFace]);
+  walls.position.y = TRAY.floor;
+  tray.add(walls);
   tray.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   group.add(tray);
 

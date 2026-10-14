@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-import { TRAY, SOIL_TILE } from '../config.js';
+import { TRAY, SOIL_TILE, BACKDROP } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 
 // Background / lighting modes:
 //   workshop – the diorama on the bench in the carpentry shop (HDRI + lamp)
 //   site     – "life-size" illusion: 360° construction-site panorama, daylight,
 //              no table, the plot continues into surrounding ground
-//   posters  – miniature-photography trick: two photo prints standing on the
-//              table behind the diorama (crane left, billboard right), daylight
+//   posters  – miniature-photography trick: a photo sheet glued round two sides
+//              of the box (crane on side 1, billboard on side 2), daylight
 export class Backdrop {
   constructor(app) {
     this.app = app;
@@ -57,7 +57,7 @@ export class Backdrop {
     if (app.stacks) app.stacks.visible = mode !== 'site';
     ws.tray.traverse((o) => { if (o.isMesh) o.visible = mode !== 'site'; });
     this.ground.visible = mode === 'site';
-    // printed posters standing on the table behind the diorama
+    // the photo sheet glued round the box
     if (mode === 'posters' && !this.posters) await this._buildPosters();
     if (this.mode !== mode) return;
     if (this.posters) this.posters.visible = mode === 'posters';
@@ -82,36 +82,31 @@ export class Backdrop {
 
   update() {}
 
-  // Two photo prints, the way miniature photographers do it: each sheet stands
-  // upright behind the tray and its lower edge bends forward onto the table,
-  // where it is taped down (a paper "sweep", so there is no seam between the
-  // print and the table). Crane on the left, billboard on the right.
+  // The photo backdrop, the way miniature photographers do it: one sheet of
+  // photo paper glued tight to the outside of the box along two sides that
+  // meet at the rounded corner. Side 1 (far side) shows the crane photo,
+  // side 2 (right side) the billboard; across the rounded corner one photo
+  // fades into the other, so there is no seam. The sheet runs from the table
+  // up past the rim; the photos start at the rim, where the soil ends.
   async _buildPosters() {
     const [crane, board] = await Promise.all([this._photo('assets/backdrops/site-crane.jpg'), this._photo('assets/backdrops/site-billboard.jpg')]);
+    for (const t of [crane, board]) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.needsUpdate = true; }
+    const geo = makeWrapSheet(crane.image.width / crane.image.height, board.image.width / board.image.height);
+    const front = new THREE.MeshStandardMaterial({ map: crane, roughness: 0.6, side: THREE.FrontSide });
+    front.onBeforeCompile = (sh) => {
+      sh.uniforms.tB = { value: board };
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 uvB;\nattribute float aMix;\nvarying vec2 vUvB;\nvarying float vMix;')
+        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvUvB = uvB; vMix = aMix;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tB;\nvarying vec2 vUvB;\nvarying float vMix;')
+        .replace('#include <map_fragment>', 'vec4 sampledDiffuseColor = mix(texture2D(map, vMapUv), texture2D(tB, vUvB), vMix);\ndiffuseColor *= sampledDiffuseColor;');
+    };
+    front.customProgramCacheKey = () => 'tc-backdrop-wrap';
+    const back = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.85, side: THREE.BackSide });
     const g = new THREE.Group();
     g.name = 'posters';
-    const back = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.85, side: THREE.BackSide });
-    const tape = new THREE.MeshStandardMaterial({ color: 0xd9cfae, roughness: 0.5, transparent: true, opacity: 0.75 });
-    const zBack = -(TRAY.innerZ / 2 + TRAY.wall) - 0.4; // feet clear of the tray even where the sheets turn inwards
-    const W = 1.6;
-    [[crane, -0.78, 0.2], [board, 0.78, -0.2]].forEach(([tex, x, turn]) => {
-      const H = W / (tex.image.width / tex.image.height);
-      const sheet = makeSweep(W, H, 0.14, 0.09);
-      const front = new THREE.Mesh(sheet, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55, side: THREE.FrontSide }));
-      const rear = new THREE.Mesh(sheet, back);
-      const p = new THREE.Group();
-      p.add(front, rear);
-      // two strips of masking tape over the flat foot
-      for (const s of [-1, 1]) {
-        const t = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.0004, 0.07), tape);
-        t.position.set(s * W * 0.38, 0.0002, 0.14 + 0.05);
-        p.add(t);
-      }
-      p.position.set(x, 0.0003, zBack);
-      p.rotation.y = turn;
-      p.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      g.add(p);
-    });
+    const m1 = new THREE.Mesh(geo, front), m2 = new THREE.Mesh(geo, back);
+    for (const m of [m1, m2]) { m.receiveShadow = true; m.castShadow = false; }
+    g.add(m1, m2);
     g.visible = false;
     this.app.scene.add(g);
     this.posters = g;
@@ -176,34 +171,63 @@ function groundColour(t) {
   return c;
 }
 
-// A sheet of photo paper: upright part of height h, a bend of radius r and a
-// flat foot of length f lying on the table (towards +z). The image runs from
-// the top edge down over the bend; the foot carries its last rows.
-function makeSweep(w, h, r, f) {
-  const prof = [];
-  const n = 18;
-  prof.push([0, h + r, 0]);
-  for (let i = 0; i <= n; i++) { const a = (i / n) * Math.PI / 2; prof.push([0, r - Math.sin(a) * r + 0, r - Math.cos(a) * r]); }
-  prof.push([0, 0, r + f]);
-  // arc length along the profile → v
-  const len = [0];
-  for (let i = 1; i < prof.length; i++) len.push(len[i - 1] + Math.hypot(prof[i][1] - prof[i - 1][1], prof[i][2] - prof[i - 1][2]));
-  const L = len[len.length - 1], img = h + r * Math.PI / 2; // the photo covers the upright part and the bend
-  const pos = [], uv = [], idx = [];
-  const cols = 8;
-  for (let i = 0; i < prof.length; i++) for (let c = 0; c <= cols; c++) {
-    const x = (c / cols - 0.5) * w;
-    pos.push(x, prof[i][1], prof[i][2]);
-    uv.push(c / cols, Math.max(0, 1 - len[i] / img));
+// One sheet of paper wrapped round the outside of the box: along side 1, round
+// the rounded corner, along side 2. Attributes: uv → photo 1 (crane), uvB →
+// photo 2 (billboard), aMix → 0 on side 1 … 1 on side 2 (blend over the corner).
+// Each photo "covers" its part (cropped, ground kept), starting at the rim.
+function makeWrapSheet(aspect1, aspect2) {
+  const { sx, sz, radius, height: H } = BACKDROP;
+  const e = 0.0012; // paper on the plywood
+  const ox = TRAY.innerX / 2 + TRAY.wall + e, oz = TRAY.innerZ / 2 + TRAY.wall + e, R = radius + e;
+  const path = [];
+  const side1 = [], arc = [], side2 = [];
+  for (let i = 0; i <= 40; i++) { const t = i / 40; side1.push([-sx * ox + (sx * (ox - R) + sx * ox) * t, sz * oz]); }
+  const cx = sx * (ox - R), cz = sz * (oz - R);
+  const a0 = Math.atan2(sz, 0), a1 = Math.atan2(0, sx);
+  let da = a1 - a0; if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2;
+  for (let i = 1; i <= 24; i++) { const a = a0 + da * (i / 24); arc.push([cx + Math.cos(a) * R, cz + Math.sin(a) * R]); }
+  for (let i = 1; i <= 30; i++) { const t = i / 30; side2.push([sx * ox, sz * (oz - R) + (-sz * oz - sz * (oz - R)) * t]); }
+  path.push(...side1, ...arc, ...side2);
+  const s = [0];
+  for (let i = 1; i < path.length; i++) s.push(s[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
+  const L1 = s[side1.length - 1], L2 = s[side1.length + arc.length - 1], total = s[s.length - 1];
+  // the picture runs to the viewer's right along the path (mirror otherwise)
+  const flip = sx !== -sz;
+  const rim = TRAY.height;
+  const cover = (s0, s1, aspect) => {
+    const W = s1 - s0, k = Math.max(W / aspect, H);
+    return (si, y) => {
+      const u = 0.5 + ((si - s0) - W / 2) / (aspect * k);
+      return [flip ? 1 - u : u, (y - rim) / k];
+    };
+  };
+  const map1 = cover(0, L2, aspect1), map2 = cover(L1, total, aspect2);
+  const ys = [0, rim - 0.004];
+  for (let i = 0; i <= 16; i++) ys.push(rim + (H * i) / 16);
+  const pos = [], uv = [], uvB = [], mix = [], idx = [];
+  for (let j = 0; j < ys.length; j++) for (let i = 0; i < path.length; i++) {
+    pos.push(path[i][0], ys[j], path[i][1]);
+    uv.push(...map1(s[i], Math.max(ys[j], rim)));
+    uvB.push(...map2(s[i], Math.max(ys[j], rim)));
+    // cross-fade over the middle of the rounded corner only (less ghosting)
+    const t = Math.min(1, Math.max(0, (s[i] - (L1 + (L2 - L1) * 0.3)) / ((L2 - L1) * 0.4)));
+    mix.push(t * t * (3 - 2 * t));
   }
-  for (let i = 0; i < prof.length - 1; i++) for (let c = 0; c < cols; c++) {
-    const a = i * (cols + 1) + c, b = a + 1, d = a + cols + 1, e = d + 1;
-    idx.push(a, d, b, b, d, e);
+  const n = path.length;
+  for (let j = 0; j < ys.length - 1; j++) for (let i = 0; i < n - 1; i++) {
+    const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+    idx.push(a, b, c, b, d, c);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('uvB', new THREE.Float32BufferAttribute(uvB, 2));
+  g.setAttribute('aMix', new THREE.Float32BufferAttribute(mix, 1));
   g.setIndex(idx);
   g.computeVertexNormals();
+  // the printed side must face the box (inwards)
+  const nrm = g.attributes.normal;
+  const inward = -(nrm.getX(0) * path[0][0] + nrm.getZ(0) * path[0][1]) > 0;
+  if (!inward) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k + 1]; idx[k + 1] = idx[k + 2]; idx[k + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); }
   return g;
 }

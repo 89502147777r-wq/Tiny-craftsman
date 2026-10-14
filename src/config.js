@@ -1,11 +1,17 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:12.
-export const BUILD = 5;
+export const BUILD = 6;
 export const STAGE = 3;
 export const MODEL_SCALE = 12;
 
 // Diorama board: 2.4 × 1.8 m inside = a 28.8 × 21.6 m building plot at 1:12:
 // room for the house, the machines parked along the back edge and a truck.
+// Photo backdrop: one continuous sheet glued to the outside of the box along
+// two sides that meet at a rounded corner (sx, sz = which corner: +x right,
+// -z far side). Side 1 (along x, far side) gets the crane photo, side 2
+// (along z, right side) the billboard; they blend over the rounded corner.
+export const BACKDROP = { sx: 1, sz: -1, radius: 0.24, height: 1.35 };
+
 export const TRAY = {
   innerX: 2.4,        // inner size of the plywood tray along X
   innerZ: 1.8,        // … and along Z

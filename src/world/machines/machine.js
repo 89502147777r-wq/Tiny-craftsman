@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { innerCorner } from '../plotShape.js';
 
 // Common machine behaviour: pose on the plot (x, z, yaw), following the
 // ground (pitch/roll from the contact points), staying inside the tray,
@@ -84,6 +85,13 @@ export class Machine {
     }
     this.x = Math.max(-t.halfX + rx, Math.min(t.halfX - rx, this.x));
     this.z = Math.max(-t.halfZ + rz, Math.min(t.halfZ - rz, this.z));
+    // the rounded corner of the tray
+    const c = innerCorner();
+    const dx = (this.x - c.cx) * c.sx, dz = (this.z - c.cz) * c.sz;
+    if (dx > 0 && dz > 0) {
+      const lim = Math.max(0, c.r - Math.min(rx, rz)), d = Math.hypot(dx, dz);
+      if (d > lim) { const k = lim / d; this.x = c.cx + c.sx * dx * k; this.z = c.cz + c.sz * dz * k; }
+    }
   }
 
   // Cut everything above cutY under a blade edge (centre, lateral width) that
