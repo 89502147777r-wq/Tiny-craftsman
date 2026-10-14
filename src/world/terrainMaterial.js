@@ -64,11 +64,6 @@ export function makeTerrainMaterial(tex) {
         float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         ${STOCHASTIC_GLSL}`)
       .replace('#include <map_fragment>', `
-        // the soil ends at the rounded corner of the tray
-        {
-          vec2 dc = (vWPos.xz - uCorner.xy) * uCornerSign;
-          if (dc.x > 0.0 && dc.y > 0.0 && length(dc) > uCorner.z) discard;
-        }
         tcStochSetup(vMapUv);
         vec3 wn = normalize(vWNrm);
         float steepF = smoothstep(0.25, 0.75, 1.0 - wn.y);
@@ -120,9 +115,22 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <normal_fragment_maps>', `${ch.normal}
         normal = normalize(mix(normal, normalize(vNormal) * faceDirection, max(steepF * 0.8, smoothstep(0.0, 0.0012, vSoil.y) * 0.45)));`)
       .replace('#include <aomap_fragment>', ch.ao)
+      // the soil ends at the rounded corner of the tray (cut at the very end, after
+      // every texture lookup: Apple GPUs dislike derivatives after a discard)
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        {
+          vec2 dc = (vWPos.xz - uCorner.xy) * uCornerSign;
+          if (dc.x > 0.0 && dc.y > 0.0 && length(dc) > uCorner.z) discard;
+        }`)
       .replace('#include <roughnessmap_fragment>', `${ch.rough}
         roughnessFactor = mix(max(roughnessFactor, 0.94), 0.82, smoothstep(0.003, 0.02, vSoil.x)); // dry earth has no sheen`);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-4';
+  mat.customProgramCacheKey = () => 'tc-terrain-5';
   return mat;
+}
+
+// Plain fallback (no custom shader) in case a device cannot compile the soil
+// shader: sand photo, normal map and roughness, nothing else.
+export function makeFallbackTerrainMaterial(tex) {
+  return new THREE.MeshStandardMaterial({ map: tex.top.diff, normalMap: tex.top.nor, roughnessMap: tex.top.arm, roughness: 1, metalness: 0 });
 }

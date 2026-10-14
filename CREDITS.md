@@ -6,7 +6,7 @@
 
 | Файл в проекте | Ассет | Авторы | Лицензия | Источник |
 |---|---|---|---|---|
-| `assets/textures/gravelly_sand/` (diff, nor_gl, arm, 2k) — песок участка | Gravelly Sand | Dario Barresi | CC0 | https://polyhaven.com/a/gravelly_sand |
+| `assets/textures/gravelly_sand/` (diff 2k, nor_gl и arm 1k) — песок участка | Gravelly Sand | Dario Barresi | CC0 | https://polyhaven.com/a/gravelly_sand |
 | `assets/textures/excavated_soil_wall/` (1k) | Excavated Soil Wall | Amal Kumar | CC0 | https://polyhaven.com/a/excavated_soil_wall |
 | `assets/textures/wood_table_worn/` (1k) | Wood Table Worn | Dimitrios Savva (фото), Rico Cilliers (обработка) | CC0 | https://polyhaven.com/a/wood_table_worn |
 | `assets/textures/plywood/` (1k) — фанера (дно, отвалы) | Plywood | Rob Tuytel | CC0 | https://polyhaven.com/a/plywood |
@@ -23,7 +23,7 @@
 ## 3D-модели техники (Sketchfab, CC BY 4.0)
 
 Модели взяты из открытого набора Objaverse (только файлы с лицензией CC BY 4.0) и **изменены**: оптимизированы
-glTF-Transform (текстуры WebP ≤ 1024 px, геометрия meshopt), приведены к масштабу 1:12; у КАМАЗа скрыт кузов-тент,
+glTF-Transform (текстуры WebP ≤ 512 px, геометрия meshopt), приведены к масштабу 1:12; у КАМАЗа скрыт кузов-тент,
 вместо него кодом добавлены барабан миксера, лоток, бак, лестница и рама; к трактору кодом добавлен фронтальный погрузчик;
 у экскаватора детали стрелы, рукояти и ковша управляются кинематикой игры.
 
