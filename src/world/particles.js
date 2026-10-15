@@ -127,6 +127,24 @@ export class SoilParticles {
     this.clods.instanceMatrix.needsUpdate = true;
   }
 
+  // the rake drags the clods under its head along and breaks them up
+  rakeClods(cx, cz, dx, dz, hw, band, ahead, minSize) {
+    let w = 0, hit = false;
+    for (const c of this.clodList) {
+      const rx = c.x - cx, rz = c.z - cz, u = rx * dx + rz * dz, v = rx * -dz + rz * dx;
+      if (u >= -band - c.size && u <= c.size && Math.abs(v) <= hw) {
+        hit = true;
+        c.x += dx * ahead * 0.5; c.z += dz * ahead * 0.5;
+        c.size *= 0.86;
+        c.rot.x += 0.7; c.rot.z += 0.4;
+        if (c.size < minSize) continue;
+      }
+      this.clodList[w++] = c;
+    }
+    this.clodList.length = w;
+    if (hit) this._seenVersion = -1;
+  }
+
   clearClods() { this.clodList.length = 0; this._seenVersion = -1; }
 }
 

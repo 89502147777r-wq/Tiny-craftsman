@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:3.5.
-export const BUILD = 10;
+export const BUILD = 11;
 export const STAGE = 3;
 export const MODEL_SCALE = 3.5;
 // Many sizes were first designed at 1:12; K = how much bigger everything built
@@ -42,6 +42,16 @@ export const SHOVELS = {
   // (blade 21 × 29 cm and 27 × 31 cm real; capacity in m³ of the model)
   spade: { name: 'Штыковая', width: 0.0175 * K, length: 0.024 * K, capacity: 2.6e-6 * K ** 3, pointed: true },
   scoop: { name: 'Совковая', width: 0.0225 * K, length: 0.026 * K, capacity: 4.2e-6 * K ** 3, pointed: false },
+};
+
+// garden rake (грабли): head 32 cm with 14 tines 7 cm long, handle 1.4 m — sizes of
+// the model; how it moves soil is tuned in Terrain.rakeStep
+export const RAKE = {
+  width: 0.027 * K, tines: 14, tineLen: 0.0058 * K, handle: 0.115 * K,
+  bite: 0.0006,      // m the tines go below the line the head rests on
+  climb: 0.18,       // how steeply the pulled head may rise (it bites into a heap)
+  push: 0.55,        // share of the soil above the line that goes along with the head
+  groove: 0.00035,   // depth of the furrows the tines leave
 };
 
 export const DEFAULT_SETTINGS = {

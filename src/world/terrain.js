@@ -202,6 +202,85 @@ export class Terrain {
     return removed;
   }
 
+  // One step of the rake: head centred at cx,cz, pulled along the unit vector
+  // dx,dz, the head lying across it. The rigid head rests on the ground — a
+  // straight line fitted through the heights under it — but, held by the
+  // hands, it cannot climb faster than s.climb per metre: it bites into a heap
+  // instead of riding over it. A share of the loose soil above the line (less
+  // the tine depth) goes ahead of the head into the windrow, which rolls along
+  // and drops into hollows. Native ground is only scratched, never dug.
+  // s carries the stroke: { width, band, bite, reach, climb, push, L, S, swept[], vAt }.
+  // Returns the moved volume (m³). Volume is conserved exactly.
+  rakeStep(s, cx, cz, dx, dz, dist) {
+    const { nx: n, cell, nat, loose, ldep } = this;
+    const ax = -dz, az = dx, hw = s.width / 2, band = s.band, ahead = band + cell * 2;
+    const reach = hw + band + cell * 2;
+    const ix0 = Math.max(0, Math.floor(this.toCellX(cx - reach))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(cx + reach)));
+    const iz0 = Math.max(0, Math.floor(this.toCellZ(cz - reach))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(cz + reach)));
+    const cells = (this._rk ||= { i: new Int32Array(4096), v: new Float32Array(4096), x: new Float32Array(4096), z: new Float32Array(4096) });
+    let m = 0, sw = 0, sv = 0, svv = 0, sh = 0, svh = 0, top = -1;
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const x = this.toWorldX(ix), z = this.toWorldZ(iz), rx = x - cx, rz = z - cz;
+      const u = rx * dx + rz * dz, v = rx * ax + rz * az;
+      if (u < -band || u > 0 || v < -hw || v > hw || m >= 4096) continue;
+      const i = iz * n + ix, h = nat[i] + loose[i];
+      cells.i[m] = i; cells.v[m] = v; cells.x[m] = x; cells.z[m] = z; m++;
+      sw++; sv += v; svv += v * v; sh += h; svh += v * h;
+      if (h > top) top = h;
+    }
+    if (!m) return 0;
+    const det = sw * svv - sv * sv;
+    const b = det > 1e-12 ? (sw * svh - sv * sh) / det : 0, a = (sh - b * sv) / sw;
+    s.L = s.L === null ? a : Math.min(a, s.L + s.climb * dist);
+    // the tines are only so long: the head bar rides on top of a heap, the
+    // soil above it is left behind (and the windrow cannot grow without end)
+    s.L = Math.max(s.L, top - s.reach - Math.abs(b) * hw);
+    s.S = b;
+    let moved = 0;
+    for (let k = 0; k < m; k++) {
+      const i = cells.i[k], v = cells.v[k];
+      if (Number.isNaN(s.vAt[i])) s.swept.push(i);
+      s.vAt[i] = v;
+      const lim = s.L + s.S * v - s.bite;
+      const ex = Math.min(nat[i] + loose[i] - lim, loose[i]) * s.push;
+      if (ex <= 1e-8) continue;
+      const tx = cells.x[k] + dx * ahead, tz = cells.z[k] + dz * ahead;
+      if (!this.inside(tx, tz)) continue;
+      loose[i] -= ex;
+      this._addLoose(this.index(tx, tz), ex, ldep[i]);
+      moved += ex;
+    }
+    const e = Math.ceil(ahead / cell) + 1;
+    this._touch(ix0 - e, iz0 - e, ix1 + e, iz1 + e);
+    return moved * this.cellArea;
+  }
+
+  // the tines leave fine furrows along the stroke: loose soil moves from the
+  // tine lines to between them (exactly as much as is taken)
+  rakeGrooves(s, spacing, depth) {
+    const { loose, vAt } = { loose: this.loose, vAt: s.vAt };
+    const want = new Float32Array(s.swept.length);
+    let take = 0, give = 0;
+    for (let k = 0; k < s.swept.length; k++) {
+      const i = s.swept[k];
+      const c = Math.cos(2 * Math.PI * (vAt[i] + s.width / 2) / spacing);
+      const d = -depth * c;
+      want[k] = d < 0 ? -Math.min(-d, loose[i]) : d;
+      if (want[k] < 0) take -= want[k]; else give += want[k];
+    }
+    if (take <= 0 || give <= 0) return;
+    const kt = Math.min(1, give / take), kg = Math.min(1, take / give);
+    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+    for (let k = 0; k < s.swept.length; k++) {
+      const i = s.swept[k], d = want[k] * (want[k] < 0 ? kt : kg);
+      loose[i] += d;
+      if (loose[i] < 0) loose[i] = 0;
+      const ix = i % this.nx, iz = (i / this.nx) | 0;
+      if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
+    }
+    this._touch(x0, z0, x1, z1);
+  }
+
   // Drop a volume of loose soil as a soft gaussian splat.
   deposit(x, z, vol, radius, depth = 0) {
     if (vol <= 0) return;

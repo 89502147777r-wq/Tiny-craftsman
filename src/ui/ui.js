@@ -7,6 +7,7 @@ const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
 const HINTS = {
   camera: 'Один палец — облёт и наклон. Два пальца — двигать участок, щипок — масштаб, поворот. Двойной тап — фокус.',
   shovel: 'Проведите пальцем по земле — лопата срежет слой грунта',
+  rake: 'Ведите пальцем по кучке — грабли срежут верх и растащат грунт ровным слоем. Тяните к себе несколько раз',
   loaded: 'Коснитесь места для отвала и отпустите — грунт высыплется',
   mark: {
     edit: 'Тяните круглые метки, чтобы менять контур. Тап по контуру — выбрать.',
@@ -68,8 +69,8 @@ export class UI {
     });
     window.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? app.redo() : app.undo(); }
-      const tools = ['camera', 'shovel', 'mark', 'form', 'rebar', 'machine'];
-      if (e.key >= '1' && e.key <= '6') app.setTool(tools[+e.key - 1]);
+      const tools = ['camera', 'shovel', 'rake', 'mark', 'form', 'rebar', 'machine'];
+      if (e.key >= '1' && e.key <= '7') app.setTool(tools[+e.key - 1]);
     });
     this.bindSettings();
     this.bindJoystick();
@@ -292,6 +293,7 @@ export class UI {
       const st = app.shovelTool.state;
       hint = st === 'loaded' || st === 'aim' ? HINTS.loaded : st === 'idle' ? HINTS.shovel : '';
     }
+    if (t === 'rake') hint = app.rakeTool.busy ? '' : HINTS.rake;
     if (t === 'mark') hint = HINTS.mark[app.markTool.mode];
     if (t === 'form') hint = HINTS.form[app.formTool.mode];
     if (t === 'rebar') hint = HINTS.rebar[app.rebarTool.mode];

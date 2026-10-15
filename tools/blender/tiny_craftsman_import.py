@@ -9,7 +9,7 @@ animated Blender scene, ready for a photoreal Cycles render:
     the action was committed in the game → the pit grows exactly as played
   * camera with the recorded path, orientation, field of view and focus
     distance (depth of field enabled)
-  * shovel proxy following the recorded tool motion
+  * shovel proxy following the recorded tool motion (and the rake, BUILD 11+)
   * formwork boards + stakes, rebar bars / cages / mesh sheets, each shown
     from the moment its journal action was committed (hidden after deletion)
   * excavator / tractor / truck mixer / concrete pump proxies following the recorded track
@@ -224,6 +224,17 @@ def build(project, assets="", fps=FPS):
         c.objects.unlink(shovel)
     link(shovel)
     shovel.rotation_mode = "QUATERNION"
+    rake = None
+    if rows and "rk_px" in rows[0]:
+        # rake proxy: the head (origin = tine tips), X across it, Y = tines
+        bpy.ops.mesh.primitive_cube_add(size=1)
+        rake = bpy.context.active_object
+        rake.name = "RakeProxy"
+        rake.scale = (0.095, 0.02, 0.004)  # three.js local axes: conv @ q maps them to Blender
+        for c in rake.users_collection:
+            c.objects.unlink(rake)
+        link(rake)
+        rake.rotation_mode = "QUATERNION"
     conv = Quaternion((1, 0, 0), math.radians(90))
     last = 1
     for r in rows:
@@ -241,6 +252,11 @@ def build(project, assets="", fps=FPS):
         shovel.rotation_quaternion = conv @ Quaternion((r["tool_qw"], r["tool_qx"], r["tool_qy"], r["tool_qz"]))
         shovel.keyframe_insert("location", frame=f)
         shovel.keyframe_insert("rotation_quaternion", frame=f)
+        if rake is not None:
+            rake.location = to_bl(r["rk_px"], r["rk_py"], r["rk_pz"])
+            rake.rotation_quaternion = conv @ Quaternion((r["rk_qw"], r["rk_qx"], r["rk_qy"], r["rk_qz"]))
+            rake.keyframe_insert("location", frame=f)
+            rake.keyframe_insert("rotation_quaternion", frame=f)
     build_objects(project, coll, fps, image_mat)
     build_machines(rows, coll, fps)
     scene.frame_start = 1
