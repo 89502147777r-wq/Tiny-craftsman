@@ -51,6 +51,7 @@ async function main() {
   if ((stored.build || 0) < 3) { delete stored.backdrop; delete stored.orbit; }
   // BUILD 8: model scale 1:3.5 — the dig / trench presets of 1:12 no longer fit
   if ((stored.build || 0) < 8) { delete stored.bite; delete stored.target; delete stored.trenchWidth; delete stored.trenchDepth; }
+  if ((stored.build || 0) < 9) delete stored.target; // BUILD 9: pits are 6 shovel passes deep
   if (stored.backdrop === 'photo1' || stored.backdrop === 'photo2') stored.backdrop = 'posters'; // two prints on the table since BUILD 5
   app.settings = { ...DEFAULT_SETTINGS, ...stored, build: BUILD };
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
@@ -333,6 +334,7 @@ function applySettings() {
   try { localStorage.setItem('tc-settings', JSON.stringify(s)); } catch { /* private mode */ }
   if (app.shovel.type !== s.shovel && !app.shovelTool.busy) app.shovel.setType(s.shovel);
   app.terrainMat.userData.uniforms.uLevel.value = s.level ? 1 : 0;
+  app.terrainMat.userData.uniforms.uLayer.value = Math.max(0.004, s.bite / 1000);
   app.pipeline.dofAmount = s.dof;
   if (app.pipeline.quality !== s.quality || !app.pipeline.target) app.pipeline.setQuality(s.quality);
   const sm = s.quality === 'low' ? 1024 : s.quality === 'medium' ? 2048 : 3072;
@@ -392,6 +394,7 @@ function applyProject(p) {
     // the new plot, its outlines / formwork / rebar stay, the machines are parked
     // afresh; the old journal cannot be replayed on the new grid
     migrateGrid(p);
+    deepenOutlines(p);
     j.pending = null; j.done = []; j.undone = []; j.nextId = 1;
     app.recorder.load(null);
     app.clock = p.clock || 0;
@@ -418,15 +421,25 @@ function applyProject(p) {
     app.rig.setState(p.camera);
     j.pending = null; j.done = []; j.undone = []; j.nextId = 1;
     app.recorder.load(null);
+    deepenOutlines(p);
     app.migrated = `Масштаб изменён на 1:${MODEL_SCALE}: грунт и разметка сохранены, опалубку и арматуру поставьте заново (журнал начат заново)`;
     return;
   }
-  if (p.settings) Object.assign(app.settings, p.settings);
+  if (p.settings) Object.assign(app.settings, p.settings, (p.build || 0) < 9 ? { target: DEFAULT_SETTINGS.target } : {});
+  deepenOutlines(p);
   app.rig.setState(p.camera);
   j.pending = null;
   j.done = p.journal?.done || []; j.undone = p.journal?.undone || []; j.nextId = p.journal?.nextId || j.done.length + 1;
   const sameTrack = JSON.stringify(p.track?.fields) === JSON.stringify(TRACK_FIELDS);
   app.recorder.load(sameTrack ? p.track?.data : null);
+}
+
+// BUILD 9: pits and trenches of older projects were too shallow (2–3 passes of the
+// shovel at 1:3.5) — give them the full 6 passes once
+function deepenOutlines(p) {
+  if ((p.build || 0) >= 9) return;
+  const deep = DEFAULT_SETTINGS.target;
+  for (const o of app.objects.all('outline')) if (o.depth < deep) app.objects.update(o.id, { depth: deep });
 }
 
 function migrateGrid(p) {

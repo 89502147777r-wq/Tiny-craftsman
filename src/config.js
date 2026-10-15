@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:3.5.
-export const BUILD = 8;
+export const BUILD = 9;
 export const STAGE = 3;
 export const MODEL_SCALE = 3.5;
 // Many sizes were first designed at 1:12; K = how much bigger everything built
@@ -47,7 +47,7 @@ export const SHOVELS = {
 export const DEFAULT_SETTINGS = {
   shovel: 'spade',
   bite: 12,         // mm the blade goes in per pass
-  target: 40,       // design depth of the pit, mm (model) = 14 cm real
+  target: 75,       // design depth of the pit, mm (model) = 6 passes of the shovel, 26 cm real
   dof: 1,
   quality: 'high',
   shake: true,
@@ -64,8 +64,8 @@ export const DEFAULT_SETTINGS = {
   orbit: false,      // slow automatic camera fly-around (панорама)
 };
 
-// the first outline on a new plot: a 2.6 × 2.1 m slab pit, 40 mm (14 cm) deep
-export const DEFAULT_OUTLINES = [{ id: 1, kind: 'rect', x0: -0.375, z0: -0.2, x1: 0.375, z1: 0.4, depth: 40 }];
+// the first outline on a new plot: a 2.6 × 2.1 m slab pit, 75 mm (26 cm) deep
+export const DEFAULT_OUTLINES = [{ id: 1, kind: 'rect', x0: -0.375, z0: -0.2, x1: 0.375, z1: 0.4, depth: 75 }];
 
 // where the machines wait, along the back edge of the plot (x, z, yaw)
 export const PARKING = { excavator: [-0.85, -0.68, -Math.PI / 2], tractor: [-0.42, -0.7, -Math.PI / 2], mixer: [0.2, -0.72, 0], pump: [0.82, -0.7, 0], siteMixer: [1.02, -0.3, 0.4] };
