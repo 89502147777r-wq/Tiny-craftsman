@@ -6,6 +6,8 @@
 //     beyond the media is reset to 0, the edit covers the media
 //   * a single huge sample duration (the jump from uptime) becomes a normal one
 //   * movie / track / media durations are recomputed from the samples
+//   * with maxSeconds: the edit lists end there (anything recorded after the
+//     stop — a frozen picture — is not played)
 // Returns a note of what was changed (empty when nothing was).
 
 const CONTAINERS = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl', 'edts', 'mvex', 'moof', 'traf', 'dinf']);
@@ -38,7 +40,7 @@ function typical(list) {
   return s.length ? s[s.length >> 1] : 0;
 }
 
-export function fixMp4Times(buf) {
+export function fixMp4Times(buf, maxSeconds = 0) {
   const dv = new DataView(buf.buffer || buf, buf.byteOffset || 0, buf.byteLength);
   const all = boxes(dv, 0, dv.byteLength);
   const notes = [];
@@ -54,7 +56,9 @@ export function fixMp4Times(buf) {
     const tk1 = dv.getUint8(tkhd.body) === 1, md1 = dv.getUint8(mdhd.body) === 1;
     const id = dv.getUint32(tkhd.body + (tk1 ? 20 : 12));
     const scale = dv.getUint32(mdhd.body + (md1 ? 20 : 12));
-    const t = { id, scale, dur: 0, tkhd, tk1, mdhd, md1, elst: kid(kid(trak, 'edts'), 'elst') };
+    const hdlr = kid(mdia, 'hdlr');
+    const handler = hdlr ? String.fromCharCode(...[0, 1, 2, 3].map((k) => dv.getUint8(hdlr.body + 8 + k))) : '';
+    const t = { id, scale, dur: 0, tkhd, tk1, mdhd, md1, elst: kid(kid(trak, 'edts'), 'elst'), video: handler === 'vide' };
     // plain (not fragmented) samples: the time-to-sample table
     const stts = kid(kid(kid(mdia, 'minf'), 'stbl'), 'stts');
     if (stts) {
@@ -103,13 +107,15 @@ export function fixMp4Times(buf) {
   for (const [id, b] of first) if (b > 0) notes.push(`tfdt#${id}`);
   for (const [id, e] of fragEnd) { const t = tracks.get(id); if (t) t.dur = Math.max(t.dur, e); }
 
-  // durations and edit lists
+  // durations and edit lists; nothing plays past the end of the picture
   let movieDur = 0;
+  for (const t of tracks.values()) if (t.video && t.dur) maxSeconds = maxSeconds ? Math.min(maxSeconds, t.dur / t.scale) : t.dur / t.scale;
   for (const t of tracks.values()) {
     if (!t.dur) continue;
     const mdDurP = t.mdhd.body + (t.md1 ? 24 : 16);
     if (get(dv, mdDurP, t.md1) !== t.dur) { set(dv, mdDurP, t.md1, t.dur); notes.push(`mdhd#${t.id}`); }
-    const inMovie = (t.dur / t.scale) * movieScale;
+    let inMovie = (t.dur / t.scale) * movieScale;
+    if (maxSeconds && t.elst && inMovie > (maxSeconds + 0.05) * movieScale) { inMovie = maxSeconds * movieScale; notes.push(`cut#${t.id}`); }
     if (t.elst) {
       const v1 = dv.getUint8(t.elst.body) === 1, n = dv.getUint32(t.elst.body + 4), es = v1 ? 20 : 12;
       for (let k = 0; k < n; k++) {

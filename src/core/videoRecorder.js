@@ -167,13 +167,18 @@ export class VideoRecorder {
   _stopRecorder(seconds) {
     const rec = this.rec;
     this.rec = null;
+    // Safari closes the file only after one more frame: frames keep coming while it
+    // stops (otherwise it waited, the sound ran on and the picture froze). If it still
+    // does not finish, ending the tracks makes it.
+    this.stopping = true;
     const stopped = new Promise((resolve) => {
       if (rec.state === 'inactive') resolve(); else { rec.onstop = resolve; rec.stop(); }
     });
-    // the last data can come after 'stop' on some browsers: wait for it, but not for ever
-    return within(stopped, 6000).catch(() => {}).then(async () => {
+    const end = () => { for (const t of this.stream.getTracks()) t.stop(); };
+    return within(stopped, 1500).catch(() => { end(); return within(stopped, 4000).catch(() => {}); }).then(async () => {
+      this.stopping = false;
       const type = rec.mimeType || this.type || 'video/webm', audio = !!this.dest;
-      for (const t of this.stream.getTracks()) t.stop();
+      end();
       if (this.dest) { try { this.app.sfx.master.disconnect(this.dest); } catch { /* already gone */ } this.dest = null; }
       if (!this.chunks.length) return null;
       let blob = new Blob(this.chunks, { type });
@@ -182,7 +187,7 @@ export class VideoRecorder {
       if (type.includes('mp4')) {
         try {
           const buf = new Uint8Array(await blob.arrayBuffer());
-          fixed = fixMp4Times(buf);
+          fixed = fixMp4Times(buf, seconds + 0.25);
           if (fixed) blob = new Blob([buf], { type });
         } catch (e) { console.error('mp4 fix', e); fixed = 'ошибка: ' + e.message; }
       }
@@ -193,9 +198,10 @@ export class VideoRecorder {
   // ---- shared ---------------------------------------------------------------------------------
   // called right after every rendered frame
   frame() {
-    if (!this.on || !this.ctx || !this.mode) return;
+    if (!this.ctx || !(this.on && this.mode) && !this.stopping) return;
     const c = this.canvas;
     this.ctx.drawImage(this.app.renderer.domElement, 0, 0, c.width, c.height);
+    if (this.stopping) return;
     if (this.mode === 'codecs') this._frameCodecs();
     else if (this.rec && this.rec.state === 'inactive') { this.rec.start(); this.t0 = performance.now(); }  // no timeslice: one clean file
   }
