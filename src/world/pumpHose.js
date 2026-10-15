@@ -38,8 +38,8 @@ export class PumpHose {
     gripM.position.set(R * 1.1 + 0.14 / 3.5, 0.1 / 3.5, 0);
     this.end.add(ring, spout, bar, gripM);
     // the concrete coming out: a heavy, slightly wobbling stream down to the surface
-    const wet = new THREE.MeshStandardMaterial({ color: 0x3b3a37, roughness: 0.32, metalness: 0 });
-    this.stream = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.8, R * 1.05, 1, 18, 10, true), wet);
+    const wet = new THREE.MeshStandardMaterial({ color: 0x65635e, roughness: 0.22, metalness: 0 });   // wet cement paste
+    this.stream = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.72, R * 0.9, 1, 18, 10, true), wet);
     this.stream.geometry.translate(0, -0.5, 0);   // hangs down from its top
     this._sBase = this.stream.geometry.attributes.position.array.slice();
     this.stream.visible = false;
@@ -93,18 +93,32 @@ export class PumpHose {
           b.x -= dx * k * wb / sum; b.y -= dy * k * wb / sum; b.z -= dz * k * wb / sum;
         }
         this.p[0].copy(this.anchor);
+        this._hold();
       }
     }
-    this._build();
+    // rebuild the mesh only when the hose has moved
+    let moved = 0;
+    for (let i = 0; i < N; i += 5) moved = Math.max(moved, this.p[i].distanceToSquared(this._last?.[i] || _far));
+    if (moved > 1e-8) { this._last = this.p.map((v) => v.clone()); this._build(); }
+  }
+
+  // the worker holds the last ~40 cm (real) of the hose upright: the spout points down
+  _hold() {
+    const e = this.p[N - 1];
+    for (let k = 1; k <= 2; k++) {
+      const q = this.p[N - 1 - k];
+      q.x += (e.x - q.x) * 0.7; q.z += (e.z - q.z) * 0.7;
+      q.y = Math.max(q.y, e.y + SEG * k * 0.95);
+    }
   }
 
   _build() {
     const curve = new THREE.CatmullRomCurve3(this.p);
-    const geo = new THREE.TubeGeometry(curve, 90, R, 14, false);
+    const geo = new THREE.TubeGeometry(curve, 60, R, 12, false);
     // ribs every ~5 cm (real) and concrete splashed over the last metre
     const pos = geo.attributes.position, nor = geo.attributes.normal;
     const col = new Float32Array(pos.count * 3);
-    const rings = 91, radial = 15;
+    const rings = 61, radial = 13;
     for (let j = 0; j < rings; j++) {
       const u = j / (rings - 1), along = u * LEN * 3.5;   // real metres from the boom
       const rib = 1 + 0.035 * Math.pow(Math.max(0, Math.cos(along / 0.05 * Math.PI * 2)), 6);
@@ -124,7 +138,8 @@ export class PumpHose {
     // the end coupling follows the last piece of hose
     const e = this.p[N - 1], d = new THREE.Vector3().subVectors(this.p[N - 1], this.p[N - 2]).normalize();
     this.end.position.copy(e);
-    this.end.quaternion.setFromUnitVectors(_down, d);
+    // spout straight down, leaning a little with the hose
+    this.end.quaternion.setFromUnitVectors(_down, d.lerp(_down, 0.75).normalize());
   }
 
   // the stream: on while pumping, down to the surface at groundY
@@ -138,7 +153,8 @@ export class PumpHose {
     // a little wobble and bulge travelling down
     const p = this.stream.geometry.attributes.position, b = this._sBase;
     for (let i = 0; i < p.count; i++) {
-      const y = b[i * 3 + 1], k = 1 + 0.08 * Math.sin(y * 40 + time * 22) + 0.05 * Math.sin(y * 13 - time * 9);
+      const y = b[i * 3 + 1], a = Math.atan2(b[i * 3 + 2], b[i * 3]);
+      const k = 1 + 0.05 * Math.sin(y * 9 + time * 14 + a * 2) + 0.04 * Math.sin(a * 3 - time * 5);   // lumpy, not ribbed
       p.setX(i, b[i * 3] * k + Math.sin(time * 7 + y * 6) * 0.0008);
       p.setZ(i, b[i * 3 + 2] * k);
     }
@@ -151,5 +167,5 @@ export class PumpHose {
   flow(out = new THREE.Vector3()) { return out.set(0, -1, 0).applyQuaternion(this.end.quaternion); }
 }
 
-const _down = new THREE.Vector3(0, -1, 0);
+const _down = new THREE.Vector3(0, -1, 0), _far = new THREE.Vector3(1e3, 1e3, 1e3);
 function hash(i) { const s = Math.sin(i * 12.9898) * 43758.5453; return s - Math.floor(s); }

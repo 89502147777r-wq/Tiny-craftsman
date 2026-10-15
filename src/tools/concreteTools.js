@@ -45,10 +45,13 @@ class ConcreteTool {
   up() { if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; this.app.sfx.scrapeStop(); this.gear.pump.setStream(false); } }
   interrupt() { this.up(); }
 
+  // where the concrete is worked right now (the flow is computed there while working)
+  region() { return null; }
+
   update(dt) {
     if (this.state === 'settle') {
       this.settleT += dt;
-      if (!this.app.terrain.cActive || this.settleT > 4) this.finish();
+      if (!this.app.terrain.cActive || this.settleT > 2.5) this.finish();
     }
     if (this.state === 'work') this.work(dt);
   }
@@ -61,10 +64,9 @@ class ConcreteTool {
     if (this.state === 'idle') return;
     app.sfx.scrapeStop();
     this.gear.pump.setStream(false);
-    for (let i = 0; i < 4000 && t.cActive; i++) t.concRelax(1);
+    // (the concrete was let to settle frame by frame; whatever creep is left stops here —
+    // a long settling loop at this point froze the game for seconds)
     t.flushOverflow();
-    for (let i = 0; i < 400 && t.cActive; i++) t.concRelax(1);
-    t.flushOverflow();   // (the last lumps land as they are)
     t.cActive = null;   // whatever creep is left stops here (it is recorded as it is)
     app.journal.commit(app.clock);
     this.state = 'idle';
@@ -87,6 +89,12 @@ class ConcreteTool {
 
 export class HoseTool extends ConcreteTool {
   constructor(app) { super(app, 'hose'); }
+
+  region() {
+    if (this.state !== 'work') return null;
+    const sp = this.gear.pump.ready ? this.gear.pump.spout() : this.p;
+    return this.app.terrain.cellBox(sp.x, sp.z, 0.13);
+  }
 
   down(p) {
     if (this.state !== 'idle') return true;
@@ -111,7 +119,7 @@ export class HoseTool extends ConcreteTool {
     // hose flows out fast (it is pushed by the stream), the rest creeps
     // it lands under the spout (which swings a little behind the finger)
     const at = this.gear.pump.ready ? this.gear.pump.spout() : this.p;
-    t.pourConc(t.clampX(at.x), t.clampZ(at.z), vol, 0.25);
+    t.pourConc(t.clampX(at.x), t.clampZ(at.z), vol, 0.11);
     // full to the top of the formwork here? say so once per pour
     if (!this.warned) {
       const i = t.index(at.x, at.z), b = t.cellBox(at.x, at.z, 0.12);
