@@ -21,7 +21,6 @@ import { Gestures } from './input/gestures.js';
 import { Journal } from './core/journal.js';
 import { ObjectStore } from './core/objects.js';
 import { Recorder, TRACK_FIELDS } from './core/recorder.js';
-import { VideoRecorder } from './core/videoRecorder.js';
 import { saveLocal, loadLocal, clearLocal, toJSON, fromJSON, download } from './core/storage.js';
 import { ScoopTool } from './tools/scoopTool.js';
 import { RakeTool } from './tools/rakeTool.js';
@@ -94,7 +93,6 @@ async function main() {
   app.rig = new CameraRig(camera);
   app.journal = new Journal(terrain, app.objects);
   app.recorder = new Recorder();
-  app.video = new VideoRecorder(app);
   app.sfx = new Sfx();
   app.shovelTool = new ScoopTool(app, app.shovel);
   app.rakeTool = new RakeTool(app, app.rake);
@@ -215,7 +213,7 @@ function step(dt, time, render = true) {
   updateFocus();
   app.terrainMat.userData.uniforms.uTime.value = time;
   app.pipeline.focus = app.rig.focus;
-  if (render) { app.pipeline.render(app.scene, app.camera, time); app.video.frame(); }
+  if (render) app.pipeline.render(app.scene, app.camera, time);
   if (render && (shaderCheckT += dt) > 1) { shaderCheckT = 0; checkTerrainShader(); checkGpuMemory(); }
   app.recorder.sample(app.clock, dt, trackRow);
   app.ui.tick(dt);

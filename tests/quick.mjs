@@ -3,7 +3,7 @@
 //   the shader sources pass glslangValidator (if installed), the shovel digs
 //   and conserves soil, undo/redo is exact, the rake flattens the spoil heap,
 //   outline + formwork + cage + ties can be placed, the project survives a reload,
-//   the clean video recording and the quiet mode work.
+//   and the quiet mode works (with the tools' modes).
 // Starts its own static web server. Usage: node tests/quick.mjs
 // Optional: WEBKIT=/path/to/playwright-browsers → also starts the game in WebKit.
 import { createRequire } from 'node:module';
@@ -78,53 +78,28 @@ for (const variant of ['full', 'light']) {
   const v = st.src.map((s) => validate(s, variant));
   check(`${variant} soil shader is valid GLSL ES`, v.every((r) => r === 'ok' || r === 'skipped'), v.join(' / '));
   if (variant === 'full') {
-    // clean video of the scene, and quiet mode (one round button)
-    const vid = await page.evaluate(async () => {
-      const tc = window.__tc, v = tc.video;
-      if (!v.supported) return { supported: false };
-      await tc.ui.toggleRec();
-      await new Promise((r) => setTimeout(r, 4000));
-      const was = v.recording;
-      await tc.ui.toggleRec();
-      const r = v.result;
-      tc.ui.setQuiet(true);
-      const quiet = getComputedStyle(document.querySelector('.tools')).display === 'none' && !document.getElementById('fan').hidden;
-      tc.ui.setQuiet(false);
-      const normal = getComputedStyle(document.querySelector('.tools')).display !== 'none' && document.getElementById('fan').hidden;
-      const buf = r ? new Uint8Array(await r.blob.arrayBuffer()) : new Uint8Array();
-      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-      return { supported: true, was, size: r?.blob.size || 0, type: r?.type, codec: r?.codec, audio: r?.audio, seconds: r?.seconds, sheet: !document.getElementById('vsheet').hidden, quiet, normal, b64: btoa(bin) };
+    // quiet mode: one round button; a tool with modes keeps the fan open and shows them
+    const q = await page.evaluate(() => {
+      const tc = window.__tc, ui = tc.ui, vis = (sel) => getComputedStyle(document.querySelector(sel)).display !== 'none';
+      ui.setQuiet(true);
+      const quiet = !vis('.tools') && !document.getElementById('fan').hidden;
+      ui.fan(true);
+      const rebar = [...document.querySelectorAll('.fan-item')].find((e) => e.textContent.includes('Арматура'));
+      rebar.click();
+      const modes = [...document.querySelectorAll('#subbar .chip-btn')].map((b) => b.textContent);
+      const shown = vis('#subbar') && ui.fanOpen;
+      [...document.querySelectorAll('#subbar .chip-btn')].find((b) => b.textContent === 'Сетка').click();
+      const picked = tc.rebarTool.mode === 'mesh' && !ui.fanOpen && !vis('#subbar');
+      ui.setQuiet(false);
+      const normal = vis('.tools') && document.getElementById('fan').hidden;
+      return { quiet, modes, shown, picked, normal };
     });
-    // the file's own duration must match the recording (Safari's MediaRecorder wrote the phone's uptime)
-    let dur = 'skipped';
-    if (vid.b64) {
-      const f = path.join(os.tmpdir(), 'tc-quick.mp4');
-      fs.writeFileSync(f, Buffer.from(vid.b64, 'base64'));
-      try { dur = +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString().trim(); } catch { /* no ffprobe */ }
-      delete vid.b64;
-    }
-    check('video recording of the scene works', !vid.supported || (vid.was && vid.size > 1000 && vid.sheet), JSON.stringify(vid));
-    check('video file duration is right', dur === 'skipped' || Math.abs(dur - vid.seconds) < 1.5, `${dur} s in the file, ${vid.seconds?.toFixed(1)} s recorded`);
-    check('quiet mode hides the panels and comes back', vid.quiet && vid.normal);
+    check('quiet mode: panels hidden, tool modes in the fan, panels come back', q.quiet && q.shown && q.picked && q.normal, JSON.stringify(q));
   }
   check(`${variant}: no console errors on start`, errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 console.log('—', sec());
-
-// ---- Safari-like MP4 is repaired: the phone's uptime as an empty lead-in edit,
-//      and sound running on after the picture stopped (3 s picture, 5 s sound) -------------------
-try {
-  const f = path.join(os.tmpdir(), 'tc-uptime.mp4');
-  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=d=3:s=160x120:r=30', '-f', 'lavfi', '-i', 'sine=d=5', '-c:v', 'libx264', '-c:a', 'aac', '-output_ts_offset', '3558244', f]);
-  const probe = () => +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString().trim();
-  const { fixMp4Times, mp4Times } = await import('../src/core/mp4fix.js');
-  const buf = new Uint8Array(fs.readFileSync(f)), before = mp4Times(buf);
-  const note = fixMp4Times(buf, 3.2);
-  fs.writeFileSync(f, buf);
-  const after = probe();
-  check('MP4 with the phone uptime and overlong sound gets the picture length', Math.abs(after - 3) < 0.2, `${before} → ${after.toFixed(2)} s (${note})`);
-} catch (e) { console.log('      (MP4 repair check skipped: no ffmpeg)'); }
 
 // ---- 2. Chromium: play ------------------------------------------------------------------------
 {
@@ -214,8 +189,6 @@ if (process.env.WEBKIT) {
     const { browser, page, errors } = await open(pw.webkit, '', { executablePath: path.join(process.env.WEBKIT, dir, 'pw_run.sh') });
     const st = await page.evaluate(shaderState);
     check('WebKit: soil shader builds', st.runnable && !st.fallback && !st.light, JSON.stringify(st.errors));
-    const vt = await page.evaluate(() => ({ s: window.__tc.video.supported, t: ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4'].find((x) => window.MediaRecorder?.isTypeSupported?.(x)) || '-' }));
-    console.log('      WebKit video:', JSON.stringify(vt));
     check('WebKit: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
     await browser.close();
   } catch (e) { check('WebKit run', false, e.message.slice(0, 200)); }
