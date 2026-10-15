@@ -187,31 +187,7 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .hint.top { bottom: auto; top: calc(var(--safe-t) + 136px); }
 .tool[hidden] { display: none; }
 
-/* ---- video recording -------------------------------------------------------------------- */
-.icon.rec .dot { fill: #e5483b; stroke: none; }
-.icon.rec.on { background: rgba(229, 72, 59, .25); border-color: rgba(229, 72, 59, .6); }
-.recpill {
-  position: absolute; right: calc(var(--safe-r) + 10px); top: calc(var(--safe-t) + 58px); z-index: 25;
-  display: flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 16px; border: 1px solid rgba(229,72,59,.5);
-  background: rgba(24, 19, 15, .55); font-size: 13px; font-variant-numeric: tabular-nums;
-}
-.recpill[hidden] { display: none; }
-.recpill i { width: 9px; height: 9px; border-radius: 50%; background: #e5483b; animation: recblink 1s infinite; }
-.recpill b { font-weight: 600; color: #ff9b86; }
-@keyframes recblink { 50% { opacity: .25; } }
-.vsheet {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 40; width: min(320px, calc(100vw - 32px));
-  padding: 16px; border-radius: 18px; background: var(--glass-strong); border: 1px solid var(--line); display: grid; gap: 10px; text-align: center;
-}
-.vsheet[hidden] { display: none; }
-.vs-ttl { font-weight: 600; font-size: 16px; }
-.vs-info { color: var(--ink-dim); font-size: 13px; }
-.vs-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.vs-btns button { padding: 11px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.06); }
-.vs-btns .primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
-
 /* ---- quiet mode: one round button, tools fan out of it ---------------------------------- */
-#ui.quiet .recpill { top: calc(var(--safe-t) + 10px); }
 #ui.quiet .top, #ui.quiet #stats, #ui.quiet .hint, #ui.quiet .measure, #ui.quiet .subbar, #ui.quiet .params, #ui.quiet .tools { display: none !important; }
 .fan { position: absolute; right: calc(var(--safe-r) + 18px); bottom: calc(var(--safe-b) + 18px); width: 50px; height: 50px; z-index: 22; }
 .fan[hidden], .fan-shade[hidden] { display: none; }
@@ -222,7 +198,6 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 }
 .fab svg { width: 24px; height: 24px; }
 .fan.open .fab { opacity: 1; background: var(--glass-strong); }
-.fan.rec .fab { box-shadow: 0 0 0 2px rgba(229, 72, 59, .8); }
 .fan-item {
   position: absolute; left: 4px; top: 4px; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line);
   background: var(--glass-strong); display: grid; place-items: center; padding: 0; color: var(--ink);
@@ -235,12 +210,14 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 }
 .fan-item.active { background: var(--accent); color: var(--accent-ink); }
 .fan-item.on { color: var(--accent); }
-.fan-item.recon { background: rgba(229, 72, 59, .85); }
 .fan.open .fan-item { opacity: 1; pointer-events: auto; transform: translate(var(--x), var(--y)) scale(1); }
 .fan-item:disabled { opacity: .4 !important; }
 .fan-shade { position: absolute; inset: 0; z-index: 21; background: rgba(0, 0, 0, .12); }
-.fan-item .dot { fill: #e5483b; stroke: none; }
-.fan-item.recon .dot { fill: #fff; }
 .title i { font-style: normal; }
 @media (max-width: 430px) { .title .stage { display: none; } }
-.vs-btns button:disabled { opacity: .4; }
+/* quiet mode: the chosen tool's modes (and outline sliders) at the top while the fan is open */
+#ui.quiet.fan-open .subbar, #ui.quiet.pending-trench .subbar {
+  display: flex !important; top: calc(var(--safe-t) + 12px); bottom: auto; z-index: 23;
+  flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100vw - 24px);
+}
+#ui.quiet.fan-open .params:not([hidden]) { display: block !important; z-index: 23; top: calc(var(--safe-t) + 64px); bottom: auto; }
