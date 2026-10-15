@@ -51,8 +51,9 @@ export class Terrain {
     this._tAct = new Uint8Array(this.tnx * this.tnz); this._tList = [];
     this.meshTiles = new Set();
     this.vib = new Float32Array(N);   // vibrated until (project clock)
+    this.cBase = new Float32Array(N);   // set concrete under a fresh layer (that part does not flow)
     // taken since the last reset: per material, and soil depth·volume
-    this.take = { v: 0, dv: 0, m: new Float64Array(MATERIALS.length) };
+    this.take = { v: 0, dv: 0, m: new Float64Array(MATERIALS.length), c: 0 };
     this._seg = { m: new Uint8Array(LAYERS + 1), h: new Float64Array(LAYERS + 1) };
     this._occ = new Float32Array(N);
     this.active = null;        // bbox that still needs relaxation
@@ -259,7 +260,8 @@ export class Terrain {
   }
 
   // what was taken since resetTake(): mean source depth of the soil, share of each material
-  resetTake() { this.take.v = 0; this.take.dv = 0; this.take.m.fill(0); }
+  resetTake() { this.take.v = 0; this.take.dv = 0; this.take.m.fill(0); this.take.c = 0; }
+  takenConcrete() { return this.take.c; }
   takenDepth() { return this.take.m[M_SOIL] > 0 ? this.take.dv / this.take.m[M_SOIL] : 0; }
   takenMaterials() { return Array.from(this.take.m); }
 
@@ -277,7 +279,8 @@ export class Terrain {
     const iz0 = Math.floor(this.toCellZ(cz - reach)), iz1 = Math.ceil(this.toCellZ(cz + reach));
     const px = -dirz, pz = dirx; // blade sideways axis
     let removed = 0;
-    let touched = false;
+    let touched = false, conc = false;
+    const setT = (this.clock || 0) - CONCRETE.stiff * CONCRETE.cure;
     // cut the cells nearest the blade tip first, so a full blade stops cleanly
     for (let iz = Math.max(0, iz0); iz <= Math.min(this.rz, iz1); iz++) {
       for (let ix = Math.max(0, ix0); ix <= Math.min(this.rx, ix1); ix++) {
@@ -292,7 +295,16 @@ export class Terrain {
         if (out > cell * 1.6) continue;
         const allowed = cutY + out * 3.2; // steep but not perfectly vertical cut
         const i = iz * n + ix;
-        if (this.conc[i] > 1e-5) continue;   // the blade does not cut concrete
+        if (this.conc[i] > 1e-5) {
+          // fresh concrete: the blade takes it (not the soil under it); set concrete it cannot cut
+          const mob = this.conc[i] - this.cBase[i], h = this.nat[i] + this.loose[i] + this.conc[i];
+          if (mob <= 1e-6 || this.cTime[i] < setT || h <= allowed) continue;
+          const want = Math.min(h - allowed, mob, (maxVol - removed) / this.cellArea);
+          if (want <= 0) continue;
+          this.conc[i] -= want; this.take.c += want; removed += want * this.cellArea; touched = true; conc = true;
+          if (removed >= maxVol) break;
+          continue;
+        }
         const h = this.nat[i] + this.loose[i];
         if (h <= allowed) continue;
         const want = Math.min(h - allowed, (maxVol - removed) / this.cellArea);
@@ -304,6 +316,7 @@ export class Terrain {
       if (removed >= maxVol) break;
     }
     if (touched) this._touch(ix0, iz0, ix1, iz1);
+    if (conc) { this._concTouch(Math.max(0, ix0), Math.max(0, iz0), Math.min(this.rx, ix1), Math.min(this.rz, iz1)); this.cActive = null; }
     return removed;
   }
 
@@ -680,7 +693,13 @@ export class Terrain {
   curedAt(i) { return Math.max(0, ((this.clock || 0) - this.cTime[i]) / CONCRETE.cure); }
 
   _concAdd(i, add, smooth = 0, stiff = 0) {
-    const c = this.conc[i], t = c + add;
+    const c = this.conc[i], t = c + add, now = this.clock || 0;
+    if (c <= 0) this.cBase[i] = 0;
+    else if (this.cTime[i] < now - CONCRETE.stiff * CONCRETE.cure) {
+      // fresh concrete on set concrete: a new layer on a firm base
+      this.cBase[i] = c; this.cY[i] = stiff; this.cTime[i] = now; this.cSm[i] = smooth; this.conc[i] = t;
+      return;
+    }
     this.cY[i] = c > 0 ? (this.cY[i] * c + stiff * add) / t : stiff;
     this.cTime[i] = c > 0 ? (this.cTime[i] * c + (this.clock || 0) * add) / t : (this.clock || 0);
     this.cSm[i] = c > 0 ? (this.cSm[i] * c + smooth * add) / t : smooth;
@@ -730,7 +749,7 @@ export class Terrain {
   // computed; a tile wakes its neighbours when concrete crosses into them.
   concStep(dt, substeps = 2) {
     if (!this._tList.length) return false;
-    const { nx: n, cell, nat, loose, conc, wall, cTime, cSm, cY, vib, rx, rz, TS, tnx } = this;
+    const { nx: n, cell, nat, loose, conc, wall, cTime, cSm, cY, vib, cBase, rx, rz, TS, tnx } = this;
     const S = 3.5, G = 9.81, C = CONCRETE, clock = this.clock || 0;
     const setT = C.stiff * C.cure, stiffT = clock - setT;
     const h = dt / substeps;
@@ -762,7 +781,7 @@ export class Terrain {
                   let kx = jx, kz = jz;
                   for (let q = 0; q < 8 && kx >= 0 && kx <= rx && kz >= 0 && kz <= rz && wall[kz * n + kx]; q++) { kx += NB[k][0]; kz += NB[k][1]; }
                   if (kx < 0 || kx > rx || kz < 0 || kz > rz) continue;
-                  const m = Math.min((si - wall[j] - 0.002) * 0.3, conc[i]);
+                  const m = Math.min((si - wall[j] - 0.002) * 0.3, conc[i] - this.cBase[i]);
                   if (m > 1e-9) { conc[i] -= m; this._overflow(kx, kz, m * this.cellArea, NB[k][0], NB[k][1]); moved = true; }
                 }
                 continue;
@@ -771,7 +790,7 @@ export class Terrain {
               if (ci <= 0 && cj <= 0) continue;
               const d = nat[i] + loose[i] + ci - nat[j] - loose[j] - cj;
               const src = d > 0 ? i : j, dst = d > 0 ? j : i;
-              const hs = conc[src];
+              const hs = conc[src] - cBase[src];                  // the fresh part flows, not its set base
               if (hs <= 1e-6 || cTime[src] < stiffT) continue;   // nothing to flow, or already set
               const ad = d < 0 ? -d : d, dx = (NB[k][2] ? 1.41421356 : 1) * cell;
               const slope = ad / dx;
@@ -789,11 +808,17 @@ export class Terrain {
               if (m > hs) m = hs;
               if (m < 2e-8) continue;
               const ts = cTime[src], ss = cSm[src], ys = cY[src];
-              conc[src] = hs - m;
+              conc[src] -= m;
               const c = conc[dst], tt = c + m;
-              cTime[dst] = c > 0 ? (cTime[dst] * c + ts * m) / tt : ts;
-              cSm[dst] = c > 0 ? (cSm[dst] * c + ss * 0.8 * m) / tt : ss * 0.8;
-              cY[dst] = c > 0 ? (cY[dst] * c + ys * m) / tt : ys;
+              if (c > 0 && cTime[dst] < stiffT) {
+                // onto set concrete: a fresh layer on it
+                cBase[dst] = c; cTime[dst] = ts; cSm[dst] = ss * 0.8; cY[dst] = ys;
+              } else {
+                if (c <= 0) cBase[dst] = 0;
+                cTime[dst] = c > 0 ? (cTime[dst] * c + ts * m) / tt : ts;
+                cSm[dst] = c > 0 ? (cSm[dst] * c + ss * 0.8 * m) / tt : ss * 0.8;
+                cY[dst] = c > 0 ? (cY[dst] * c + ys * m) / tt : ys;
+              }
               conc[dst] = tt;
               moved = true;
               const tj = ((jz / TS) | 0) * tnx + ((jx / TS) | 0);
@@ -811,8 +836,8 @@ export class Terrain {
 
   // The fine grid moves concrete only a cell or two per step, so a heap would spread
   // for minutes. A coarse pass first: blocks of 4 × 4 cells exchange concrete by the
-  // same Bingham law on their mean surface (blocks with a board in them are left to
-  // the fine pass, so nothing leaks through formwork).
+  // same Bingham law on their mean surface (blocks with a board or set concrete in them
+  // are left to the fine pass: nothing leaks through formwork, nothing piles on set concrete).
   _coarseFlow(list, h, clock, setT) {
     const B = 4, { nx: n, cell, nat, loose, conc, wall, cTime, cSm, cY, vib, rx, rz, TS, tnx } = this;
     const S = 3.5, G = 9.81, C = CONCRETE, per = TS / B;
@@ -828,8 +853,9 @@ export class Terrain {
         let sh = 0, sc = 0, sy = 0, st = 0, v = false, ok = true;
         for (let z = z0; z < z0 + B && ok; z++) for (let x = x0; x < x0 + B; x++) {
           const i = z * n + x;
-          if (wall[i]) { ok = false; break; }
           const c = conc[i];
+          // a board, or concrete that has set: the fine pass only (it would pile up in it)
+          if (wall[i] || (c > 1e-7 && (cTime[i] < clock - setT || this.cBase[i] > 0))) { ok = false; break; }
           sh += nat[i] + loose[i] + c; sc += c; sy += cY[i] * c; st += cTime[i] * c;
           if (vib[i] > clock) v = true;
         }
@@ -901,7 +927,7 @@ export class Terrain {
       if (u < -band || u > 0 || v < -hw || v > hw) continue;
       if (this.cTime[i] < (this.clock || 0) - CONCRETE.stiff * CONCRETE.cure) continue;
       this.cSm[i] = Math.max(this.cSm[i], 0.55);
-      const ex = Math.min(this.hAt(i) - s.L, conc[i]) * 0.9;
+      const ex = Math.min(this.hAt(i) - s.L, conc[i] - this.cBase[i]) * 0.9;
       if (ex <= 1e-8) continue;
       // ahead of the rule: a soft bead, a few cells wide
       let tx = x + dx * (band + cell * 2), tz = z + dz * (band + cell * 2);
