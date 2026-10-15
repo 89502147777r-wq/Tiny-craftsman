@@ -1,10 +1,18 @@
 import * as THREE from 'three';
-import { TRAY, SOIL_TILE, TERRAIN_CELL, REPOSE_LOOSE, REPOSE_NATIVE } from '../config.js';
+import { TRAY, SOIL_TILE, TERRAIN_CELL, REPOSE_NATIVE, MATERIALS, M_SOIL } from '../config.js';
+
+// loose layers per cell (bottom → top), each of one material (config MATERIALS)
+export const LAYERS = 3;
+const REPOSE = MATERIALS.map((m) => m.repose);
+const REPOSE_MIN = Math.min(...REPOSE);
 import { makeNoise2 } from '../core/rand.js';
 
-// Two-layer soil heightfield inside the tray:
+// Soil heightfield inside the tray:
 //   nat   – top of undisturbed (cohesive) ground, absolute Y
-//   loose – thickness of loose, dug-over soil lying on top of it
+//   loose – thickness of loose material lying on top of it: up to LAYERS layers
+//           (lH heights, lM materials, lN count; bottom first) — dug-over soil,
+//           sand, crushed stone. Shovel and rake take from the top; every material
+//           slides at its own angle of repose.
 // Loose soil slides at its angle of repose; native ground only collapses
 // when a wall is cut steeper than ~78°. Volume is conserved exactly.
 export class Terrain {
@@ -24,7 +32,12 @@ export class Terrain {
     // for loose soil: the mean depth (m below the original surface) it was dug
     // from — the spoil heap shows the colour of the layer it came out of
     this.ldep = new Float32Array(N);
-    this.take = { v: 0, dv: 0 };   // volume and depth·volume taken since the last reset
+    this.lH = new Float32Array(N * LAYERS);
+    this.lM = new Uint8Array(N * LAYERS);
+    this.lN = new Uint8Array(N);
+    // taken since the last reset: per material, and soil depth·volume
+    this.take = { v: 0, dv: 0, m: new Float64Array(MATERIALS.length) };
+    this._seg = { m: new Uint8Array(LAYERS + 1), h: new Float64Array(LAYERS + 1) };
     this._occ = new Float32Array(N);
     this.active = null;        // bbox that still needs relaxation
     this.meshDirty = null;     // bbox whose mesh needs refreshing
@@ -48,7 +61,7 @@ export class Terrain {
         const e = Math.min(ex, ez);
         h += 0.0012 * Math.exp(-e / 3);
         const i = iz * nx + ix;
-        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0; this.ldep[i] = 0;
+        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0; this.ldep[i] = 0; this.lN[i] = 0;
       }
     }
     this.markAll();
@@ -135,31 +148,105 @@ export class Terrain {
     this.version++;
   }
 
-  // Remove soil from one cell, loose layer first. Returns removed thickness.
+  // ---- loose layers ---------------------------------------------------------------------
+  topMat(i) { const n = this.lN[i]; return n ? this.lM[i * LAYERS + n - 1] : M_SOIL; }
+
+  _sumLoose(i) {
+    const b = i * LAYERS, n = this.lN[i];
+    let h = 0;
+    for (let k = 0; k < n; k++) h += this.lH[b + k];
+    this.loose[i] = h;
+  }
+
+  // put a layer of material on top (merges with a top layer of the same material;
+  // when all layers are used, the two lowest merge into the thicker one's material)
+  _push(i, add, mat = M_SOIL, depth = 0) {
+    if (!(add > 0)) return;
+    const b = i * LAYERS, lH = this.lH, lM = this.lM;
+    let n = this.lN[i];
+    if (mat === M_SOIL) {
+      let soil = 0;
+      for (let k = 0; k < n; k++) if (lM[b + k] === M_SOIL) soil += lH[b + k];
+      this.ldep[i] = (this.ldep[i] * soil + depth * add) / (soil + add);
+    }
+    if (n && lM[b + n - 1] === mat) lH[b + n - 1] += add;
+    else {
+      if (n === LAYERS) {
+        // full: first join neighbours of the same material, else the two lowest
+        let j = 0;
+        for (let k = 0; k < n - 1; k++) if (lM[b + k] === lM[b + k + 1]) { j = k; break; }
+        if (lM[b + j] !== lM[b + j + 1] && lH[b + j + 1] > lH[b + j]) lM[b + j] = lM[b + j + 1];
+        lH[b + j] += lH[b + j + 1];
+        for (let k = j + 1; k < LAYERS - 1; k++) { lH[b + k] = lH[b + k + 1]; lM[b + k] = lM[b + k + 1]; }
+        n--;
+      }
+      lM[b + n] = mat; lH[b + n] = add; n++;
+      this.lN[i] = n;
+    }
+    this._sumLoose(i);
+  }
+
+  // take from the top layers; the pieces go to seg (top first) when given
+  _pop(i, amount, seg = null) {
+    const b = i * LAYERS, lH = this.lH, lM = this.lM;
+    let n = this.lN[i], got = 0, s = 0;
+    while (amount > 0 && n > 0) {
+      const h = lH[b + n - 1], t = h < amount ? h : amount;
+      if (seg) { seg.m[s] = lM[b + n - 1]; seg.h[s] = t; s++; }
+      got += t; amount -= t;
+      if (t >= h) { lH[b + n - 1] = 0; n--; } else lH[b + n - 1] = h - t;
+    }
+    if (seg) seg.n = s;
+    this.lN[i] = n;
+    this._sumLoose(i);
+    return got;
+  }
+
+  // move loose material from the top of src onto dst (layer order is kept)
+  _move(src, dst, amount) {
+    const seg = this._seg, dep = this.ldep[src];
+    const got = this._pop(src, amount, seg);
+    for (let k = seg.n - 1; k >= 0; k--) this._push(dst, seg.h[k], seg.m[k], dep);
+    return got;
+  }
+
+  // the loose cover of a cell is plain soil of the given thickness (old projects, migration)
+  setLooseSoil(i, h) {
+    this.lN[i] = h > 0 ? 1 : 0;
+    this.lH[i * LAYERS] = h > 0 ? h : 0; this.lM[i * LAYERS] = M_SOIL;
+    this.loose[i] = h > 0 ? h : 0;
+  }
+  layersFromLoose() { for (let i = 0; i < this.loose.length; i++) this.setLooseSoil(i, this.loose[i]); }
+
+  // Remove material from one cell, loose layers first. Returns removed thickness.
   _take(i, amount) {
     let got = 0;
-    const l = this.loose[i];
-    if (l > 0) { const t = Math.min(l, amount); this.loose[i] = l - t; got += t; amount -= t; this.take.v += t; this.take.dv += t * this.ldep[i]; }
+    if (this.loose[i] > 0) {
+      const seg = this._seg, dep = this.ldep[i];
+      got = this._pop(i, amount, seg);
+      for (let k = 0; k < seg.n; k++) {
+        this.take.m[seg.m[k]] += seg.h[k];
+        if (seg.m[k] === M_SOIL) this.take.dv += seg.h[k] * dep;
+      }
+      this.take.v += got; amount -= got;
+    }
     if (amount > 0) {
       const room = this.nat[i] - this.floorY;
       if (room > 0) {
         const t = Math.min(room, amount);
-        this.take.v += t; this.take.dv += t * Math.max(0, this.orig[i] - this.nat[i] + t / 2);
+        this.take.v += t; this.take.m[M_SOIL] += t; this.take.dv += t * Math.max(0, this.orig[i] - this.nat[i] + t / 2);
         this.nat[i] -= t; got += t;
       }
     }
     return got;
   }
 
-  // mean source depth of what was taken since resetTake()
-  resetTake() { this.take.v = 0; this.take.dv = 0; }
-  takenDepth() { return this.take.v > 0 ? this.take.dv / this.take.v : 0; }
+  // what was taken since resetTake(): mean source depth of the soil, share of each material
+  resetTake() { this.take.v = 0; this.take.dv = 0; this.take.m.fill(0); }
+  takenDepth() { return this.take.m[M_SOIL] > 0 ? this.take.dv / this.take.m[M_SOIL] : 0; }
+  takenMaterials() { return Array.from(this.take.m); }
 
-  _addLoose(i, add, depth) {
-    const l = this.loose[i];
-    this.ldep[i] = (this.ldep[i] * l + depth * add) / Math.max(1e-12, l + add);
-    this.loose[i] = l + add;
-  }
+  _addLoose(i, add, depth, mat = M_SOIL) { this._push(i, add, mat, depth); }
 
   // One shovel bite. The blade (width w, length len, centred at cx,cz, facing
   // dirx,dirz) cuts everything above cutY. Returns removed volume (m³).
@@ -212,7 +299,7 @@ export class Terrain {
   // s carries the stroke: { width, band, bite, reach, climb, push, L, S, swept[], vAt }.
   // Returns the moved volume (m³). Volume is conserved exactly.
   rakeStep(s, cx, cz, dx, dz, dist) {
-    const { nx: n, cell, nat, loose, ldep } = this;
+    const { nx: n, cell, nat, loose } = this;
     const ax = -dz, az = dx, hw = s.width / 2, band = s.band, ahead = band + cell * 2;
     const reach = hw + band + cell * 2;
     const ix0 = Math.max(0, Math.floor(this.toCellX(cx - reach))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(cx + reach)));
@@ -247,7 +334,7 @@ export class Terrain {
       const tx = cells.x[k] + dx * ahead, tz = cells.z[k] + dz * ahead;
       if (!this.inside(tx, tz)) continue;
       loose[i] -= ex;
-      this._addLoose(this.index(tx, tz), ex, ldep[i]);
+      this._move(i, this.index(tx, tz), ex);
       moved += ex;
     }
     const e = Math.ceil(ahead / cell) + 1;
@@ -273,16 +360,15 @@ export class Terrain {
     let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
     for (let k = 0; k < s.swept.length; k++) {
       const i = s.swept[k], d = want[k] * (want[k] < 0 ? kt : kg);
-      loose[i] += d;
-      if (loose[i] < 0) loose[i] = 0;
+      if (d < 0) this._pop(i, -d); else this._push(i, d, this.topMat(i), this.ldep[i]);
       const ix = i % this.nx, iz = (i / this.nx) | 0;
       if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
     }
     this._touch(x0, z0, x1, z1);
   }
 
-  // Drop a volume of loose soil as a soft gaussian splat.
-  deposit(x, z, vol, radius, depth = 0) {
+  // Drop a volume of loose material as a soft gaussian splat.
+  deposit(x, z, vol, radius, depth = 0, mat = M_SOIL) {
     if (vol <= 0) return;
     const { nx: n, cell } = this;
     const r = Math.max(radius, cell * 0.8);
@@ -299,14 +385,14 @@ export class Terrain {
       // landed outside the grid: clamp to nearest cell
       const ix = Math.min(this.rx, Math.max(0, Math.round(this.toCellX(x))));
       const iz = Math.min(this.rz, Math.max(0, Math.round(this.toCellZ(z))));
-      this._addLoose(iz * n + ix, vol / this.cellArea, depth);
+      this._push(iz * n + ix, vol / this.cellArea, mat, depth);
       this._touch(ix, iz, ix, iz);
       return;
     }
     const k = vol / (wsum * this.cellArea);
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
       const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
-      this._addLoose(iz * n + ix, k * Math.exp(-(dx * dx + dz * dz) * inv), depth);
+      this._push(iz * n + ix, k * Math.exp(-(dx * dx + dz * dz) * inv), mat, depth);
     }
     this._touch(ix0, iz0, ix1, iz1);
   }
@@ -322,8 +408,8 @@ export class Terrain {
   // Unconditionally stable, exactly volume-conserving.
   _relaxOnce() {
     const a = this.active;
-    const { nx: n, cell, nat, loose, ldep, orig, rx, rz } = this;
-    const tL = REPOSE_LOOSE, tN = REPOSE_NATIVE;
+    const { nx: n, cell, nat, loose, orig, rx, rz } = this;
+    const tN = REPOSE_NATIVE;
     const fwd = (this._sweep = !this._sweep);
     const D1 = cell, D2 = cell * Math.SQRT2;
     const x0 = a.x0, z0 = a.z0, x1 = a.x1, z1 = a.z1;
@@ -340,16 +426,16 @@ export class Terrain {
           const j = jz * n + jx;
           const d = nat[i] + loose[i] - nat[j] - loose[j];
           const dist = NB[k][2] ? D2 : D1;
-          const lim = tL * dist;
           const ad = d < 0 ? -d : d;
-          if (ad <= lim) continue;
+          if (ad <= REPOSE_MIN * dist) continue;
           const src = d > 0 ? i : j, dst = d > 0 ? j : i;
-          let moved = 0;
-          // loose soil slides until the pair is at the angle of repose
-          const mL = Math.min((ad - lim) * 0.5, loose[src]);
-          if (mL > 0) {
-            ldep[dst] = (ldep[dst] * loose[dst] + ldep[src] * mL) / (loose[dst] + mL);
-            loose[src] -= mL; loose[dst] += mL; moved += mL;
+          // loose material slides until the pair is at the angle of repose of the
+          // material on top (sand flatter than crushed stone)
+          const lim = REPOSE[this.topMat(src)] * dist;
+          let moved = 0, mL = 0;
+          if (ad > lim && loose[src] > 0) {
+            mL = this._move(src, dst, Math.min((ad - lim) * 0.5, loose[src]));
+            moved += mL;
           }
           // an over-steep wall of native ground crumbles into loose soil
           const limN = tN * dist, adN = ad - 2 * mL;
@@ -357,8 +443,7 @@ export class Terrain {
             const mN = Math.min((adN - limN) * 0.5, nat[src] - this.floorY);
             if (mN > 0) {
               const dN = orig[src] - nat[src] + mN / 2;
-              ldep[dst] = (ldep[dst] * loose[dst] + dN * mN) / (loose[dst] + mN);
-              nat[src] -= mN; loose[dst] += mN; moved += mN;
+              nat[src] -= mN; this._push(dst, mN, M_SOIL, dN); moved += mN;
             }
           }
           if (moved > 1e-7) {
@@ -424,7 +509,7 @@ export class Terrain {
   buildMesh(material) {
     const { nx: n, nz } = this;
     const N = n * nz;
-    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4);
+    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4), mats = new Float32Array(N * 3);
     for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < n; ix++) {
       const i = iz * n + ix;
       pos[i * 3] = this.toWorldX(ix); pos[i * 3 + 2] = this.toWorldZ(iz);
@@ -444,10 +529,13 @@ export class Terrain {
     this.aPos = new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage);
     this.aNor = new THREE.BufferAttribute(nor, 3).setUsage(THREE.DynamicDrawUsage);
     this.aSoil = new THREE.BufferAttribute(soil, 4).setUsage(THREE.DynamicDrawUsage);
+    // share of sand / crushed stone 5–20 / 20–40 in the top 2 mm (the rest is soil)
+    this.aMat = new THREE.BufferAttribute(mats, 3).setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('position', this.aPos);
     g.setAttribute('normal', this.aNor);
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setAttribute('aSoil', this.aSoil);
+    g.setAttribute('aMat', this.aMat);
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, TRAY.soil, 0), Math.hypot(this.halfX, this.halfZ) + 0.05);
     g.boundingBox = new THREE.Box3(new THREE.Vector3(-this.halfX, 0, -this.halfZ), new THREE.Vector3(this.halfX, 0.3, this.halfZ));
     this.mesh = new THREE.Mesh(g, material);
@@ -464,7 +552,7 @@ export class Terrain {
     if (!b || !this.mesh) return false;
     this.meshDirty = null;
     const { nx: n, cell, nat, loose, orig, rx, rz } = this;
-    const pos = this.aPos.array, nor = this.aNor.array, soil = this.aSoil.array;
+    const pos = this.aPos.array, nor = this.aNor.array, soil = this.aSoil.array, mats = this.aMat.array, { lH, lM, lN } = this;
     const occ = this._occ;
     const OR = 4; // occlusion probe radius (cells)
     const ox0 = Math.max(0, b.x0 - OR - 1), ox1 = Math.min(rx, b.x1 + OR + 1);
@@ -491,11 +579,18 @@ export class Terrain {
       soil[i * 4 + 1] = loose[i];
       soil[i * 4 + 2] = occ[i];
       soil[i * 4 + 3] = this.ldep[i];
+      let f1 = 0, f2 = 0, f3 = 0;
+      for (let k = lN[i] - 1, rest = 0.002; k >= 0 && rest > 0; k--) {
+        const h = Math.min(rest, lH[i * LAYERS + k]), m = lM[i * LAYERS + k];
+        if (m === 1) f1 += h; else if (m === 2) f2 += h; else if (m === 3) f3 += h;
+        rest -= h;
+      }
+      mats[i * 3] = f1 * 500; mats[i * 3 + 1] = f2 * 500; mats[i * 3 + 2] = f3 * 500;
     }
     const start = oz0 * n, count = (oz1 - oz0 + 1) * n;
     // ranges pile up until three uploads them (several updates between two frames
     // must all reach the GPU): keep one range covering all of them
-    for (const a of [this.aPos, this.aNor, this.aSoil]) {
+    for (const a of [this.aPos, this.aNor, this.aSoil, this.aMat]) {
       let s0 = start * a.itemSize, s1 = (start + count) * a.itemSize;
       for (const r of a.updateRanges) { s0 = Math.min(s0, r.start); s1 = Math.max(s1, r.start + r.count); }
       a.clearUpdateRanges();
@@ -506,41 +601,74 @@ export class Terrain {
   }
 
   // ---- snapshots (undo, save, Blender export) -------------------------------
-  snapshot() { return { nat: this.nat.slice(), loose: this.loose.slice(), ldep: this.ldep.slice() }; }
+  // One snapshot buffer is reused (only one action is pending at a time).
+  snapshot() {
+    const s = (this._snap ||= { nat: new Float32Array(this.nat.length), loose: new Float32Array(this.nat.length), ldep: new Float32Array(this.nat.length),
+      lH: new Float32Array(this.lH.length), lM: new Uint8Array(this.lM.length), lN: new Uint8Array(this.lN.length) });
+    s.nat.set(this.nat); s.loose.set(this.loose); s.ldep.set(this.ldep); s.lH.set(this.lH); s.lM.set(this.lM); s.lN.set(this.lN);
+    return s;
+  }
 
   restore(s) {
     this.nat.set(s.nat); this.loose.set(s.loose);
     if (s.ldep) this.ldep.set(s.ldep);
+    if (s.lH) { this.lH.set(s.lH); this.lM.set(s.lM); this.lN.set(s.lN); } else this.layersFromLoose();
     this.active = null;
     this.markAll(); this.active = null;
   }
 
-  // Sparse diff between a snapshot and the current state.
+  // Sparse diff between a snapshot and the current state (heights, layers, soil colour).
   diffFrom(s) {
-    const idx = [];
-    for (let i = 0; i < this.nat.length; i++) {
-      if (s.nat[i] !== this.nat[i] || s.loose[i] !== this.loose[i]) idx.push(i);
+    const idx = [], L = LAYERS;
+    const { nat, loose, lN, lH, lM } = this;
+    for (let i = 0; i < nat.length; i++) {
+      if (s.nat[i] !== nat[i] || s.loose[i] !== loose[i] || s.lN[i] !== lN[i]) { idx.push(i); continue; }
+      const b = i * L;
+      for (let k = 0; k < lN[i]; k++) if (s.lH[b + k] !== lH[b + k] || s.lM[b + k] !== lM[b + k]) { idx.push(i); break; }
     }
     const m = idx.length;
-    const d = { idx: new Uint32Array(idx), bn: new Float32Array(m), bl: new Float32Array(m), an: new Float32Array(m), al: new Float32Array(m) };
+    const d = {
+      idx: new Uint32Array(idx), bn: new Float32Array(m), bl: new Float32Array(m), an: new Float32Array(m), al: new Float32Array(m),
+      bd: new Float32Array(m), ad: new Float32Array(m), bN: new Uint8Array(m), aN: new Uint8Array(m),
+      bH: new Float32Array(m * L), aH: new Float32Array(m * L), bM: new Uint8Array(m * L), aM: new Uint8Array(m * L),
+    };
     for (let k = 0; k < m; k++) {
       const i = idx[k];
-      d.bn[k] = s.nat[i]; d.bl[k] = s.loose[i]; d.an[k] = this.nat[i]; d.al[k] = this.loose[i];
+      d.bn[k] = s.nat[i]; d.bl[k] = s.loose[i]; d.an[k] = nat[i]; d.al[k] = loose[i];
+      d.bd[k] = s.ldep[i]; d.ad[k] = this.ldep[i]; d.bN[k] = s.lN[i]; d.aN[k] = lN[i];
+      for (let q = 0; q < L; q++) {
+        d.bH[k * L + q] = s.lH[i * L + q]; d.aH[k * L + q] = lH[i * L + q];
+        d.bM[k * L + q] = s.lM[i * L + q]; d.aM[k * L + q] = lM[i * L + q];
+      }
     }
     return d;
   }
 
   applyDiff(d, forward) {
-    const N = forward ? d.an : d.bn, L = forward ? d.al : d.bl;
+    const N = forward ? d.an : d.bn, Lo = forward ? d.al : d.bl, L = LAYERS;
+    const H = forward ? d.aH : d.bH, M = forward ? d.aM : d.bM, C = forward ? d.aN : d.bN, D = forward ? d.ad : d.bd;
     let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
     for (let k = 0; k < d.idx.length; k++) {
       const i = d.idx[k];
-      this.nat[i] = N[k]; this.loose[i] = L[k];
+      this.nat[i] = N[k];
+      if (H) {   // BUILD 17+: the layers themselves
+        this.lN[i] = C[k];
+        for (let q = 0; q < L; q++) { this.lH[i * L + q] = H[k * L + q]; this.lM[i * L + q] = M[k * L + q]; }
+        this.loose[i] = Lo[k];
+        if (D) this.ldep[i] = D[k];
+      } else this.setLooseSoil(i, Lo[k]);   // older journals: all loose material was soil
       const ix = i % this.nx, iz = (i / this.nx) | 0;
       if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
     }
     if (x1 >= 0) { this._markMesh(x0 - 1, z0 - 1, x1 + 1, z1 + 1); }
     this.active = null; // journal states are already at rest
+  }
+
+  // volume of each material lying loose on the plot (m³ of the model)
+  materialVolumes() {
+    const v = new Array(MATERIALS.length).fill(0), { lN, lH, lM } = this;
+    for (let i = 0; i < lN.length; i++) for (let k = 0, b = i * LAYERS; k < lN[i]; k++) v[lM[b + k]] += lH[b + k];
+    return v.map((x) => x * this.cellArea);
   }
 }
 

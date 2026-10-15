@@ -42,7 +42,7 @@ errors.length = 0; // texture loads cut off by the reload above are not errors o
 if (process.env.DOF) await ev((d) => { window.__tc.settings.dof = d; window.__tc.applySettings(); }, Number(process.env.DOF));
 const total0 = await ev(() => window.__tc.terrain.totalVolume());
 // machines can be switched off in config (MACHINES_ENABLED): then the tool button is hidden
-const MACH = await ev(() => !document.querySelector('[data-tool="machine"]')?.hasAttribute('hidden'));
+const MACH = await ev(() => { const b = document.querySelector('[data-tool="machine"]'); return !!b && !b.hasAttribute('hidden'); });
 
 // ---- fresh plot: 2.4 × 1.8 m, pit outline, the fleet parked along the back edge ------------
 const fresh = await ev(() => {

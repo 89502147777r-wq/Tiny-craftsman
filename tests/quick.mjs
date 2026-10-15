@@ -84,17 +84,18 @@ for (const variant of ['full', 'light']) {
       ui.setQuiet(true);
       const quiet = !vis('.tools') && !document.getElementById('fan').hidden;
       ui.fan(true);
-      const rebar = [...document.querySelectorAll('.fan-item')].find((e) => e.textContent.includes('Арматура'));
-      rebar.click();
+      [...document.querySelectorAll('.fan-item')].find((e) => e.textContent.includes('Фундамент')).click();
+      const toolrow = vis('#toolrow') && ui.fanOpen;
+      document.querySelector('#toolrow [data-tool="rebar"]').click();
       const modes = [...document.querySelectorAll('#subbar .chip-btn')].map((b) => b.textContent);
       const shown = vis('#subbar') && ui.fanOpen;
       [...document.querySelectorAll('#subbar .chip-btn')].find((b) => b.textContent === 'Сетка').click();
       const picked = tc.rebarTool.mode === 'mesh' && !ui.fanOpen && !vis('#subbar');
       ui.setQuiet(false);
       const normal = vis('.tools') && document.getElementById('fan').hidden;
-      return { quiet, modes, shown, picked, normal };
+      return { quiet, toolrow, modes, shown, picked, normal };
     });
-    check('quiet mode: panels hidden, tool modes in the fan, panels come back', q.quiet && q.shown && q.picked && q.normal, JSON.stringify(q));
+    check('quiet mode: panels hidden, tool modes in the fan, panels come back', q.quiet && q.toolrow && q.shown && q.picked && q.normal, JSON.stringify(q));
   }
   check(`${variant}: no console errors on start`, errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
@@ -150,6 +151,29 @@ console.log('—', sec());
     tc.undo(); tc.redo();
     let rerr = 0; for (let i = 0; i < rs.length; i++) rerr = Math.max(rerr, Math.abs(rs[i] - t.loose[i]));
     out.rake.undo = rerr < 1e-9;
+    // sand and crushed stone: a delivered heap has exactly its volume (a little sand may
+    // mix into old spoil where layers merge); the shovel carries
+    // sand as sand; undo restores the layers exactly
+    tc.ui.openGroup('materials');
+    const mats = { group: tc.tool };
+    tc.settings.matMode = 'deliver'; tc.settings.delivery = 0.25;
+    const vm0 = t.totalVolume();
+    tc.activeTool().down(new V(0.2, 0.1, -0.1));
+    for (let i = 0; i < 600 && tc.busy(); i++) tc.simulate(1 / 30);
+    mats.heap = (t.totalVolume() - vm0) / (0.25 / 3.5 ** 3);
+    mats.sand = t.materialVolumes()[1] / (0.25 / 3.5 ** 3);
+    tc.setTool('shovel');
+    tc.shovelTool.down(new V(0.12, 0.1, -0.1)); for (let s = 0; s < 1 && tc.shovelTool.state === 'dig'; s += 0.04) tc.shovelTool.move(new V(0.12 + 0.12 * s, 0.1, -0.1)); tc.shovelTool.up();
+    mats.loadSand = tc.shovelTool.mat === 1;
+    if (tc.shovelTool.state === 'loaded') { tc.shovelTool.down(new V(-0.2, 0.1, 0.25)); tc.shovelTool.up(); }
+    for (let i = 0; i < 400 && tc.shovelTool.state !== 'idle'; i++) tc.simulate(0.05);
+    mats.dumpedSand = t.topMat(t.index(-0.2, 0.25)) === 1;
+    const lH = t.lH.slice();
+    tc.undo(); tc.undo(); tc.redo(); tc.redo();
+    let le = 0; for (let i = 0; i < lH.length; i++) le = Math.max(le, Math.abs(lH[i] - t.lH[i]));
+    mats.undo = le < 1e-9;
+    mats.drift = (t.totalVolume() - vm0) / (0.25 / 3.5 ** 3) - 1;
+    out.mats = mats;
     // setting-out, formwork, cage, ties
     const e = { clientX: 0, clientY: 0 };
     tc.setTool('mark'); tc.markTool.setMode('trench');
@@ -161,7 +185,7 @@ console.log('—', sec());
     out.objects = { outlines: tc.objects.all('outline').length, forms: tc.objects.all('form').length, cages: tc.objects.all('cage').length, tied: tc.objects.all('cage').some((c) => c.tied) };
     tc.setTool('camera');
     await tc.saveNow();
-    out.saved = { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(t.excavatedVolume() * 1e6).toFixed(3) };
+    out.saved = { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(t.excavatedVolume() * 1e6).toFixed(3), sand: +(t.materialVolumes()[1] * 1e6).toFixed(2) };
     return out;
   });
   check('shovel digs (3 passes ≥ 25 mm)', play.depth > 0.025, `${(play.depth * 1000).toFixed(1)} mm, ${play.scoops} scoops`);
@@ -170,10 +194,11 @@ console.log('—', sec());
   check('undo / redo exact', play.undo);
   check('rake lowers the heap, keeps the soil, undoes', play.rake.h1 < play.rake.h0 - 5 && Math.abs(play.rake.drift) < 50 && play.rake.strokes === 4 && play.rake.undo,
     `${play.rake.h0.toFixed(1)} → ${play.rake.h1.toFixed(1)} mm, ${play.rake.drift.toFixed(2)} mm3, ${play.rake.strokes} strokes`);
+  check('sand: heap of the ordered volume, shovel carries sand, layers undo exactly', play.mats.group === 'sand' && Math.abs(play.mats.heap - 1) < 1e-4 && play.mats.sand > 0.98 && play.mats.sand < 1.0001 && play.mats.loadSand && play.mats.dumpedSand && play.mats.undo && Math.abs(play.mats.drift) < 1e-4, JSON.stringify(play.mats));
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 4 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));
   await page.reload();
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
-  const after = await page.evaluate(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(tc.terrain.excavatedVolume() * 1e6).toFixed(3) }; });
+  const after = await page.evaluate(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(tc.terrain.excavatedVolume() * 1e6).toFixed(3), sand: +(tc.terrain.materialVolumes()[1] * 1e6).toFixed(2) }; });
   check('project restored after reload', JSON.stringify(after) === JSON.stringify(play.saved), `${JSON.stringify(play.saved)} → ${JSON.stringify(after)}`);
   check('no console errors while playing', errors.length === 0, errors.slice(0, 3).join(' | '));
   const build = fs.readFileSync(path.join(root, 'src/config.js'), 'utf8').match(/BUILD = (\d+)/)[1];

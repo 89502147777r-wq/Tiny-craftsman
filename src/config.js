@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:3.5.
-export const BUILD = 16;
+export const BUILD = 17;
 export const STAGE = 3;
 export const MODEL_SCALE = 3.5;
 // Many sizes were first designed at 1:12; K = how much bigger everything built
@@ -35,6 +35,19 @@ export const TERRAIN_CELL = 0.003; // 800 × 600
 
 // Soil mechanics (tangent of the angle at which material starts to slide).
 export const REPOSE_LOOSE = Math.tan(37 * Math.PI / 180);  // freshly dug loose soil
+// loose materials (terrain layers). Repose = angle of a dry heap; tile = real size of
+// the photo texture in the model (m); colour = average, for crumbs and the shovel load
+export const MATERIALS = [
+  { id: 'soil', name: 'Грунт', repose: Math.tan(37 * Math.PI / 180) },
+  { id: 'sand', name: 'Песок', repose: Math.tan(33 * Math.PI / 180), tile: 1.8 / 3.5, color: 0xc9a46a },
+  { id: 'g5', name: 'Щебень 5–20', repose: Math.tan(37 * Math.PI / 180), tile: 2.0 / 3.5, color: 0x9a9894 },
+  { id: 'g20', name: 'Щебень 20–40', repose: Math.tan(39 * Math.PI / 180), tile: 1.0 / 3.5, color: 0x9c9a95 },
+];
+export const M_SOIL = 0, M_SAND = 1, M_G5 = 2, M_G20 = 3;
+// deliveries (real m³ → model volume: ÷ 3.5³) and the bucket
+export const DELIVERY = [0.25, 0.5, 1, 2];
+export const BUCKET = 0.010;   // 10 l bucket (real m³)
+
 export const REPOSE_NATIVE = Math.tan(78 * Math.PI / 180); // undisturbed cohesive ground
 
 export const SHOVELS = {
@@ -72,7 +85,9 @@ export const DEFAULT_SETTINGS = {
   trenchDepth: 250,  // new trench depth, mm (real) — the box holds 31 cm of soil
   backdrop: 'site',
   orbit: false,      // slow automatic camera fly-around (панорама)
-  quiet: false,      // quiet mode: one round button instead of the panels (for filming)
+  quiet: false,
+  matMode: 'deliver', // sand / crushed stone: 'deliver' a heap or pour from a 'bucket'
+  delivery: 0.5,     // size of a delivered heap, real m³      // quiet mode: one round button instead of the panels (for filming)
 };
 
 // the first outline on a new plot: a 2.6 × 2.1 m slab pit, 75 mm (26 cm) deep

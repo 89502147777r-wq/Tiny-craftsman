@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../core/rand.js';
 import { variant } from './assets.js';
-import { soilTint } from './soilColor.js';
+import { materialTint } from './soilColor.js';
 
 const G = -9.81;
 
@@ -31,7 +31,7 @@ export class SoilParticles {
     this.items = [];
 
     // clods resting on the ground
-    this.clodMax = 1600;
+    this.clodMax = 4000;
     this.clods = new THREE.InstancedMesh(geo, mat, this.clodMax);
     this.clods.castShadow = true; this.clods.receiveShadow = true;
     this.clods.frustumCulled = false;
@@ -43,12 +43,12 @@ export class SoilParticles {
 
   get busy() { return this.items.length > 0; }
 
-  emit(pos, vel, vol, size, keep = 0.25, depth = 0) {
-    if (this.items.length >= this.max) { this.terrain.deposit(pos.x, pos.z, vol, 0.002, depth); return; }
+  emit(pos, vel, vol, size, keep = 0.25, depth = 0, mat = 0) {
+    if (this.items.length >= this.max) { this.terrain.deposit(pos.x, pos.z, vol, 0.002, depth, mat); return; }
     const r = this.rnd;
     this.items.push({
       p: pos.clone(), v: vel.clone(), vol, size: size * (0.6 + r() * 0.8),
-      rot: new THREE.Euler(r() * 6, r() * 6, r() * 6), spin: (r() - 0.5) * 30, keep: r() < keep, age: 0, depth,
+      rot: new THREE.Euler(r() * 6, r() * 6, r() * 6), spin: (r() - 0.5) * 30, keep: r() < keep, age: 0, depth, mat,
     });
   }
 
@@ -60,9 +60,10 @@ export class SoilParticles {
   }
 
   _land(it, x, z) {
-    this.terrain.deposit(x, z, it.vol, Math.max(0.0012, it.size * 1.2), it.depth || 0);
-    if (it.keep && this.terrain.inside(x, z) && this.clodList.length < this.clodMax) {
-      this.clodList.push({ x, z, size: it.size, rot: it.rot.clone(), sink: 0.35 + this.rnd() * 0.35, depth: it.depth || 0 });
+    this.terrain.deposit(x, z, it.vol, Math.max(0.0012, it.size * 1.2), it.depth || 0, it.mat || 0);
+    // soil clods and crushed stones stay visible on top (sand does not)
+    if (it.keep && it.mat !== 1 && this.terrain.inside(x, z) && this.clodList.length < this.clodMax) {
+      this.clodList.push({ x, z, size: it.size, rot: it.rot.clone(), sink: 0.35 + this.rnd() * 0.35, depth: it.depth || 0, mat: it.mat || 0 });
       this._seenVersion = -1;
     }
   }
@@ -94,7 +95,7 @@ export class SoilParticles {
       q.setFromEuler(it.rot);
       s.setScalar(it.size);
       this.mesh.setMatrixAt(i, m.compose(it.p, q, s));
-      this.mesh.setColorAt(i, soilTint(it.depth || 0, this._col));
+      this.mesh.setColorAt(i, materialTint(it.mat, it.depth || 0, this._col));
     }
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     this.mesh.count = items.length;
@@ -120,7 +121,7 @@ export class SoilParticles {
       q.setFromEuler(c.rot);
       s.setScalar(c.size);
       this.clods.setMatrixAt(i, m.compose(p, q, s));
-      this.clods.setColorAt(i, soilTint(c.depth || 0, this._col));
+      this.clods.setColorAt(i, materialTint(c.mat, c.depth || 0, this._col));
     }
     if (this.clods.instanceColor) this.clods.instanceColor.needsUpdate = true;
     this.clods.count = w;
@@ -135,7 +136,7 @@ export class SoilParticles {
       if (u >= -band - c.size && u <= c.size && Math.abs(v) <= hw) {
         hit = true;
         c.x += dx * ahead * 0.5; c.z += dz * ahead * 0.5;
-        c.size *= 0.86;
+        if (!c.mat) c.size *= 0.86;   // clods break up, stones do not
         c.rot.x += 0.7; c.rot.z += 0.4;
         if (c.size < minSize) continue;
       }
