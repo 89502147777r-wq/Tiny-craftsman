@@ -607,14 +607,17 @@ export class Terrain {
       mats[i * 3] = f1 * 500; mats[i * 3 + 1] = f2 * 500; mats[i * 3 + 2] = f3 * 500;
       cc[i * 3] = conc[i]; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
     }
-    const start = oz0 * n, count = (oz1 - oz0 + 1) * n;
-    // ranges pile up until three uploads them (several updates between two frames
-    // must all reach the GPU): keep one range covering all of them
-    for (const a of [this.aPos, this.aNor, this.aSoil, this.aMat, this.aConc]) {
-      let s0 = start * a.itemSize, s1 = (start + count) * a.itemSize;
-      for (const r of a.updateRanges) { s0 = Math.min(s0, r.start); s1 = Math.max(s1, r.start + r.count); }
+    // upload only the changed rectangle, row by row (a whole-width band of rows was
+    // megabytes per frame on phones). Several updates between two uploads add up.
+    const attrs = [this.aPos, this.aNor, this.aSoil, this.aMat, this.aConc];
+    const box = this._pend && this.aPos.updateRanges.length ? grow(this._pend, ox0, oz0, ox1, oz1, rx, rz) : { x0: ox0, z0: oz0, x1: ox1, z1: oz1 };
+    this._pend = box;
+    const w = box.x1 - box.x0 + 1, rows = box.z1 - box.z0 + 1;
+    for (const a of attrs) {
+      const k = a.itemSize;
       a.clearUpdateRanges();
-      a.addUpdateRange(s0, s1 - s0);
+      if (w > n * 0.5 || rows > 300) a.addUpdateRange(box.z0 * n * k, rows * n * k);
+      else for (let z = box.z0; z <= box.z1; z++) a.addUpdateRange((z * n + box.x0) * k, w * k);
       a.needsUpdate = true;
     }
     return true;
@@ -724,7 +727,7 @@ export class Terrain {
       for (let k = 0; k < m; k++) { lo = Math.min(lo, buf.s[k] + Y * buf.d[k]); hi = Math.max(hi, buf.s[k] + Y * buf.d[k]); }
       const need = vol / this.cellArea;
       hi += need;
-      for (let it = 0; it < 26; it++) {   // 26 halvings: far below a micron
+      for (let it = 0; it < 22; it++) {   // 22 halvings: well below a micron
         const L = (lo + hi) / 2;
         let v = 0;
         for (let k = 0; k < m; k++) { const a = L - Y * buf.d[k] - buf.s[k]; if (a > 0) v += a; }

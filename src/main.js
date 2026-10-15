@@ -209,7 +209,12 @@ function step(dt, time, render = true) {
   // fresh concrete creeps: a few passes per frame
   terrain.clock = app.clock;
   // (only while a concrete action is open: what it does to the concrete belongs to its journal entry)
-  if (Object.values(app.concreteTools).some((ct) => ct.busy)) for (let i = 0; i < 6 && terrain.cActive && performance.now() - t0 < budget * 1.6; i++) terrain.concRelax(1);
+  const ct = Object.values(app.concreteTools).find((c) => c.busy);
+  if (ct) {
+    // while pouring only around the hose (cheap); afterwards the whole fresh area settles
+    const region = ct.region();
+    for (let i = 0; i < 8 && (region || terrain.cActive) && performance.now() - t0 < budget * 1.6; i++) terrain.concRelax(1, undefined, undefined, region);
+  }
   terrain.updateMesh();
   app.grass.update();
   app.outlineView.update();

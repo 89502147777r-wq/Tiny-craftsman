@@ -136,14 +136,16 @@ const FRAG_SOIL = `
         float concW = smoothstep(0.00008, 0.0006, vConc.x);
         float cure = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
         {
+          // fresh: an even, wet cement paste (only big soft patches of bleed water);
+          // set: matt light grey, cloudy, with fine pores; trowelled = more even
           vec2 cq = vWPos.xz;
-          float mott = tcSNoise(cq * 18.0) * 0.5 + tcSNoise(cq * 70.0 + 3.0) * 0.5;   // (shared noise: the light shader has no tcFbm)
-          float speck = step(0.96, tcHash(floor(cq * 1400.0))) * (1.0 - vConc.z) * 0.6;
-          vec3 fresh = vec3(0.1, 0.099, 0.095) * mix(0.88, 1.1, mott);   // wet: dark
-          vec3 setC = vec3(0.42, 0.413, 0.392) * mix(0.86, 1.06, mott * (1.0 - 0.6 * vConc.z) + 0.3 * vConc.z);
-          // dries patchily: the mottle runs ahead or behind
-          vec3 cc = mix(fresh, setC, smoothstep(0.05, 1.0, cure + (mott - 0.5) * 0.25));
-          cc = mix(cc, cc * vec3(1.25, 1.22, 1.15), speck * 0.6);
+          float big = tcSNoise(cq * 7.0) * 0.6 + tcSNoise(cq * 19.0 + 3.0) * 0.4;   // (shared noise: the light shader has no tcFbm)
+          vec3 fresh = vec3(0.098, 0.097, 0.093) * mix(0.94, 1.05, big);
+          vec3 setC = vec3(0.42, 0.413, 0.392) * mix(0.88, 1.05, mix(big, 0.6, vConc.z * 0.6));
+          float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * vConc.z);
+          setC *= 1.0 - pore * 0.35;
+          // dries patchily
+          vec3 cc = mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2));
           // drying starts at the edges and on thin spots
           soilC = mix(soilC, cc, concW);
         }
@@ -182,7 +184,7 @@ const ROUGH_TAIL = `
         {
           // fresh concrete has a wet sheen (glossy when trowelled), set concrete is matt
           float cw = smoothstep(0.00008, 0.0006, vConc.x), cu = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
-          float wetR = mix(0.42, 0.16, vConc.z), dryR = mix(0.9, 0.7, vConc.z);
+          float wetR = mix(0.24, 0.1, vConc.z), dryR = mix(0.9, 0.72, vConc.z);   // wet paste glistens
           roughnessFactor = mix(roughnessFactor, mix(wetR, dryR, smoothstep(0.1, 0.8, cu)), cw);
         }`;
 
@@ -241,18 +243,21 @@ export function makeTerrainMaterial(tex) {
           // concrete: its own surface instead of the soil photo — lumpy as poured, flat when trowelled
           float cw = smoothstep(0.00008, 0.0006, vConc.x);
           if (cw > 0.001) {
-            vec2 cq = vWPos.xz * 80.0;
-            float e = 0.35, f0 = tcFbm(cq), fx = tcFbm(cq + vec2(e, 0.0)), fz = tcFbm(cq + vec2(0.0, e));
-            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * (1.0 - vConc.z) * 0.8;
+            // soft slump waves as poured (none once trowelled), a faint paste ripple
+            vec2 cq = vWPos.xz * 26.0;
+            float e = 0.25, f0 = tcFbm(cq), fx = tcFbm(cq + vec2(e, 0.0)), fz = tcFbm(cq + vec2(0.0, e));
+            vec2 rq = vWPos.xz * 160.0;
+            float r0 = tcNoise(rq), rx = tcNoise(rq + vec2(0.3, 0.0)), rz = tcNoise(rq + vec2(0.0, 0.3));
+            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * (1.0 - vConc.z) * 0.55 + vec3(r0 - rx, 0.0, r0 - rz) * (1.0 - 0.8 * vConc.z) * 0.12;
             vec3 cn = normalize(normalize(vNormal) * faceDirection + (viewMatrix * vec4(g, 0.0)).xyz);
             normal = normalize(mix(normal, cn, cw));
           }
         }`)
-      .replace('#include <aomap_fragment>', ch.ao)
+      .replace('#include <aomap_fragment>', ch.ao.replace('tcStoch( aoMap, vAoMapUv, tcMeanArm )', 'mix(tcStoch( aoMap, vAoMapUv, tcMeanArm ), vec4(1.0), smoothstep(0.00008, 0.0006, vConc.x))'))
       .replace('#include <roughnessmap_fragment>', `${ch.rough}${ROUGH_TAIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-11';
+  mat.customProgramCacheKey = () => 'tc-terrain-12';
   return mat;
 }
 
@@ -276,7 +281,7 @@ export function makeLightTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-light-5';
+  mat.customProgramCacheKey = () => 'tc-terrain-light-6';
   return mat;
 }
 
