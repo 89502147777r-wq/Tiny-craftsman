@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MATERIALS } from '../config.js';
 
 // Colour of the ground by depth, shared by the soil shader (strata), the
 // spoil it makes, the crumbs in flight and the load on the shovel, so what
@@ -19,3 +20,14 @@ export function soilTint(depth, out = new THREE.Color()) {
   return strataFactor(depth, out).multiply(BASE);
 }
 const _t = new THREE.Color();
+
+// crumbs / stones / the load of other materials (the particle texture is the brown
+// cut-soil photo, so stone greys are pushed a little towards blue to come out grey)
+const MAT_TINT = MATERIALS.map((m, k) => (k === 0 ? null : new THREE.Color(m.color)));
+const STONE = new THREE.Color(0.62, 0.8, 1.15);
+export function materialTint(mat, depth, out = new THREE.Color()) {
+  if (!mat) return soilTint(depth, out);
+  out.copy(MAT_TINT[mat]);
+  if (mat >= 2) out.multiply(STONE);
+  return out;
+}

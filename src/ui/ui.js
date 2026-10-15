@@ -1,14 +1,28 @@
-import { BUILD, MODEL_SCALE, MACHINES_ENABLED } from '../config.js';
+import { BUILD, MODEL_SCALE, MACHINES_ENABLED, MATERIALS, DELIVERY } from '../config.js';
 import { bbox, contains } from '../world/outlines.js';
 
 const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
+
+// The menu: groups by stage of the work → their tools → the tool's modes.
+// (the tool buttons themselves are in index.html, #toolrow, with data-group)
+const GROUPS = [
+  { id: 'camera', label: 'Камера', icon: 'camera' },
+  { id: 'earth', label: 'Земля', icon: 'shovel' },
+  { id: 'mark', label: 'Разметка', icon: 'mark' },
+  { id: 'materials', label: 'Материалы', icon: 'sand' },
+  { id: 'found', label: 'Фундамент', icon: 'form' },
+  { id: 'machines', label: 'Техника', icon: 'machine' },
+];
+const m3 = (v) => `${String(v).replace('.', ',')} м³`;
 
 const HINTS = {
   camera: 'Один палец — облёт и наклон. Два пальца — двигать участок, щипок — масштаб, поворот. Двойной тап — фокус.',
   shovel: 'Проведите пальцем по земле — лопата срежет слой грунта',
   rake: 'Ведите пальцем по кучке — грабли срежут верх и растащат грунт ровным слоем. Тяните к себе несколько раз',
   loaded: 'Коснитесь места для отвала и отпустите — грунт высыплется',
+  deliver: (name, v) => `Коснитесь места на участке — самосвал высыплет кучу: ${name.toLowerCase()} ${m3(v)}. Потом лопатой в котлован и граблями разровнять`,
+  bucket: (name) => `Держите палец — из ведра сыплется ${name.toLowerCase()} (10 л за 2 с). Ведите туда, где нужно подсыпать`,
   mark: {
     edit: 'Тяните круглые метки, чтобы менять контур. Тап по контуру — выбрать.',
     rect: 'Проведите от угла до угла — появится контур котлована',
@@ -45,7 +59,20 @@ export class UI {
     this.statT = 0;
     $('build').textContent = `BUILD ${BUILD}`;
     if (!MACHINES_ENABLED) document.querySelector('[data-tool="machine"]')?.setAttribute('hidden', '');
-    document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => app.setTool(b.dataset.tool)));
+    document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => {
+      app.setTool(b.dataset.tool);
+      if (this.fanOpen && !this.chips().length) this.fan(false);   // quiet mode: done choosing
+    }));
+    this.lastTool = {};
+    this.groups = GROUPS.filter((g) => this.groupTools(g.id).length);
+    for (const g of this.groups) {
+      const b = document.createElement('button');
+      b.className = 'tool';
+      b.dataset.gid = g.id;
+      b.innerHTML = document.querySelector(`[data-tool="${g.icon}"] svg`).outerHTML + `<span>${g.label}</span>`;
+      b.addEventListener('click', () => this.openGroup(g.id));
+      $('groups').appendChild(b);
+    }
     $('btn-undo').addEventListener('click', () => app.undo());
     $('btn-redo').addEventListener('click', () => app.redo());
     $('btn-level').addEventListener('click', () => { app.settings.level = !app.settings.level; app.applySettings(); });
@@ -67,8 +94,7 @@ export class UI {
     });
     window.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? app.redo() : app.undo(); }
-      const tools = ['camera', 'shovel', 'rake', 'mark', 'form', 'rebar', 'machine'];
-      if (e.key >= '1' && e.key <= '7') app.setTool(tools[+e.key - 1]);
+      if (e.key >= '1' && e.key <= String(this.groups.length)) this.openGroup(this.groups[+e.key - 1].id);
       if (e.key.toLowerCase() === 'q') this.setQuiet(!app.settings.quiet);
     });
     this.bindSettings();
@@ -126,6 +152,28 @@ export class UI {
     el.addEventListener('pointercancel', end);
   }
 
+  // ---- groups → tools ----------------------------------------------------------------------------
+  groupTools(gid) { return [...document.querySelectorAll(`#toolrow [data-group="${gid}"]`)].filter((b) => !b.hasAttribute('hidden')); }
+  groupOf(tool) { return document.querySelector(`#toolrow [data-tool="${tool}"]`)?.dataset.group; }
+
+  // a group opens on the tool used last in it
+  openGroup(gid) {
+    const tools = this.groupTools(gid).filter((b) => b.dataset.tool);
+    const last = this.lastTool[gid];
+    const pick = tools.find((b) => b.dataset.tool === last) || tools[0];
+    if (pick) this.app.setTool(pick.dataset.tool);
+    this.refresh();
+  }
+
+  renderGroups() {
+    const app = this.app, gid = this.groupOf(app.tool);
+    if (gid) this.lastTool[gid] = app.tool;
+    for (const b of $('groups').children) b.classList.toggle('active', b.dataset.gid === gid);
+    const multi = this.groupTools(gid).length > 1;
+    for (const b of document.querySelectorAll('#toolrow > [data-group]')) b.classList.toggle('shown', multi && b.dataset.group === gid);
+    $('ui').classList.toggle('has-toolrow', multi);
+  }
+
   openMenu(open) {
     $('menu').hidden = !open;
     if (open) {
@@ -148,26 +196,28 @@ export class UI {
   buildFan() {
     const app = this.app, box = $('fan-items');
     box.innerHTML = '';
-    const tools = [...document.querySelectorAll('.tools .tool')].filter((b) => !b.hidden);
     const acts = [
       { svg: $('btn-undo').innerHTML, label: 'Отменить', fn: () => app.undo(), keep: true, id: 'undo' },
       { svg: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>', label: 'Все панели', fn: () => this.setQuiet(false), id: 'exit' },
     ];
     const place = (el, r, a) => { el.style.setProperty('--x', `${-r * Math.cos(a)}px`); el.style.setProperty('--y', `${-r * Math.sin(a)}px`); };
-    const R1 = 200, R2 = 98;
+    const R1 = 180, R2 = 92;
     this.fanItems = [];
-    tools.forEach((b, k) => {
+    // outer ring: the groups; a group with several tools or with modes keeps the fan
+    // open — its tools and modes show at the top of the screen
+    this.groups.forEach((g, k) => {
       const el = document.createElement('button');
       el.className = 'fan-item';
-      el.innerHTML = b.querySelector('svg').outerHTML + `<span>${b.querySelector('span').textContent}</span>`;
-      place(el, R1, (k / Math.max(1, tools.length - 1)) * Math.PI / 2);
+      el.innerHTML = document.querySelector(`[data-tool="${g.icon}"] svg`).outerHTML + `<span>${g.label}</span>`;
+      place(el, R1, (k / Math.max(1, this.groups.length - 1)) * Math.PI / 2);
       el.addEventListener('click', () => {
-        // a tool with modes (mesh, bar, trench…) keeps the fan open: its modes show at the top
-        if (b.dataset.tool) { app.setTool(b.dataset.tool); this.toast(b.querySelector('span').textContent); if (!this.chips().length) this.fan(false); } else b.click();
+        this.openGroup(g.id);
+        this.toast(g.label);
+        if (this.groupTools(g.id).length < 2 && !this.chips().length) this.fan(false);
         this.refresh();
       });
       box.appendChild(el);
-      this.fanItems.push({ el, tool: b.dataset.tool, src: b });
+      this.fanItems.push({ el, group: g.id });
     });
     acts.forEach((a, k) => {
       const el = document.createElement('button');
@@ -202,11 +252,10 @@ export class UI {
     if (!this.app.settings.quiet || !this.fanItems) return;
     const app = this.app;
     for (const it of this.fanItems) {
-      if (it.tool) it.el.classList.toggle('active', it.tool === app.tool);
-      else if (it.src) it.el.classList.toggle('on', it.src.classList.contains('on'));
+      if (it.group) it.el.classList.toggle('active', it.group === this.groupOf(app.tool));
       if (it.act === 'undo') it.el.disabled = !app.journal.canUndo && !app.busy();
     }
-    const cur = document.querySelector(`.tools [data-tool="${app.tool}"] svg`);
+    const cur = document.querySelector(`#toolrow [data-tool="${app.tool}"] svg`);
     const key = app.tool;
     if (cur && this._fabKey !== key) { $('fab').innerHTML = cur.outerHTML; this._fabKey = key; }
   }
@@ -236,6 +285,14 @@ export class UI {
       return [
         C('Штыковая', app.settings.shovel === 'spade', () => { app.settings.shovel = 'spade'; app.applySettings(); }),
         C('Совковая', app.settings.shovel === 'scoop', () => { app.settings.shovel = 'scoop'; app.applySettings(); }),
+      ];
+    }
+    if (app.materialTools?.[t]) {
+      const s = app.settings, bucket = s.matMode === 'bucket';
+      const set = (o) => { Object.assign(s, o); app.applySettings(); };
+      return [
+        ...DELIVERY.map((v) => C(m3(v), !bucket && s.delivery === v, () => set({ matMode: 'deliver', delivery: v }))),
+        C('Ведро 10 л', bucket, () => set({ matMode: 'bucket' })),
       ];
     }
     if (t === 'mark') {
@@ -361,6 +418,8 @@ export class UI {
       hint = st === 'loaded' || st === 'aim' ? HINTS.loaded : st === 'idle' ? HINTS.shovel : '';
     }
     if (t === 'rake') hint = app.rakeTool.busy ? '' : HINTS.rake;
+    const mt = app.materialTools?.[t];
+    if (mt) hint = mt.busy ? '' : app.settings.matMode === 'bucket' ? HINTS.bucket(mt.name) : HINTS.deliver(mt.name, app.settings.delivery);
     if (t === 'mark') hint = HINTS.mark[app.markTool.mode];
     if (t === 'form') hint = HINTS.form[app.formTool.mode];
     if (t === 'rebar') hint = HINTS.rebar[app.rebarTool.mode];
@@ -377,6 +436,7 @@ export class UI {
     }
     if (this._hint !== hint) { $('hint').textContent = hint; this._hint = hint; }
     $('hint').classList.toggle('top', t === 'machine');
+    this.renderGroups();
     this.renderChips();
     this.renderParams();
     this.renderMachineControls();
@@ -413,6 +473,14 @@ export class UI {
     if (this.statT < 0.3) return;
     this.statT = 0;
     const app = this.app;
+    // sand / crushed stone lying on the plot (real m³)
+    if ((this.matT = (this.matT || 0) + 1) % 3 === 1) {
+      const v = app.terrain.materialVolumes().map((x) => x * MODEL_SCALE ** 3);
+      const short = ['', 'песок', 'щ. 5–20', 'щ. 20–40'];
+      const parts = MATERIALS.map((m, k) => (k && v[k] > 0.005 ? `${short[k]} ${v[k].toFixed(2).replace('.', ',')}` : '')).filter(Boolean);
+      $('st-mat-row').hidden = !parts.length;
+      $('st-mat').textContent = parts.join(' · ') + (parts.length ? ' м³' : '');
+    }
     const v = app.terrain.excavatedVolume();
     $('st-vol').textContent = `${(v * 1e6).toFixed(1)} см³ · ${(v * MODEL_SCALE ** 3).toFixed(2)} м³`;
     // depth of the selected outline (or the first one)

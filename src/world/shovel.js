@@ -115,7 +115,19 @@ export class Shovel {
   poseAim(p, dir, groundY) {
     this.setPose({ pos: new THREE.Vector3(p.x - dir.x * 0.006 * K, groundY + 0.022 * K, p.z - dir.y * 0.006 * K), dir, tilt: 1.02, roll: 0 });
   }
-  poseDump() { this.setPose({ tilt: 1.12, roll: 1.75 }); }
+  // tip the blade over sideways; the shovel moves so the load falls right under the
+  // finger (the soil leaves the blade's edge and flies a little along its face)
+  poseDump(dir, at) {
+    const tilt = 1.12, roll = 1.75;
+    if (at) {
+      const q = this.orientation(this.target.dir, tilt, roll, new THREE.Quaternion());
+      const c = new THREE.Vector3(0, this.spec.length * 0.475, 0.002 * K).applyQuaternion(q).add(this.target.pos);
+      const n = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+      this.target.pos.x += at.x - (c.x + n.x * 0.02);
+      this.target.pos.z += at.z - (c.z + n.z * 0.02);
+    }
+    this.setPose({ tilt, roll });
+  }
   poseRest(p) {
     const t = this.app.terrain;
     const h = t.inside(p.x, p.z) ? t.heightAt(p.x, p.z) : 0;

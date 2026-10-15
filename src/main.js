@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K } from './config.js';
+import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, M_SAND, M_G5, M_G20 } from './config.js';
 import { loadAssets } from './world/assets.js';
 import { buildWorkshop } from './world/workshop.js';
 import { Terrain } from './world/terrain.js';
@@ -24,6 +24,7 @@ import { Recorder, TRACK_FIELDS } from './core/recorder.js';
 import { saveLocal, loadLocal, clearLocal, toJSON, fromJSON, download } from './core/storage.js';
 import { ScoopTool } from './tools/scoopTool.js';
 import { RakeTool } from './tools/rakeTool.js';
+import { MaterialTool } from './tools/materialTool.js';
 import { MarkTool } from './tools/markTool.js';
 import { BuildTool } from './tools/buildTool.js';
 import { MachineTool } from './tools/machineTool.js';
@@ -64,7 +65,7 @@ async function main() {
   const scene = (app.scene = new THREE.Scene());
   const camera = (app.camera = new THREE.PerspectiveCamera(45, 1, 0.008, 40));
 
-  const tex = await loadAssets(renderer, (f) => { document.getElementById('loadbar').style.width = `${Math.round(f * 100)}%`; });
+  const tex = await loadAssets(renderer, (f) => { document.getElementById('loadbar').style.width = `${Math.round(f * 100)}%`; }, app.settings.quality);
   app.tex = tex;
   app.workshop = buildWorkshop(scene, renderer, tex);
   app.stacks = buildStacks(tex);
@@ -96,6 +97,7 @@ async function main() {
   app.sfx = new Sfx();
   app.shovelTool = new ScoopTool(app, app.shovel);
   app.rakeTool = new RakeTool(app, app.rake);
+  app.materialTools = { sand: new MaterialTool(app, M_SAND), g5: new MaterialTool(app, M_G5), g20: new MaterialTool(app, M_G20) };
   app.markTool = new MarkTool(app);
   app.formTool = new BuildTool(app, 'form');
   app.rebarTool = new BuildTool(app, 'rebar');
@@ -192,6 +194,7 @@ function step(dt, time, render = true) {
   if (!document.hidden) app.clock += dt;
   const { terrain } = app;
   app.shovelTool.update(dt);
+  for (const t of Object.values(app.materialTools)) t.update(dt);
   app.machineTool.update(dt);
   app.particles.update(dt);
   // soil physics gets a time budget per frame (small piles settle in a blink)
@@ -250,6 +253,7 @@ function updateFocus() {
   const mt = app.machineTool;
   if (app.tool === 'shovel' && app.shovelTool.state !== 'idle') _f.copy(app.shovel.root.position);
   else if (app.tool === 'rake' && app.rakeTool.busy) _f.copy(app.rake.root.position);
+  else if (app.materialTools[app.tool]?.busy) _f.copy(app.materialTools[app.tool].p);
   else if (app.tool === 'machine' && mt.machine) {
     if (mt.active === 'excavator' && mt.machine.busy) mt.machine.bucketWorld(_f);
     else _f.copy(mt.machine.root.position).setY(mt.machine.y + 0.08);
@@ -287,12 +291,13 @@ function resize() {
 }
 
 // ---- tools ------------------------------------------------------------------------------
-app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, machine: app.machineTool }[app.tool] || null);
-app.busy = () => app.shovelTool.busy || app.rakeTool.busy || app.machineTool.busy();
+app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, machine: app.machineTool }[app.tool] || null);
+app.busy = () => app.shovelTool.busy || app.rakeTool.busy || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy();
 
 function setTool(t) {
   if (app.tool === 'shovel' && t !== 'shovel') app.shovelTool.finish();
   if (app.tool === 'rake' && t !== 'rake') app.rakeTool.finish();
+  if (app.materialTools[app.tool] && t !== app.tool) app.materialTools[app.tool].finish();
   if (app.tool === 'mark' && t !== 'mark' && app.markTool.trench) app.markTool.finishTrench();
   if (app.tool === 'machine' && t !== 'machine') app.machineTool.finish();
   app.tool = t;
@@ -314,6 +319,7 @@ app.setTool = setTool;
 function undo() {
   if (app.shovelTool.abort()) { app.ui.refresh(); return; }
   if (app.rakeTool.abort()) { app.ui.refresh(); return; }
+  for (const t of Object.values(app.materialTools)) if (t.abort()) { app.ui.refresh(); return; }
   if (app.machineTool.abort()) { app.ui.refresh(); return; }
   app.journal.undo();
   app.ui.refresh();
@@ -321,6 +327,7 @@ function undo() {
 function redo() {
   if (app.shovelTool.busy) app.shovelTool.finish();
   app.rakeTool.finish();
+  for (const t of Object.values(app.materialTools)) t.finish();
   app.machineTool.finish();
   if (app.journal.pending) app.journal.commit(app.clock);
   app.journal.redo();
@@ -403,7 +410,8 @@ function buildProject() {
     format: 'tiny-craftsman-project', version: 3, build: BUILD, stage: STAGE, savedAt: new Date().toISOString(),
     clock: app.clock, scale: MODEL_SCALE, units: 'metres (real size of the diorama)',
     tray: TRAY,
-    terrain: { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, ldep: base.ldep || t.ldep, orig: t.orig },
+    terrain: { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, ldep: base.ldep || t.ldep, orig: t.orig,
+      layers: { count: 3, n: base.lN || t.lN, h: base.lH || t.lH, m: base.lM || t.lM, materials: ['soil', 'sand', 'gravel 5-20', 'gravel 20-40'] } },
     objects,
     settings: app.settings,
     camera: app.rig.state(),
@@ -436,6 +444,8 @@ function applyProject(p) {
   t.seed = p.terrain.seed;
   t.orig.set(p.terrain.orig); t.nat.set(p.terrain.nat); t.loose.set(p.terrain.loose);
   if (p.terrain.ldep && p.terrain.ldep.length === t.ldep.length) t.ldep.set(p.terrain.ldep); else t.ldep.fill(0.02);
+  const L = p.terrain.layers;
+  if (L && L.h.length === t.lH.length) { t.lH.set(L.h); t.lM.set(L.m); t.lN.set(L.n); } else t.layersFromLoose();   // before BUILD 17: all soil
   t.markAll(); t.active = null;
   app.clock = p.clock || 0;
   const rescaled = (p.scale || 12) !== MODEL_SCALE;
@@ -504,6 +514,7 @@ function migrateGrid(p) {
     t.nat[i] = at(pt.nat, x, z) + dy;
     t.loose[i] = at(pt.loose, x, z);
   }
+  t.layersFromLoose();
   t.markAll();
   for (let i = 0; i < 6000 && t.active; i++) t.relax(1);
   t.active = null;
@@ -567,6 +578,7 @@ app.newProject = async () => {
   app.shovelTool.abort();
   app.shovelTool.finish();
   app.rakeTool.abort();
+  for (const t of Object.values(app.materialTools)) t.abort();
   app.machineTool.abort();
   app.machineTool.finish();
   await clearLocal();

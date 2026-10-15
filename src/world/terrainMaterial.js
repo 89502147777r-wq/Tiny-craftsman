@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAY, LOAM_TILE } from '../config.js';
+import { TRAY, LOAM_TILE, MATERIALS } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks, stochasticUniforms, textureMean } from '../render/stochastic.js';
 import { innerCorner } from './plotShape.js';
 
@@ -9,6 +9,8 @@ import { innerCorner } from './plotShape.js';
 //     is a darker layer with a wavy boundary
 //   • spoil (loose soil): the colour of the layer it was dug from (the terrain
 //     keeps that depth per cell: aSoil.w)
+//   • loose sand / crushed stone: their photo textures (aMat = share of each in
+//     the top 2 mm, from the terrain layers)
 //   • chalk line of the setting-out, levelling overlay (нивелир), the rounded
 //     tray corner
 // Two variants share the colouring: "full" (stochastic photo texturing) and
@@ -56,16 +58,21 @@ function baseUniforms(tex) {
     uTime: { value: 0 },
     uCorner: { value: (() => { const c = innerCorner(); return new THREE.Vector4(c.cx, c.cz, c.r, 0); })() },
     uCornerSign: { value: (() => { const c = innerCorner(); return new THREE.Vector2(c.sx, c.sz); })() },
+    tMat: { value: tex.matDiff },
+    uMatScale: { value: new THREE.Vector3(1 / MATERIALS[1].tile, 1 / MATERIALS[2].tile, 1 / MATERIALS[3].tile) },
   };
 }
 
 const VERT_COMMON = `#include <common>
         attribute vec4 aSoil;
+        attribute vec3 aMat;
         varying vec4 vSoil;
+        varying vec3 vMat;
         varying vec3 vWPos;
         varying vec3 vWNrm;`;
 const VERT_PROJECT = `#include <project_vertex>
         vSoil = aSoil;
+        vMat = aMat;
         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
         vWNrm = normalize(mat3(modelMatrix) * objectNormal);`;
 
@@ -75,6 +82,9 @@ const FRAG_DECL = `
         uniform sampler2D tLoam;
         uniform sampler2D tFloor;
         uniform sampler2D tMask;
+        uniform highp sampler2DArray tMat;
+        uniform vec3 uMatScale;
+        varying vec3 vMat;
         uniform vec4 uWallMean;
         uniform vec4 uLoamMean;
         uniform float uLoamScale;
@@ -103,6 +113,17 @@ const FRAG_SOIL = `
         // spoil: the same cut material, coloured like the layer it came from
         vec3 looseC = wallTopC * vec3(0.78, 0.70, 0.62) * 0.72 * tcStrata(vSoil.w, vWPos.xz, 0.0) * 1.08;
         soilC = mix(soilC, looseC, lse);
+        // loose sand and crushed stone on top (both stone sizes share one photo)
+        {
+          vec2 mq = vWPos.xz;
+          vec3 cS = texture(tMat, vec3(mq * uMatScale.x, 0.0)).rgb * vec3(1.05, 1.0, 0.86);
+          // granite crushed stone: medium grey (the photo is a light driveway gravel)
+          vec3 c5 = texture(tMat, vec3(mq * uMatScale.y, 1.0)).rgb * vec3(0.5, 0.5, 0.52);
+          vec3 c20 = texture(tMat, vec3(mq * uMatScale.z + 0.37, 1.0)).rgb * vec3(0.54, 0.53, 0.53);
+          float mSum = vMat.x + vMat.y + vMat.z;
+          vec3 mc = (cS * vMat.x + c5 * vMat.y + c20 * vMat.z) / max(0.001, mSum);
+          soilC = mix(soilC, mc, smoothstep(0.0, 1.0, clamp(mSum, 0.0, 1.0)));
+        }
         // the tray bottom shows through where everything has been dug out
         float bottom = (1.0 - smoothstep(uFloorY + 0.0002, uFloorY + 0.0009, vWPos.y)) * (1.0 - lse);
         soilC = mix(soilC, texture2D(tFloor, vWPos.xz * 4.0).rgb * 0.8, bottom);
@@ -147,14 +168,14 @@ export function makeTerrainMaterial(tex) {
     roughness: 1,
     metalness: 0,
   });
-  const uniforms = { ...baseUniforms(tex), ...stochasticUniforms(tex.top.diff, tex.top.nor, tex.top.arm) };
+  const uniforms = { ...baseUniforms(tex), ...stochasticUniforms(tex.top.diff, tex.top.nor, tex.top.arm), tMatN: { value: tex.matNor } };
   mat.userData.uniforms = uniforms;
   const ch = stochasticChunks();
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader.replace('#include <common>', VERT_COMMON).replace('#include <project_vertex>', VERT_PROJECT);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>${FRAG_DECL}${STOCHASTIC_GLSL}${STRATA_GLSL}`)
+      .replace('#include <common>', `#include <common>${FRAG_DECL}\n        uniform highp sampler2DArray tMatN;${STOCHASTIC_GLSL}${STRATA_GLSL}`)
       .replace('#include <map_fragment>', `
         tcStochSetup(vMapUv);
         vec3 wn = normalize(vWNrm);
@@ -179,12 +200,21 @@ export function makeTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <normal_fragment_maps>', `${ch.normal}
         float steepF = smoothstep(0.25, 0.75, 1.0 - normalize(vWNrm).y);
-        normal = normalize(mix(normal, normalize(vNormal) * faceDirection, max(steepF * 0.8, smoothstep(0.0, 0.0012, vSoil.y) * 0.45)));`)
+        normal = normalize(mix(normal, normalize(vNormal) * faceDirection, max(steepF * 0.8, smoothstep(0.0, 0.0012, vSoil.y) * 0.45)));
+        {
+          float ms = clamp(vMat.x + vMat.y + vMat.z, 0.0, 1.0);
+          vec3 n0 = texture(tMatN, vec3(vWPos.xz * uMatScale.x, 0.0)).xyz;
+          vec3 n1 = texture(tMatN, vec3(vWPos.xz * uMatScale.y, 1.0)).xyz;
+          vec3 n2 = texture(tMatN, vec3(vWPos.xz * uMatScale.z + 0.37, 1.0)).xyz;
+          vec3 mn = (n0 * vMat.x + n1 * vMat.y + n2 * vMat.z) / max(0.001, vMat.x + vMat.y + vMat.z) * 2.0 - 1.0;
+          vec3 off = (viewMatrix * vec4(mn.x, 0.0, mn.y, 0.0)).xyz;
+          normal = normalize(mix(normal, normalize(normalize(vNormal) * faceDirection + off * 1.3), ms));
+        }`)
       .replace('#include <aomap_fragment>', ch.ao)
       .replace('#include <roughnessmap_fragment>', `${ch.rough}${ROUGH_TAIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-7';
+  mat.customProgramCacheKey = () => 'tc-terrain-9';
   return mat;
 }
 
@@ -208,7 +238,7 @@ export function makeLightTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-light-1';
+  mat.customProgramCacheKey = () => 'tc-terrain-light-3';
   return mat;
 }
 

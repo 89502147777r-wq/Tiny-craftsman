@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { K } from '../config.js';
-import { soilTint } from '../world/soilColor.js';
+import { materialTint } from '../world/soilColor.js';
+
+// crumb size and how many stay visible on top, per material (soil, sand, 5–20, 20–40)
+const CRUMB = [1, 0.55, 0.8, 1.45], KEEP = [0.32, 0, 0, 0];   // only soil leaves clods on top
 
 // Scoop workflow, shared by the hand shovel and the excavator bucket:
 //   swipe on the ground  → the blade cuts a layer (bite) along the swipe until
@@ -153,7 +156,11 @@ export class ScoopTool {
     }
     this.state = 'loaded';
     this.depth = app.terrain.takenDepth();
-    if (this.imp.loadMat) soilTint(this.depth, this.imp.loadMat.color);
+    // what is on the blade: share of each material (cut top-down: sand, stone, soil…)
+    const m = app.terrain.takenMaterials(), sum = m.reduce((a, b) => a + b, 0) || 1;
+    this.share = m.map((x) => x / sum);
+    this.mat = this.share.indexOf(Math.max(...this.share));
+    if (this.imp.loadMat) materialTint(this.mat, this.depth, this.imp.loadMat.color);
     this.lastP.copy(this.last);
     this.aim(this.last);
     app.onShovelState?.();
@@ -165,7 +172,7 @@ export class ScoopTool {
     this.emitted = 0;
     this.total = Math.round(70 + 170 * Math.min(1, this.load / this.capacity));
     const app = this.app;
-    this.imp.poseDump(this.dir);
+    this.imp.poseDump(this.dir, this.lastP);
     app.sfx.pour(Math.min(1, this.load / this.capacity));
     const m = app.journal.pending?.meta;
     if (m) { m.path = this.path; m.dump = [+this.lastP.x.toFixed(5), +this.lastP.z.toFixed(5)]; m.volume = this.load; }
@@ -173,6 +180,15 @@ export class ScoopTool {
   }
 
   _rest(p) { this.imp.poseRest(p, this.dir); }
+
+  // material of the crumb at fraction f of the load: the main material comes out
+  // last, so a shovel of sand leaves sand on top even with some soil in it
+  _matAt(f) {
+    const sh = this.share || [1], main = this.mat || 0;
+    let acc = 0;
+    for (let k = 0; k < sh.length; k++) { if (k === main) continue; acc += sh[k]; if (f < acc) return k; }
+    return main;
+  }
 
   update(dt) {
     const app = this.app;
@@ -188,7 +204,9 @@ export class ScoopTool {
           const r = Math.random;
           const pos = s.bladePoint(r() * 2 - 1, r());
           const v = n.clone().multiplyScalar((0.05 + r() * 0.08) * Math.sqrt(K)).add(new THREE.Vector3((r() - 0.5) * 0.08, -0.05, (r() - 0.5) * 0.08));
-          app.particles.emit(pos, v, per, (0.0007 + Math.pow(r(), 3) * 0.0014) * K * (s.crumbScale ?? 1), 0.32, this.depth || 0);
+          // the load is poured material by material in proportion
+          const mat = this._matAt(this.emitted / this.total);
+          app.particles.emit(pos, v, per, (0.0007 + Math.pow(r(), 3) * 0.0014) * K * (s.crumbScale ?? 1) * CRUMB[mat], KEEP[mat], this.depth || 0, mat);
           this.emitted++;
         }
         s.fill = Math.max(0, 1 - this.emitted / this.total) * (this.load / this.capacity);
@@ -216,7 +234,7 @@ export class ScoopTool {
       const rest = this.load * (this.total - this.emitted) / this.total;
       const t = app.terrain;
       const x = t.clampX(this.lastP.x), z = t.clampZ(this.lastP.z);
-      t.deposit(x, z, rest, 0.004 * K, this.depth || 0);
+      t.deposit(x, z, rest, 0.004 * K, this.depth || 0, this.mat || 0);
       this.emitted = this.total;
     }
     if (this.state === 'dump' || this.state === 'settle') {
