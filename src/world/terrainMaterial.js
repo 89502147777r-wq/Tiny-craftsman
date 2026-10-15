@@ -30,6 +30,7 @@ export function makeTerrainMaterial(tex) {
     uSoilY: { value: TRAY.soil },
     uChalk: { value: 1 },
     uLevel: { value: 0 },
+    uLayer: { value: 0.012 },   // thickness of one dug layer = one pass of the shovel
     uTime: { value: 0 },
     uCorner: { value: (() => { const c = innerCorner(); return new THREE.Vector4(c.cx, c.cz, c.r, 0); })() },
     uCornerSign: { value: (() => { const c = innerCorner(); return new THREE.Vector2(c.sx, c.sz); })() },
@@ -53,7 +54,7 @@ export function makeTerrainMaterial(tex) {
         uniform sampler2D tWall, tLoam;
         uniform float uLoamScale;
         uniform sampler2D tFloor;
-        uniform float uWallScale, uLooseScale, uFloorY, uChalk, uLevel, uSoilY, uTime;
+        uniform float uWallScale, uLooseScale, uFloorY, uChalk, uLevel, uSoilY, uTime, uLayer;
         uniform sampler2D tMask;
         uniform vec4 uPlot;
         uniform vec4 uCorner;
@@ -86,9 +87,24 @@ export function makeTerrainMaterial(tex) {
         looseC = mix(looseC, texture2D(map, vWPos.xz * 7.3 + 0.21).rgb, 0.45) * vec3(0.66, 0.58, 0.5); // freshly turned spoil: dark and crumbly
         float dig = smoothstep(0.0003, 0.0022, vSoil.x);
         float lse = smoothstep(0.00015, 0.0015, vSoil.y);
+        wallC = mix(vec3(dot(wallC, vec3(0.3333))), wallC, 0.75);           // a bit less saturated
+        wallC = mix(textureLod(tWall, vec2(0.5), 12.0).rgb, wallC, 0.55);    // softer spade marks
         vec3 soilC = mix(topC.rgb, wallC * vec3(0.78, 0.70, 0.62), dig);
-        // fresh cuts are moist: clearly darker than the sun-dried crust, more so the deeper you go
-        soilC *= mix(1.0, 0.7, dig) * mix(1.0, 0.82, smoothstep(0.002, 0.02, vSoil.x));
+        // fresh cuts are moist: clearly darker than the sun-dried crust …
+        soilC *= mix(1.0, 0.72, dig);
+        // … and the ground is layered: every pass of the shovel deeper opens a
+        // slightly darker, a little differently tinted layer (wavy boundaries)
+        {
+          float below = max(0.0, uSoilY - vWPos.y);
+          float wob = (tcNoise(vWPos.xz * 55.0 + vWPos.y * 30.0) - 0.5) * uLayer * 0.35;
+          float layer = floor((below + wob) / uLayer);
+          float f = fract((below + wob) / uLayer);
+          vec3 tint = mod(layer, 2.0) < 0.5 ? vec3(1.06, 1.0, 0.9) : vec3(0.93, 0.95, 1.02);
+          vec3 strata = pow(vec3(0.85, 0.83, 0.8), vec3(layer)) * tint;
+          // a thin darker seam where one layer meets the next
+          strata *= 1.0 - 0.22 * (1.0 - smoothstep(0.0, 0.1, f)) * step(0.5, layer);
+          soilC *= mix(vec3(1.0), strata, dig);
+        }
         soilC = mix(soilC, looseC, lse);
         // the tray bottom shows through where everything has been dug out
         float bottom = (1.0 - smoothstep(uFloorY + 0.0002, uFloorY + 0.0009, vWPos.y)) * (1.0 - lse);
@@ -125,7 +141,7 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <roughnessmap_fragment>', `${ch.rough}
         roughnessFactor = mix(max(roughnessFactor, 0.94), 0.82, smoothstep(0.003, 0.02, vSoil.x)); // dry earth has no sheen`);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-5';
+  mat.customProgramCacheKey = () => 'tc-terrain-6';
   return mat;
 }
 
