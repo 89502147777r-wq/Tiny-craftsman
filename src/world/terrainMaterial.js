@@ -18,6 +18,24 @@ import { innerCorner } from './plotShape.js';
 
 // shared GLSL: layer colour for a depth below the original surface
 const STRATA_GLSL = /* glsl */ `
+  // the stones of the concrete aggregate: rounded grains (Voronoi cells with a dome),
+  // x = height of the stone here (0 = cement paste between stones), yz = its slope
+  vec3 tcStones(vec2 p) {
+    vec2 ip = floor(p), fp = fract(p);
+    float best = 8.0, br = 1.0; vec2 bc = vec2(0.0);
+    for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+      vec2 g = vec2(float(i), float(j));
+      vec2 o = vec2(fract(sin(dot(ip + g, vec2(127.1, 311.7))) * 43758.5453), fract(sin(dot(ip + g, vec2(269.5, 183.3))) * 43758.5453));
+      vec2 r = g + 0.1 + o * 0.8 - fp;
+      float rad = 0.32 + 0.28 * fract(o.x * 13.7 + o.y * 7.3);
+      float d = length(r) / rad;
+      if (d < best) { best = d; bc = r; br = rad; }
+    }
+    float dome = sqrt(max(0.0, 1.0 - best * best));
+    vec2 grad = dome > 0.02 ? (bc / (br * br)) / dome : vec2(0.0);
+    return vec3(dome, grad);
+  }
+
   float tcSNoise(vec2 p) {
     vec2 i = floor(p), f = fract(p);
     vec2 u = f * f * (3.0 - 2.0 * f);
@@ -143,10 +161,17 @@ const FRAG_SOIL = `
           // as poured: a coarse grey mass, the stones of the aggregate showing; the
           // vibrator / rule / trowel bring the darker wet paste up and close it (vConc.z)
           float sm = vConc.z;
-          float agg = tcSNoise(cq * 260.0) * 0.65 + tcSNoise(cq * 90.0 + 7.0) * 0.35;
-          vec3 fresh = vec3(0.2, 0.198, 0.19) * mix(0.9, 1.06, big);
-          fresh *= 1.0 + (agg - 0.5) * 0.7 * (1.0 - sm);
-          fresh *= mix(1.0, 0.72, smoothstep(0.2, 1.0, sm));   // the paste is darker and wetter
+          // stones 5–20 mm (real) stick out of the paste as poured; the vibrator and the
+          // rule sink them (the paste closes over them)
+          // two sizes of aggregate (5–10 and 10–20 mm real), half-buried in the paste
+          vec3 st = tcStones(cq * 240.0), st2 = tcStones(cq * 115.0 + 17.0);
+          float sink = 0.45 + 0.5 * sm;
+          float stone = max(smoothstep(sink, sink + 0.2, st.x) * step(0.45, tcHash(floor(cq * 240.0))),
+                            smoothstep(sink + 0.05, sink + 0.25, st2.x) * step(0.55, tcHash(floor(cq * 115.0 + 17.0))));
+          float shade = fract(sin(dot(floor(cq * 240.0), vec2(41.3, 289.1))) * 9631.7);
+          vec3 paste = vec3(0.062, 0.062, 0.06) * mix(0.92, 1.05, big) * mix(1.0, 0.82, smoothstep(0.2, 1.0, sm));
+          vec3 rock = vec3(0.092, 0.09, 0.086) * mix(0.8, 1.25, shade);   // stones still under a film of paste
+          vec3 fresh = mix(paste, rock, stone * 0.8);
           vec3 setC = vec3(0.42, 0.413, 0.392) * mix(0.88, 1.05, mix(big, 0.6, vConc.z * 0.6));
           float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * vConc.z);
           setC *= 1.0 - pore * 0.35;
@@ -254,11 +279,13 @@ export function makeTerrainMaterial(tex) {
             float rough = pow(1.0 - vConc.z, 1.5);
             vec2 cq = vWPos.xz * 55.0;
             float e = 0.3, f0 = tcFbm(cq), fx = tcFbm(cq + vec2(e, 0.0)), fz = tcFbm(cq + vec2(0.0, e));
-            vec2 aq = vWPos.xz * 260.0;
-            float a0 = tcNoise(aq), ax = tcNoise(aq + vec2(0.35, 0.0)), az = tcNoise(aq + vec2(0.0, 0.35));
+            vec3 st = tcStones(vWPos.xz * 240.0), st2 = tcStones(vWPos.xz * 115.0 + 17.0);
+            float sink = 0.45 + 0.5 * vConc.z;
+            float w1 = smoothstep(sink - 0.1, sink + 0.25, st.x) * step(0.45, tcHash(floor(vWPos.xz * 240.0)));
+            float w2 = smoothstep(sink - 0.05, sink + 0.3, st2.x) * step(0.55, tcHash(floor(vWPos.xz * 115.0 + 17.0)));
             vec2 rq = vWPos.xz * 700.0;
             float r0 = tcNoise(rq), rx = tcNoise(rq + vec2(0.4, 0.0)), rz = tcNoise(rq + vec2(0.0, 0.4));
-            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 0.9 + vec3(a0 - ax, 0.0, a0 - az) * rough * 1.1
+            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 0.9 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06
                    + vec3(r0 - rx, 0.0, r0 - rz) * (1.0 - 0.85 * vConc.z) * 0.25;
             vec3 cn = normalize(normalize(vNormal) * faceDirection + (viewMatrix * vec4(g, 0.0)).xyz);
             normal = normalize(mix(normal, cn, cw));
@@ -268,7 +295,7 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <roughnessmap_fragment>', `${ch.rough}${ROUGH_TAIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-13';
+  mat.customProgramCacheKey = () => 'tc-terrain-15';
   return mat;
 }
 
@@ -292,7 +319,7 @@ export function makeLightTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-light-7';
+  mat.customProgramCacheKey = () => 'tc-terrain-light-9';
   return mat;
 }
 

@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:3.5.
-export const BUILD = 22;
+export const BUILD = 23;
 export const STAGE = 3;
 export const MODEL_SCALE = 3.5;
 // Many sizes were first designed at 1:12; K = how much bigger everything built
@@ -53,8 +53,12 @@ export const BUCKET = 0.010;   // 10 l bucket (real m³)
 // the curing time; `cure` = seconds of the project clock from wet dark to set light grey
 // hc: concrete has a yield stress — a layer thinner than ~hc hardly moves, so a lump keeps
 // its shape while a thick pour levels out (allowed slope = yield + hc / thickness)
-export const CONCRETE = { yield: 0.09, hc: 0.02 / 3.5, rate: 0.3, cure: 300, stiff: 0.35, color: 0x7d7b76 };   // stiff as poured: it needs the vibrator
-export const PUMP = [0.02, 0.05, 0.1];   // pump hose delivery, real m³ per second (time-compressed)
+// Fresh concrete as a Bingham (viscoplastic) fluid, real values for pumped concrete
+// (S3–S4): yield stress tau (Pa) — below it the concrete stands like a heap; plastic
+// viscosity mu (Pa·s) — how fast it flows above it; density rho. Vibration fluidises it
+// (tau, mu drop to tauVib, muVib). It sets after `stiff` of `cure` seconds.
+export const CONCRETE = { tau: 250, mu: 25, rho: 2400, tauVib: 6, muVib: 4, cure: 300, stiff: 0.35, color: 0x7d7b76 };
+export const PUMP = [0.01, 0.025, 0.05];   // pump hose delivery, real m³ per second (36 / 90 / 180 m³/h)
 
 export const REPOSE_NATIVE = Math.tan(78 * Math.PI / 180); // undisturbed cohesive ground
 
@@ -93,10 +97,10 @@ export const DEFAULT_SETTINGS = {
   trenchDepth: 250,  // new trench depth, mm (real) — the box holds 31 cm of soil
   backdrop: 'site',
   orbit: false,      // slow automatic camera fly-around (панорама)
-  quiet: false,
+  quiet: false,      // quiet mode: one round button instead of the panels (for filming)
   matMode: 'deliver', // sand / crushed stone: 'deliver' a heap or pour from a 'bucket'
   delivery: 0.5,     // size of a delivered heap, real m³
-  pump: 0.05,        // concrete pump hose, real m³/s      // quiet mode: one round button instead of the panels (for filming)
+  pump: 0.025,       // concrete pump hose, real m³/s
 };
 
 // the first outline on a new plot: a 2.6 × 2.1 m slab pit, 75 mm (26 cm) deep
