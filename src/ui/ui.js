@@ -152,12 +152,19 @@ export class UI {
     const v = this.app.video;
     this.fan(false);
     if (v.recording) {
-      const r = await v.stop();
+      // the window always comes up: with the video, or with what went wrong
+      $('vs-info').textContent = 'Сохраняю видео…';
+      $('vs-save').disabled = true;
+      $('vsheet').hidden = false;
+      this.refresh();
+      let r = null;
+      try { r = await v.stop(); } catch (e) { v.error = String(e.message || e); }
       if (r) {
         const s = Math.round(r.seconds);
-        $('vs-info').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · ${(r.blob.size / 1048576).toFixed(1)} МБ · ${r.type.includes('mp4') ? 'MP4' : 'WebM'}${r.audio ? '' : ' · без звука'} — только сцена, без кнопок`;
-        $('vsheet').hidden = false;
-      } else this.toast('Видео не записалось');
+        $('vs-info').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · ${(r.blob.size / 1048576).toFixed(1)} МБ · ${r.type.includes('mp4') ? 'MP4' : 'WebM'}${r.audio ? '' : ' · без звука'} — только сцена, без кнопок`
+          + (r.fixed ? ' · длина исправлена' : '');
+        $('vs-save').disabled = false;
+      } else $('vs-info').textContent = `Видео не записалось${v.error ? ': ' + v.error : ''}. Сделайте скриншот этого окна для отчёта.`;
     } else if (!v.supported) this.toast('Этот браузер не умеет записывать видео');
     else if (await v.start()) this.toast('Запись идёт — кнопок в видео не будет');
     else this.toast('Не удалось начать запись');

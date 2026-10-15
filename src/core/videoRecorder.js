@@ -1,14 +1,15 @@
 import { Muxer, ArrayBufferTarget } from '../../vendor/mp4-muxer/mp4-muxer.mjs';
+import { fixMp4Times } from './mp4fix.js';
 
 // Clean video of the 3D view (no buttons): every rendered frame is copied onto
 // a 2D canvas (right after rendering — later the WebGL buffer is already
 // cleared) and encoded together with the game's sounds.
 //
-// Main path: WebCodecs (H.264 + AAC) into an MP4 we assemble ourselves, every
-// timestamp counted from the start of the recording. Safari's MediaRecorder
-// stamps its MP4 with the phone's uptime, so the Photos app showed videos
-// "988 hours" long. MediaRecorder is only the fallback for browsers without
-// WebCodecs.
+// Main path: MediaRecorder (it records fine on iPhones). Safari puts the
+// phone's uptime into the MP4 as an empty lead-in, so Photos showed videos
+// "988 hours" long: the finished file is repaired by fixMp4Times. Where there
+// is no MediaRecorder: WebCodecs (H.264 + AAC) into an MP4 we assemble
+// ourselves (?rec=codecs forces this path for testing).
 // H.264 first (iPhone hardware, plays everywhere); VP9 only where H.264 cannot be encoded
 const CODECS = [['avc1.640028', 'avc'], ['avc1.4d0028', 'avc'], ['avc1.42e028', 'avc'], ['avc1.42001f', 'avc'], ['vp09.00.40.08', 'vp9']];
 const MR_TYPES = ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
@@ -27,6 +28,7 @@ export class VideoRecorder {
 
   async start() {
     if (this.on || !this.supported) return false;
+    this.error = null;
     const src = this.app.renderer.domElement;
     // long side at most 1920 px, even sizes for the encoder
     const k = Math.min(1, 1920 / Math.max(src.width, src.height));
@@ -37,11 +39,14 @@ export class VideoRecorder {
     this.result = null;
     this.t0 = 0;
     this.on = true;
+    const force = new URLSearchParams(location.search).get('rec');
+    const mr = force !== 'codecs' && !!(window.MediaRecorder && HTMLCanvasElement.prototype.captureStream);
     try {
-      this.mode = this.webcodecs && (await this._startCodecs()) ? 'codecs' : this._startRecorder() ? 'recorder' : null;
+      this.mode = mr && this._startRecorder() ? 'recorder' : this.webcodecs && (await this._startCodecs()) ? 'codecs' : null;
     } catch (e) {
       console.error('video', e);
-      this.mode = this._startRecorder() ? 'recorder' : null;
+      this.error = String(e.message || e);
+      this.mode = null;
     }
     if (!this.mode) { this.on = false; this.ctx = null; return false; }
     return true;
@@ -76,12 +81,12 @@ export class VideoRecorder {
     });
     this.failed = null;
     const fail = (e) => { this.failed = e; console.error('video encoder', e); };
-    this.venc = new VideoEncoder({ output: (chunk, meta) => this.muxer.addVideoChunk(chunk, meta), error: fail });
+    this.venc = new VideoEncoder({ output: (chunk, meta) => { try { this.muxer.addVideoChunk(chunk, meta); } catch (e) { fail(e); } }, error: fail });
     this.venc.configure(video);
     this.nFrames = 0;
     this.lastKey = -1e9;
     if (audio) {
-      this.aenc = new AudioEncoder({ output: (chunk, meta) => this.muxer.addAudioChunk(chunk, meta), error: fail });
+      this.aenc = new AudioEncoder({ output: (chunk, meta) => { try { this.muxer.addAudioChunk(chunk, meta); } catch (e) { fail(e); } }, error: fail });
       this.aenc.configure(audio);
       this.samples = 0;
       const tap = (this.tap = sfx.ctx.createScriptProcessor(4096, 2, 2));
@@ -126,13 +131,14 @@ export class VideoRecorder {
       this.tap = null;
     }
     try {
-      await this.venc.flush();
-      if (this.aenc) await this.aenc.flush();
-    } catch (e) { console.error('video flush', e); }
-    this.venc.close();
-    if (this.aenc && this.aenc.state !== 'closed') this.aenc.close();
+      // never wait for ever on an encoder
+      await within(Promise.all([this.venc.flush(), this.aenc ? this.aenc.flush() : null]), 6000);
+    } catch (e) { console.error('video flush', e); this.error = String(e.message || e); }
+    try { this.venc.close(); } catch { /* closed */ }
+    try { if (this.aenc && this.aenc.state !== 'closed') this.aenc.close(); } catch { /* closed */ }
     this.venc = null; this.aenc = null;
-    if (!this.nFrames) return null;
+    if (this.failed) this.error = String(this.failed.message || this.failed);
+    if (!this.nFrames || this.failed) return null;
     this.muxer.finalize();
     const blob = new Blob([this.target.buffer], { type: 'video/mp4' });
     this.muxer = null; this.target = null;
@@ -161,16 +167,26 @@ export class VideoRecorder {
   _stopRecorder(seconds) {
     const rec = this.rec;
     this.rec = null;
-    return new Promise((resolve) => {
-      const done = () => {
-        const type = rec.mimeType || this.type || 'video/webm';
-        const r = this.chunks.length ? { blob: new Blob(this.chunks, { type }), seconds, type, audio: !!this.dest } : null;
-        this.chunks = [];
-        for (const t of this.stream.getTracks()) t.stop();
-        if (this.dest) { try { this.app.sfx.master.disconnect(this.dest); } catch { /* already gone */ } this.dest = null; }
-        resolve(r);
-      };
-      if (rec.state === 'inactive') done(); else { rec.onstop = done; rec.stop(); }
+    const stopped = new Promise((resolve) => {
+      if (rec.state === 'inactive') resolve(); else { rec.onstop = resolve; rec.stop(); }
+    });
+    // the last data can come after 'stop' on some browsers: wait for it, but not for ever
+    return within(stopped, 6000).catch(() => {}).then(async () => {
+      const type = rec.mimeType || this.type || 'video/webm', audio = !!this.dest;
+      for (const t of this.stream.getTracks()) t.stop();
+      if (this.dest) { try { this.app.sfx.master.disconnect(this.dest); } catch { /* already gone */ } this.dest = null; }
+      if (!this.chunks.length) return null;
+      let blob = new Blob(this.chunks, { type });
+      this.chunks = [];
+      let fixed = '';
+      if (type.includes('mp4')) {
+        try {
+          const buf = new Uint8Array(await blob.arrayBuffer());
+          fixed = fixMp4Times(buf);
+          if (fixed) blob = new Blob([buf], { type });
+        } catch (e) { console.error('mp4 fix', e); fixed = 'ошибка: ' + e.message; }
+      }
+      return { blob, seconds, type, audio, fixed };
     });
   }
 
@@ -191,8 +207,10 @@ export class VideoRecorder {
     const mode = this.mode;
     this.mode = null;
     let r = null;
-    if (mode === 'codecs') r = await this._stopCodecs(seconds);
-    else if (mode === 'recorder') r = await this._stopRecorder(seconds);
+    try {
+      if (mode === 'codecs') r = await this._stopCodecs(seconds);
+      else if (mode === 'recorder') r = await this._stopRecorder(seconds);
+    } catch (e) { console.error('video stop', e); this.error = String(e.message || e); }
     this.ctx = null; this.canvas = null;
     this.result = r;
     return r;
@@ -216,4 +234,8 @@ export class VideoRecorder {
   }
 
   discard() { this.result = null; }
+}
+
+function within(promise, ms) {
+  return Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error(`нет ответа ${ms / 1000} с`)), ms))]);
 }
