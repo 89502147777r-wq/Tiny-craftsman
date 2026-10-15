@@ -73,19 +73,45 @@ export class BuildTool {
   interrupt() { this.drag = null; this.preview(false); this.app.ui.hideMeasure(); }
 
   // ---- formwork -----------------------------------------------------------------------------
-  topFor(o) { return o.kind === 'trench' ? TRAY.soil + MM(this.app.settings.slab) * 0.5 : gradeY(o) + MM(this.app.settings.slab); }
+  // top of the formwork: for a slab, its height above what actually lies in the pit
+  // (the dug floor, or the sand / crushed-stone cushion); a strip foundation stands
+  // half its height above the ground
+  topFor(o) {
+    if (o.kind === 'trench') return TRAY.soil + MM(this.app.settings.slab) * 0.5;
+    return this.baseIn(o) + MM(this.app.settings.slab);
+  }
+
+  // level of the pit floor (median height inside the outline, away from the walls)
+  baseIn(o) {
+    const t = this.app.terrain, m = 0.012 * K, hs = [];
+    for (let x = o.x0 + m; x <= o.x1 - m; x += 0.01) for (let z = o.z0 + m; z <= o.z1 - m; z += 0.01) hs.push(t.heightAt(x, z));
+    if (!hs.length) return gradeY(o);
+    hs.sort((a, b) => a - b);
+    return hs[hs.length >> 1];
+  }
+
+  // one run of boards along a → b (n = outer side). Boards stand on the lowest point
+  // along the run; where the ground outside is a pit wall higher than half a board,
+  // they go inside the line against the wall (no room for stakes there).
+  run(a, b, n, y1, extra = {}) {
+    const t = this.app.terrain, T = MAT.board.t;
+    const ix = -n[0] * 0.002 * K, iz = -n[1] * 0.002 * K;
+    const y0 = t.minAlong(a[0] + ix, a[1] + iz, b[0] + ix, b[1] + iz);
+    let out = 0, cnt = 0;
+    for (let k = 0; k <= 8; k++) {
+      const f = 0.1 + 0.8 * k / 8, x = a[0] + (b[0] - a[0]) * f + n[0] * T * 1.5, z = a[1] + (b[1] - a[1]) * f + n[1] * T * 1.5;
+      if (t.inside(x, z)) { out += t.heightAt(x, z); cnt++; }
+    }
+    const wall = cnt > 0 && out / cnt > y0 + MAT.board.h * 0.5;
+    return { type: 'form', a, b, n, y0, y1: Math.max(y1, y0 + MAT.board.h * 0.5), inside: wall || undefined, ...extra };
+  }
 
   formAround(o) {
-    const { app } = this, t = app.terrain;
+    const { app } = this;
     if (app.objects.all('form').some((r) => r.outlineId === o.id)) { app.ui.toast('Опалубка по этому контуру уже стоит'); return; }
     const y1 = this.topFor(o);
     app.journal.act('formwork', { outlineId: o.id }, app.clock, () => {
-      for (const e of edges(o)) {
-        // boards stand on the lowest point just inside the edge
-        const ix = -e.n[0] * 0.002 * K, iz = -e.n[1] * 0.002 * K;
-        const y0 = t.minAlong(e.a[0] + ix, e.a[1] + iz, e.b[0] + ix, e.b[1] + iz);
-        app.objects.add({ type: 'form', outlineId: o.id, a: e.a, b: e.b, n: e.n, y0, y1: Math.max(y1, y0 + MAT.board.h) });
-      }
+      for (const e of edges(o)) app.objects.add(this.run(e.a, e.b, e.n, y1, { outlineId: o.id }));
     });
     app.ui.toast('Опалубка установлена');
   }
@@ -98,9 +124,8 @@ export class BuildTool {
     const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     const o = app.outlineView.pickOutline(mid[0] - n[0] * 0.004, mid[1] - n[1] * 0.004) || app.outlineView.pickOutline(mid[0] + n[0] * 0.004, mid[1] + n[1] * 0.004);
     if (o && contains(o, mid[0] + n[0] * 0.004, mid[1] + n[1] * 0.004)) n = [-n[0], -n[1]];
-    const y0 = t.minAlong(a[0], a[1], b[0], b[1]);
-    const y1 = o ? this.topFor(o) : y0 + MM(this.app.settings.slab);
-    app.journal.act('formwork-board', {}, app.clock, () => app.objects.add({ type: 'form', a, b, n, y0, y1: Math.max(y1, y0 + MAT.board.h) }));
+    const y1 = o ? this.topFor(o) : t.minAlong(a[0], a[1], b[0], b[1]) + MM(this.app.settings.slab);
+    app.journal.act('formwork-board', {}, app.clock, () => app.objects.add(this.run(a, b, n, y1)));
   }
 
   // ---- reinforcement -------------------------------------------------------------------------
