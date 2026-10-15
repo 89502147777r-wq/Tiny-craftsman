@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:3.5.
-export const BUILD = 11;
+export const BUILD = 12;
 export const STAGE = 3;
 export const MODEL_SCALE = 3.5;
 // Many sizes were first designed at 1:12; K = how much bigger everything built
@@ -72,6 +72,7 @@ export const DEFAULT_SETTINGS = {
   trenchDepth: 250,  // new trench depth, mm (real) — the box holds 31 cm of soil
   backdrop: 'site',
   orbit: false,      // slow automatic camera fly-around (панорама)
+  quiet: false,      // quiet mode: one round button instead of the panels (for filming)
 };
 
 // the first outline on a new plot: a 2.6 × 2.1 m slab pit, 75 mm (26 cm) deep

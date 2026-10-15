@@ -2,7 +2,8 @@
 //   the game starts without errors, the soil shaders build (full and light),
 //   the shader sources pass glslangValidator (if installed), the shovel digs
 //   and conserves soil, undo/redo is exact, the rake flattens the spoil heap,
-//   outline + formwork + cage + ties can be placed, and the project survives a reload.
+//   outline + formwork + cage + ties can be placed, the project survives a reload,
+//   the clean video recording and the quiet mode work.
 // Starts its own static web server. Usage: node tests/quick.mjs
 // Optional: WEBKIT=/path/to/playwright-browsers → also starts the game in WebKit.
 import { createRequire } from 'node:module';
@@ -76,6 +77,25 @@ for (const variant of ['full', 'light']) {
   check(`${variant} soil shader builds`, st.runnable && !st.fallback && (variant === 'light') === st.light, JSON.stringify({ runnable: st.runnable, errors: st.errors }));
   const v = st.src.map((s) => validate(s, variant));
   check(`${variant} soil shader is valid GLSL ES`, v.every((r) => r === 'ok' || r === 'skipped'), v.join(' / '));
+  if (variant === 'full') {
+    // clean video of the scene, and quiet mode (one round button)
+    const vid = await page.evaluate(async () => {
+      const tc = window.__tc, v = tc.video;
+      if (!v.supported) return { supported: false };
+      await tc.ui.toggleRec();
+      await new Promise((r) => setTimeout(r, 4000));
+      const was = v.recording;
+      await tc.ui.toggleRec();
+      const r = v.result;
+      tc.ui.setQuiet(true);
+      const quiet = getComputedStyle(document.querySelector('.tools')).display === 'none' && !document.getElementById('fan').hidden;
+      tc.ui.setQuiet(false);
+      const normal = getComputedStyle(document.querySelector('.tools')).display !== 'none' && document.getElementById('fan').hidden;
+      return { supported: true, was, size: r?.blob.size || 0, type: r?.type, sheet: !document.getElementById('vsheet').hidden, quiet, normal };
+    });
+    check('video recording of the scene works', !vid.supported || (vid.was && vid.size > 1000 && vid.sheet), JSON.stringify(vid));
+    check('quiet mode hides the panels and comes back', vid.quiet && vid.normal);
+  }
   check(`${variant}: no console errors on start`, errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
@@ -169,6 +189,8 @@ if (process.env.WEBKIT) {
     const { browser, page, errors } = await open(pw.webkit, '', { executablePath: path.join(process.env.WEBKIT, dir, 'pw_run.sh') });
     const st = await page.evaluate(shaderState);
     check('WebKit: soil shader builds', st.runnable && !st.fallback && !st.light, JSON.stringify(st.errors));
+    const vt = await page.evaluate(() => ({ s: window.__tc.video.supported, t: ['video/mp4;codecs=avc1.640028', 'video/mp4;codecs=avc1', 'video/mp4'].find((x) => window.MediaRecorder?.isTypeSupported?.(x)) || '-' }));
+    console.log('      WebKit video:', JSON.stringify(vt));
     check('WebKit: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
     await browser.close();
   } catch (e) { check('WebKit run', false, e.message.slice(0, 200)); }

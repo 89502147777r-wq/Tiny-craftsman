@@ -51,9 +51,7 @@ export class UI {
     $('btn-level').addEventListener('click', () => { app.settings.level = !app.settings.level; app.applySettings(); });
     $('btn-menu').addEventListener('click', () => this.openMenu(true));
     $('menu-close').addEventListener('click', () => this.openMenu(false));
-    $('act-film').addEventListener('click', () => this.film(true));
-    let filmTap = 0;
-    $('film-exit').addEventListener('click', () => { const n = performance.now(); if (n - filmTap < 400) this.film(false); filmTap = n; });
+    $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     $('act-export').addEventListener('click', () => app.exportProject());
     $('act-import').addEventListener('click', () => $('import-file').click());
     $('import-file').addEventListener('change', async (e) => {
@@ -71,8 +69,11 @@ export class UI {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? app.redo() : app.undo(); }
       const tools = ['camera', 'shovel', 'rake', 'mark', 'form', 'rebar', 'machine'];
       if (e.key >= '1' && e.key <= '7') app.setTool(tools[+e.key - 1]);
+      if (e.key.toLowerCase() === 'q') this.setQuiet(!app.settings.quiet);
     });
     this.bindSettings();
+    this.bindRecording();
+    this.bindQuiet();
     this.bindJoystick();
     this.bindJoystick('joy2', 'joy2-knob', (x, y) => this.app.machineTool.manual('r', x, y));
     this.refresh();
@@ -138,10 +139,102 @@ export class UI {
     }
   }
 
-  film(on) {
-    $('ui').hidden = on;
-    $('film-exit').hidden = !on;
-    if (on) this.openMenu(false);
+  // ---- clean video of the 3D view -----------------------------------------------------------
+  bindRecording() {
+    const v = this.app.video;
+    $('btn-rec').addEventListener('click', () => this.toggleRec());
+    $('recpill').addEventListener('click', () => this.toggleRec());
+    $('vs-save').addEventListener('click', async () => { await v.save(); $('vsheet').hidden = true; v.discard(); });
+    $('vs-del').addEventListener('click', () => { $('vsheet').hidden = true; v.discard(); });
+  }
+
+  async toggleRec() {
+    const v = this.app.video;
+    this.fan(false);
+    if (v.recording) {
+      const r = await v.stop();
+      if (r) {
+        const s = Math.round(r.seconds);
+        $('vs-info').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · ${(r.blob.size / 1048576).toFixed(1)} МБ · ${r.type.includes('mp4') ? 'MP4' : 'WebM'} — только сцена, без кнопок`;
+        $('vsheet').hidden = false;
+      }
+    } else if (!v.supported) this.toast('Этот браузер не умеет записывать видео');
+    else if (v.start()) this.toast('Запись идёт — кнопок в видео не будет');
+    this.refresh();
+  }
+
+  // ---- quiet mode: one round button, the tools fan out of it -----------------------------------
+  bindQuiet() {
+    $('fab').addEventListener('click', () => this.fan(!this.fanOpen));
+    $('fan-shade').addEventListener('pointerdown', (e) => { e.preventDefault(); this.fan(false); });
+    this.setQuiet(!!this.app.settings.quiet, false);
+  }
+
+  buildFan() {
+    const app = this.app, box = $('fan-items');
+    box.innerHTML = '';
+    const tools = [...document.querySelectorAll('.tools .tool')].filter((b) => !b.hidden);
+    const acts = [
+      { svg: $('btn-undo').innerHTML, label: 'Отменить', fn: () => app.undo(), keep: true, id: 'undo' },
+      { svg: $('btn-rec').innerHTML, label: 'Запись', fn: () => this.toggleRec(), id: 'rec' },
+      { svg: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>', label: 'Все панели', fn: () => this.setQuiet(false), id: 'exit' },
+    ];
+    const place = (el, r, a) => { el.style.setProperty('--x', `${-r * Math.cos(a)}px`); el.style.setProperty('--y', `${-r * Math.sin(a)}px`); };
+    const R1 = 200, R2 = 98;
+    this.fanItems = [];
+    tools.forEach((b, k) => {
+      const el = document.createElement('button');
+      el.className = 'fan-item';
+      el.innerHTML = b.querySelector('svg').outerHTML + `<span>${b.querySelector('span').textContent}</span>`;
+      place(el, R1, (k / Math.max(1, tools.length - 1)) * Math.PI / 2);
+      el.addEventListener('click', () => {
+        if (b.dataset.tool) { app.setTool(b.dataset.tool); this.toast(b.querySelector('span').textContent); this.fan(false); } else b.click();
+        this.refresh();
+      });
+      box.appendChild(el);
+      this.fanItems.push({ el, tool: b.dataset.tool, src: b });
+    });
+    acts.forEach((a, k) => {
+      const el = document.createElement('button');
+      el.className = 'fan-item';
+      el.innerHTML = a.svg + `<span>${a.label}</span>`;
+      place(el, R2, (0.12 + k * 0.38) * Math.PI / 2 / 0.88);
+      el.addEventListener('click', () => { a.fn(); if (!a.keep) this.fan(false); this.refresh(); });
+      box.appendChild(el);
+      this.fanItems.push({ el, act: a.id });
+    });
+  }
+
+  setQuiet(on, save = true) {
+    const app = this.app;
+    app.settings.quiet = on;
+    if (save) app.applySettings();
+    $('ui').classList.toggle('quiet', on);
+    $('fan').hidden = !on;
+    if (on) { this.buildFan(); this.toast('Тихий режим: инструменты — в круглой кнопке'); }
+    this.fan(false);
+    this.refresh();
+  }
+
+  fan(open) {
+    this.fanOpen = !!open && !!this.app.settings.quiet;
+    $('fan').classList.toggle('open', this.fanOpen);
+    $('fan-shade').hidden = !this.fanOpen;
+  }
+
+  renderFan() {
+    if (!this.app.settings.quiet || !this.fanItems) return;
+    const app = this.app, rec = app.video.recording;
+    for (const it of this.fanItems) {
+      if (it.tool) it.el.classList.toggle('active', it.tool === app.tool);
+      else if (it.src) it.el.classList.toggle('on', it.src.classList.contains('on'));
+      if (it.act === 'rec') it.el.classList.toggle('recon', rec);
+      if (it.act === 'undo') it.el.disabled = !app.journal.canUndo && !app.busy();
+    }
+    const cur = document.querySelector(`.tools [data-tool="${app.tool}"] svg`);
+    const key = app.tool;
+    if (cur && this._fabKey !== key) { $('fab').innerHTML = cur.outerHTML; this._fabKey = key; }
+    $('fan').classList.toggle('rec', rec);
   }
 
   toast(text) {
@@ -313,6 +406,10 @@ export class UI {
     this.renderChips();
     this.renderParams();
     this.renderMachineControls();
+    this.renderFan();
+    const rec = this.app.video.recording;
+    $('btn-rec').classList.toggle('on', rec);
+    $('recpill').hidden = !rec;
   }
 
   setSaveState(s) {
@@ -343,6 +440,7 @@ export class UI {
     if (this.statT < 0.3) return;
     this.statT = 0;
     const app = this.app;
+    if (app.video.recording) { const s = Math.floor(app.video.seconds); $('rec-time').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
     const v = app.terrain.excavatedVolume();
     $('st-vol').textContent = `${(v * 1e6).toFixed(1)} см³ · ${(v * MODEL_SCALE ** 3).toFixed(2)} м³`;
     // depth of the selected outline (or the first one)
