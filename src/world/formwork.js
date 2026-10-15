@@ -4,10 +4,12 @@ import { variant } from './assets.js';
 import { mulberry32 } from '../core/rand.js';
 
 // Formwork run record (type 'form'):
-//   { a: [x, z], b: [x, z], n: [nx, nz], y0, y1 }
-// Boards (25 × 150 mm) stand on edge along a → b with their inner face on the
-// line, stacked from the top y1 down until they reach the ground y0. Stakes
-// are driven on the outer side (n) every 0.8 m, every second one braced.
+//   { a: [x, z], b: [x, z], n: [nx, nz], y0, y1, inside? }
+// Boards (25 × 150 mm) stand on edge along a → b, stacked from the ground y0 up
+// to the top y1 (the top board ripped to fit). Normally their inner face is on
+// the line and stakes are driven on the outer side (n) every 0.8 m, every second
+// one braced. `inside`: the outer side is a pit wall — the boards stand inside
+// the line against it, without stakes.
 export class FormworkView {
   constructor(tex, objects, terrain) {
     this.objects = objects;
@@ -51,24 +53,28 @@ export class FormworkView {
       const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
       if (L < 1e-4) continue;
       const yaw = Math.atan2(-dz, dx);
-      const count = Math.max(1, Math.ceil((r.y1 - r.y0) / H - 0.05));
+      const side = r.inside ? -1 : 1;   // which side of the line the boards are on
+      const count = Math.max(1, Math.ceil((r.y1 - r.y0) / H - 0.2));
       for (let k = 0; k < count && nb < this.max.boards; k++) {
         // boards overhang the corners a little, alternating, like real lapped corners
-        const over = (k % 2 ? 1 : -1) * T * 0.5 + rnd() * 0.0006;
-        const len = L + T + Math.abs(over);
-        const cx = (ax + bx) / 2 + nx * (T / 2) + (dx / L) * over * 0.5, cz = (az + bz) / 2 + nz * (T / 2) + (dz / L) * over * 0.5;
-        const y = r.y1 - H / 2 - k * (H + 0.00004);
-        p.set(cx, y, cz);
+        // (inside a pit they are cut to the line instead)
+        const over = r.inside ? -T : (k % 2 ? 1 : -1) * T * 0.5 + rnd() * 0.0006;
+        const len = L + T + (r.inside ? over : Math.abs(over));
+        const cx = (ax + bx) / 2 + side * nx * (T / 2) + (dx / L) * (r.inside ? 0 : over * 0.5), cz = (az + bz) / 2 + side * nz * (T / 2) + (dz / L) * (r.inside ? 0 : over * 0.5);
+        // from the ground up; the top board is ripped to the height that is left
+        const bottom = r.y0 + k * (H + 0.00004), h = Math.min(H, r.y1 - bottom);
+        if (h < H * 0.15) break;
+        p.set(cx, bottom + h / 2, cz);
         q.setFromEuler(e.set(0, yaw, (rnd() - 0.5) * 0.004));
-        s.set(len, H, T);
+        s.set(len, h, T);
         this.boards.setMatrixAt(nb, m.compose(p, q, s));
         // which plank of the photo, and how much of it this board shows
         aB.setXYZ(nb, rnd(), Math.floor(rnd() * 8) / 8, (len * MODEL_SCALE) / 1.87);
         this.owner.boards[nb] = r.id;
         nb++;
       }
-      // stakes on the outside every 0.8 m (at least at both ends)
-      const nSt = Math.max(2, Math.round(L / MAT.stake.step) + 1);
+      // stakes on the outside every 0.8 m (at least at both ends); none against a pit wall
+      const nSt = r.inside ? 0 : Math.max(2, Math.round(L / MAT.stake.step) + 1);
       for (let k = 0; k < nSt && ns < this.max.stakes; k++) {
         const t = nSt === 1 ? 0.5 : (0.06 + 0.88 * k / (nSt - 1));
         const x = ax + dx * t + nx * (T + MAT.stake.s / 2), z = az + dz * t + nz * (T + MAT.stake.s / 2);
