@@ -45,6 +45,7 @@
     <div id="stats" class="chip">
       <div><span>Вынуто грунта</span><b id="st-vol">0</b></div>
       <div><span id="st-depth-label">Глубина котлована</span><b id="st-depth">0</b></div>
+      <div id="st-conc-row" hidden><span>Бетон</span><b id="st-conc"></b></div>
       <div id="st-mat-row" hidden><span>Материалы</span><b id="st-mat"></b></div>
       <div class="save"><i id="st-save"></i><span id="st-save-text">сохранено</span></div>
     </div>
@@ -72,6 +73,10 @@
       <button data-tool="mark" data-group="mark" class="tool"><svg viewBox="0 0 24 24"><path d="M5 19V8M19 19V8M5 10h14M5 17h14"/><path d="M4 8l1-3 1 3M18 8l1-3 1 3"/></svg><span>Разметка</span></button>
       <button data-tool="form" data-group="found" class="tool"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="4" rx=".5"/><rect x="3" y="12" width="18" height="4" rx=".5"/><path d="M6 16v4M18 16v4M6 7V4M18 7V4"/></svg><span>Опалубка</span></button>
       <button data-tool="rebar" data-group="found" class="tool"><svg viewBox="0 0 24 24"><path d="M3 8h18M3 16h18M8 3v18M16 3v18"/><circle cx="8" cy="8" r="1.2"/><circle cx="16" cy="16" r="1.2"/></svg><span>Арматура</span></button>
+      <button data-tool="hose" data-group="concrete" class="tool"><svg viewBox="0 0 24 24"><path d="M5 2v6c0 3 2 5 5 5h3c3 0 5 2 5 5v1"/><path d="M15.5 19h5l-1 3h-3z"/></svg><span>Шланг</span></button>
+      <button data-tool="screed" data-group="concrete" class="tool"><svg viewBox="0 0 24 24"><rect x="2" y="15" width="20" height="3" rx=".5"/><path d="M12 15v-5M9.5 10h5"/></svg><span>Правило</span></button>
+      <button data-tool="vibro" data-group="concrete" class="tool"><svg viewBox="0 0 24 24"><path d="M12 2v10"/><rect x="10" y="12" width="4" height="9" rx="2"/><path d="M7.5 15l-2 .8M16.5 15l2 .8M7.5 19l-2 .8M16.5 19l2 .8"/></svg><span>Вибратор</span></button>
+      <button data-tool="trowel" data-group="concrete" class="tool"><svg viewBox="0 0 24 24"><path d="M3 17h15l3-4H6z"/><path d="M12 13V8h5"/></svg><span>Кельма</span></button>
       <button data-tool="machine" data-group="machines" class="tool"><svg viewBox="0 0 24 24"><rect x="3" y="15" width="11" height="4" rx="2"/><path d="M5 15v-4h6l2 4M11 11l4-6 5 4-2 3"/><path d="M18 12l1 3h-3"/></svg><span>Техника</span></button>
       <button id="btn-level" data-group="earth" class="tool toggle"><svg viewBox="0 0 24 24"><rect x="3" y="9" width="18" height="6" rx="1"/><circle cx="12" cy="12" r="1.6"/><path d="M9 9v6M15 9v6"/></svg><span>Нивелир</span></button>
     </div>
