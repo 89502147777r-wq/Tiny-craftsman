@@ -60,7 +60,8 @@ for (let row = 0; row < 6; row++) {
 }
 const s1 = await stat();
 check('soil was excavated', s1.exc > 2e-6, `excavated=${(s1.exc * 1e6).toFixed(2)} cm3`);
-check('volume conserved (dug soil ends on spoil heap)', Math.abs(s1.total - s0.total) < 1e-9, `drift=${((s1.total - s0.total) * 1e9).toFixed(3)} mm3`);
+// heights are float32: on 0.39 m³ of soil the sum drifts by a few mm³ (a scoop is ~110 000 mm³)
+check('volume conserved (dug soil ends on spoil heap)', Math.abs(s1.total - s0.total) < 1e-8, `drift=${((s1.total - s0.total) * 1e9).toFixed(3)} mm3`);
 check('each scoop journaled', s1.journal >= 3, `actions=${s1.journal}`);
 await page.screenshot({ path: `${outDir}/02-dug.png`, timeout: 180000 });
 
