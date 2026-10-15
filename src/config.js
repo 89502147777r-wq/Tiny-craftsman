@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:3.5.
-export const BUILD = 21;
+export const BUILD = 22;
 export const STAGE = 3;
 export const MODEL_SCALE = 3.5;
 // Many sizes were first designed at 1:12; K = how much bigger everything built
@@ -53,7 +53,7 @@ export const BUCKET = 0.010;   // 10 l bucket (real m³)
 // the curing time; `cure` = seconds of the project clock from wet dark to set light grey
 // hc: concrete has a yield stress — a layer thinner than ~hc hardly moves, so a lump keeps
 // its shape while a thick pour levels out (allowed slope = yield + hc / thickness)
-export const CONCRETE = { yield: 0.035, hc: 0.0085 / 3.5, rate: 0.3, cure: 300, stiff: 0.35, color: 0x7d7b76 };
+export const CONCRETE = { yield: 0.09, hc: 0.02 / 3.5, rate: 0.3, cure: 300, stiff: 0.35, color: 0x7d7b76 };   // stiff as poured: it needs the vibrator
 export const PUMP = [0.02, 0.05, 0.1];   // pump hose delivery, real m³ per second (time-compressed)
 
 export const REPOSE_NATIVE = Math.tan(78 * Math.PI / 180); // undisturbed cohesive ground

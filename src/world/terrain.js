@@ -842,7 +842,7 @@ export class Terrain {
       const u = rx * dx + rz * dz, v = rx * ax + rz * az;
       if (u < -band || u > 0 || v < -hw || v > hw) continue;
       if (this.cTime[i] < (this.clock || 0) - CONCRETE.stiff * CONCRETE.cure) continue;
-      this.cSm[i] = Math.max(this.cSm[i], 0.45);
+      this.cSm[i] = Math.max(this.cSm[i], 0.55);
       const ex = Math.min(this.hAt(i) - s.L, conc[i]) * 0.9;
       if (ex <= 1e-8) continue;
       // ahead of the rule: a soft bead, a few cells wide
@@ -915,9 +915,16 @@ export class Terrain {
     for (const key of [...s.spill.keys()]) this._dropLump(s, key, dx, dz);
   }
 
-  // immersion vibrator: the concrete around it flows almost flat for a moment
+  // immersion vibrator: the concrete around it flows almost flat for a moment, and
+  // the cement paste comes up — the surface closes and gets wetter
   vibrate(x, z, r) {
-    const b = this.cellBox(x, z, r);
+    const b = this.cellBox(x, z, r), { nx: n, conc, cSm } = this;
+    for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) {
+      const i = iz * n + ix;
+      if (conc[i] <= 0) continue;
+      const d = Math.hypot(this.toWorldX(ix) - x, this.toWorldZ(iz) - z) / r;
+      if (d < 1) cSm[i] = Math.max(cSm[i], Math.min(0.35, cSm[i] + 0.02 * (1 - d)));
+    }
     this.concRelax(3, CONCRETE.yield * 0.12, 0.5, b, CONCRETE.hc * 0.12);
   }
 
