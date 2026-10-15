@@ -13,6 +13,7 @@ import { RebarView } from './world/rebar.js';
 import { buildStacks } from './world/stacks.js';
 import { Backdrop } from './world/backdrop.js';
 import { Shovel } from './world/shovel.js';
+import { Rake } from './world/rake.js';
 import { makeDust } from './world/dust.js';
 import { Pipeline } from './render/pipeline.js';
 import { CameraRig } from './input/cameraRig.js';
@@ -22,6 +23,7 @@ import { ObjectStore } from './core/objects.js';
 import { Recorder, TRACK_FIELDS } from './core/recorder.js';
 import { saveLocal, loadLocal, clearLocal, toJSON, fromJSON, download } from './core/storage.js';
 import { ScoopTool } from './tools/scoopTool.js';
+import { RakeTool } from './tools/rakeTool.js';
 import { MarkTool } from './tools/markTool.js';
 import { BuildTool } from './tools/buildTool.js';
 import { MachineTool } from './tools/machineTool.js';
@@ -76,6 +78,7 @@ async function main() {
   app.particles = new SoilParticles(tex, terrain); scene.add(app.particles.mesh, app.particles.clods);
   app.shovel = new Shovel(tex, app); scene.add(app.shovel.root);
   app.shovel.setType(app.settings.shovel);
+  app.rake = new Rake(tex); scene.add(app.rake.root);
   app.dust = makeDust(); scene.add(app.dust.points);
 
   app.objects = new ObjectStore();
@@ -92,6 +95,7 @@ async function main() {
   app.recorder = new Recorder();
   app.sfx = new Sfx();
   app.shovelTool = new ScoopTool(app, app.shovel);
+  app.rakeTool = new RakeTool(app, app.rake);
   app.markTool = new MarkTool(app);
   app.formTool = new BuildTool(app, 'form');
   app.rebarTool = new BuildTool(app, 'rebar');
@@ -200,6 +204,7 @@ function step(dt, time, render = true) {
   app.formView.update();
   app.rebarView.update();
   app.shovel.update(dt);
+  app.rake.update(dt);
   app.dust.update(dt, time);
   if (app.settings.orbit) app.rig.orbit(-dt * 0.12, 0);
   app.rig.update(dt);
@@ -233,6 +238,8 @@ function trackRow(clock) {
   else row.push(...new Array(11).fill(0));
   if (pu) row.push(...pose(pu));
   else row.push(...new Array(7).fill(0));
+  const rp = app.rake.root.position, rq = app.rake.root.quaternion;
+  row.push(rp.x, rp.y, rp.z, rq.x, rq.y, rq.z, rq.w, app.rake.lift);
   return row;
 }
 
@@ -242,6 +249,7 @@ function updateFocus() {
   const cam = app.camera;
   const mt = app.machineTool;
   if (app.tool === 'shovel' && app.shovelTool.state !== 'idle') _f.copy(app.shovel.root.position);
+  else if (app.tool === 'rake' && app.rakeTool.busy) _f.copy(app.rake.root.position);
   else if (app.tool === 'machine' && mt.machine) {
     if (mt.active === 'excavator' && mt.machine.busy) mt.machine.bucketWorld(_f);
     else _f.copy(mt.machine.root.position).setY(mt.machine.y + 0.08);
@@ -279,11 +287,12 @@ function resize() {
 }
 
 // ---- tools ------------------------------------------------------------------------------
-app.activeTool = () => ({ shovel: app.shovelTool, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, machine: app.machineTool }[app.tool] || null);
-app.busy = () => app.shovelTool.busy || app.machineTool.busy();
+app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, machine: app.machineTool }[app.tool] || null);
+app.busy = () => app.shovelTool.busy || app.rakeTool.busy || app.machineTool.busy();
 
 function setTool(t) {
   if (app.tool === 'shovel' && t !== 'shovel') app.shovelTool.finish();
+  if (app.tool === 'rake' && t !== 'rake') app.rakeTool.finish();
   if (app.tool === 'mark' && t !== 'mark' && app.markTool.trench) app.markTool.finishTrench();
   if (app.tool === 'machine' && t !== 'machine') app.machineTool.finish();
   app.tool = t;
@@ -293,6 +302,10 @@ function setTool(t) {
     const x = -app.terrain.halfX + 0.012 * K, z = app.terrain.halfZ - 0.012 * K;
     app.shovel.setPose({ pos: new THREE.Vector3(x, app.terrain.heightAt(x, z) - 0.006 * K, z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.22, roll: 0 });
   }
+  if (t !== 'rake' && !app.rakeTool.busy) {
+    // the rake is put down along the front edge: tines in the soil, handle on the ground
+    app.rakeTool.putDown();
+  }
   if (t === 'machine' && !app.machineTool.active) app.machineTool.active = 'excavator';
   app.ui?.refresh();
 }
@@ -300,12 +313,14 @@ app.setTool = setTool;
 
 function undo() {
   if (app.shovelTool.abort()) { app.ui.refresh(); return; }
+  if (app.rakeTool.abort()) { app.ui.refresh(); return; }
   if (app.machineTool.abort()) { app.ui.refresh(); return; }
   app.journal.undo();
   app.ui.refresh();
 }
 function redo() {
   if (app.shovelTool.busy) app.shovelTool.finish();
+  app.rakeTool.finish();
   app.machineTool.finish();
   if (app.journal.pending) app.journal.commit(app.clock);
   app.journal.redo();
@@ -445,8 +460,18 @@ function applyProject(p) {
   app.rig.setState(p.camera);
   j.pending = null;
   j.done = p.journal?.done || []; j.undone = p.journal?.undone || []; j.nextId = p.journal?.nextId || j.done.length + 1;
-  const sameTrack = JSON.stringify(p.track?.fields) === JSON.stringify(TRACK_FIELDS);
-  app.recorder.load(sameTrack ? p.track?.data : null);
+  app.recorder.load(fitTrack(p.track));
+}
+
+// a recorded track in the current field layout; tracks of older builds whose fields are
+// a prefix of today's (new fields are only ever appended) get the new columns as zeros
+function fitTrack(tr) {
+  const f = tr?.fields, d = tr?.data;
+  if (!f || !d || !f.every((k, i) => TRACK_FIELDS[i] === k)) return null;
+  if (f.length === TRACK_FIELDS.length) return d;
+  const F0 = f.length, F = TRACK_FIELDS.length, n = Math.floor(d.length / F0), out = new Float32Array(n * F);
+  for (let r = 0; r < n; r++) for (let k = 0; k < F0; k++) out[r * F + k] = d[r * F0 + k];
+  return out;
 }
 
 // BUILD 9: pits and trenches of older projects were too shallow (2–3 passes of the
@@ -525,6 +550,7 @@ setInterval(() => { if (app.ready && !document.hidden) saveNow(); }, 20000);
 
 app.exportProject = () => {
   app.shovelTool.finish();
+  app.rakeTool.finish();
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   download(`tiny-craftsman-stage${STAGE}-${stamp}.json`, toJSON(buildProject()));
 };
@@ -540,6 +566,7 @@ app.importProject = async (file) => {
 app.newProject = async () => {
   app.shovelTool.abort();
   app.shovelTool.finish();
+  app.rakeTool.abort();
   app.machineTool.abort();
   app.machineTool.finish();
   await clearLocal();

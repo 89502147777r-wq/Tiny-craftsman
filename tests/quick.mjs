@@ -1,8 +1,8 @@
 // Quick check before publishing (a few minutes, no screenshots):
 //   the game starts without errors, the soil shaders build (full and light),
 //   the shader sources pass glslangValidator (if installed), the shovel digs
-//   and conserves soil, undo/redo is exact, outline + formwork + cage + ties
-//   can be placed, and the project survives a reload.
+//   and conserves soil, undo/redo is exact, the rake flattens the spoil heap,
+//   outline + formwork + cage + ties can be placed, and the project survives a reload.
 // Starts its own static web server. Usage: node tests/quick.mjs
 // Optional: WEBKIT=/path/to/playwright-browsers → also starts the game in WebKit.
 import { createRequire } from 'node:module';
@@ -116,6 +116,20 @@ console.log('—', sec());
     tc.undo(); const undone = tc.journal.done.length === out.scoops - 1; tc.redo();
     let err = 0; for (let i = 0; i < snap.length; i++) err = Math.max(err, Math.abs(snap[i] - t.nat[i]));
     out.undo = undone && err < 1e-9;
+    // rake the spoil heap: four strokes across it towards the camera side
+    const peak = () => { let m = -1; for (let z = 0.4; z <= 0.7; z += 0.003) for (let x = 0.4; x <= 0.7; x += 0.003) m = Math.max(m, t.heightAt(x, z)); return m; };
+    const h0 = peak(), v0 = t.totalVolume(), n0 = tc.journal.done.length;
+    tc.setTool('rake');
+    for (const x of [0.55, 0.52, 0.58, 0.55]) {
+      tc.rakeTool.down(new V(x, 0.1, 0.45));
+      for (let s = 0; s <= 1.0001; s += 0.05) { tc.rakeTool.move(new V(x, 0.1, 0.45 + 0.2 * s)); tc.simulate(1 / 30); }
+      tc.rakeTool.up();
+    }
+    out.rake = { h0: (h0 - 0.1) * 1000, h1: (peak() - 0.1) * 1000, drift: (t.totalVolume() - v0) * 1e9, strokes: tc.journal.done.length - n0 };
+    const rs = t.loose.slice();
+    tc.undo(); tc.redo();
+    let rerr = 0; for (let i = 0; i < rs.length; i++) rerr = Math.max(rerr, Math.abs(rs[i] - t.loose[i]));
+    out.rake.undo = rerr < 1e-9;
     // setting-out, formwork, cage, ties
     const e = { clientX: 0, clientY: 0 };
     tc.setTool('mark'); tc.markTool.setMode('trench');
@@ -134,6 +148,8 @@ console.log('—', sec());
   check('soil volume conserved', Math.abs(play.drift) < 50, `${play.drift.toFixed(2)} mm3`);
   check('spoil remembers the layer it came from', play.spoilDepth > 0.003, `${(play.spoilDepth * 1000).toFixed(1)} mm`);
   check('undo / redo exact', play.undo);
+  check('rake lowers the heap, keeps the soil, undoes', play.rake.h1 < play.rake.h0 - 5 && Math.abs(play.rake.drift) < 50 && play.rake.strokes === 4 && play.rake.undo,
+    `${play.rake.h0.toFixed(1)} → ${play.rake.h1.toFixed(1)} mm, ${play.rake.drift.toFixed(2)} mm3, ${play.rake.strokes} strokes`);
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 4 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));
   await page.reload();
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });

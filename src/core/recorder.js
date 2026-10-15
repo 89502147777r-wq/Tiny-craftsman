@@ -12,6 +12,8 @@ export const TRACK_FIELDS = [
   'mx_on', 'mx_x', 'mx_y', 'mx_z', 'mx_yaw', 'mx_pitch', 'mx_roll', 'mx_steer', 'mx_wheel', 'mx_drum', 'mx_chute',
   // trailer concrete pump: pose
   'pu_on', 'pu_x', 'pu_y', 'pu_z', 'pu_yaw', 'pu_pitch', 'pu_roll',
+  // rake (BUILD 11): tine-tip line centre, orientation (X across the head, Z towards the handle), handle angle (rad)
+  'rk_px', 'rk_py', 'rk_pz', 'rk_qx', 'rk_qy', 'rk_qz', 'rk_qw', 'rk_lift',
 ];
 const F = TRACK_FIELDS.length;
 
