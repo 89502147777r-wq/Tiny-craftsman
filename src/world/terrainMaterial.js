@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAY, LOAM_TILE, MATERIALS } from '../config.js';
+import { TRAY, LOAM_TILE, MATERIALS, CONCRETE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks, stochasticUniforms, textureMean } from '../render/stochastic.js';
 import { innerCorner } from './plotShape.js';
 
@@ -59,6 +59,8 @@ function baseUniforms(tex) {
     uCorner: { value: (() => { const c = innerCorner(); return new THREE.Vector4(c.cx, c.cz, c.r, 0); })() },
     uCornerSign: { value: (() => { const c = innerCorner(); return new THREE.Vector2(c.sx, c.sz); })() },
     tMat: { value: tex.matDiff },
+    uClock: { value: 0 },
+    uCure: { value: CONCRETE.cure },
     uMatScale: { value: new THREE.Vector3(1 / MATERIALS[1].tile, 1 / MATERIALS[2].tile, 1 / MATERIALS[3].tile) },
   };
 }
@@ -66,13 +68,16 @@ function baseUniforms(tex) {
 const VERT_COMMON = `#include <common>
         attribute vec4 aSoil;
         attribute vec3 aMat;
+        attribute vec3 aConc;
         varying vec4 vSoil;
         varying vec3 vMat;
+        varying vec3 vConc;
         varying vec3 vWPos;
         varying vec3 vWNrm;`;
 const VERT_PROJECT = `#include <project_vertex>
         vSoil = aSoil;
         vMat = aMat;
+        vConc = aConc;
         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
         vWNrm = normalize(mat3(modelMatrix) * objectNormal);`;
 
@@ -85,6 +90,9 @@ const FRAG_DECL = `
         uniform highp sampler2DArray tMat;
         uniform vec3 uMatScale;
         varying vec3 vMat;
+        varying vec3 vConc;
+        uniform float uClock;
+        uniform float uCure;
         uniform vec4 uWallMean;
         uniform vec4 uLoamMean;
         uniform float uLoamScale;
@@ -124,6 +132,21 @@ const FRAG_SOIL = `
           vec3 mc = (cS * vMat.x + c5 * vMat.y + c20 * vMat.z) / max(0.001, mSum);
           soilC = mix(soilC, mc, smoothstep(0.0, 1.0, clamp(mSum, 0.0, 1.0)));
         }
+        // concrete: wet and dark when fresh, light grey once set; trowelled = even tone
+        float concW = smoothstep(0.00008, 0.0006, vConc.x);
+        float cure = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
+        {
+          vec2 cq = vWPos.xz;
+          float mott = tcSNoise(cq * 18.0) * 0.5 + tcSNoise(cq * 70.0 + 3.0) * 0.5;   // (shared noise: the light shader has no tcFbm)
+          float speck = step(0.96, tcHash(floor(cq * 1400.0))) * (1.0 - vConc.z) * 0.6;
+          vec3 fresh = vec3(0.1, 0.099, 0.095) * mix(0.88, 1.1, mott);   // wet: dark
+          vec3 setC = vec3(0.42, 0.413, 0.392) * mix(0.86, 1.06, mott * (1.0 - 0.6 * vConc.z) + 0.3 * vConc.z);
+          // dries patchily: the mottle runs ahead or behind
+          vec3 cc = mix(fresh, setC, smoothstep(0.05, 1.0, cure + (mott - 0.5) * 0.25));
+          cc = mix(cc, cc * vec3(1.25, 1.22, 1.15), speck * 0.6);
+          // drying starts at the edges and on thin spots
+          soilC = mix(soilC, cc, concW);
+        }
         // the tray bottom shows through where everything has been dug out
         float bottom = (1.0 - smoothstep(uFloorY + 0.0002, uFloorY + 0.0009, vWPos.y)) * (1.0 - lse);
         soilC = mix(soilC, texture2D(tFloor, vWPos.xz * 4.0).rgb * 0.8, bottom);
@@ -155,7 +178,13 @@ const FRAG_CORNER = `#include <dithering_fragment>
         }`;
 
 const ROUGH_TAIL = `
-        roughnessFactor = mix(max(roughnessFactor, 0.94), 0.82, smoothstep(0.003, 0.02, vSoil.x)); // dry earth has no sheen`;
+        roughnessFactor = mix(max(roughnessFactor, 0.94), 0.82, smoothstep(0.003, 0.02, vSoil.x)); // dry earth has no sheen
+        {
+          // fresh concrete has a wet sheen (glossy when trowelled), set concrete is matt
+          float cw = smoothstep(0.00008, 0.0006, vConc.x), cu = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
+          float wetR = mix(0.42, 0.16, vConc.z), dryR = mix(0.9, 0.7, vConc.z);
+          roughnessFactor = mix(roughnessFactor, mix(wetR, dryR, smoothstep(0.1, 0.8, cu)), cw);
+        }`;
 
 export function makeTerrainMaterial(tex) {
   const mat = new THREE.MeshStandardMaterial({
@@ -209,12 +238,21 @@ export function makeTerrainMaterial(tex) {
           vec3 mn = (n0 * vMat.x + n1 * vMat.y + n2 * vMat.z) / max(0.001, vMat.x + vMat.y + vMat.z) * 2.0 - 1.0;
           vec3 off = (viewMatrix * vec4(mn.x, 0.0, mn.y, 0.0)).xyz;
           normal = normalize(mix(normal, normalize(normalize(vNormal) * faceDirection + off * 1.3), ms));
+          // concrete: its own surface instead of the soil photo — lumpy as poured, flat when trowelled
+          float cw = smoothstep(0.00008, 0.0006, vConc.x);
+          if (cw > 0.001) {
+            vec2 cq = vWPos.xz * 80.0;
+            float e = 0.35, f0 = tcFbm(cq), fx = tcFbm(cq + vec2(e, 0.0)), fz = tcFbm(cq + vec2(0.0, e));
+            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * (1.0 - vConc.z) * 0.8;
+            vec3 cn = normalize(normalize(vNormal) * faceDirection + (viewMatrix * vec4(g, 0.0)).xyz);
+            normal = normalize(mix(normal, cn, cw));
+          }
         }`)
       .replace('#include <aomap_fragment>', ch.ao)
       .replace('#include <roughnessmap_fragment>', `${ch.rough}${ROUGH_TAIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-9';
+  mat.customProgramCacheKey = () => 'tc-terrain-11';
   return mat;
 }
 
@@ -238,7 +276,7 @@ export function makeLightTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-light-3';
+  mat.customProgramCacheKey = () => 'tc-terrain-light-5';
   return mat;
 }
 

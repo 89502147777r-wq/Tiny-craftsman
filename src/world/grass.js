@@ -44,7 +44,7 @@ export class Grass {
     for (let i = 0; i < this.tufts.length; i++) {
       const g = this.tufts[i];
       const k = t.index(g.x, g.z);
-      const dug = t.orig[k] - t.nat[k] > 0.0006 || t.loose[k] > 0.0012;
+      const dug = t.orig[k] - t.nat[k] > 0.0006 || t.loose[k] > 0.0012 || t.conc[k] > 0.0002;   // dug, covered or concreted
       if (dug) { s.setScalar(0); } else s.setScalar(g.s);
       p.set(g.x, t.heightAt(g.x, g.z) - 0.0002, g.z);
       q.setFromEuler(e.set(g.tilt, g.rot, 0));

@@ -1,4 +1,4 @@
-import { BUILD, MODEL_SCALE, MACHINES_ENABLED, MATERIALS, DELIVERY } from '../config.js';
+import { BUILD, MODEL_SCALE, MACHINES_ENABLED, MATERIALS, DELIVERY, PUMP, CONCRETE } from '../config.js';
 import { bbox, contains } from '../world/outlines.js';
 
 const $ = (id) => document.getElementById(id);
@@ -12,6 +12,7 @@ const GROUPS = [
   { id: 'mark', label: 'Разметка', icon: 'mark' },
   { id: 'materials', label: 'Материалы', icon: 'sand' },
   { id: 'found', label: 'Фундамент', icon: 'form' },
+  { id: 'concrete', label: 'Бетон', icon: 'hose' },
   { id: 'machines', label: 'Техника', icon: 'machine' },
 ];
 const m3 = (v) => `${String(v).replace('.', ',')} м³`;
@@ -22,6 +23,10 @@ const HINTS = {
   rake: 'Ведите пальцем по кучке — грабли срежут верх и растащат грунт ровным слоем. Тяните к себе несколько раз',
   loaded: 'Коснитесь места для отвала и отпустите — грунт высыплется',
   deliver: (name, v) => `Коснитесь места на участке — самосвал высыплет кучу: ${name.toLowerCase()} ${m3(v)}. Потом лопатой в котлован и граблями разровнять`,
+  hose: 'Держите палец — из шланга идёт бетон. Ведите по опалубке, начиная с дальнего угла. Подача — вверху',
+  screed: 'Тяните правило по бетону — оно идёт по верху опалубки, лишнее сдвигается вперёд',
+  vibro: 'Держите палец в бетоне — вибратор осаживает его, бетон растекается ровно вокруг',
+  trowel: `Ведите кельмой по свежему бетону — поверхность станет гладкой (пока бетон не схватился, ~${Math.round(0.75 * CONCRETE.cure)} с)`,
   bucket: (name) => `Держите палец — из ведра сыплется ${name.toLowerCase()} (10 л за 2 с). Ведите туда, где нужно подсыпать`,
   mark: {
     edit: 'Тяните круглые метки, чтобы менять контур. Тап по контуру — выбрать.',
@@ -287,6 +292,10 @@ export class UI {
         C('Совковая', app.settings.shovel === 'scoop', () => { app.settings.shovel = 'scoop'; app.applySettings(); }),
       ];
     }
+    if (t === 'hose') {
+      const s = app.settings;
+      return [['Тихо', PUMP[0]], ['Средне', PUMP[1]], ['Быстро', PUMP[2]]].map(([l, v]) => C(l, s.pump === v, () => { s.pump = v; app.applySettings(); }));
+    }
     if (app.materialTools?.[t]) {
       const s = app.settings, bucket = s.matMode === 'bucket';
       const set = (o) => { Object.assign(s, o); app.applySettings(); };
@@ -420,6 +429,7 @@ export class UI {
     if (t === 'rake') hint = app.rakeTool.busy ? '' : HINTS.rake;
     const mt = app.materialTools?.[t];
     if (mt) hint = mt.busy ? '' : app.settings.matMode === 'bucket' ? HINTS.bucket(mt.name) : HINTS.deliver(mt.name, app.settings.delivery);
+    if (app.concreteTools?.[t]) hint = app.concreteTools[t].busy ? '' : HINTS[t];
     if (t === 'mark') hint = HINTS.mark[app.markTool.mode];
     if (t === 'form') hint = HINTS.form[app.formTool.mode];
     if (t === 'rebar') hint = HINTS.rebar[app.rebarTool.mode];
@@ -480,6 +490,9 @@ export class UI {
       const parts = MATERIALS.map((m, k) => (k && v[k] > 0.005 ? `${short[k]} ${v[k].toFixed(2).replace('.', ',')}` : '')).filter(Boolean);
       $('st-mat-row').hidden = !parts.length;
       $('st-mat').textContent = parts.join(' · ') + (parts.length ? ' м³' : '');
+      const c = app.terrain.concVolume() * MODEL_SCALE ** 3;
+      $('st-conc-row').hidden = c < 0.005;
+      $('st-conc').textContent = `${c.toFixed(2).replace('.', ',')} м³`;
     }
     const v = app.terrain.excavatedVolume();
     $('st-vol').textContent = `${(v * 1e6).toFixed(1)} см³ · ${(v * MODEL_SCALE ** 3).toFixed(2)} м³`;

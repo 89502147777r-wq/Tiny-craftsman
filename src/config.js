@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:3.5.
-export const BUILD = 18;
+export const BUILD = 19;
 export const STAGE = 3;
 export const MODEL_SCALE = 3.5;
 // Many sizes were first designed at 1:12; K = how much bigger everything built
@@ -48,6 +48,12 @@ export const M_SOIL = 0, M_SAND = 1, M_G5 = 2, M_G20 = 3;
 export const DELIVERY = [0.25, 0.5, 1, 2];
 export const BUCKET = 0.010;   // 10 l bucket (real m³)
 
+// fresh concrete (S4 slump): flows while its surface is steeper than `yield`, a share
+// `rate` of the excess per pass (viscous, not like water); stiff after `stiff` of
+// the curing time; `cure` = seconds of the project clock from wet dark to set light grey
+export const CONCRETE = { yield: 0.035, rate: 0.3, cure: 300, stiff: 0.35, color: 0x7d7b76 };
+export const PUMP = [0.02, 0.05, 0.1];   // pump hose delivery, real m³ per second (time-compressed)
+
 export const REPOSE_NATIVE = Math.tan(78 * Math.PI / 180); // undisturbed cohesive ground
 
 export const SHOVELS = {
@@ -87,7 +93,8 @@ export const DEFAULT_SETTINGS = {
   orbit: false,      // slow automatic camera fly-around (панорама)
   quiet: false,
   matMode: 'deliver', // sand / crushed stone: 'deliver' a heap or pour from a 'bucket'
-  delivery: 0.5,     // size of a delivered heap, real m³      // quiet mode: one round button instead of the panels (for filming)
+  delivery: 0.5,     // size of a delivered heap, real m³
+  pump: 0.05,        // concrete pump hose, real m³/s      // quiet mode: one round button instead of the panels (for filming)
 };
 
 // the first outline on a new plot: a 2.6 × 2.1 m slab pit, 75 mm (26 cm) deep

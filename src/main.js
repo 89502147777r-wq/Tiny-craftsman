@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, M_SAND, M_G5, M_G20 } from './config.js';
+import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, M_SAND, M_G5, M_G20, CONCRETE } from './config.js';
 import { loadAssets } from './world/assets.js';
 import { buildWorkshop } from './world/workshop.js';
 import { Terrain } from './world/terrain.js';
@@ -25,6 +25,8 @@ import { saveLocal, loadLocal, clearLocal, toJSON, fromJSON, download } from './
 import { ScoopTool } from './tools/scoopTool.js';
 import { RakeTool } from './tools/rakeTool.js';
 import { MaterialTool } from './tools/materialTool.js';
+import { HoseTool, ScreedTool, VibratorTool, TrowelTool } from './tools/concreteTools.js';
+import { ConcreteGear } from './world/concreteGear.js';
 import { MarkTool } from './tools/markTool.js';
 import { BuildTool } from './tools/buildTool.js';
 import { MachineTool } from './tools/machineTool.js';
@@ -80,6 +82,7 @@ async function main() {
   app.shovel = new Shovel(tex, app); scene.add(app.shovel.root);
   app.shovel.setType(app.settings.shovel);
   app.rake = new Rake(tex); scene.add(app.rake.root);
+  app.concreteGear = new ConcreteGear(); scene.add(app.concreteGear.root);
   app.dust = makeDust(); scene.add(app.dust.points);
 
   app.objects = new ObjectStore();
@@ -97,6 +100,7 @@ async function main() {
   app.sfx = new Sfx();
   app.shovelTool = new ScoopTool(app, app.shovel);
   app.rakeTool = new RakeTool(app, app.rake);
+  app.concreteTools = { hose: new HoseTool(app), screed: new ScreedTool(app), vibro: new VibratorTool(app), trowel: new TrowelTool(app) };
   app.materialTools = { sand: new MaterialTool(app, M_SAND), g5: new MaterialTool(app, M_G5), g20: new MaterialTool(app, M_G20) };
   app.markTool = new MarkTool(app);
   app.formTool = new BuildTool(app, 'form');
@@ -195,12 +199,17 @@ function step(dt, time, render = true) {
   const { terrain } = app;
   app.shovelTool.update(dt);
   for (const t of Object.values(app.materialTools)) t.update(dt);
+  for (const t of Object.values(app.concreteTools)) t.update(dt);
   app.machineTool.update(dt);
   app.particles.update(dt);
   // soil physics gets a time budget per frame (small piles settle in a blink)
   const budget = app.settings.quality === 'low' ? 2.5 : 4;
   const t0 = performance.now();
   for (let i = 0; i < 80 && terrain.active && performance.now() - t0 < budget; i++) terrain.relax(1);
+  // fresh concrete creeps: a few passes per frame
+  terrain.clock = app.clock;
+  // (only while a concrete action is open: what it does to the concrete belongs to its journal entry)
+  if (Object.values(app.concreteTools).some((ct) => ct.busy)) for (let i = 0; i < 6 && terrain.cActive && performance.now() - t0 < budget * 1.6; i++) terrain.concRelax(1);
   terrain.updateMesh();
   app.grass.update();
   app.outlineView.update();
@@ -208,6 +217,7 @@ function step(dt, time, render = true) {
   app.rebarView.update();
   app.shovel.update(dt);
   app.rake.update(dt);
+  app.concreteGear.update(dt, app.camera.position);
   app.dust.update(dt, time);
   if (app.settings.orbit) app.rig.orbit(-dt * 0.12, 0);
   app.rig.update(dt);
@@ -215,6 +225,7 @@ function step(dt, time, render = true) {
   app.backdrop.update();
   updateFocus();
   app.terrainMat.userData.uniforms.uTime.value = time;
+  app.terrainMat.userData.uniforms.uClock.value = app.clock;
   app.pipeline.focus = app.rig.focus;
   if (render) app.pipeline.render(app.scene, app.camera, time);
   if (render && (shaderCheckT += dt) > 1) { shaderCheckT = 0; checkTerrainShader(); checkGpuMemory(); }
@@ -254,6 +265,7 @@ function updateFocus() {
   if (app.tool === 'shovel' && app.shovelTool.state !== 'idle') _f.copy(app.shovel.root.position);
   else if (app.tool === 'rake' && app.rakeTool.busy) _f.copy(app.rake.root.position);
   else if (app.materialTools[app.tool]?.busy) _f.copy(app.materialTools[app.tool].p);
+  else if (app.concreteTools[app.tool]?.busy) _f.copy(app.concreteGear.pos);
   else if (app.tool === 'machine' && mt.machine) {
     if (mt.active === 'excavator' && mt.machine.busy) mt.machine.bucketWorld(_f);
     else _f.copy(mt.machine.root.position).setY(mt.machine.y + 0.08);
@@ -291,13 +303,17 @@ function resize() {
 }
 
 // ---- tools ------------------------------------------------------------------------------
-app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, machine: app.machineTool }[app.tool] || null);
-app.busy = () => app.shovelTool.busy || app.rakeTool.busy || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy();
+app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, ...app.concreteTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, machine: app.machineTool }[app.tool] || null);
+app.busy = () => app.shovelTool.busy || app.rakeTool.busy || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy();
 
 function setTool(t) {
   if (app.tool === 'shovel' && t !== 'shovel') app.shovelTool.finish();
   if (app.tool === 'rake' && t !== 'rake') app.rakeTool.finish();
   if (app.materialTools[app.tool] && t !== app.tool) app.materialTools[app.tool].finish();
+  if (app.concreteTools[app.tool] && t !== app.tool) app.concreteTools[app.tool].finish();
+  // the concrete tool in hand: shown where it was last, hidden with other tools
+  if (!app.concreteTools[t]) app.concreteGear.set(null);
+  else if (app.concreteGear.show !== t) app.concreteGear.set(t, app.rig.target.clone().setY(app.terrain.heightAt(app.rig.target.x, app.rig.target.z)));
   if (app.tool === 'mark' && t !== 'mark' && app.markTool.trench) app.markTool.finishTrench();
   if (app.tool === 'machine' && t !== 'machine') app.machineTool.finish();
   app.tool = t;
@@ -320,6 +336,7 @@ function undo() {
   if (app.shovelTool.abort()) { app.ui.refresh(); return; }
   if (app.rakeTool.abort()) { app.ui.refresh(); return; }
   for (const t of Object.values(app.materialTools)) if (t.abort()) { app.ui.refresh(); return; }
+  for (const t of Object.values(app.concreteTools)) if (t.abort()) { app.ui.refresh(); return; }
   if (app.machineTool.abort()) { app.ui.refresh(); return; }
   app.journal.undo();
   app.ui.refresh();
@@ -328,6 +345,7 @@ function redo() {
   if (app.shovelTool.busy) app.shovelTool.finish();
   app.rakeTool.finish();
   for (const t of Object.values(app.materialTools)) t.finish();
+  for (const t of Object.values(app.concreteTools)) t.finish();
   app.machineTool.finish();
   if (app.journal.pending) app.journal.commit(app.clock);
   app.journal.redo();
@@ -336,6 +354,7 @@ function redo() {
 app.undo = undo; app.redo = redo;
 
 // design grade (lowest allowed cut) at a point: the deepest outline containing it
+app.outlineContains = contains;
 app.gradeAt = (x, z) => {
   let g = null;
   for (const o of app.objects.all('outline')) if (contains(o, x, z)) { const y = gradeY(o); g = g === null ? y : Math.min(g, y); }
@@ -411,7 +430,8 @@ function buildProject() {
     clock: app.clock, scale: MODEL_SCALE, units: 'metres (real size of the diorama)',
     tray: TRAY,
     terrain: { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, ldep: base.ldep || t.ldep, orig: t.orig,
-      layers: { count: 3, n: base.lN || t.lN, h: base.lH || t.lH, m: base.lM || t.lM, materials: ['soil', 'sand', 'gravel 5-20', 'gravel 20-40'] } },
+      layers: { count: 3, n: base.lN || t.lN, h: base.lH || t.lH, m: base.lM || t.lM, materials: ['soil', 'sand', 'gravel 5-20', 'gravel 20-40'] },
+      concrete: { h: base.conc || t.conc, poured: base.cTime || t.cTime, smooth: base.cSm || t.cSm, cureSeconds: CONCRETE.cure } },
     objects,
     settings: app.settings,
     camera: app.rig.state(),
@@ -446,6 +466,9 @@ function applyProject(p) {
   if (p.terrain.ldep && p.terrain.ldep.length === t.ldep.length) t.ldep.set(p.terrain.ldep); else t.ldep.fill(0.02);
   const L = p.terrain.layers;
   if (L && L.h.length === t.lH.length) { t.lH.set(L.h); t.lM.set(L.m); t.lN.set(L.n); } else t.layersFromLoose();   // before BUILD 17: all soil
+  const C = p.terrain.concrete;
+  if (C && C.h.length === t.conc.length) { t.conc.set(C.h); t.cTime.set(C.poured); t.cSm.set(C.smooth); } else { t.conc.fill(0); t.cSm.fill(0); }
+  t.cActive = null;
   t.markAll(); t.active = null;
   app.clock = p.clock || 0;
   const rescaled = (p.scale || 12) !== MODEL_SCALE;
@@ -579,6 +602,7 @@ app.newProject = async () => {
   app.shovelTool.finish();
   app.rakeTool.abort();
   for (const t of Object.values(app.materialTools)) t.abort();
+  for (const t of Object.values(app.concreteTools)) t.abort();
   app.machineTool.abort();
   app.machineTool.finish();
   await clearLocal();

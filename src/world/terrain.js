@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAY, SOIL_TILE, TERRAIN_CELL, REPOSE_NATIVE, MATERIALS, M_SOIL } from '../config.js';
+import { TRAY, SOIL_TILE, TERRAIN_CELL, REPOSE_NATIVE, MATERIALS, M_SOIL, CONCRETE } from '../config.js';
 
 // loose layers per cell (bottom → top), each of one material (config MATERIALS)
 export const LAYERS = 3;
@@ -35,6 +35,15 @@ export class Terrain {
     this.lH = new Float32Array(N * LAYERS);
     this.lM = new Uint8Array(N * LAYERS);
     this.lN = new Uint8Array(N);
+    // concrete on top of everything: thickness, pour time (project clock, s) and
+    // how smooth its surface was finished (0 as poured … 1 trowelled)
+    this.conc = new Float32Array(N);
+    this.cTime = new Float32Array(N);
+    this.cSm = new Float32Array(N);
+    // formwork boards: top height of the board standing on a cell (0 = none);
+    // concrete cannot flow into these cells
+    this.wall = new Float32Array(N);
+    this.cActive = null;       // bbox where concrete is still flowing
     // taken since the last reset: per material, and soil depth·volume
     this.take = { v: 0, dv: 0, m: new Float64Array(MATERIALS.length) };
     this._seg = { m: new Uint8Array(LAYERS + 1), h: new Float64Array(LAYERS + 1) };
@@ -61,7 +70,7 @@ export class Terrain {
         const e = Math.min(ex, ez);
         h += 0.0012 * Math.exp(-e / 3);
         const i = iz * nx + ix;
-        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0; this.ldep[i] = 0; this.lN[i] = 0;
+        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0; this.ldep[i] = 0; this.lN[i] = 0; this.conc[i] = 0; this.cSm[i] = 0;
       }
     }
     this.markAll();
@@ -86,7 +95,8 @@ export class Terrain {
     const iz = Math.min(this.rz, Math.max(0, Math.round(this.toCellZ(z))));
     return iz * this.nx + ix;
   }
-  hAt(i) { return this.nat[i] + this.loose[i]; }
+  hAt(i) { return this.nat[i] + this.loose[i] + this.conc[i]; }
+  base(i) { return this.nat[i] + this.loose[i]; }
 
   heightAt(x, z) {
     const n = this.nx;
@@ -275,6 +285,7 @@ export class Terrain {
         if (out > cell * 1.6) continue;
         const allowed = cutY + out * 3.2; // steep but not perfectly vertical cut
         const i = iz * n + ix;
+        if (this.conc[i] > 1e-5) continue;   // the blade does not cut concrete
         const h = this.nat[i] + this.loose[i];
         if (h <= allowed) continue;
         const want = Math.min(h - allowed, (maxVol - removed) / this.cellArea);
@@ -311,6 +322,7 @@ export class Terrain {
       const u = rx * dx + rz * dz, v = rx * ax + rz * az;
       if (u < -band || u > 0 || v < -hw || v > hw || m >= 4096) continue;
       const i = iz * n + ix, h = nat[i] + loose[i];
+      if (this.conc[i] > 1e-5) continue;   // the rake does not work concrete
       cells.i[m] = i; cells.v[m] = v; cells.x[m] = x; cells.z[m] = z; m++;
       sw++; sv += v; svv += v * v; sh += h; svh += v * h;
       if (h > top) top = h;
@@ -408,7 +420,7 @@ export class Terrain {
   // Unconditionally stable, exactly volume-conserving.
   _relaxOnce() {
     const a = this.active;
-    const { nx: n, cell, nat, loose, orig, rx, rz } = this;
+    const { nx: n, cell, nat, loose, orig, rx, rz, conc } = this;
     const tN = REPOSE_NATIVE;
     const fwd = (this._sweep = !this._sweep);
     const D1 = cell, D2 = cell * Math.SQRT2;
@@ -424,6 +436,7 @@ export class Terrain {
           const jx = ix + NB[k][0], jz = iz + NB[k][1];
           if (jx < 0 || jx > rx || jz < 0 || jz > rz) continue;
           const j = jz * n + jx;
+          if (conc[i] > 1e-6 || conc[j] > 1e-6) continue;   // under / onto concrete nothing slides
           const d = nat[i] + loose[i] - nat[j] - loose[j];
           const dist = NB[k][2] ? D2 : D1;
           const ad = d < 0 ? -d : d;
@@ -501,7 +514,7 @@ export class Terrain {
 
   totalVolume() {
     let v = 0;
-    for (let i = 0; i < this.nat.length; i++) v += this.nat[i] - this.floorY + this.loose[i];
+    for (let i = 0; i < this.nat.length; i++) v += this.nat[i] - this.floorY + this.loose[i];   // soil and loose materials (not concrete)
     return v * this.cellArea;
   }
 
@@ -509,7 +522,7 @@ export class Terrain {
   buildMesh(material) {
     const { nx: n, nz } = this;
     const N = n * nz;
-    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4), mats = new Float32Array(N * 3);
+    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4), mats = new Float32Array(N * 3), cc = new Float32Array(N * 3);
     for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < n; ix++) {
       const i = iz * n + ix;
       pos[i * 3] = this.toWorldX(ix); pos[i * 3 + 2] = this.toWorldZ(iz);
@@ -531,11 +544,14 @@ export class Terrain {
     this.aSoil = new THREE.BufferAttribute(soil, 4).setUsage(THREE.DynamicDrawUsage);
     // share of sand / crushed stone 5–20 / 20–40 in the top 2 mm (the rest is soil)
     this.aMat = new THREE.BufferAttribute(mats, 3).setUsage(THREE.DynamicDrawUsage);
+    // concrete: thickness, pour time, smoothness (the shader cures it with the clock)
+    this.aConc = new THREE.BufferAttribute(cc, 3).setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('position', this.aPos);
     g.setAttribute('normal', this.aNor);
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setAttribute('aSoil', this.aSoil);
     g.setAttribute('aMat', this.aMat);
+    g.setAttribute('aConc', this.aConc);
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, TRAY.soil, 0), Math.hypot(this.halfX, this.halfZ) + 0.05);
     g.boundingBox = new THREE.Box3(new THREE.Vector3(-this.halfX, 0, -this.halfZ), new THREE.Vector3(this.halfX, 0.3, this.halfZ));
     this.mesh = new THREE.Mesh(g, material);
@@ -551,8 +567,8 @@ export class Terrain {
     const b = this.meshDirty;
     if (!b || !this.mesh) return false;
     this.meshDirty = null;
-    const { nx: n, cell, nat, loose, orig, rx, rz } = this;
-    const pos = this.aPos.array, nor = this.aNor.array, soil = this.aSoil.array, mats = this.aMat.array, { lH, lM, lN } = this;
+    const { nx: n, cell, nat, loose, orig, rx, rz, conc, cTime, cSm } = this;
+    const pos = this.aPos.array, nor = this.aNor.array, soil = this.aSoil.array, mats = this.aMat.array, cc = this.aConc.array, { lH, lM, lN } = this;
     const occ = this._occ;
     const OR = 4; // occlusion probe radius (cells)
     const ox0 = Math.max(0, b.x0 - OR - 1), ox1 = Math.min(rx, b.x1 + OR + 1);
@@ -560,11 +576,11 @@ export class Terrain {
     const H = (ix, iz) => {
       ix = ix < 0 ? 0 : ix > rx ? rx : ix;
       iz = iz < 0 ? 0 : iz > rz ? rz : iz;
-      const i = iz * n + ix; return nat[i] + loose[i];
+      const i = iz * n + ix; return nat[i] + loose[i] + conc[i];
     };
     for (let iz = oz0; iz <= oz1; iz++) for (let ix = ox0; ix <= ox1; ix++) {
       const i = iz * n + ix;
-      const h = nat[i] + loose[i];
+      const h = nat[i] + loose[i] + conc[i];
       pos[i * 3 + 1] = h;
       const hx = H(ix + 1, iz) - H(ix - 1, iz), hz = H(ix, iz + 1) - H(ix, iz - 1);
       const inv = 1 / Math.hypot(hx, 2 * cell, hz);
@@ -586,11 +602,12 @@ export class Terrain {
         rest -= h;
       }
       mats[i * 3] = f1 * 500; mats[i * 3 + 1] = f2 * 500; mats[i * 3 + 2] = f3 * 500;
+      cc[i * 3] = conc[i]; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
     }
     const start = oz0 * n, count = (oz1 - oz0 + 1) * n;
     // ranges pile up until three uploads them (several updates between two frames
     // must all reach the GPU): keep one range covering all of them
-    for (const a of [this.aPos, this.aNor, this.aSoil, this.aMat]) {
+    for (const a of [this.aPos, this.aNor, this.aSoil, this.aMat, this.aConc]) {
       let s0 = start * a.itemSize, s1 = (start + count) * a.itemSize;
       for (const r of a.updateRanges) { s0 = Math.min(s0, r.start); s1 = Math.max(s1, r.start + r.count); }
       a.clearUpdateRanges();
@@ -600,12 +617,264 @@ export class Terrain {
     return true;
   }
 
+  // ---- concrete --------------------------------------------------------------------------
+  // Formwork boards become walls the concrete cannot flow into. Each entry: a, b (the
+  // line), n (direction from the line into the board), t (board thickness), top.
+  setWalls(list) {
+    const { wall, nx: n, cell } = this;
+    wall.fill(0);
+    const pad = cell * 0.55;
+    for (const w of list) {
+      const [ax, az] = w.a, [bx, bz] = w.b, [nx, nz] = w.n;
+      const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
+      if (L < 1e-6) continue;
+      const ux = dx / L, uz = dz / L, over = w.t + pad;
+      const xs = [ax - ux * over, bx + ux * over, ax - ux * over + nx * w.t, bx + ux * over + nx * w.t];
+      const zs = [az - uz * over, bz + uz * over, az - uz * over + nz * w.t, bz + uz * over + nz * w.t];
+      const ix0 = Math.max(0, Math.floor(this.toCellX(Math.min(...xs) - pad))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(Math.max(...xs) + pad)));
+      const iz0 = Math.max(0, Math.floor(this.toCellZ(Math.min(...zs) - pad))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(Math.max(...zs) + pad)));
+      for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+        const rx = this.toWorldX(ix) - ax, rz = this.toWorldZ(iz) - az;
+        const u = rx * ux + rz * uz, v = rx * nx + rz * nz;
+        if (u >= -over && u <= L + over && v >= -pad && v <= w.t + pad) { const i = iz * n + ix; wall[i] = Math.max(wall[i], w.top); }
+      }
+    }
+  }
+
+  curedAt(i) { return Math.max(0, ((this.clock || 0) - this.cTime[i]) / CONCRETE.cure); }
+
+  _concAdd(i, add, smooth = 0) {
+    const c = this.conc[i], t = c + add;
+    this.cTime[i] = c > 0 ? (this.cTime[i] * c + (this.clock || 0) * add) / t : (this.clock || 0);
+    this.cSm[i] = c > 0 ? (this.cSm[i] * c + smooth * add) / t : smooth;
+    this.conc[i] = t;
+  }
+
+  _concTouch(ix0, iz0, ix1, iz1) {
+    this.cActive = grow(this.cActive, ix0 - 1, iz0 - 1, ix1 + 1, iz1 + 1, this.rx, this.rz);
+    this._markMesh(ix0 - 1, iz0 - 1, ix1 + 1, iz1 + 1);
+  }
+
+  // pour a volume of fresh concrete as a soft splat (never into a board)
+  depositConc(x, z, vol, radius) {
+    if (vol <= 0) return;
+    const { nx: n, cell, wall } = this;
+    const r = Math.max(radius, cell), reach = r * 2.2, inv = 1 / (2 * r * r);
+    const ix0 = Math.max(0, Math.floor(this.toCellX(x - reach))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(x + reach)));
+    const iz0 = Math.max(0, Math.floor(this.toCellZ(z - reach))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(z + reach)));
+    let wsum = 0;
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      if (wall[iz * n + ix]) continue;
+      const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
+      wsum += Math.exp(-(dx * dx + dz * dz) * inv);
+    }
+    if (wsum <= 0) return;
+    const k = vol / (wsum * this.cellArea);
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const i = iz * n + ix;
+      if (wall[i]) continue;
+      const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
+      this._concAdd(i, k * Math.exp(-(dx * dx + dz * dz) * inv));
+    }
+    this._concTouch(ix0, iz0, ix1, iz1);
+    this.version++;
+  }
+
+  // Pumped concrete spreads at once into a puddle: a very flat cone around the hose
+  // (slope = the yield), filling the lowest places it can reach — held by boards and
+  // by ground higher than the concrete. The level of the cone is found so that
+  // exactly `vol` is added. maxR limits how far one frame's concrete gets.
+  pourConc(x, z, vol, maxR = 0.3) {
+    if (vol <= 0) return;
+    const { nx: n, cell, wall, rx, rz } = this;
+    const c0x = Math.round(this.toCellX(x)), c0z = Math.round(this.toCellZ(z));
+    if (c0x < 0 || c0x > rx || c0z < 0 || c0z > rz) return;
+    const R = Math.ceil(maxR / cell), Y = CONCRETE.yield * cell;
+    const buf = (this._pour ||= { i: new Int32Array(200000), d: new Float32Array(200000), s: new Float32Array(200000), seen: new Uint32Array(this.nat.length), stamp: 0 });
+    // cells connected to the hose (not through boards), wet under a level L0
+    const collect = (L0) => {
+      const stamp = ++buf.stamp;
+      let head = 0, m = 0;
+      const i0 = c0z * n + c0x;
+      if (wall[i0]) return 0;
+      buf.i[m] = i0; buf.seen[i0] = stamp; m++;
+      while (head < m && m < buf.i.length - 8) {
+        const i = buf.i[head++], ix = i % n, iz = (i / n) | 0;
+        for (let k = 0; k < 4; k++) {
+          const jx = ix + (k === 0 ? 1 : k === 1 ? -1 : 0), jz = iz + (k === 2 ? 1 : k === 3 ? -1 : 0);
+          if (jx < 0 || jx > rx || jz < 0 || jz > rz || Math.abs(jx - c0x) > R || Math.abs(jz - c0z) > R) continue;
+          const j = jz * n + jx;
+          if (buf.seen[j] === stamp || wall[j]) continue;
+          buf.seen[j] = stamp;
+          const d = Math.hypot(jx - c0x, jz - c0z);
+          if (d > R) continue;
+          if (L0 !== null && L0 - Y * d <= this.hAt(j)) continue;   // concrete does not climb over it
+          buf.i[m++] = j;
+        }
+      }
+      for (let k = 0; k < m; k++) { const i = buf.i[k]; buf.d[k] = Math.hypot(i % n - c0x, ((i / n) | 0) - c0z); buf.s[k] = this.hAt(i); }
+      return m;
+    };
+    const solve = (m) => {
+      let lo = 1e9, hi = -1e9;
+      for (let k = 0; k < m; k++) { lo = Math.min(lo, buf.s[k] + Y * buf.d[k]); hi = Math.max(hi, buf.s[k] + Y * buf.d[k]); }
+      const need = vol / this.cellArea;
+      hi += need;
+      for (let it = 0; it < 26; it++) {   // 26 halvings: far below a micron
+        const L = (lo + hi) / 2;
+        let v = 0;
+        for (let k = 0; k < m; k++) { const a = L - Y * buf.d[k] - buf.s[k]; if (a > 0) v += a; }
+        if (v > need) hi = L; else lo = L;
+      }
+      return (lo + hi) / 2;
+    };
+    let m = collect(null), L0 = solve(m);
+    for (let pass = 0; pass < 2; pass++) { m = collect(L0); if (!m) return; L0 = solve(m); }
+    let sum = 0;
+    for (let k = 0; k < m; k++) { const a = L0 - Y * buf.d[k] - buf.s[k]; if (a > 0) sum += a; }
+    if (sum <= 0) return;
+    const scale = vol / this.cellArea / sum;   // exact volume
+    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+    for (let k = 0; k < m; k++) {
+      const a = (L0 - Y * buf.d[k] - buf.s[k]) * scale;
+      if (a <= 0) continue;
+      const i = buf.i[k], ix = i % n, iz = (i / n) | 0;
+      this._concAdd(i, a);
+      if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
+    }
+    if (x1 >= 0) this._concTouch(x0, z0, x1, z1);
+  }
+
+  // Viscous spreading of fresh concrete (Gauss–Seidel like the soil, but with a
+  // small yield slope and only a share of the excess per pass, so it creeps).
+  // Exactly volume-conserving. region (cell bbox) limits it, e.g. the vibrator.
+  concRelax(iterations = 1, yieldTan = CONCRETE.yield, rate = CONCRETE.rate, region = null) {
+    for (let it = 0; it < iterations; it++) {
+      const a = region || this.cActive;
+      if (!a) return false;
+      const { nx: n, cell, nat, loose, conc, wall, cTime, cSm, rx, rz } = this;
+      const D1 = cell, D2 = cell * Math.SQRT2, stiffT = (this.clock || 0) - CONCRETE.stiff * CONCRETE.cure;
+      const fwd = (this._csweep = !this._csweep), NB = fwd ? NB_FWD : NB_BWD;
+      let mx0 = 1e9, mz0 = 1e9, mx1 = -1, mz1 = -1;
+      for (let zz = a.z0; zz <= a.z1; zz++) {
+        const iz = fwd ? zz : a.z1 - (zz - a.z0);
+        for (let xx = a.x0; xx <= a.x1; xx++) {
+          const ix = fwd ? xx : a.x1 - (xx - a.x0);
+          const i = iz * n + ix;
+          if (wall[i]) continue;
+          for (let k = 0; k < 4; k++) {
+            const jx = ix + NB[k][0], jz = iz + NB[k][1];
+            if (jx < 0 || jx > rx || jz < 0 || jz > rz) continue;
+            const j = jz * n + jx;
+            if (wall[j] || (conc[i] <= 0 && conc[j] <= 0)) continue;
+            const d = nat[i] + loose[i] + conc[i] - nat[j] - loose[j] - conc[j];
+            const src = d > 0 ? i : j, dst = d > 0 ? j : i;
+            if (conc[src] <= 0 || cTime[src] < stiffT) continue;   // nothing to flow, or already set
+            const ad = d < 0 ? -d : d, lim = yieldTan * (NB[k][2] ? D2 : D1);
+            // below 0.02 mm of excess it stays: the flow comes to a real stop (and a
+            // journal entry, taken once it has stopped, is the final state)
+            if (ad <= lim + 2e-5) continue;
+            const m = Math.min((ad - lim) * 0.5 * rate, conc[src]);
+            if (m < 1e-9) continue;
+            const ts = cTime[src], ss = cSm[src];
+            conc[src] -= m;
+            const c = conc[dst], t = c + m;
+            cTime[dst] = c > 0 ? (cTime[dst] * c + ts * m) / t : ts;
+            cSm[dst] = c > 0 ? (cSm[dst] * c + ss * 0.6 * m) / t : ss * 0.6;
+            conc[dst] = t;
+            const ax = ix < jx ? ix : jx, bx = ix < jx ? jx : ix, az = iz < jz ? iz : jz, bz = iz < jz ? jz : iz;
+            if (ax < mx0) mx0 = ax; if (bx > mx1) mx1 = bx; if (az < mz0) mz0 = az; if (bz > mz1) mz1 = bz;
+          }
+        }
+      }
+      if (mx1 < 0) { if (!region) this.cActive = null; return false; }
+      if (!region) this.cActive = { x0: Math.max(0, mx0 - 2), z0: Math.max(0, mz0 - 2), x1: Math.min(rx, mx1 + 2), z1: Math.min(rz, mz1 + 2) };
+      else this.cActive = grow(this.cActive, mx0 - 2, mz0 - 2, mx1 + 2, mz1 + 2, rx, rz);
+      this._markMesh(mx0 - 1, mz0 - 1, mx1 + 1, mz1 + 1);
+    }
+    return true;
+  }
+
+  cellBox(x, z, r) {
+    return { x0: Math.max(0, Math.floor(this.toCellX(x - r))), z0: Math.max(0, Math.floor(this.toCellZ(z - r))),
+      x1: Math.min(this.rx, Math.ceil(this.toCellX(x + r))), z1: Math.min(this.rz, Math.ceil(this.toCellZ(z + r))) };
+  }
+
+  // The screed rule pulled over the concrete: everything above the level L (where it
+  // rides on the formwork) goes ahead of it; over a board the excess drops outside.
+  // Swept concrete gets a flat, half-finished surface.
+  screedStep(s, cx, cz, dx, dz) {
+    const { nx: n, cell, conc, wall } = this;
+    const ax = -dz, az = dx, hw = s.width / 2, band = s.band;
+    const b = this.cellBox(cx, cz, hw + band + cell * 3);
+    let moved = 0;
+    for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) {
+      const i = iz * n + ix;
+      if (conc[i] <= 0 || wall[i]) continue;
+      const x = this.toWorldX(ix), z = this.toWorldZ(iz), rx = x - cx, rz = z - cz;
+      const u = rx * dx + rz * dz, v = rx * ax + rz * az;
+      if (u < -band || u > 0 || v < -hw || v > hw) continue;
+      if (this.cTime[i] < (this.clock || 0) - CONCRETE.stiff * CONCRETE.cure) continue;
+      this.cSm[i] = Math.max(this.cSm[i], 0.45);
+      const ex = Math.min(this.hAt(i) - s.L, conc[i]) * 0.9;
+      if (ex <= 1e-8) continue;
+      // ahead of the rule; past a board if there is one
+      let tx = x + dx * (band + cell * 2), tz = z + dz * (band + cell * 2);
+      for (let k = 0; k < 6 && this.inside(tx, tz) && wall[this.index(tx, tz)]; k++) { tx += dx * cell * 1.5; tz += dz * cell * 1.5; }
+      if (!this.inside(tx, tz)) continue;
+      const j = this.index(tx, tz);
+      if (wall[j]) continue;
+      conc[i] -= ex;
+      this._concAdd(j, ex, this.cSm[i] * 0.5);
+      moved += ex;
+    }
+    this._concTouch(b.x0 - 4, b.z0 - 4, b.x1 + 4, b.z1 + 4);
+    this.version++;
+    return moved * this.cellArea;
+  }
+
+  // immersion vibrator: the concrete around it flows almost flat for a moment
+  vibrate(x, z, r) {
+    const b = this.cellBox(x, z, r);
+    this.concRelax(3, CONCRETE.yield * 0.12, 0.5, b);
+  }
+
+  // steel trowel / float: closes the surface (smooth) and evens small lumps
+  trowelStep(x, z, dx, dz, w, len) {
+    const { nx: n, conc, cSm } = this;
+    const ax = -dz, az = dx, b = this.cellBox(x, z, Math.max(w, len));
+    const stiffT = (this.clock || 0) - 0.75 * CONCRETE.cure;
+    let any = false;
+    for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) {
+      const i = iz * n + ix;
+      if (conc[i] <= 0 || this.cTime[i] < stiffT) continue;
+      const rx = this.toWorldX(ix) - x, rz = this.toWorldZ(iz) - z;
+      if (Math.abs(rx * dx + rz * dz) > len / 2 || Math.abs(rx * ax + rz * az) > w / 2) continue;
+      cSm[i] = Math.min(1, cSm[i] + 0.3);
+      any = true;
+    }
+    if (any) {
+      this.concRelax(2, 0.002, 0.5, b);
+      this._markMesh(b.x0, b.z0, b.x1, b.z1);
+      this.version++;
+    }
+    return any;
+  }
+
+  concVolume() {
+    let v = 0;
+    for (let i = 0; i < this.conc.length; i++) v += this.conc[i];
+    return v * this.cellArea;
+  }
+
   // ---- snapshots (undo, save, Blender export) -------------------------------
   // One snapshot buffer is reused (only one action is pending at a time).
   snapshot() {
     const s = (this._snap ||= { nat: new Float32Array(this.nat.length), loose: new Float32Array(this.nat.length), ldep: new Float32Array(this.nat.length),
-      lH: new Float32Array(this.lH.length), lM: new Uint8Array(this.lM.length), lN: new Uint8Array(this.lN.length) });
+      lH: new Float32Array(this.lH.length), lM: new Uint8Array(this.lM.length), lN: new Uint8Array(this.lN.length),
+      conc: new Float32Array(this.nat.length), cTime: new Float32Array(this.nat.length), cSm: new Float32Array(this.nat.length) });
     s.nat.set(this.nat); s.loose.set(this.loose); s.ldep.set(this.ldep); s.lH.set(this.lH); s.lM.set(this.lM); s.lN.set(this.lN);
+    s.conc.set(this.conc); s.cTime.set(this.cTime); s.cSm.set(this.cSm);
     return s;
   }
 
@@ -613,6 +882,8 @@ export class Terrain {
     this.nat.set(s.nat); this.loose.set(s.loose);
     if (s.ldep) this.ldep.set(s.ldep);
     if (s.lH) { this.lH.set(s.lH); this.lM.set(s.lM); this.lN.set(s.lN); } else this.layersFromLoose();
+    if (s.conc) { this.conc.set(s.conc); this.cTime.set(s.cTime); this.cSm.set(s.cSm); } else this.conc.fill(0);
+    this.cActive = null;
     this.active = null;
     this.markAll(); this.active = null;
   }
@@ -620,9 +891,9 @@ export class Terrain {
   // Sparse diff between a snapshot and the current state (heights, layers, soil colour).
   diffFrom(s) {
     const idx = [], L = LAYERS;
-    const { nat, loose, lN, lH, lM } = this;
+    const { nat, loose, lN, lH, lM, conc, cTime, cSm } = this;
     for (let i = 0; i < nat.length; i++) {
-      if (s.nat[i] !== nat[i] || s.loose[i] !== loose[i] || s.lN[i] !== lN[i]) { idx.push(i); continue; }
+      if (s.nat[i] !== nat[i] || s.loose[i] !== loose[i] || s.lN[i] !== lN[i] || s.conc[i] !== conc[i] || s.cSm[i] !== cSm[i] || s.cTime[i] !== cTime[i]) { idx.push(i); continue; }
       const b = i * L;
       for (let k = 0; k < lN[i]; k++) if (s.lH[b + k] !== lH[b + k] || s.lM[b + k] !== lM[b + k]) { idx.push(i); break; }
     }
@@ -631,11 +902,13 @@ export class Terrain {
       idx: new Uint32Array(idx), bn: new Float32Array(m), bl: new Float32Array(m), an: new Float32Array(m), al: new Float32Array(m),
       bd: new Float32Array(m), ad: new Float32Array(m), bN: new Uint8Array(m), aN: new Uint8Array(m),
       bH: new Float32Array(m * L), aH: new Float32Array(m * L), bM: new Uint8Array(m * L), aM: new Uint8Array(m * L),
+      bC: new Float32Array(m), aC: new Float32Array(m), bT: new Float32Array(m), aT: new Float32Array(m), bS: new Float32Array(m), aS: new Float32Array(m),
     };
     for (let k = 0; k < m; k++) {
       const i = idx[k];
       d.bn[k] = s.nat[i]; d.bl[k] = s.loose[i]; d.an[k] = nat[i]; d.al[k] = loose[i];
       d.bd[k] = s.ldep[i]; d.ad[k] = this.ldep[i]; d.bN[k] = s.lN[i]; d.aN[k] = lN[i];
+      d.bC[k] = s.conc[i]; d.aC[k] = conc[i]; d.bT[k] = s.cTime[i]; d.aT[k] = cTime[i]; d.bS[k] = s.cSm[i]; d.aS[k] = cSm[i];
       for (let q = 0; q < L; q++) {
         d.bH[k * L + q] = s.lH[i * L + q]; d.aH[k * L + q] = lH[i * L + q];
         d.bM[k * L + q] = s.lM[i * L + q]; d.aM[k * L + q] = lM[i * L + q];
@@ -647,6 +920,7 @@ export class Terrain {
   applyDiff(d, forward) {
     const N = forward ? d.an : d.bn, Lo = forward ? d.al : d.bl, L = LAYERS;
     const H = forward ? d.aH : d.bH, M = forward ? d.aM : d.bM, C = forward ? d.aN : d.bN, D = forward ? d.ad : d.bd;
+    const CC = forward ? d.aC : d.bC, CT = forward ? d.aT : d.bT, CS = forward ? d.aS : d.bS;
     let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
     for (let k = 0; k < d.idx.length; k++) {
       const i = d.idx[k];
@@ -657,11 +931,13 @@ export class Terrain {
         this.loose[i] = Lo[k];
         if (D) this.ldep[i] = D[k];
       } else this.setLooseSoil(i, Lo[k]);   // older journals: all loose material was soil
+      if (CC) { this.conc[i] = CC[k]; this.cTime[i] = CT[k]; this.cSm[i] = CS[k]; }   // BUILD 19+: concrete
       const ix = i % this.nx, iz = (i / this.nx) | 0;
       if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
     }
     if (x1 >= 0) { this._markMesh(x0 - 1, z0 - 1, x1 + 1, z1 + 1); }
     this.active = null; // journal states are already at rest
+    this.cActive = null;
   }
 
   // volume of each material lying loose on the plot (m³ of the model)

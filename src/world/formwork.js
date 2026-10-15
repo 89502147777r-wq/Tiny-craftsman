@@ -105,6 +105,8 @@ export class FormworkView {
       }
     }
     this.boards.count = nb; this.stakes.count = ns; this.braces.count = nr;
+    // the boards hold the concrete
+    this.terrain.setWalls(runs.map((r) => ({ a: r.a, b: r.b, n: r.inside ? [-r.n[0], -r.n[1]] : r.n, t: T, top: r.y1 })));
     for (const im of [this.boards, this.stakes, this.braces]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     aB.needsUpdate = true;
   }
