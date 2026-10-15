@@ -193,8 +193,7 @@ export class ScoopTool {
   _dropConc() {
     if (!(this.concOut > 0)) return;
     const t = this.app.terrain;
-    t.depositConc(t.clampX(this.lastP.x), t.clampZ(this.lastP.z), this.concOut, 0.0045 * K, 1);
-    t.cActive = null;
+    t.depositConc(t.clampX(this.lastP.x), t.clampZ(this.lastP.z), this.concOut, 0.0045 * K, 0);   // it slumps while the shovel settles
     this.concOut = 0;
   }
 
@@ -268,6 +267,9 @@ export class ScoopTool {
     if (this.state === 'dump' || this.state === 'settle') {
       app.particles.flush();
       for (let i = 0; i < 40000 && app.terrain.active; i++) app.terrain.relax(1);
+      // tipped concrete: let it slump, then it stays (undo stays exact)
+      for (let i = 0; i < 60 && app.terrain.cActive; i++) app.terrain.concStep(1 / 30, 2);
+      app.terrain.cActive = null;
       app.journal.commit(app.clock);
       this.state = 'idle';
       this.load = 0;

@@ -204,16 +204,17 @@ console.log('—', sec());
       tc.setTool('hose'); const h = tc.activeTool();
       h.down(new V(0.3, 0.1, 0.5)); tc.simulate(0.6); h.up();
       for (let i = 0; i < 300 && tc.busy(); i++) tc.simulate(1 / 15);
-      const c0 = t.concVolume(), s0 = t.totalVolume(), at0 = t.conc[t.index(0.3, 0.5)];
+      const near = () => { let v = 0; for (let z = 0.4; z <= 0.6; z += t.cell) for (let x = 0.2; x <= 0.4; x += t.cell) v += t.conc[t.index(x, z)]; return v * t.cellArea; };
+      const c0 = t.concVolume(), s0 = t.totalVolume(), at0 = t.conc[t.index(0.3, 0.5)], n0 = near();
       tc.setTool('shovel'); const sh = tc.shovelTool;
       sh.down(new V(0.28, 0.1, 0.5)); for (let s = 0; s < 1 && sh.state === 'dig'; s += 0.04) sh.move(new V(0.28 + 0.06 * s, 0.1, 0.5)); sh.up();
-      const loaded = sh.mat === 9 && sh.load > 0;
+      const loaded = sh.mat === 9 && sh.load > 0, took = n0 - near() > sh.load * 0.9;
       if (sh.state === 'loaded') { sh.down(new V((o.x0 + o.x1) / 2, 0.1, (o.z0 + o.z1) / 2)); sh.up(); }
       for (let i = 0; i < 400 && sh.state !== 'idle'; i++) tc.simulate(0.05);
       const c1 = t.concVolume(), cs = t.conc.slice();
       tc.undo(); const back = Math.abs(t.conc[t.index(0.3, 0.5)] - at0) < 1e-9; tc.redo();
       let ce = 0; for (let i = 0; i < cs.length; i++) ce = Math.max(ce, Math.abs(cs[i] - t.conc[i]));
-      out.shovelConc = { loaded, took: t.conc[t.index(0.3, 0.5)] < at0 * 0.5, vol: Math.abs(c1 / c0 - 1), soil: Math.abs(t.totalVolume() - s0) * 1e9, undo: back && ce < 1e-9 };
+      out.shovelConc = { loaded, took, vol: Math.abs(c1 / c0 - 1), soil: Math.abs(t.totalVolume() - s0) * 1e9, undo: back && ce < 1e-9 };
     }
     out.objects = { outlines: tc.objects.all('outline').length, forms: tc.objects.all('form').length, cages: tc.objects.all('cage').length, tied: tc.objects.all('cage').some((c) => c.tied) };
     tc.setTool('camera');

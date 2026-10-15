@@ -210,7 +210,7 @@ function step(dt, time, render = true) {
   // fresh concrete creeps: a few passes per frame
   terrain.clock = app.clock;
   // (only while a concrete action is open: what it does to the concrete belongs to its journal entry)
-  if (Object.values(app.concreteTools).some((c) => c.busy)) terrain.concStep(dt, 2);   // only the tiles where it moves
+  if (Object.values(app.concreteTools).some((c) => c.busy) || (app.shovelTool.busy && terrain.cActive)) terrain.concStep(dt, 2);   // only the tiles where it moves
   terrain.updateMesh();
   app.grass.update();
   app.outlineView.update();
@@ -470,8 +470,9 @@ function applyProject(p) {
   const C = p.terrain.concrete;
   if (C && C.h.length === t.conc.length) { t.conc.set(C.h); t.cTime.set(C.poured); t.cSm.set(C.smooth); } else { t.conc.fill(0); t.cSm.fill(0); }
   t.cActive = null;
-  t.markAll(); t.active = null;
   app.clock = p.clock || 0;
+  t.sanitizeConcrete(app.clock);
+  t.markAll(); t.active = null;
   const rescaled = (p.scale || 12) !== MODEL_SCALE;
   if (rescaled || !MACHINES_ENABLED) {
     // another model scale: boards and bars were cut for it, so only the ground and
