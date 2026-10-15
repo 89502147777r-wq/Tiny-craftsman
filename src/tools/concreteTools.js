@@ -42,7 +42,7 @@ class ConcreteTool {
     return len;
   }
 
-  up() { if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; this.app.sfx.scrapeStop(); } }
+  up() { if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; this.app.sfx.scrapeStop(); this.gear.pump.setStream(false); } }
   interrupt() { this.up(); }
 
   update(dt) {
@@ -60,7 +60,11 @@ class ConcreteTool {
     const app = this.app, t = app.terrain;
     if (this.state === 'idle') return;
     app.sfx.scrapeStop();
+    this.gear.pump.setStream(false);
     for (let i = 0; i < 4000 && t.cActive; i++) t.concRelax(1);
+    t.flushOverflow();
+    for (let i = 0; i < 400 && t.cActive; i++) t.concRelax(1);
+    t.flushOverflow();   // (the last lumps land as they are)
     t.cActive = null;   // whatever creep is left stops here (it is recorded as it is)
     app.journal.commit(app.clock);
     this.state = 'idle';
@@ -89,6 +93,7 @@ export class HoseTool extends ConcreteTool {
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('concrete-pour', { rate: this.app.settings.pump }, p);
     this.poured = 0;
+    this.warned = false;
     this.app.sfx.scrapeStart();
     this.app.sfx.scrapeLevel(0.25);
     this.gear.set('hose', this._tip(p), 0, true);
@@ -104,12 +109,26 @@ export class HoseTool extends ConcreteTool {
     const vol = real(app.settings.pump || PUMP[1]) * dt;
     // the stream lands under the hose and spreads from there: the mound under the
     // hose flows out fast (it is pushed by the stream), the rest creeps
-    t.pourConc(this.p.x, this.p.z, vol, 0.25);
+    // it lands under the spout (which swings a little behind the finger)
+    const at = this.gear.pump.ready ? this.gear.pump.spout() : this.p;
+    t.pourConc(t.clampX(at.x), t.clampZ(at.z), vol, 0.25);
+    // full to the top of the formwork here? say so once per pour
+    if (!this.warned) {
+      const i = t.index(at.x, at.z), b = t.cellBox(at.x, at.z, 0.12);
+      let top = 0;
+      for (let iz = b.z0; iz <= b.z1; iz += 2) for (let ix = b.x0; ix <= b.x1; ix += 2) top = Math.max(top, t.wall[iz * t.nx + ix]);
+      if (top && t.hAt(i) >= top - 0.0008) { this.warned = true; app.ui?.toast('Здесь опалубка заполнена до верха — ведите шланг дальше или отпустите'); }
+    }
     this.poured += vol;
-    const r = Math.random, h = t.heightAt(this.p.x, this.p.z);
-    for (let n = 0; n < 3; n++) {
-      const pos = new THREE.Vector3(this.p.x + (r() - 0.5) * 0.008, h + 0.025 + r() * 0.005, this.p.z + (r() - 0.5) * 0.008);
-      app.particles.emit(pos, new THREE.Vector3((r() - 0.5) * 0.05, -0.4, (r() - 0.5) * 0.05), 0, 0.0018 + r() * 0.0015, 0, 0, 9);
+    // the stream out of the spout (looks only: the volume is poured above), and a few
+    // splashes where it lands
+    const pump = this.gear.pump, sp = pump.spout(), gy = t.heightAt(t.clampX(sp.x), t.clampZ(sp.z));
+    pump.setStream(true, gy, app.clock);
+    const r = Math.random;
+    if (r() < 0.5) {
+      const pos = new THREE.Vector3(sp.x, gy + 0.002, sp.z);
+      const a = r() * Math.PI * 2;
+      app.particles.emit(pos, new THREE.Vector3(Math.cos(a) * 0.12, 0.25 + r() * 0.2, Math.sin(a) * 0.12), 0, 0.0012 + r() * 0.0012, 0, 0, 9);
     }
     this.gear.set('hose', this._tip(this.p));
   }
@@ -164,6 +183,11 @@ export class ScreedTool extends ConcreteTool {
     this.last.copy(p);
     // the rule lies across the stroke
     this.gear.set('screed', new THREE.Vector3(p.x, this.stroke.L, p.z), Math.atan2(this.dir.x, this.dir.y));
+  }
+
+  up() {
+    if (this.state === 'work') this.app.terrain.flushSpill(this.stroke, this.dir.x, this.dir.y);
+    super.up();
   }
 }
 

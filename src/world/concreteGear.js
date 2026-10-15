@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { PumpHose } from './pumpHose.js';
 
 // Models of the concrete tools (sizes of the model, real sizes in comments):
-//   hose     – the 125 mm rubber end hose of a boom pump, hanging from above
+//   hose     – the end hose of a boom pump: a swinging rope simulation (pumpHose.js)
 //   rule     – aluminium screed rule 2 m, profile 100 × 20 mm
 //   vibrator – immersion poker Ø 50 mm, 0.4 m long, with its cable
 //   trowel   – steel float 450 × 120 mm with a handle
@@ -15,9 +16,7 @@ export class ConcreteGear {
     const alu = new THREE.MeshStandardMaterial({ color: 0xc4c8cc, roughness: 0.4, metalness: 0.8 });
     const grip = new THREE.MeshStandardMaterial({ color: 0x2b5fa8, roughness: 0.6 });
     this.rubber = rubber;
-    // hose: a tube rebuilt along a hanging curve
-    this.hose = new THREE.Mesh(new THREE.BufferGeometry(), rubber);
-    this.hoseEnd = new THREE.Mesh(new THREE.CylinderGeometry(0.0185, 0.0185, 0.012, 20, 1, true), steel);
+    this.pump = new PumpHose();
     // rule
     this.rule = new THREE.Group();
     const bar = new THREE.Mesh(new THREE.BoxGeometry(2.0 / 3.5, 0.1 / 3.5, 0.02 / 3.5), alu);
@@ -41,7 +40,7 @@ export class ConcreteGear {
     handle.rotation.z = Math.PI / 2;
     handle.position.y = 0.065 / 3.5;
     this.trowel.add(plate, post, handle);
-    for (const o of [this.hose, this.hoseEnd, this.rule, this.vib, this.cable, this.trowel]) {
+    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel]) {
       o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
       o.visible = false;
       this.root.add(o);
@@ -58,7 +57,7 @@ export class ConcreteGear {
     this.show = which;
     if (p) this.goal.copy(p);
     this.yawGoal = yaw;
-    if (snap) { this.pos.copy(this.goal); this.yaw = yaw; this._lastHose = null; }
+    if (snap) { this.pos.copy(this.goal); this.yaw = yaw; this._snapHose = true; }
   }
 
   update(dt, camPos) {
@@ -68,14 +67,15 @@ export class ConcreteGear {
     while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
     this.yaw += dy * (1 - Math.exp(-dt * 12));
     const w = this.show;
-    this.hose.visible = this.hoseEnd.visible = w === 'hose';
+    this.pump.group.visible = w === 'hose';
     this.rule.visible = w === 'screed';
     this.vib.visible = this.cable.visible = w === 'vibro';
     this.trowel.visible = w === 'trowel';
     if (w === 'hose') {
-      const end = this.pos.clone().add(new THREE.Vector3(0, 0.03, 0));   // ~10 cm above the concrete
-      this.hoseEnd.position.copy(end).add(new THREE.Vector3(0, 0.006, 0));
-      this._tube(this.hose, end, camPos, 0.018, 1.1);
+      // the spout held ~25 cm above the concrete; the hose swings behind the hand
+      this.pump.aim(this.goal.clone().add(new THREE.Vector3(0, 0.25 / 3.5 + 0.15 / 3.5, 0)), camPos, this._snapHose);
+      this._snapHose = false;
+      this.pump.update(dt);
     } else if (w === 'screed') {
       this.rule.position.copy(this.pos);
       this.rule.rotation.set(0, this.yaw, 0);

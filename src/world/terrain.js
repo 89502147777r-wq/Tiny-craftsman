@@ -40,6 +40,9 @@ export class Terrain {
     this.conc = new Float32Array(N);
     this.cTime = new Float32Array(N);
     this.cSm = new Float32Array(N);
+    // extra stiffness (slope) of concrete that fell off as a lump: it stays a lump
+    // (only affects flow inside one action; not kept in the journal)
+    this.cY = new Float32Array(N);
     // formwork boards: top height of the board standing on a cell (0 = none);
     // concrete cannot flow into these cells
     this.wall = new Float32Array(N);
@@ -643,8 +646,9 @@ export class Terrain {
 
   curedAt(i) { return Math.max(0, ((this.clock || 0) - this.cTime[i]) / CONCRETE.cure); }
 
-  _concAdd(i, add, smooth = 0) {
+  _concAdd(i, add, smooth = 0, stiff = 0) {
     const c = this.conc[i], t = c + add;
+    this.cY[i] = c > 0 ? (this.cY[i] * c + stiff * add) / t : stiff;
     this.cTime[i] = c > 0 ? (this.cTime[i] * c + (this.clock || 0) * add) / t : (this.clock || 0);
     this.cSm[i] = c > 0 ? (this.cSm[i] * c + smooth * add) / t : smooth;
     this.conc[i] = t;
@@ -656,7 +660,7 @@ export class Terrain {
   }
 
   // pour a volume of fresh concrete as a soft splat (never into a board)
-  depositConc(x, z, vol, radius) {
+  depositConc(x, z, vol, radius, stiff = 0) {
     if (vol <= 0) return;
     const { nx: n, cell, wall } = this;
     const r = Math.max(radius, cell), reach = r * 2.2, inv = 1 / (2 * r * r);
@@ -674,7 +678,7 @@ export class Terrain {
       const i = iz * n + ix;
       if (wall[i]) continue;
       const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
-      this._concAdd(i, k * Math.exp(-(dx * dx + dz * dz) * inv));
+      this._concAdd(i, k * Math.exp(-(dx * dx + dz * dz) * inv), 0, stiff);
     }
     this._concTouch(ix0, iz0, ix1, iz1);
     this.version++;
@@ -748,7 +752,7 @@ export class Terrain {
   // Viscous spreading of fresh concrete (Gauss–Seidel like the soil, but with a
   // small yield slope and only a share of the excess per pass, so it creeps).
   // Exactly volume-conserving. region (cell bbox) limits it, e.g. the vibrator.
-  concRelax(iterations = 1, yieldTan = CONCRETE.yield, rate = CONCRETE.rate, region = null) {
+  concRelax(iterations = 1, yieldTan = CONCRETE.yield, rate = CONCRETE.rate, region = null, hc = CONCRETE.hc) {
     for (let it = 0; it < iterations; it++) {
       const a = region || this.cActive;
       if (!a) return false;
@@ -766,11 +770,30 @@ export class Terrain {
             const jx = ix + NB[k][0], jz = iz + NB[k][1];
             if (jx < 0 || jx > rx || jz < 0 || jz > rz) continue;
             const j = jz * n + jx;
-            if (wall[j] || (conc[i] <= 0 && conc[j] <= 0)) continue;
+            if (wall[j]) {
+              // over the top of a board (more than ~1 cm real above it): it slops over and
+              // falls down the outside in lumps — collected per bit of the board, dropped
+              // as a blob once there is enough for one
+              const si = nat[i] + loose[i] + conc[i];
+              if (conc[i] > 0 && si > wall[j] + 0.003 && cTime[i] >= stiffT) {
+                let kx = jx, kz = jz;
+                for (let s = 0; s < 8 && kx >= 0 && kx <= rx && kz >= 0 && kz <= rz && wall[kz * n + kx]; s++) { kx += NB[k][0]; kz += NB[k][1]; }
+                if (kx < 0 || kx > rx || kz < 0 || kz > rz) continue;
+                const m = Math.min((si - wall[j] - 0.002) * 0.5 * rate, conc[i]);
+                if (m > 1e-9) {
+                  conc[i] -= m;
+                  this._overflow(kx, kz, m * this.cellArea, NB[k][0], NB[k][1]);
+                  if (ix < mx0) mx0 = ix; if (ix > mx1) mx1 = ix; if (iz < mz0) mz0 = iz; if (iz > mz1) mz1 = iz;
+                }
+              }
+              continue;
+            }
+            if (conc[i] <= 0 && conc[j] <= 0) continue;
             const d = nat[i] + loose[i] + conc[i] - nat[j] - loose[j] - conc[j];
             const src = d > 0 ? i : j, dst = d > 0 ? j : i;
             if (conc[src] <= 0 || cTime[src] < stiffT) continue;   // nothing to flow, or already set
-            const ad = d < 0 ? -d : d, lim = yieldTan * (NB[k][2] ? D2 : D1);
+            const hAvg = (conc[src] + conc[dst]) * 0.5;
+            const ad = d < 0 ? -d : d, lim = (yieldTan + this.cY[src] + hc / Math.max(hAvg, 0.0004)) * (NB[k][2] ? D2 : D1);
             // below 0.02 mm of excess it stays: the flow comes to a real stop (and a
             // journal entry, taken once it has stopped, is the final state)
             if (ad <= lim + 2e-5) continue;
@@ -801,8 +824,9 @@ export class Terrain {
   }
 
   // The screed rule pulled over the concrete: everything above the level L (where it
-  // rides on the formwork) goes ahead of it; over a board the excess drops outside.
-  // Swept concrete gets a flat, half-finished surface.
+  // rides on the formwork) rolls ahead of it as a bead; at a board the bead spills
+  // over and falls outside in lumps (collected per piece of the rule and dropped as a
+  // blob once there is enough for one). Swept concrete gets a flat, half-finished surface.
   screedStep(s, cx, cz, dx, dz) {
     const { nx: n, cell, conc, wall } = this;
     const ax = -dz, az = dx, hw = s.width / 2, band = s.band;
@@ -818,25 +842,80 @@ export class Terrain {
       this.cSm[i] = Math.max(this.cSm[i], 0.45);
       const ex = Math.min(this.hAt(i) - s.L, conc[i]) * 0.9;
       if (ex <= 1e-8) continue;
-      // ahead of the rule; past a board if there is one
+      // ahead of the rule: a soft bead, a few cells wide
       let tx = x + dx * (band + cell * 2), tz = z + dz * (band + cell * 2);
-      for (let k = 0; k < 6 && this.inside(tx, tz) && wall[this.index(tx, tz)]; k++) { tx += dx * cell * 1.5; tz += dz * cell * 1.5; }
       if (!this.inside(tx, tz)) continue;
-      const j = this.index(tx, tz);
-      if (wall[j]) continue;
+      if (!wall[this.index(tx, tz)]) {
+        conc[i] -= ex;
+        const j0 = this.index(tx, tz), jl = this.index(tx + ax * cell, tz + az * cell), jr = this.index(tx - ax * cell, tz - az * cell);
+        const j2 = this.index(tx + dx * cell, tz + dz * cell);
+        const parts = [[j0, 0.4], [j2, 0.2], [jl, 0.2], [jr, 0.2]].filter(([j]) => !wall[j]);
+        const wsum = parts.reduce((a, p) => a + p[1], 0);
+        for (const [j, w] of parts) this._concAdd(j, ex * w / wsum, this.cSm[i] * 0.5);
+        moved += ex;
+        continue;
+      }
+      // at a board: over it and down the outside, in lumps
+      for (let k = 0; k < 8 && this.inside(tx, tz) && wall[this.index(tx, tz)]; k++) { tx += dx * cell; tz += dz * cell; }
+      if (!this.inside(tx, tz) || wall[this.index(tx, tz)]) continue;
       conc[i] -= ex;
-      this._concAdd(j, ex, this.cSm[i] * 0.5);
       moved += ex;
+      const key = Math.round(v / 0.02);   // a lump per ~7 cm (real) of the rule
+      const bin = (s.spill ||= new Map()).get(key) || { vol: 0, x: 0, z: 0 };
+      bin.vol += ex * this.cellArea; bin.x += tx * ex; bin.z += tz * ex; bin.w = (bin.w || 0) + ex;
+      s.spill.set(key, bin);
+      if (bin.vol > 1.2e-5) this._dropLump(s, key, dx, dz);   // ~0.5 l (real) per lump
     }
     this._concTouch(b.x0 - 4, b.z0 - 4, b.x1 + 4, b.z1 + 4);
     this.version++;
     return moved * this.cellArea;
   }
 
+  // concrete going over a board, collected in bins along it (key: a 2 cm square)
+  _overflow(kx, kz, vol, ox, oz) {
+    const key = `${Math.floor(kx / 18)},${Math.floor(kz / 18)}`;   // ~19 cm (real) of board
+    const bins = (this._ovf ||= new Map());
+    const b = bins.get(key) || { vol: 0, x: 0, z: 0, w: 0, need: 0.8e-5 + Math.random() * 2.2e-5, ox, oz };   // 0.3 … 1.3 l (real)
+    const x = this.toWorldX(kx), z = this.toWorldZ(kz);
+    b.vol += vol; b.x += x * vol; b.z += z * vol; b.w += vol;
+    bins.set(key, b);
+    if (b.vol >= b.need) this._dropOverflow(key);
+  }
+
+  _dropOverflow(key) {
+    const b = this._ovf.get(key);
+    if (!b || b.vol <= 0) return;
+    const out = 0.003 + Math.random() * 0.008;
+    this.depositConc(this.clampX(b.x / b.w + b.ox * out + (Math.random() - 0.5) * 0.012), this.clampZ(b.z / b.w + b.oz * out + (Math.random() - 0.5) * 0.012), b.vol, 0.008 + Math.random() * 0.006, 0.35);
+    this._ovf.delete(key);
+  }
+
+  // end of a concrete action: what is still on its way over the boards falls now
+  flushOverflow() {
+    if (!this._ovf) return;
+    for (const key of [...this._ovf.keys()]) this._dropOverflow(key);
+  }
+
+  // a lump of concrete falls off the rule outside the board: a blob that slumps
+  _dropLump(s, key, dx, dz) {
+    const b = s.spill.get(key);
+    if (!b || b.vol <= 0) return;
+    const x = b.x / b.w + dx * (0.002 + Math.random() * 0.006) + (Math.random() - 0.5) * 0.006;
+    const z = b.z / b.w + dz * (0.002 + Math.random() * 0.006) + (Math.random() - 0.5) * 0.006;
+    this.depositConc(this.clampX(x), this.clampZ(z), b.vol, 0.009 + Math.random() * 0.004, 0.35);
+    s.spill.delete(key);
+  }
+
+  // end of a screed stroke: what is still on the rule's edge drops too
+  flushSpill(s, dx, dz) {
+    if (!s.spill) return;
+    for (const key of [...s.spill.keys()]) this._dropLump(s, key, dx, dz);
+  }
+
   // immersion vibrator: the concrete around it flows almost flat for a moment
   vibrate(x, z, r) {
     const b = this.cellBox(x, z, r);
-    this.concRelax(3, CONCRETE.yield * 0.12, 0.5, b);
+    this.concRelax(3, CONCRETE.yield * 0.12, 0.5, b, CONCRETE.hc * 0.12);
   }
 
   // steel trowel / float: closes the surface (smooth) and evens small lumps
@@ -854,7 +933,7 @@ export class Terrain {
       any = true;
     }
     if (any) {
-      this.concRelax(2, 0.002, 0.5, b);
+      this.concRelax(2, 0.002, 0.5, b, CONCRETE.hc * 0.2);
       this._markMesh(b.x0, b.z0, b.x1, b.z1);
       this.version++;
     }
