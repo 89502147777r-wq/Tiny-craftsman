@@ -130,6 +130,10 @@ export class UI {
     if (open) {
       $('journal-count').textContent = this.app.journal.done.length;
       $('track-len').textContent = Math.round(this.app.recorder.duration);
+      // diagnostics for reports from phones: which soil shader runs, GPU errors
+      const a = this.app, gl = a.renderer.getContext();
+      const which = a.terrain.mesh.material === a.fallbackMat ? 'простой' : a.lightMat && a.terrain.mesh.material === a.lightMat ? 'упрощённый' : 'полный';
+      $('diag').textContent = `Диагностика: грунт — ${which}; GPU — ${gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS)} текстур` + (a.shaderErrors.length ? `; ошибка: ${a.shaderErrors[0].slice(0, 300)}` : '');
     }
   }
 

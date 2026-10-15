@@ -3,7 +3,8 @@ import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MA
 import { loadAssets } from './world/assets.js';
 import { buildWorkshop } from './world/workshop.js';
 import { Terrain } from './world/terrain.js';
-import { makeTerrainMaterial, makeFallbackTerrainMaterial } from './world/terrainMaterial.js';
+import { SOIL } from './world/soilColor.js';
+import { makeTerrainMaterial, makeLightTerrainMaterial, makeFallbackTerrainMaterial } from './world/terrainMaterial.js';
 import { Grass } from './world/grass.js';
 import { SoilParticles } from './world/particles.js';
 import { OutlineView, contains, gradeY } from './world/outlines.js';
@@ -68,7 +69,8 @@ async function main() {
   scene.add(app.stacks);
 
   const terrain = (app.terrain = new Terrain());
-  app.terrainMat = makeTerrainMaterial(tex);
+  // ?soil=light forces the light soil shader (testing the fallback)
+  app.terrainMat = new URLSearchParams(location.search).get('soil') === 'light' ? (app.lightMat = makeLightTerrainMaterial(tex)) : makeTerrainMaterial(tex);
   scene.add(terrain.buildMesh(app.terrainMat));
   app.grass = new Grass(terrain); scene.add(app.grass.mesh);
   app.particles = new SoilParticles(tex, terrain); scene.add(app.particles.mesh, app.particles.clods);
@@ -142,18 +144,30 @@ async function main() {
   requestAnimationFrame(frame);
 }
 
-// if the soil shader could not be built on this device, use the plain one
+// If the soil shader could not be built on this device, step down: full → light
+// (same soil colouring, plain lookups) → plain. The error stays in the menu.
 function checkTerrainShader() {
   const t = app.terrain.mesh, mat = t?.material;
   if (!mat || mat === app.fallbackMat) return;
   const prog = app.renderer.properties.get(mat).currentProgram;
-  if (prog && prog.diagnostics && prog.diagnostics.runnable === false) {
-    app.fallbackMat = makeFallbackTerrainMaterial(app.tex);
-    t.material = app.fallbackMat;
-    const msg = 'Упрощённый грунт: устройство не собрало шейдер. ' + (app.shaderErrors[0] || '').slice(0, 160);
-    console.error(msg);
-    setTimeout(() => app.ui?.toast(msg), 1500);
+  if (!(prog && prog.diagnostics && prog.diagnostics.runnable === false)) return;
+  const old = app.terrainMat.userData.uniforms;
+  let next, msg;
+  if (mat === app.terrainMat && !app.lightMat) {
+    next = app.lightMat = makeLightTerrainMaterial(app.tex);
+    msg = 'Грунт: упрощённый шейдер (устройство не собрало полный)';
+  } else {
+    next = app.fallbackMat = makeFallbackTerrainMaterial(app.tex);
+    msg = 'Грунт: простой материал (устройство не собрало шейдер)';
   }
+  if (next.userData.uniforms) {
+    for (const k of ['tMask', 'uPlot', 'uLevel', 'uLayer', 'uChalk']) next.userData.uniforms[k].value = old[k].value;
+    app.terrainMat = next;
+  }
+  t.material = next;
+  app.shaderNote = msg;
+  console.error(msg, app.shaderErrors[0]);
+  setTimeout(() => app.ui?.toast(msg), 1500);
 }
 let shaderCheckT = 0;
 
@@ -334,7 +348,7 @@ function applySettings() {
   try { localStorage.setItem('tc-settings', JSON.stringify(s)); } catch { /* private mode */ }
   if (app.shovel.type !== s.shovel && !app.shovelTool.busy) app.shovel.setType(s.shovel);
   app.terrainMat.userData.uniforms.uLevel.value = s.level ? 1 : 0;
-  app.terrainMat.userData.uniforms.uLayer.value = Math.max(0.004, s.bite / 1000);
+  app.terrainMat.userData.uniforms.uLayer.value = SOIL.layer = Math.max(0.004, s.bite / 1000);
   app.pipeline.dofAmount = s.dof;
   if (app.pipeline.quality !== s.quality || !app.pipeline.target) app.pipeline.setQuality(s.quality);
   const sm = s.quality === 'low' ? 1024 : s.quality === 'medium' ? 2048 : 3072;
@@ -374,7 +388,7 @@ function buildProject() {
     format: 'tiny-craftsman-project', version: 3, build: BUILD, stage: STAGE, savedAt: new Date().toISOString(),
     clock: app.clock, scale: MODEL_SCALE, units: 'metres (real size of the diorama)',
     tray: TRAY,
-    terrain: { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, orig: t.orig },
+    terrain: { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, ldep: base.ldep || t.ldep, orig: t.orig },
     objects,
     settings: app.settings,
     camera: app.rig.state(),
@@ -406,6 +420,7 @@ function applyProject(p) {
   }
   t.seed = p.terrain.seed;
   t.orig.set(p.terrain.orig); t.nat.set(p.terrain.nat); t.loose.set(p.terrain.loose);
+  if (p.terrain.ldep && p.terrain.ldep.length === t.ldep.length) t.ldep.set(p.terrain.ldep); else t.ldep.fill(0.02);
   t.markAll(); t.active = null;
   app.clock = p.clock || 0;
   const rescaled = (p.scale || 12) !== MODEL_SCALE;

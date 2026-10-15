@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { K } from '../config.js';
+import { soilTint } from '../world/soilColor.js';
 
 // Scoop workflow, shared by the hand shovel and the excavator bucket:
 //   swipe on the ground  → the blade cuts a layer (bite) along the swipe until
@@ -40,6 +41,7 @@ export class ScoopTool {
     app.camera.getWorldDirection(camDir);
     this.dir.copy(imp.initialDir(p, new THREE.Vector2(camDir.x, camDir.z).normalize()));
     app.journal.begin('scoop', { tool: imp.name, bite: imp.bite }, app.clock);
+    app.terrain.resetTake();   // remember which layer the blade cuts (colour of the load)
     this.snap = app.journal.pending.snap;
     this.load = 0;
     this.path = [];
@@ -150,6 +152,8 @@ export class ScoopTool {
       return;
     }
     this.state = 'loaded';
+    this.depth = app.terrain.takenDepth();
+    if (this.imp.loadMat) soilTint(this.depth, this.imp.loadMat.color);
     this.lastP.copy(this.last);
     this.aim(this.last);
     app.onShovelState?.();
@@ -184,7 +188,7 @@ export class ScoopTool {
           const r = Math.random;
           const pos = s.bladePoint(r() * 2 - 1, r());
           const v = n.clone().multiplyScalar((0.05 + r() * 0.08) * Math.sqrt(K)).add(new THREE.Vector3((r() - 0.5) * 0.08, -0.05, (r() - 0.5) * 0.08));
-          app.particles.emit(pos, v, per, (0.0007 + Math.pow(r(), 3) * 0.0014) * K * (s.crumbScale ?? 1), 0.32);
+          app.particles.emit(pos, v, per, (0.0007 + Math.pow(r(), 3) * 0.0014) * K * (s.crumbScale ?? 1), 0.32, this.depth || 0);
           this.emitted++;
         }
         s.fill = Math.max(0, 1 - this.emitted / this.total) * (this.load / this.capacity);
@@ -212,7 +216,7 @@ export class ScoopTool {
       const rest = this.load * (this.total - this.emitted) / this.total;
       const t = app.terrain;
       const x = t.clampX(this.lastP.x), z = t.clampZ(this.lastP.z);
-      t.deposit(x, z, rest, 0.004 * K);
+      t.deposit(x, z, rest, 0.004 * K, this.depth || 0);
       this.emitted = this.total;
     }
     if (this.state === 'dump' || this.state === 'settle') {

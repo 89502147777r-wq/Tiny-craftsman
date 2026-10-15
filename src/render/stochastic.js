@@ -7,6 +7,9 @@ import * as THREE from 'three';
 // visible grid. Offsets only (no rotation), so tangent-space normal maps
 // stay valid. Mip levels come from the unshifted UV, so no seams.
 export const STOCHASTIC_GLSL = /* glsl */ `
+  uniform vec4 tcMeanMap;
+  uniform vec4 tcMeanNor;
+  uniform vec4 tcMeanArm;
   vec2 tcHash2(vec2 p) {
     vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
     q += dot(q, q.yzx + 33.33);
@@ -33,9 +36,9 @@ export const STOCHASTIC_GLSL = /* glsl */ `
   }
   // Variance-preserving blend: the mix of three samples keeps the contrast
   // of the photo (a plain average would look washed out, "like plywood").
-  vec4 tcStoch(sampler2D t, vec2 uv) {
+  // mean = average colour of the texture (computed on the CPU at load time).
+  vec4 tcStoch(sampler2D t, vec2 uv, vec4 mean) {
     vec2 dx = dFdx(uv), dy = dFdy(uv);
-    vec4 mean = textureLod(t, vec2(0.5), 12.0);
     vec4 c = (textureGrad(t, uv + tcO1, dx, dy) - mean) * tcW.x
            + (textureGrad(t, uv + tcO2, dx, dy) - mean) * tcW.y
            + (textureGrad(t, uv + tcO3, dx, dy) - mean) * tcW.z;
@@ -55,9 +58,41 @@ export const STOCHASTIC_GLSL = /* glsl */ `
 export function stochasticChunks() {
   const S = THREE.ShaderChunk;
   return {
-    map: S.map_fragment.replace('texture2D( map, vMapUv )', 'tcStoch( map, vMapUv )'),
-    normal: S.normal_fragment_maps.replace('texture2D( normalMap, vNormalMapUv )', 'tcStoch( normalMap, vNormalMapUv )'),
-    rough: S.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'tcStoch( roughnessMap, vRoughnessMapUv )'),
-    ao: S.aomap_fragment.replace('texture2D( aoMap, vAoMapUv )', 'tcStoch( aoMap, vAoMapUv )'),
+    map: S.map_fragment.replace('texture2D( map, vMapUv )', 'tcStoch( map, vMapUv, tcMeanMap )'),
+    normal: S.normal_fragment_maps.replace('texture2D( normalMap, vNormalMapUv )', 'tcStoch( normalMap, vNormalMapUv, tcMeanNor )'),
+    rough: S.roughnessmap_fragment.replace('texture2D( roughnessMap, vRoughnessMapUv )', 'tcStoch( roughnessMap, vRoughnessMapUv, tcMeanArm )'),
+    ao: S.aomap_fragment.replace('texture2D( aoMap, vAoMapUv )', 'tcStoch( aoMap, vAoMapUv, tcMeanArm )'),
+  };
+}
+
+// Average colour of a loaded texture (linear 0..1 RGBA of the stored values).
+const _means = new WeakMap();
+export function textureMean(tex) {
+  if (_means.has(tex)) return _means.get(tex);
+  const img = tex.image;
+  const out = new THREE.Vector4(0.5, 0.5, 0.5, 1);
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, 32, 32);
+    const d = g.getImageData(0, 0, 32, 32).data;
+    let r = 0, gg = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; }
+    const n = d.length / 4 * 255;
+    out.set(r / n, gg / n, b / n, 1);
+    // colour textures are sampled as sRGB → linear in the shader
+    if (tex.colorSpace === THREE.SRGBColorSpace) for (const k of ['x', 'y', 'z']) out[k] = Math.pow(out[k], 2.2);
+  } catch (e) { console.warn('texture mean', e); }
+  _means.set(tex, out);
+  return out;
+}
+
+// uniforms for the three means of a material's map / normalMap / roughness-AO map
+export function stochasticUniforms(map, nor, arm) {
+  return {
+    tcMeanMap: { value: map ? textureMean(map) : new THREE.Vector4(0.5, 0.5, 0.5, 1) },
+    tcMeanNor: { value: nor ? textureMean(nor) : new THREE.Vector4(0.5, 0.5, 1, 1) },
+    tcMeanArm: { value: arm ? textureMean(arm) : new THREE.Vector4(1, 0.8, 0, 1) },
   };
 }
