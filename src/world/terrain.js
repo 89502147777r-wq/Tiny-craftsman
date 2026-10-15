@@ -21,6 +21,10 @@ export class Terrain {
     this.nat = new Float32Array(N);
     this.loose = new Float32Array(N);
     this.orig = new Float32Array(N);
+    // for loose soil: the mean depth (m below the original surface) it was dug
+    // from — the spoil heap shows the colour of the layer it came out of
+    this.ldep = new Float32Array(N);
+    this.take = { v: 0, dv: 0 };   // volume and depth·volume taken since the last reset
     this._occ = new Float32Array(N);
     this.active = null;        // bbox that still needs relaxation
     this.meshDirty = null;     // bbox whose mesh needs refreshing
@@ -44,7 +48,7 @@ export class Terrain {
         const e = Math.min(ex, ez);
         h += 0.0012 * Math.exp(-e / 3);
         const i = iz * nx + ix;
-        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0;
+        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0; this.ldep[i] = 0;
       }
     }
     this.markAll();
@@ -135,12 +139,26 @@ export class Terrain {
   _take(i, amount) {
     let got = 0;
     const l = this.loose[i];
-    if (l > 0) { const t = Math.min(l, amount); this.loose[i] = l - t; got += t; amount -= t; }
+    if (l > 0) { const t = Math.min(l, amount); this.loose[i] = l - t; got += t; amount -= t; this.take.v += t; this.take.dv += t * this.ldep[i]; }
     if (amount > 0) {
       const room = this.nat[i] - this.floorY;
-      if (room > 0) { const t = Math.min(room, amount); this.nat[i] -= t; got += t; }
+      if (room > 0) {
+        const t = Math.min(room, amount);
+        this.take.v += t; this.take.dv += t * Math.max(0, this.orig[i] - this.nat[i] + t / 2);
+        this.nat[i] -= t; got += t;
+      }
     }
     return got;
+  }
+
+  // mean source depth of what was taken since resetTake()
+  resetTake() { this.take.v = 0; this.take.dv = 0; }
+  takenDepth() { return this.take.v > 0 ? this.take.dv / this.take.v : 0; }
+
+  _addLoose(i, add, depth) {
+    const l = this.loose[i];
+    this.ldep[i] = (this.ldep[i] * l + depth * add) / Math.max(1e-12, l + add);
+    this.loose[i] = l + add;
   }
 
   // One shovel bite. The blade (width w, length len, centred at cx,cz, facing
@@ -185,7 +203,7 @@ export class Terrain {
   }
 
   // Drop a volume of loose soil as a soft gaussian splat.
-  deposit(x, z, vol, radius) {
+  deposit(x, z, vol, radius, depth = 0) {
     if (vol <= 0) return;
     const { nx: n, cell } = this;
     const r = Math.max(radius, cell * 0.8);
@@ -202,14 +220,14 @@ export class Terrain {
       // landed outside the grid: clamp to nearest cell
       const ix = Math.min(this.rx, Math.max(0, Math.round(this.toCellX(x))));
       const iz = Math.min(this.rz, Math.max(0, Math.round(this.toCellZ(z))));
-      this.loose[iz * n + ix] += vol / this.cellArea;
+      this._addLoose(iz * n + ix, vol / this.cellArea, depth);
       this._touch(ix, iz, ix, iz);
       return;
     }
     const k = vol / (wsum * this.cellArea);
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
       const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
-      this.loose[iz * n + ix] += k * Math.exp(-(dx * dx + dz * dz) * inv);
+      this._addLoose(iz * n + ix, k * Math.exp(-(dx * dx + dz * dz) * inv), depth);
     }
     this._touch(ix0, iz0, ix1, iz1);
   }
@@ -225,7 +243,7 @@ export class Terrain {
   // Unconditionally stable, exactly volume-conserving.
   _relaxOnce() {
     const a = this.active;
-    const { nx: n, cell, nat, loose, rx, rz } = this;
+    const { nx: n, cell, nat, loose, ldep, orig, rx, rz } = this;
     const tL = REPOSE_LOOSE, tN = REPOSE_NATIVE;
     const fwd = (this._sweep = !this._sweep);
     const D1 = cell, D2 = cell * Math.SQRT2;
@@ -250,12 +268,19 @@ export class Terrain {
           let moved = 0;
           // loose soil slides until the pair is at the angle of repose
           const mL = Math.min((ad - lim) * 0.5, loose[src]);
-          if (mL > 0) { loose[src] -= mL; loose[dst] += mL; moved += mL; }
+          if (mL > 0) {
+            ldep[dst] = (ldep[dst] * loose[dst] + ldep[src] * mL) / (loose[dst] + mL);
+            loose[src] -= mL; loose[dst] += mL; moved += mL;
+          }
           // an over-steep wall of native ground crumbles into loose soil
           const limN = tN * dist, adN = ad - 2 * mL;
           if (adN > limN) {
             const mN = Math.min((adN - limN) * 0.5, nat[src] - this.floorY);
-            if (mN > 0) { nat[src] -= mN; loose[dst] += mN; moved += mN; }
+            if (mN > 0) {
+              const dN = orig[src] - nat[src] + mN / 2;
+              ldep[dst] = (ldep[dst] * loose[dst] + dN * mN) / (loose[dst] + mN);
+              nat[src] -= mN; loose[dst] += mN; moved += mN;
+            }
           }
           if (moved > 1e-7) {
             const ax = ix < jx ? ix : jx, bx = ix < jx ? jx : ix, az = iz < jz ? iz : jz, bz = iz < jz ? jz : iz;
@@ -320,7 +345,7 @@ export class Terrain {
   buildMesh(material) {
     const { nx: n, nz } = this;
     const N = n * nz;
-    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 3);
+    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4);
     for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < n; ix++) {
       const i = iz * n + ix;
       pos[i * 3] = this.toWorldX(ix); pos[i * 3 + 2] = this.toWorldZ(iz);
@@ -339,7 +364,7 @@ export class Terrain {
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     this.aPos = new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage);
     this.aNor = new THREE.BufferAttribute(nor, 3).setUsage(THREE.DynamicDrawUsage);
-    this.aSoil = new THREE.BufferAttribute(soil, 3).setUsage(THREE.DynamicDrawUsage);
+    this.aSoil = new THREE.BufferAttribute(soil, 4).setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('position', this.aPos);
     g.setAttribute('normal', this.aNor);
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
@@ -383,9 +408,10 @@ export class Terrain {
       m += H(ix + 2, iz + 2) + H(ix - 2, iz - 2) + H(ix - 2, iz + 2) + H(ix + 2, iz - 2);
       const cav = (m / 8 - h) / 0.006;
       occ[i] = cav < 0 ? 0 : cav > 1 ? 1 : cav;
-      soil[i * 3] = Math.max(0, orig[i] - nat[i]);
-      soil[i * 3 + 1] = loose[i];
-      soil[i * 3 + 2] = occ[i];
+      soil[i * 4] = Math.max(0, orig[i] - nat[i]);
+      soil[i * 4 + 1] = loose[i];
+      soil[i * 4 + 2] = occ[i];
+      soil[i * 4 + 3] = this.ldep[i];
     }
     const start = oz0 * n, count = (oz1 - oz0 + 1) * n;
     // ranges pile up until three uploads them (several updates between two frames
@@ -401,10 +427,11 @@ export class Terrain {
   }
 
   // ---- snapshots (undo, save, Blender export) -------------------------------
-  snapshot() { return { nat: this.nat.slice(), loose: this.loose.slice() }; }
+  snapshot() { return { nat: this.nat.slice(), loose: this.loose.slice(), ldep: this.ldep.slice() }; }
 
   restore(s) {
     this.nat.set(s.nat); this.loose.set(s.loose);
+    if (s.ldep) this.ldep.set(s.ldep);
     this.active = null;
     this.markAll(); this.active = null;
   }

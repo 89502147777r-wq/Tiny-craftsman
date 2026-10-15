@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../core/rand.js';
 import { variant } from './assets.js';
+import { soilTint } from './soilColor.js';
 
 const G = -9.81;
 
@@ -19,7 +20,8 @@ export class SoilParticles {
       p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.8, p.getZ(i) * k);
     }
     geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ map: variant(tex.wall.diff, 0.15, 0.15), roughness: 1, color: 0x8d7d6d });
+    const mat = new THREE.MeshStandardMaterial({ map: variant(tex.wall.diff, 0.15, 0.15), roughness: 1, color: 0xffffff });
+    this._col = new THREE.Color();
     this.mesh = new THREE.InstancedMesh(geo, mat, max);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.castShadow = true;
@@ -41,12 +43,12 @@ export class SoilParticles {
 
   get busy() { return this.items.length > 0; }
 
-  emit(pos, vel, vol, size, keep = 0.25) {
-    if (this.items.length >= this.max) { this.terrain.deposit(pos.x, pos.z, vol, 0.002); return; }
+  emit(pos, vel, vol, size, keep = 0.25, depth = 0) {
+    if (this.items.length >= this.max) { this.terrain.deposit(pos.x, pos.z, vol, 0.002, depth); return; }
     const r = this.rnd;
     this.items.push({
       p: pos.clone(), v: vel.clone(), vol, size: size * (0.6 + r() * 0.8),
-      rot: new THREE.Euler(r() * 6, r() * 6, r() * 6), spin: (r() - 0.5) * 30, keep: r() < keep, age: 0,
+      rot: new THREE.Euler(r() * 6, r() * 6, r() * 6), spin: (r() - 0.5) * 30, keep: r() < keep, age: 0, depth,
     });
   }
 
@@ -58,9 +60,9 @@ export class SoilParticles {
   }
 
   _land(it, x, z) {
-    this.terrain.deposit(x, z, it.vol, Math.max(0.0012, it.size * 1.2));
+    this.terrain.deposit(x, z, it.vol, Math.max(0.0012, it.size * 1.2), it.depth || 0);
     if (it.keep && this.terrain.inside(x, z) && this.clodList.length < this.clodMax) {
-      this.clodList.push({ x, z, size: it.size, rot: it.rot.clone(), sink: 0.35 + this.rnd() * 0.35 });
+      this.clodList.push({ x, z, size: it.size, rot: it.rot.clone(), sink: 0.35 + this.rnd() * 0.35, depth: it.depth || 0 });
       this._seenVersion = -1;
     }
   }
@@ -92,7 +94,9 @@ export class SoilParticles {
       q.setFromEuler(it.rot);
       s.setScalar(it.size);
       this.mesh.setMatrixAt(i, m.compose(it.p, q, s));
+      this.mesh.setColorAt(i, soilTint(it.depth || 0, this._col));
     }
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     this.mesh.count = items.length;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (t.version !== this._seenVersion) this._refreshClods();
@@ -116,7 +120,9 @@ export class SoilParticles {
       q.setFromEuler(c.rot);
       s.setScalar(c.size);
       this.clods.setMatrixAt(i, m.compose(p, q, s));
+      this.clods.setColorAt(i, soilTint(c.depth || 0, this._col));
     }
+    if (this.clods.instanceColor) this.clods.instanceColor.needsUpdate = true;
     this.clods.count = w;
     this.clods.instanceMatrix.needsUpdate = true;
   }
