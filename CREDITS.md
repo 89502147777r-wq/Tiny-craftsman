@@ -46,6 +46,7 @@ glTF-Transform (текстуры WebP ≤ 512 px, геометрия meshopt), �
 | Компонент | Автор | Лицензия |
 |---|---|---|
 | three.js r180 (`vendor/three/`, включая `addons/loaders/HDRLoader.js`, `addons/loaders/GLTFLoader.js`, `addons/utils/BufferGeometryUtils.js`) | three.js authors | MIT (`vendor/three/LICENSE`) |
+| mp4-muxer 5.2.2 (`vendor/mp4-muxer/`) — сборка MP4 для записи видео | Vanilagy | MIT (`vendor/mp4-muxer/LICENSE`) |
 | meshoptimizer decoder (`vendor/three/addons/libs/meshopt_decoder.module.js`) | Arseny Kapoulkine | MIT |
 
 ## Сгенерировано процедурно (наше, без внешних источников)
