@@ -243,3 +243,4 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .fan-item.recon .dot { fill: #fff; }
 .title i { font-style: normal; }
 @media (max-width: 430px) { .title .stage { display: none; } }
+.vs-btns button:disabled { opacity: .4; }

@@ -112,6 +112,19 @@ for (const variant of ['full', 'light']) {
 }
 console.log('—', sec());
 
+// ---- Safari-like MP4 (the phone's uptime as an empty lead-in edit) is repaired -------------------
+try {
+  const f = path.join(os.tmpdir(), 'tc-uptime.mp4');
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=d=3:s=160x120:r=30', '-f', 'lavfi', '-i', 'sine=d=3', '-c:v', 'libx264', '-c:a', 'aac', '-output_ts_offset', '3558244', f]);
+  const probe = () => +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString().trim();
+  const { fixMp4Times, mp4Times } = await import('../src/core/mp4fix.js');
+  const buf = new Uint8Array(fs.readFileSync(f)), before = mp4Times(buf);
+  const note = fixMp4Times(buf);
+  fs.writeFileSync(f, buf);
+  const after = probe();
+  check('MP4 with the phone uptime gets its real length', Math.abs(after - 3) < 0.2, `${before} → ${after.toFixed(2)} s (${note})`);
+} catch (e) { console.log('      (MP4 repair check skipped: no ffmpeg)'); }
+
 // ---- 2. Chromium: play ------------------------------------------------------------------------
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
