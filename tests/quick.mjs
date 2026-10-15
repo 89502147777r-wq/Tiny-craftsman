@@ -198,6 +198,23 @@ console.log('—', sec());
       let ce = 0; for (let i = 0; i < cs.length; i++) ce = Math.max(ce, Math.abs(cs[i] - t.conc[i]));
       out.conc = { vol: (t.concVolume() - c0) / h.poured, leak: leak / all, undo: gone && ce < 1e-9, m3: +(h.poured * 42.875).toFixed(3) };
     }
+    // spilled concrete outside: the shovel takes it (only it, not the soil) and tips it into the form
+    {
+      const o = tc.objects.all('outline').find((x) => x.kind === 'rect');
+      tc.setTool('hose'); const h = tc.activeTool();
+      h.down(new V(0.3, 0.1, 0.5)); tc.simulate(0.6); h.up();
+      for (let i = 0; i < 300 && tc.busy(); i++) tc.simulate(1 / 15);
+      const c0 = t.concVolume(), s0 = t.totalVolume(), at0 = t.conc[t.index(0.3, 0.5)];
+      tc.setTool('shovel'); const sh = tc.shovelTool;
+      sh.down(new V(0.28, 0.1, 0.5)); for (let s = 0; s < 1 && sh.state === 'dig'; s += 0.04) sh.move(new V(0.28 + 0.06 * s, 0.1, 0.5)); sh.up();
+      const loaded = sh.mat === 9 && sh.load > 0;
+      if (sh.state === 'loaded') { sh.down(new V((o.x0 + o.x1) / 2, 0.1, (o.z0 + o.z1) / 2)); sh.up(); }
+      for (let i = 0; i < 400 && sh.state !== 'idle'; i++) tc.simulate(0.05);
+      const c1 = t.concVolume(), cs = t.conc.slice();
+      tc.undo(); const back = Math.abs(t.conc[t.index(0.3, 0.5)] - at0) < 1e-9; tc.redo();
+      let ce = 0; for (let i = 0; i < cs.length; i++) ce = Math.max(ce, Math.abs(cs[i] - t.conc[i]));
+      out.shovelConc = { loaded, took: t.conc[t.index(0.3, 0.5)] < at0 * 0.5, vol: Math.abs(c1 / c0 - 1), soil: Math.abs(t.totalVolume() - s0) * 1e9, undo: back && ce < 1e-9 };
+    }
     out.objects = { outlines: tc.objects.all('outline').length, forms: tc.objects.all('form').length, cages: tc.objects.all('cage').length, tied: tc.objects.all('cage').some((c) => c.tied) };
     tc.setTool('camera');
     await tc.saveNow();
@@ -212,6 +229,7 @@ console.log('—', sec());
     `${play.rake.h0.toFixed(1)} → ${play.rake.h1.toFixed(1)} mm, ${play.rake.drift.toFixed(2)} mm3, ${play.rake.strokes} strokes`);
   check('sand: heap of the ordered volume, shovel carries sand, layers undo exactly', play.mats.group === 'sand' && Math.abs(play.mats.heap - 1) < 1e-4 && play.mats.sand > 0.98 && play.mats.sand < 1.0001 && play.mats.loadSand && play.mats.dumpedSand && play.mats.undo && Math.abs(play.mats.drift) < 1e-4, JSON.stringify(play.mats));
   check('concrete: pumped volume exact, held by the formwork, undo exact', Math.abs(play.conc.vol - 1) < 1e-4 && play.conc.leak < 0.001 && play.conc.undo, JSON.stringify(play.conc));
+  check('shovel takes spilled fresh concrete and tips it into the form, volume exact, undo', play.shovelConc.loaded && play.shovelConc.took && play.shovelConc.vol < 1e-6 && play.shovelConc.undo, JSON.stringify(play.shovelConc));
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 8 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));
   await page.reload();
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });

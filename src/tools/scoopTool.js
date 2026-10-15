@@ -4,6 +4,8 @@ import { materialTint } from '../world/soilColor.js';
 
 // crumb size and how many stay visible on top, per material (soil, sand, 5–20, 20–40)
 const CRUMB = [1, 0.55, 0.8, 1.45], KEEP = [0.32, 0, 0, 0];   // only soil leaves clods on top
+const CONC = 9;              // fresh concrete on the blade (material id of the tint)
+CRUMB[CONC] = 1.3; KEEP[CONC] = 0;
 
 // Scoop workflow, shared by the hand shovel and the excavator bucket:
 //   swipe on the ground  → the blade cuts a layer (bite) along the swipe until
@@ -157,9 +159,15 @@ export class ScoopTool {
     this.state = 'loaded';
     this.depth = app.terrain.takenDepth();
     // what is on the blade: share of each material (cut top-down: sand, stone, soil…)
-    const m = app.terrain.takenMaterials(), sum = m.reduce((a, b) => a + b, 0) || 1;
+    const m = app.terrain.takenMaterials();
+    while (m.length <= CONC) m.push(0);
+    m[CONC] = app.terrain.takenConcrete();   // fresh concrete: poured back as concrete
+    const sum = m.reduce((a, b) => a + b, 0) || 1;
     this.share = m.map((x) => x / sum);
     this.mat = this.share.indexOf(Math.max(...this.share));
+    const soil = this.share.slice(0, CONC);
+    this.soilMat = soil.indexOf(Math.max(...soil));
+    this.concOut = 0;
     if (this.imp.loadMat) materialTint(this.mat, this.depth, this.imp.loadMat.color);
     this.lastP.copy(this.last);
     this.aim(this.last);
@@ -180,6 +188,15 @@ export class ScoopTool {
   }
 
   _rest(p) { this.imp.poseRest(p, this.dir); }
+
+  // the concrete on the blade slides off as a soft lump where it is tipped
+  _dropConc() {
+    if (!(this.concOut > 0)) return;
+    const t = this.app.terrain;
+    t.depositConc(t.clampX(this.lastP.x), t.clampZ(this.lastP.z), this.concOut, 0.0045 * K, 1);
+    t.cActive = null;
+    this.concOut = 0;
+  }
 
   // material of the crumb at fraction f of the load: the main material comes out
   // last, so a shovel of sand leaves sand on top even with some soil in it
@@ -206,10 +223,18 @@ export class ScoopTool {
           const v = n.clone().multiplyScalar((0.05 + r() * 0.08) * Math.sqrt(K)).add(new THREE.Vector3((r() - 0.5) * 0.08, -0.05, (r() - 0.5) * 0.08));
           // the load is poured material by material in proportion
           const mat = this._matAt(this.emitted / this.total);
+          if (mat === CONC) {
+            // concrete falls as a lump (its volume goes in below); these are only splashes
+            this.concOut += per;
+            if (r() < 0.35) app.particles.emit(pos, v, 0, (0.0009 + Math.pow(r(), 2) * 0.0016) * K, 0, 0, CONC);
+            this.emitted++;
+            continue;
+          }
           app.particles.emit(pos, v, per, (0.0007 + Math.pow(r(), 3) * 0.0014) * K * (s.crumbScale ?? 1) * CRUMB[mat], KEEP[mat], this.depth || 0, mat);
           this.emitted++;
         }
         s.fill = Math.max(0, 1 - this.emitted / this.total) * (this.load / this.capacity);
+        this._dropConc();
       }
       if (this.emitted >= this.total) {
         this.state = 'settle';
@@ -234,7 +259,10 @@ export class ScoopTool {
       const rest = this.load * (this.total - this.emitted) / this.total;
       const t = app.terrain;
       const x = t.clampX(this.lastP.x), z = t.clampZ(this.lastP.z);
-      t.deposit(x, z, rest, 0.004 * K, this.depth || 0, this.mat || 0);
+      const rc = rest * (this.share?.[CONC] || 0);
+      this.concOut = (this.concOut || 0) + rc;
+      this._dropConc();
+      if (rest - rc > 0) t.deposit(x, z, rest - rc, 0.004 * K, this.depth || 0, this.soilMat || 0);
       this.emitted = this.total;
     }
     if (this.state === 'dump' || this.state === 'settle') {
