@@ -105,10 +105,16 @@ blender --python tools/blender/tiny_craftsman_import.py -- проект.json --a
 ## Разработка
 
 ```
+node tests/quick.mjs                 # быстрая проверка перед публикацией (~3 мин, свой сервер, без скриншотов):
+                                     # запуск без ошибок, шейдеры грунта (полный и облегчённый, + glslangValidator),
+                                     # копание, объём, цвет отвала, отмена, опалубка/каркас, сохранение;
+                                     # WEBKIT=<папка браузеров playwright> — ещё и движок Safari
 python3 -m http.server 8080          # открыть http://localhost:8080
 node tests/e2e.mjs http://localhost:8080/ docs/screenshots/stage1      # касания: копание, отмена, сохранение, разметка
 node tests/stage3.mjs http://localhost:8080/ docs/screenshots/stage3   # этап 3: копание, опалубка, арматура, камера, фоны, перенос проектов (и техника, если включена)
 ```
+
+Порядок: быстрая проверка → публикация → полные тесты (`e2e`, `stage3`, ~30–40 мин) уже после, со скриншотами.
 
 URL-параметры: `?quality=low|medium|high`, `?dpr=1`.
 
