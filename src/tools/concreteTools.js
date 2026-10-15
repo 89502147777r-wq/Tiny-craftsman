@@ -45,9 +45,6 @@ class ConcreteTool {
   up() { if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; this.app.sfx.scrapeStop(); this.gear.pump.setStream(false); } }
   interrupt() { this.up(); }
 
-  // where the concrete is worked right now (the flow is computed there while working)
-  region() { return null; }
-
   update(dt) {
     if (this.state === 'settle') {
       this.settleT += dt;
@@ -90,11 +87,6 @@ class ConcreteTool {
 export class HoseTool extends ConcreteTool {
   constructor(app) { super(app, 'hose'); }
 
-  region() {
-    if (this.state !== 'work') return null;
-    const sp = this.gear.pump.ready ? this.gear.pump.spout() : this.p;
-    return this.app.terrain.cellBox(sp.x, sp.z, 0.13);
-  }
 
   down(p) {
     if (this.state !== 'idle') return true;
@@ -119,7 +111,8 @@ export class HoseTool extends ConcreteTool {
     // hose flows out fast (it is pushed by the stream), the rest creeps
     // it lands under the spout (which swings a little behind the finger)
     const at = this.gear.pump.ready ? this.gear.pump.spout() : this.p;
-    t.pourConc(t.clampX(at.x), t.clampZ(at.z), vol, 0.11);
+    // the stream lands as a splat ~5 cm (real) across; the flow spreads it
+    t.depositConc(t.clampX(at.x), t.clampZ(at.z), vol, 0.014);
     // full to the top of the formwork here? say so once per pour
     if (!this.warned) {
       const i = t.index(at.x, at.z), b = t.cellBox(at.x, at.z, 0.12);
@@ -185,7 +178,6 @@ export class ScreedTool extends ConcreteTool {
       q.lerpVectors(this.last, p, k / n);
       if (t.inside(q.x, q.z)) moved += t.screedStep(this.stroke, q.x, q.z, this.dir.x, this.dir.y);
     }
-    t.concRelax(1);
     this.stroke.moved += moved;
     this.app.sfx.scrapeLevel(Math.min(0.7, 0.1 + moved * 3e5));
     this.last.copy(p);

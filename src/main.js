@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, M_SAND, M_G5, M_G20, CONCRETE } from './config.js';
+import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, M_SAND, M_G5, M_G20, CONCRETE, PUMP } from './config.js';
 import { loadAssets } from './world/assets.js';
 import { buildWorkshop } from './world/workshop.js';
 import { Terrain } from './world/terrain.js';
@@ -60,6 +60,7 @@ async function main() {
   if ((stored.build || 0) < 9) delete stored.target; // BUILD 9: pits are 6 shovel passes deep
   if (stored.backdrop === 'photo1' || stored.backdrop === 'photo2') stored.backdrop = 'posters'; // two prints on the table since BUILD 5
   app.settings = { ...DEFAULT_SETTINGS, ...stored, build: BUILD };
+  if (!PUMP.includes(app.settings.pump)) app.settings.pump = DEFAULT_SETTINGS.pump;   // BUILD 23: real pump rates
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
   const params = new URLSearchParams(location.search);
   if (params.get('quality')) app.settings.quality = params.get('quality');
@@ -209,12 +210,7 @@ function step(dt, time, render = true) {
   // fresh concrete creeps: a few passes per frame
   terrain.clock = app.clock;
   // (only while a concrete action is open: what it does to the concrete belongs to its journal entry)
-  const ct = Object.values(app.concreteTools).find((c) => c.busy);
-  if (ct) {
-    // while pouring only around the hose (cheap); afterwards the whole fresh area settles
-    const region = ct.region();
-    for (let i = 0; i < 8 && (region || terrain.cActive) && performance.now() - t0 < budget * 1.6; i++) terrain.concRelax(1, undefined, undefined, region);
-  }
+  if (Object.values(app.concreteTools).some((c) => c.busy)) terrain.concStep(dt, 2);   // only the tiles where it moves
   terrain.updateMesh();
   app.grass.update();
   app.outlineView.update();

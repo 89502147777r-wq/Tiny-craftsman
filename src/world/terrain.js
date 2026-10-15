@@ -46,7 +46,11 @@ export class Terrain {
     // formwork boards: top height of the board standing on a cell (0 = none);
     // concrete cannot flow into these cells
     this.wall = new Float32Array(N);
-    this.cActive = null;       // bbox where concrete is still flowing
+    // concrete is simulated tile by tile (16 × 16 cells): only tiles where it moves
+    this.TS = 16; this.tnx = Math.ceil(this.nx / 16); this.tnz = Math.ceil(this.nz / 16);
+    this._tAct = new Uint8Array(this.tnx * this.tnz); this._tList = [];
+    this.meshTiles = new Set();
+    this.vib = new Float32Array(N);   // vibrated until (project clock)
     // taken since the last reset: per material, and soil depth·volume
     this.take = { v: 0, dv: 0, m: new Float64Array(MATERIALS.length) };
     this._seg = { m: new Uint8Array(LAYERS + 1), h: new Float64Array(LAYERS + 1) };
@@ -480,6 +484,12 @@ export class Terrain {
     this.version++;
   }
 
+  // is concrete still moving somewhere (null = at rest); setting it to null stops it
+  get cActive() { return this._tList && this._tList.length ? this._tList : null; }
+  set cActive(v) { if (!v && this._tList) { for (const t of this._tList) this._tAct[t] = 0; this._tList.length = 0; } }
+
+  _tileOn(t) { if (!this._tAct[t]) { this._tAct[t] = 1; this._tList.push(t); } }
+
   // Mean depth below natural ground over the cells for which inside(x, z) holds,
   // scanning only the given bounding box.
   regionDepth(bb, inside) {
@@ -567,9 +577,42 @@ export class Terrain {
   }
 
   updateMesh() {
-    const b = this.meshDirty;
-    if (!b || !this.mesh) return false;
-    this.meshDirty = null;
+    if (!this.mesh) return false;
+    const rects = [];
+    if (this.meshDirty) { rects.push(this.meshDirty); this.meshDirty = null; }
+    // concrete tiles that moved (each on its own: far apart they would make one huge box)
+    for (const t of this.meshTiles) {
+      const tx = t % this.tnx, tz = (t / this.tnx) | 0, TS = this.TS;
+      rects.push({ x0: tx * TS, z0: tz * TS, x1: Math.min(this.rx, tx * TS + TS - 1), z1: Math.min(this.rz, tz * TS + TS - 1) });
+    }
+    this.meshTiles.clear();
+    if (!rects.length) return false;
+    // several updates before an upload add up: one span of cells per row
+    const n = this.nx, attrs = [this.aPos, this.aNor, this.aSoil, this.aMat, this.aConc];
+    if (!this._rowLo) { this._rowLo = new Int32Array(this.nz).fill(1e9); this._rowHi = new Int32Array(this.nz).fill(-1); this._rowsUsed = false; }
+    const lo = this._rowLo, hi = this._rowHi;
+    if (this._rowsUsed && !this.aPos.updateRanges.length) { lo.fill(1e9); hi.fill(-1); }   // uploaded: start over
+    this._rowsUsed = true;
+    for (const b of rects) {
+      const r = this._updateRect(b);
+      for (let z = r.z0; z <= r.z1; z++) { if (r.x0 < lo[z]) lo[z] = r.x0; if (r.x1 > hi[z]) hi[z] = r.x1; }
+    }
+    for (const a of attrs) { a.clearUpdateRanges(); a.needsUpdate = true; }
+    // runs of rows: a full-width block when wide, else a range per row
+    for (let z = 0; z < this.nz; z++) {
+      if (hi[z] < 0) continue;
+      if (hi[z] - lo[z] > n * 0.5) {
+        let z1 = z; while (z1 + 1 < this.nz && hi[z1 + 1] >= 0 && hi[z1 + 1] - lo[z1 + 1] > n * 0.5) z1++;
+        for (const a of attrs) a.addUpdateRange(z * n * a.itemSize, (z1 - z + 1) * n * a.itemSize);
+        z = z1;
+      } else for (const a of attrs) a.addUpdateRange((z * n + lo[z]) * a.itemSize, (hi[z] - lo[z] + 1) * a.itemSize);
+    }
+    return true;
+  }
+
+  // recompute the mesh data of a rectangle of cells (with a margin for normals and
+  // the cavity term); returns the rectangle that changed
+  _updateRect(b) {
     const { nx: n, cell, nat, loose, orig, rx, rz, conc, cTime, cSm } = this;
     const pos = this.aPos.array, nor = this.aNor.array, soil = this.aSoil.array, mats = this.aMat.array, cc = this.aConc.array, { lH, lM, lN } = this;
     const occ = this._occ;
@@ -607,20 +650,7 @@ export class Terrain {
       mats[i * 3] = f1 * 500; mats[i * 3 + 1] = f2 * 500; mats[i * 3 + 2] = f3 * 500;
       cc[i * 3] = conc[i]; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
     }
-    // upload only the changed rectangle, row by row (a whole-width band of rows was
-    // megabytes per frame on phones). Several updates between two uploads add up.
-    const attrs = [this.aPos, this.aNor, this.aSoil, this.aMat, this.aConc];
-    const box = this._pend && this.aPos.updateRanges.length ? grow(this._pend, ox0, oz0, ox1, oz1, rx, rz) : { x0: ox0, z0: oz0, x1: ox1, z1: oz1 };
-    this._pend = box;
-    const w = box.x1 - box.x0 + 1, rows = box.z1 - box.z0 + 1;
-    for (const a of attrs) {
-      const k = a.itemSize;
-      a.clearUpdateRanges();
-      if (w > n * 0.5 || rows > 300) a.addUpdateRange(box.z0 * n * k, rows * n * k);
-      else for (let z = box.z0; z <= box.z1; z++) a.addUpdateRange((z * n + box.x0) * k, w * k);
-      a.needsUpdate = true;
-    }
-    return true;
+    return { x0: ox0, z0: oz0, x1: ox1, z1: oz1 };
   }
 
   // ---- concrete --------------------------------------------------------------------------
@@ -657,9 +687,13 @@ export class Terrain {
     this.conc[i] = t;
   }
 
+  // wake the concrete in a rectangle of cells (and redraw it)
   _concTouch(ix0, iz0, ix1, iz1) {
-    this.cActive = grow(this.cActive, ix0 - 1, iz0 - 1, ix1 + 1, iz1 + 1, this.rx, this.rz);
-    this._markMesh(ix0 - 1, iz0 - 1, ix1 + 1, iz1 + 1);
+    const TS = this.TS;
+    const tx0 = Math.max(0, Math.floor((ix0 - 1) / TS)), tx1 = Math.min(this.tnx - 1, Math.floor((ix1 + 1) / TS));
+    const tz0 = Math.max(0, Math.floor((iz0 - 1) / TS)), tz1 = Math.min(this.tnz - 1, Math.floor((iz1 + 1) / TS));
+    for (let tz = tz0; tz <= tz1; tz++) for (let tx = tx0; tx <= tx1; tx++) { const t = tz * this.tnx + tx; this._tileOn(t); this.meshTiles.add(t); }
+    this.version++;
   }
 
   // pour a volume of fresh concrete as a soft splat (never into a board)
@@ -687,138 +721,162 @@ export class Terrain {
     this.version++;
   }
 
-  // Pumped concrete spreads at once into a puddle: a very flat cone around the hose
-  // (slope = the yield), filling the lowest places it can reach — held by boards and
-  // by ground higher than the concrete. The level of the cone is found so that
-  // exactly `vol` is added. maxR limits how far one frame's concrete gets.
-  pourConc(x, z, vol, maxR = 0.3) {
-    if (vol <= 0) return;
-    const { nx: n, cell, wall, rx, rz } = this;
-    const c0x = Math.round(this.toCellX(x)), c0z = Math.round(this.toCellZ(z));
-    if (c0x < 0 || c0x > rx || c0z < 0 || c0z > rz) return;
-    const R = Math.ceil(maxR / cell), Y = CONCRETE.yield * cell;
-    const buf = (this._pour ||= { i: new Int32Array(200000), d: new Float32Array(200000), s: new Float32Array(200000), seen: new Uint32Array(this.nat.length), stamp: 0 });
-    // cells connected to the hose (not through boards), wet under a level L0
-    const collect = (L0) => {
-      const stamp = ++buf.stamp;
-      let head = 0, m = 0;
-      const i0 = c0z * n + c0x;
-      if (wall[i0]) return 0;
-      buf.i[m] = i0; buf.seen[i0] = stamp; m++;
-      while (head < m && m < buf.i.length - 8) {
-        const i = buf.i[head++], ix = i % n, iz = (i / n) | 0;
-        for (let k = 0; k < 4; k++) {
-          const jx = ix + (k === 0 ? 1 : k === 1 ? -1 : 0), jz = iz + (k === 2 ? 1 : k === 3 ? -1 : 0);
-          if (jx < 0 || jx > rx || jz < 0 || jz > rz || Math.abs(jx - c0x) > R || Math.abs(jz - c0z) > R) continue;
-          const j = jz * n + jx;
-          if (buf.seen[j] === stamp || wall[j]) continue;
-          buf.seen[j] = stamp;
-          const d = Math.hypot(jx - c0x, jz - c0z);
-          if (d > R) continue;
-          if (L0 !== null && L0 - Y * d <= this.hAt(j)) continue;   // concrete does not climb over it
-          buf.i[m++] = j;
-        }
-      }
-      for (let k = 0; k < m; k++) { const i = buf.i[k]; buf.d[k] = Math.hypot(i % n - c0x, ((i / n) | 0) - c0z); buf.s[k] = this.hAt(i); }
-      return m;
-    };
-    const solve = (m) => {
-      let lo = 1e9, hi = -1e9;
-      for (let k = 0; k < m; k++) { lo = Math.min(lo, buf.s[k] + Y * buf.d[k]); hi = Math.max(hi, buf.s[k] + Y * buf.d[k]); }
-      const need = vol / this.cellArea;
-      hi += need;
-      for (let it = 0; it < 22; it++) {   // 22 halvings: well below a micron
-        const L = (lo + hi) / 2;
-        let v = 0;
-        for (let k = 0; k < m; k++) { const a = L - Y * buf.d[k] - buf.s[k]; if (a > 0) v += a; }
-        if (v > need) hi = L; else lo = L;
-      }
-      return (lo + hi) / 2;
-    };
-    let m = collect(null), L0 = solve(m);
-    for (let pass = 0; pass < 2; pass++) { m = collect(L0); if (!m) return; L0 = solve(m); }
-    let sum = 0;
-    for (let k = 0; k < m; k++) { const a = L0 - Y * buf.d[k] - buf.s[k]; if (a > 0) sum += a; }
-    if (sum <= 0) return;
-    const scale = vol / this.cellArea / sum;   // exact volume
-    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
-    for (let k = 0; k < m; k++) {
-      const a = (L0 - Y * buf.d[k] - buf.s[k]) * scale;
-      if (a <= 0) continue;
-      const i = buf.i[k], ix = i % n, iz = (i / n) | 0;
-      this._concAdd(i, a);
-      if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
-    }
-    if (x1 >= 0) this._concTouch(x0, z0, x1, z1);
-  }
-
-  // Viscous spreading of fresh concrete (Gauss–Seidel like the soil, but with a
-  // small yield slope and only a share of the excess per pass, so it creeps).
-  // Exactly volume-conserving. region (cell bbox) limits it, e.g. the vibrator.
-  concRelax(iterations = 1, yieldTan = CONCRETE.yield, rate = CONCRETE.rate, region = null, hc = CONCRETE.hc) {
-    for (let it = 0; it < iterations; it++) {
-      const a = region || this.cActive;
-      if (!a) return false;
-      const { nx: n, cell, nat, loose, conc, wall, cTime, cSm, rx, rz } = this;
-      const D1 = cell, D2 = cell * Math.SQRT2, stiffT = (this.clock || 0) - CONCRETE.stiff * CONCRETE.cure;
+  // The flow of fresh concrete: a Bingham fluid in the thin-layer (lubrication)
+  // approximation. Between two cells the flux is that of a layer of thickness h under
+  // the surface slope: no flow while the yield stress holds it (h ≤ h0 = tau / (rho g
+  // slope)), above it q = rho g h³/(3 mu) (1 − 3/2 r + 1/2 r³) · slope, r = h0 / h.
+  // It is applied pairwise and implicitly (stable for any step, exactly conserving).
+  // Units: real ones (the model is 1:3.5). Only the tiles where something moves are
+  // computed; a tile wakes its neighbours when concrete crosses into them.
+  concStep(dt, substeps = 2) {
+    if (!this._tList.length) return false;
+    const { nx: n, cell, nat, loose, conc, wall, cTime, cSm, cY, vib, rx, rz, TS, tnx } = this;
+    const S = 3.5, G = 9.81, C = CONCRETE, clock = this.clock || 0;
+    const setT = C.stiff * C.cure, stiffT = clock - setT;
+    const h = dt / substeps;
+    for (let sub = 0; sub < substeps; sub++) {
+      const list = this._tList.slice();
+      for (const t of list) this._tAct[t] = 0;
+      this._tList.length = 0;
+      this._coarseFlow(list, h, clock, setT);
       const fwd = (this._csweep = !this._csweep), NB = fwd ? NB_FWD : NB_BWD;
-      let mx0 = 1e9, mz0 = 1e9, mx1 = -1, mz1 = -1;
-      for (let zz = a.z0; zz <= a.z1; zz++) {
-        const iz = fwd ? zz : a.z1 - (zz - a.z0);
-        for (let xx = a.x0; xx <= a.x1; xx++) {
-          const ix = fwd ? xx : a.x1 - (xx - a.x0);
-          const i = iz * n + ix;
-          if (wall[i]) continue;
-          for (let k = 0; k < 4; k++) {
-            const jx = ix + NB[k][0], jz = iz + NB[k][1];
-            if (jx < 0 || jx > rx || jz < 0 || jz > rz) continue;
-            const j = jz * n + jx;
-            if (wall[j]) {
-              // over the top of a board (more than ~1 cm real above it): it slops over and
-              // falls down the outside in lumps — collected per bit of the board, dropped
-              // as a blob once there is enough for one
-              const si = nat[i] + loose[i] + conc[i];
-              if (conc[i] > 0 && si > wall[j] + 0.003 && cTime[i] >= stiffT) {
-                let kx = jx, kz = jz;
-                for (let s = 0; s < 8 && kx >= 0 && kx <= rx && kz >= 0 && kz <= rz && wall[kz * n + kx]; s++) { kx += NB[k][0]; kz += NB[k][1]; }
-                if (kx < 0 || kx > rx || kz < 0 || kz > rz) continue;
-                const m = Math.min((si - wall[j] - 0.002) * 0.5 * rate, conc[i]);
-                if (m > 1e-9) {
-                  conc[i] -= m;
-                  this._overflow(kx, kz, m * this.cellArea, NB[k][0], NB[k][1]);
-                  if (ix < mx0) mx0 = ix; if (ix > mx1) mx1 = ix; if (iz < mz0) mz0 = iz; if (iz > mz1) mz1 = iz;
+      for (const t of list) {
+        const tx = t % tnx, tz = (t / tnx) | 0;
+        const x0 = tx * TS, z0 = tz * TS, x1 = Math.min(rx, x0 + TS - 1), z1 = Math.min(rz, z0 + TS - 1);
+        let moved = false;
+        for (let zz = z0; zz <= z1; zz++) {
+          const iz = fwd ? zz : z1 - (zz - z0);
+          for (let xx = x0; xx <= x1; xx++) {
+            const ix = fwd ? xx : x1 - (xx - x0);
+            const i = iz * n + ix;
+            if (wall[i]) continue;
+            for (let k = 0; k < 4; k++) {
+              const jx = ix + NB[k][0], jz = iz + NB[k][1];
+              if (jx < 0 || jx > rx || jz < 0 || jz > rz) continue;
+              const j = jz * n + jx;
+              if (wall[j]) {
+                // over the top of a board (more than ~1 cm real above it): it slops over
+                // and falls down the outside in lumps
+                const si = nat[i] + loose[i] + conc[i];
+                if (conc[i] > 0 && si > wall[j] + 0.003 && cTime[i] >= stiffT) {
+                  let kx = jx, kz = jz;
+                  for (let q = 0; q < 8 && kx >= 0 && kx <= rx && kz >= 0 && kz <= rz && wall[kz * n + kx]; q++) { kx += NB[k][0]; kz += NB[k][1]; }
+                  if (kx < 0 || kx > rx || kz < 0 || kz > rz) continue;
+                  const m = Math.min((si - wall[j] - 0.002) * 0.3, conc[i]);
+                  if (m > 1e-9) { conc[i] -= m; this._overflow(kx, kz, m * this.cellArea, NB[k][0], NB[k][1]); moved = true; }
                 }
+                continue;
               }
-              continue;
+              const ci = conc[i], cj = conc[j];
+              if (ci <= 0 && cj <= 0) continue;
+              const d = nat[i] + loose[i] + ci - nat[j] - loose[j] - cj;
+              const src = d > 0 ? i : j, dst = d > 0 ? j : i;
+              const hs = conc[src];
+              if (hs <= 1e-6 || cTime[src] < stiffT) continue;   // nothing to flow, or already set
+              const ad = d < 0 ? -d : d, dx = (NB[k][2] ? 1.41421356 : 1) * cell;
+              const slope = ad / dx;
+              const vibr = vib[src] > clock || vib[dst] > clock;
+              // older concrete is stiffer (it starts to set); a fallen lump is stiffer too
+              const age = clock - cTime[src];
+              const tau = (vibr ? C.tauVib : C.tau) * (1 + 3 * age / setT) * (1 + cY[src]);
+              const mu = vibr ? C.muVib : C.mu;
+              const hr = hs * S, h0 = tau / (C.rho * G * slope);
+              if (hr <= h0) continue;                              // the yield stress holds it
+              const r = h0 / hr, F = hr * hr * hr / 3 * (1 - 1.5 * r + 0.5 * r * r * r);
+              const D = C.rho * G * F / mu;                        // m²/s
+              const kk = h * D / (dx * S * dx * S);
+              let m = ad * kk / (1 + 2 * kk) * (NB[k][2] ? 0.5 : 1);
+              if (m > hs) m = hs;
+              if (m < 2e-8) continue;
+              const ts = cTime[src], ss = cSm[src], ys = cY[src];
+              conc[src] = hs - m;
+              const c = conc[dst], tt = c + m;
+              cTime[dst] = c > 0 ? (cTime[dst] * c + ts * m) / tt : ts;
+              cSm[dst] = c > 0 ? (cSm[dst] * c + ss * 0.8 * m) / tt : ss * 0.8;
+              cY[dst] = c > 0 ? (cY[dst] * c + ys * m) / tt : ys;
+              conc[dst] = tt;
+              moved = true;
+              const tj = ((jz / TS) | 0) * tnx + ((jx / TS) | 0);
+              if (tj !== t) { this._tileOn(tj); this.meshTiles.add(tj); }
             }
-            if (conc[i] <= 0 && conc[j] <= 0) continue;
-            const d = nat[i] + loose[i] + conc[i] - nat[j] - loose[j] - conc[j];
-            const src = d > 0 ? i : j, dst = d > 0 ? j : i;
-            if (conc[src] <= 0 || cTime[src] < stiffT) continue;   // nothing to flow, or already set
-            const hAvg = (conc[src] + conc[dst]) * 0.5;
-            const ad = d < 0 ? -d : d, lim = (yieldTan + this.cY[src] + hc / Math.max(hAvg, 0.0004)) * (NB[k][2] ? D2 : D1);
-            // below 0.02 mm of excess it stays: the flow comes to a real stop (and a
-            // journal entry, taken once it has stopped, is the final state)
-            if (ad <= lim + 2e-5) continue;
-            const m = Math.min((ad - lim) * 0.5 * rate, conc[src]);
-            if (m < 1e-9) continue;
-            const ts = cTime[src], ss = cSm[src];
-            conc[src] -= m;
-            const c = conc[dst], t = c + m;
-            cTime[dst] = c > 0 ? (cTime[dst] * c + ts * m) / t : ts;
-            cSm[dst] = c > 0 ? (cSm[dst] * c + ss * 0.6 * m) / t : ss * 0.6;
-            conc[dst] = t;
-            const ax = ix < jx ? ix : jx, bx = ix < jx ? jx : ix, az = iz < jz ? iz : jz, bz = iz < jz ? jz : iz;
-            if (ax < mx0) mx0 = ax; if (bx > mx1) mx1 = bx; if (az < mz0) mz0 = az; if (bz > mz1) mz1 = bz;
           }
         }
+        if (moved) { this._tileOn(t); this.meshTiles.add(t); }
       }
-      if (mx1 < 0) { if (!region) this.cActive = null; return false; }
-      if (!region) this.cActive = { x0: Math.max(0, mx0 - 2), z0: Math.max(0, mz0 - 2), x1: Math.min(rx, mx1 + 2), z1: Math.min(rz, mz1 + 2) };
-      else this.cActive = grow(this.cActive, mx0 - 2, mz0 - 2, mx1 + 2, mz1 + 2, rx, rz);
-      this._markMesh(mx0 - 1, mz0 - 1, mx1 + 1, mz1 + 1);
+      if (!this._tList.length) break;
     }
-    return true;
+    this.version++;
+    return this._tList.length > 0;
+  }
+
+  // The fine grid moves concrete only a cell or two per step, so a heap would spread
+  // for minutes. A coarse pass first: blocks of 4 × 4 cells exchange concrete by the
+  // same Bingham law on their mean surface (blocks with a board in them are left to
+  // the fine pass, so nothing leaks through formwork).
+  _coarseFlow(list, h, clock, setT) {
+    const B = 4, { nx: n, cell, nat, loose, conc, wall, cTime, cSm, cY, vib, rx, rz, TS, tnx } = this;
+    const S = 3.5, G = 9.81, C = CONCRETE, per = TS / B;
+    const bw = Math.ceil(this.nx / B), info = (this._cInfo ||= new Map());
+    info.clear();
+    const blk = (bx, bz) => {
+      const key = bz * bw + bx;
+      let o = info.get(key);
+      if (o !== undefined) return o;
+      const x0 = bx * B, z0 = bz * B;
+      o = null;
+      if (x0 + B - 1 <= rx && z0 + B - 1 <= rz) {
+        let sh = 0, sc = 0, sy = 0, st = 0, v = false, ok = true;
+        for (let z = z0; z < z0 + B && ok; z++) for (let x = x0; x < x0 + B; x++) {
+          const i = z * n + x;
+          if (wall[i]) { ok = false; break; }
+          const c = conc[i];
+          sh += nat[i] + loose[i] + c; sc += c; sy += cY[i] * c; st += cTime[i] * c;
+          if (vib[i] > clock) v = true;
+        }
+        if (ok) o = { x0, z0, s: sh / (B * B), c: sc, y: sc > 0 ? sy / sc : 0, t: sc > 0 ? st / sc : clock, v };
+      }
+      info.set(key, o);
+      return o;
+    };
+    const dx = B * cell * S, area = B * B, on = new Set(list);
+    for (const t of list) {
+      const tx = t % tnx, tz = (t / tnx) | 0;
+      for (let bz = tz * per; bz < tz * per + per; bz++) for (let bx = tx * per; bx < tx * per + per; bx++) {
+        for (let k = 0; k < 4; k++) {
+          const ox = k === 0 ? 1 : k === 1 ? -1 : 0, oz = k === 2 ? 1 : k === 3 ? -1 : 0;
+          // each pair once: right and down always, left and up only across the tile edge into a sleeping tile
+          if (k === 1 && (bx % per !== 0 || tx === 0 || on.has(t - 1))) continue;
+          if (k === 3 && (bz % per !== 0 || tz === 0 || on.has(t - tnx))) continue;
+          const a = blk(bx, bz), b = blk(bx + ox, bz + oz);
+          if (!a || !b || (a.c <= 0 && b.c <= 0)) continue;
+          const d = a.s - b.s, src = d > 0 ? a : b, dst = d > 0 ? b : a;
+          if (src.c <= 1e-6 * area || src.t < clock - setT) continue;
+          const ad = Math.abs(d), slope = ad / dx, hs = src.c / area * S;
+          const vibr = src.v || dst.v, age = clock - src.t;
+          const tau = (vibr ? C.tauVib : C.tau) * (1 + 3 * age / setT) * (1 + src.y);
+          const h0 = tau / (C.rho * G * slope);
+          if (hs <= h0) continue;
+          const r = h0 / hs, F = hs * hs * hs / 3 * (1 - 1.5 * r + 0.5 * r * r * r);
+          const kk = h * C.rho * G * F / (vibr ? C.muVib : C.mu) / (dx * dx);
+          let m = ad * kk / (1 + 2 * kk) * area;               // volume (cell heights summed)
+          if (m > src.c * 0.5) m = src.c * 0.5;
+          if (m < 1e-7) continue;
+          // out of the source in proportion to the thickness, into the destination evenly
+          const f = m / src.c, add = m / area;
+          for (let z = src.z0; z < src.z0 + B; z++) for (let x = src.x0; x < src.x0 + B; x++) conc[z * n + x] *= 1 - f;
+          const ts = src.t, ys = src.y;
+          for (let z = dst.z0; z < dst.z0 + B; z++) for (let x = dst.x0; x < dst.x0 + B; x++) {
+            const i = z * n + x, c = conc[i], tt = c + add;
+            cTime[i] = c > 0 ? (cTime[i] * c + ts * add) / tt : ts;
+            cSm[i] = c > 0 ? (cSm[i] * c) / tt : 0;
+            cY[i] = c > 0 ? (cY[i] * c + ys * add) / tt : ys;
+            conc[i] = tt;
+          }
+          src.c -= m; dst.c += m; src.s -= m / area; dst.s += m / area;
+          for (const q of [src, dst]) { const tq = ((q.z0 / TS) | 0) * tnx + ((q.x0 / TS) | 0); this._tileOn(tq); this.meshTiles.add(tq); }
+        }
+      }
+    }
   }
 
   cellBox(x, z, r) {
@@ -889,7 +947,7 @@ export class Terrain {
     const b = this._ovf.get(key);
     if (!b || b.vol <= 0) return;
     const out = 0.003 + Math.random() * 0.008;
-    this.depositConc(this.clampX(b.x / b.w + b.ox * out + (Math.random() - 0.5) * 0.012), this.clampZ(b.z / b.w + b.oz * out + (Math.random() - 0.5) * 0.012), b.vol, 0.008 + Math.random() * 0.006, 0.35);
+    this.depositConc(this.clampX(b.x / b.w + b.ox * out + (Math.random() - 0.5) * 0.012), this.clampZ(b.z / b.w + b.oz * out + (Math.random() - 0.5) * 0.012), b.vol, 0.008 + Math.random() * 0.006, 3);   // a fallen lump: 4× stiffer
     this._ovf.delete(key);
   }
 
@@ -905,7 +963,7 @@ export class Terrain {
     if (!b || b.vol <= 0) return;
     const x = b.x / b.w + dx * (0.002 + Math.random() * 0.006) + (Math.random() - 0.5) * 0.006;
     const z = b.z / b.w + dz * (0.002 + Math.random() * 0.006) + (Math.random() - 0.5) * 0.006;
-    this.depositConc(this.clampX(x), this.clampZ(z), b.vol, 0.009 + Math.random() * 0.004, 0.35);
+    this.depositConc(this.clampX(x), this.clampZ(z), b.vol, 0.009 + Math.random() * 0.004, 3);
     s.spill.delete(key);
   }
 
@@ -925,7 +983,13 @@ export class Terrain {
       const d = Math.hypot(this.toWorldX(ix) - x, this.toWorldZ(iz) - z) / r;
       if (d < 1) cSm[i] = Math.max(cSm[i], Math.min(0.35, cSm[i] + 0.02 * (1 - d)));
     }
-    this.concRelax(3, CONCRETE.yield * 0.12, 0.5, b, CONCRETE.hc * 0.12);
+    // fluidised for a moment: the flow (concStep) does the rest
+    const until = (this.clock || 0) + 0.35;
+    for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) {
+      const i = iz * n + ix;
+      if (conc[i] > 0 && Math.hypot(this.toWorldX(ix) - x, this.toWorldZ(iz) - z) < r) this.vib[i] = until;
+    }
+    this._concTouch(b.x0, b.z0, b.x1, b.z1);
   }
 
   // steel trowel / float: closes the surface (smooth) and evens small lumps
@@ -943,9 +1007,10 @@ export class Terrain {
       any = true;
     }
     if (any) {
-      this.concRelax(2, 0.002, 0.5, b, CONCRETE.hc * 0.2);
-      this._markMesh(b.x0, b.z0, b.x1, b.z1);
-      this.version++;
+      // the float presses the surface: it settles flat under it
+      const until = (this.clock || 0) + 0.15;
+      for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) { const i = iz * n + ix; if (conc[i] > 0) this.vib[i] = Math.max(this.vib[i], until); }
+      this._concTouch(b.x0, b.z0, b.x1, b.z1);
     }
     return any;
   }
