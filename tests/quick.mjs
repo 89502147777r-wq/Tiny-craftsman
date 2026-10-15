@@ -91,9 +91,20 @@ for (const variant of ['full', 'light']) {
       const quiet = getComputedStyle(document.querySelector('.tools')).display === 'none' && !document.getElementById('fan').hidden;
       tc.ui.setQuiet(false);
       const normal = getComputedStyle(document.querySelector('.tools')).display !== 'none' && document.getElementById('fan').hidden;
-      return { supported: true, was, size: r?.blob.size || 0, type: r?.type, sheet: !document.getElementById('vsheet').hidden, quiet, normal };
+      const buf = r ? new Uint8Array(await r.blob.arrayBuffer()) : new Uint8Array();
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      return { supported: true, was, size: r?.blob.size || 0, type: r?.type, codec: r?.codec, audio: r?.audio, seconds: r?.seconds, sheet: !document.getElementById('vsheet').hidden, quiet, normal, b64: btoa(bin) };
     });
+    // the file's own duration must match the recording (Safari's MediaRecorder wrote the phone's uptime)
+    let dur = 'skipped';
+    if (vid.b64) {
+      const f = path.join(os.tmpdir(), 'tc-quick.mp4');
+      fs.writeFileSync(f, Buffer.from(vid.b64, 'base64'));
+      try { dur = +execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString().trim(); } catch { /* no ffprobe */ }
+      delete vid.b64;
+    }
     check('video recording of the scene works', !vid.supported || (vid.was && vid.size > 1000 && vid.sheet), JSON.stringify(vid));
+    check('video file duration is right', dur === 'skipped' || Math.abs(dur - vid.seconds) < 1.5, `${dur} s in the file, ${vid.seconds?.toFixed(1)} s recorded`);
     check('quiet mode hides the panels and comes back', vid.quiet && vid.normal);
   }
   check(`${variant}: no console errors on start`, errors.length === 0, errors.slice(0, 3).join(' | '));

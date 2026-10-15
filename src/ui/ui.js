@@ -155,11 +155,12 @@ export class UI {
       const r = await v.stop();
       if (r) {
         const s = Math.round(r.seconds);
-        $('vs-info').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · ${(r.blob.size / 1048576).toFixed(1)} МБ · ${r.type.includes('mp4') ? 'MP4' : 'WebM'} — только сцена, без кнопок`;
+        $('vs-info').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · ${(r.blob.size / 1048576).toFixed(1)} МБ · ${r.type.includes('mp4') ? 'MP4' : 'WebM'}${r.audio ? '' : ' · без звука'} — только сцена, без кнопок`;
         $('vsheet').hidden = false;
-      }
+      } else this.toast('Видео не записалось');
     } else if (!v.supported) this.toast('Этот браузер не умеет записывать видео');
-    else if (v.start()) this.toast('Запись идёт — кнопок в видео не будет');
+    else if (await v.start()) this.toast('Запись идёт — кнопок в видео не будет');
+    else this.toast('Не удалось начать запись');
     this.refresh();
   }
 
