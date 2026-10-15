@@ -263,10 +263,10 @@ const exp = await ev(async () => {
   for (const r of p.journal.done) if (r.diff) r.diff.idx.forEach((i, k) => { nat[i] = r.diff.an[k]; loose[i] = r.diff.al[k]; });
   let end = 0; for (let i = 0; i < nat.length; i++) end = Math.max(end, Math.abs(nat[i] - p.terrain.nat[i]), Math.abs(loose[i] - p.terrain.loose[i]));
   await tc.saveNow();
-  return { start, end, version: p.version, fields: p.track.fields.length, actions: p.journal.done.length, kb: Math.round(toJSON(p).length / 1024) };
+  return { start, end, version: p.version, fields: p.track.fields.length, tracks: ['ex_slew', 'tr_lift', 'mx_drum', 'pu_x', 'rk_px'].every((f) => p.track.fields.includes(f)), actions: p.journal.done.length, kb: Math.round(toJSON(p).length / 1024) };
 });
 check('journal replays terrain exactly', exp.start < 1e-9 && exp.end < 1e-9, `start ${exp.start} end ${exp.end}`);
-check('project v3 with machine tracks', exp.version === 3 && exp.fields === 63, JSON.stringify(exp));
+check('project v3 with machine and rake tracks', exp.version === 3 && exp.tracks, JSON.stringify(exp));
 const snap = () => ev(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, m: Object.fromEntries(Object.entries(tc.machineTool.machines).map(([k, m]) => [k, [+m.x.toFixed(4), +m.z.toFixed(4)]])) }; });
 const before = await snap();
 await page.reload({ waitUntil: 'domcontentloaded', timeout: 180000 });
