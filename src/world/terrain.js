@@ -316,7 +316,7 @@ export class Terrain {
       if (removed >= maxVol) break;
     }
     if (touched) this._touch(ix0, iz0, ix1, iz1);
-    if (conc) { this._concTouch(Math.max(0, ix0), Math.max(0, iz0), Math.min(this.rx, ix1), Math.min(this.rz, iz1)); this.cActive = null; }
+    if (conc) { this._concTouch(Math.max(0, ix0), Math.max(0, iz0), Math.min(this.rx, ix1), Math.min(this.rz, iz1)); }   // the cut fills in a little: fresh concrete flows
     return removed;
   }
 
@@ -690,6 +690,17 @@ export class Terrain {
     }
   }
 
+  // after loading: no pour time ahead of the clock, no broken values
+  sanitizeConcrete(clock) {
+    const { conc, cTime, cSm, cY, cBase } = this;
+    for (let i = 0; i < conc.length; i++) {
+      if (!Number.isFinite(conc[i]) || conc[i] < 0) conc[i] = 0;
+      if (!Number.isFinite(cTime[i]) || cTime[i] > clock) cTime[i] = clock;
+      if (!Number.isFinite(cSm[i])) cSm[i] = 0;
+      cY[i] = 0; cBase[i] = 0;
+    }
+  }
+
   curedAt(i) { return Math.max(0, ((this.clock || 0) - this.cTime[i]) / CONCRETE.cure); }
 
   _concAdd(i, add, smooth = 0, stiff = 0) {
@@ -796,12 +807,12 @@ export class Terrain {
               const slope = ad / dx;
               const vibr = vib[src] > clock || vib[dst] > clock;
               // older concrete is stiffer (it starts to set); a fallen lump is stiffer too
-              const age = clock - cTime[src];
+              const age = Math.max(0, clock - cTime[src]);   // (never negative: a clock behind would turn the law round)
               const tau = (vibr ? C.tauVib : C.tau) * (1 + 3 * age / setT) * (1 + cY[src]);
               const mu = vibr ? C.muVib : C.mu;
               const hr = hs * S, h0 = tau / (C.rho * G * slope);
               if (hr <= h0) continue;                              // the yield stress holds it
-              const r = h0 / hr, F = hr * hr * hr / 3 * (1 - 1.5 * r + 0.5 * r * r * r);
+              const r = Math.max(0, h0 / hr), F = hr * hr * hr / 3 * (1 - 1.5 * r + 0.5 * r * r * r);
               const D = C.rho * G * F / mu;                        // m²/s
               const kk = h * D / (dx * S * dx * S);
               let m = ad * kk / (1 + 2 * kk) * (NB[k][2] ? 0.5 : 1);
@@ -878,11 +889,11 @@ export class Terrain {
           const d = a.s - b.s, src = d > 0 ? a : b, dst = d > 0 ? b : a;
           if (src.c <= 1e-6 * area || src.t < clock - setT) continue;
           const ad = Math.abs(d), slope = ad / dx, hs = src.c / area * S;
-          const vibr = src.v || dst.v, age = clock - src.t;
+          const vibr = src.v || dst.v, age = Math.max(0, clock - src.t);
           const tau = (vibr ? C.tauVib : C.tau) * (1 + 3 * age / setT) * (1 + src.y);
           const h0 = tau / (C.rho * G * slope);
           if (hs <= h0) continue;
-          const r = h0 / hs, F = hs * hs * hs / 3 * (1 - 1.5 * r + 0.5 * r * r * r);
+          const r = Math.max(0, h0 / hs), F = hs * hs * hs / 3 * (1 - 1.5 * r + 0.5 * r * r * r);
           const kk = h * C.rho * G * F / (vibr ? C.muVib : C.mu) / (dx * dx);
           let m = ad * kk / (1 + 2 * kk) * area;               // volume (cell heights summed)
           if (m > src.c * 0.5) m = src.c * 0.5;
