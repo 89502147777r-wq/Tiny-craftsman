@@ -202,10 +202,12 @@ const FRAG_SOIL = `
             float hole = step(0.985, tcHash(floor(vec2(along, vWPos.y) * 900.0)));
             vec3 face = mix(vec3(0.07, 0.07, 0.067), vec3(0.17, 0.168, 0.161), smoothstep(0.05, 1.0, cure)) * (0.93 + 0.12 * grain) * (1.0 - 0.28 * joint) * (1.0 - 0.45 * hole);   // (no top-view noise here: it would streak)
             cc = mix(cc, face, cside);
-            // bitumen mastic brushed on: black, a little brown where thin, glossy
-            float bt = vExtra.x * cside;
-            vec3 bitC = vec3(0.012, 0.011, 0.01) * (0.85 + 0.3 * grain) + vec3(0.02, 0.012, 0.005) * (1.0 - smoothstep(0.4, 1.0, vExtra.x));
-            cc = mix(cc, bitC, smoothstep(0.0, 0.6, bt));
+          }
+          // bitumen mastic brushed on (faces and top): black, a little brown where thin
+          {
+            float bn = tcSNoise(vWPos.xz * 400.0 + vWPos.y * 300.0);
+            vec3 bitC = vec3(0.012, 0.011, 0.01) * (0.85 + 0.3 * bn) + vec3(0.02, 0.012, 0.005) * (1.0 - smoothstep(0.4, 1.0, vExtra.x));
+            cc = mix(cc, bitC, smoothstep(0.0, 0.6, vExtra.x));
           }
           soilC = mix(soilC, cc, concW);
         }
@@ -247,8 +249,7 @@ const ROUGH_TAIL = `
           float wetR = mix(0.58, 0.12, vConc.z), dryR = mix(0.9, 0.72, vConc.z);   // moist and matt as poured, the worked paste glistens
           roughnessFactor = mix(roughnessFactor, mix(wetR, dryR, smoothstep(0.1, 0.8, cu)), cw);
           // bitumen on a face shines
-          float side = 1.0 - smoothstep(0.35, 0.7, normalize(vWNrm).y);
-          roughnessFactor = mix(roughnessFactor, 0.28, smoothstep(0.0, 0.6, vExtra.x * side) * cw);
+          roughnessFactor = mix(roughnessFactor, 0.28, smoothstep(0.0, 0.6, vExtra.x) * cw);
         }`;
 
 export function makeTerrainMaterial(tex) {
@@ -329,7 +330,7 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <roughnessmap_fragment>', `${ch.rough}${ROUGH_TAIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-21';
+  mat.customProgramCacheKey = () => 'tc-terrain-22';
   return mat;
 }
 
@@ -353,7 +354,7 @@ export function makeLightTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-light-15';
+  mat.customProgramCacheKey = () => 'tc-terrain-light-16';
   return mat;
 }
 

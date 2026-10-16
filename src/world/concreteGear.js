@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PumpHose } from './pumpHose.js';
+import { makePlateCompactor, shakePlateCompactor } from './plateCompactor.js';
 
 // Models of the concrete tools (sizes of the model, real sizes in comments):
 //   hose     – the end hose of a boom pump: a swinging rope simulation (pumpHose.js)
@@ -51,25 +52,10 @@ export class ConcreteGear {
     const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012 / 3.5, 0.012 / 3.5, 1.0 / 3.5, 10), wood);
     stick.position.set(0, 0.09 / 3.5 + 0.48 / 3.5, -0.12 / 3.5); stick.rotation.x = -0.25;
     this.brush.add(head, bristle, stick);
-    // plate compactor: steel base plate 500 × 600 mm, engine on rubber mounts, guide handle
-    this.plate = new THREE.Group();
-    const yellow = new THREE.MeshStandardMaterial({ color: 0xe0a21a, roughness: 0.5, metalness: 0.2 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.6, metalness: 0.5 });
-    const base = new THREE.Mesh(new THREE.BoxGeometry(0.5 / 3.5, 0.025 / 3.5, 0.6 / 3.5), dark);
-    base.position.y = 0.0125 / 3.5;
-    const lip = new THREE.Mesh(new THREE.BoxGeometry(0.5 / 3.5, 0.025 / 3.5, 0.06 / 3.5), dark);
-    lip.position.set(0, 0.03 / 3.5, 0.3 / 3.5); lip.rotation.x = 0.5;   // the turned-up front edge
-    const exciter = new THREE.Mesh(new THREE.CylinderGeometry(0.07 / 3.5, 0.07 / 3.5, 0.3 / 3.5, 16), dark);
-    exciter.rotation.z = Math.PI / 2; exciter.position.y = 0.09 / 3.5;
-    const engine = new THREE.Mesh(new THREE.BoxGeometry(0.3 / 3.5, 0.22 / 3.5, 0.32 / 3.5), yellow);
-    engine.position.set(0, 0.26 / 3.5, -0.03 / 3.5);
-    const tank = new THREE.Mesh(new THREE.BoxGeometry(0.2 / 3.5, 0.06 / 3.5, 0.16 / 3.5), dark);
-    tank.position.set(0, 0.4 / 3.5, -0.02 / 3.5);
-    const guide = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-0.17 / 3.5, 0.15 / 3.5, -0.2 / 3.5), new THREE.Vector3(-0.2 / 3.5, 0.55 / 3.5, -0.62 / 3.5),
-      new THREE.Vector3(0, 0.8 / 3.5, -0.9 / 3.5), new THREE.Vector3(0.2 / 3.5, 0.55 / 3.5, -0.62 / 3.5), new THREE.Vector3(0.17 / 3.5, 0.15 / 3.5, -0.2 / 3.5),
-    ]), 40, 0.013 / 3.5, 8, false), dark);
-    this.plate.add(base, lip, exciter, engine, tank, guide);
+    // plate compactor: a detailed model in real sizes (plateCompactor.js)
+    this.plate = makePlateCompactor();
+    this.plateOn = false;
+    this._t = 0;
     for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate]) {
       o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
       o.visible = false;
@@ -122,6 +108,8 @@ export class ConcreteGear {
     } else if (w === 'plate') {
       this.plate.position.copy(this.pos);
       this.plate.rotation.set(0, this.yaw, 0);
+      this._t += dt;
+      shakePlateCompactor(this.plate, this.plateOn, this._t);
     } else if (w === 'trowel') {
       this.trowel.position.copy(this.pos);
       this.trowel.rotation.set(0, this.yaw, 0.04);

@@ -282,7 +282,7 @@ export class BitumenTool extends ConcreteTool {
     this.gear.set('brush', this._at(p), Math.atan2(this.dir.x, this.dir.y));
   }
 
-  done() { if (!this.coated) this.app.ui?.toast('Битумом мажут боковые грани бетона — сначала распалубьте и ведите кистью вдоль края'); }
+  done() { if (!this.coated) this.app.ui?.toast('Битумом мажут бетон — грани и верх фундамента'); }
 }
 
 // Plate compactor: drag it over loose soil / sand / crushed stone — it shakes along and
@@ -317,15 +317,15 @@ export class PlateTool extends ConcreteTool {
   }
 
   work() {
-    // the engine thumps, the plate jumps a little
+    // the engine thumps; the model shakes itself (plate hard, engine less, handle hardly)
     this.app.sfx.scrapeLevel(0.45 + Math.random() * 0.15);
-    const j = 0.0004, at = this._at(this.last);
-    at.y += Math.random() * j;
-    this.gear.set('plate', at, Math.atan2(this.dir.x, this.dir.y));
+    this.gear.plateOn = true;
+    this.gear.set('plate', this._at(this.last), Math.atan2(this.dir.x, this.dir.y));
   }
 
   // the edges of the settled strip crumble in before the pass is recorded
   finish() {
+    this.gear.plateOn = false;
     const t = this.app.terrain;
     if (this.state !== 'idle') for (let i = 0; i < 40000 && t.active; i++) t.relax(1);
     super.finish();
