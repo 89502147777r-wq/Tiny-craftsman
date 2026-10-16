@@ -704,7 +704,8 @@ export class Terrain {
       const cav = (m / 8 - h) / 0.006;
       occ[i] = cav < 0 ? 0 : cav > 1 ? 1 : cav;
       soil[i * 4] = Math.max(0, orig[i] - nat[i]);
-      soil[i * 4 + 1] = loose[i];
+      // loose soil shows as loose soil: on a slab that is soil lying on it (what is under the slab is hidden)
+      soil[i * 4 + 1] = conc[i] > 1e-6 ? (topM[i] === 0 ? top[i] : 0) : loose[i];
       soil[i * 4 + 2] = occ[i];
       soil[i * 4 + 3] = this.ldep[i];
       let f1 = 0, f2 = 0, f3 = 0;
@@ -1098,23 +1099,18 @@ export class Terrain {
     this._concTouch(b.x0, b.z0, b.x1, b.z1);
   }
 
-  // Bitumen mastic brushed on: only where the concrete has a face (a step of more than
-  // ~7 mm real down to the next cell — the stripped side of a slab or a footing),
-  // on the face cell and the foot below it. Returns how much was coated.
+  // Bitumen mastic brushed on. Returns how much was coated.
   paintBitumen(x, z, r, amount = 0.25) {
+    // on concrete anywhere — the faces of a footing and the top of it (horizontal
+    // waterproofing under the walls) — and on the foot just below a face
     const b = this.cellBox(x, z, r), { nx: n, conc, bit, rx, rz } = this;
     let any = 0;
     for (let iz = Math.max(1, b.z0); iz <= Math.min(rz - 1, b.z1); iz++) for (let ix = Math.max(1, b.x0); ix <= Math.min(rx - 1, b.x1); ix++) {
       const i = iz * n + ix;
       if (Math.hypot(this.toWorldX(ix) - x, this.toWorldZ(iz) - z) > r) continue;
-      const h = this.hAt(i);
-      let face = false;
-      for (const j of [i - 1, i + 1, i - n, i + n]) {
-        const hj = this.hAt(j);
-        if (conc[i] > 1e-5 && h - hj > 0.002) face = true;          // the top edge of a face
-        if (conc[j] > 1e-5 && hj - h > 0.002) face = true;          // its foot
-      }
-      if (!face || bit[i] >= 1) continue;
+      let on = conc[i] > 1e-5 && this.top[i] <= 0;
+      if (!on) { const h = this.hAt(i); for (const j of [i - 1, i + 1, i - n, i + n]) if (conc[j] > 1e-5 && this.hAt(j) - h > 0.002) on = true; }
+      if (!on || bit[i] >= 1) continue;
       const nb = Math.min(1, bit[i] + amount);
       any += nb - bit[i];
       bit[i] = nb;
