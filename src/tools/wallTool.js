@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODEL_SCALE, K } from '../config.js';
+import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, covered, wallState, taken, cutName, openingRows, beddable } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 
@@ -64,7 +64,7 @@ export class WallTool {
   get openKind() { return this.app.settings.openKind || 'window'; }
 
   // the wall nearest to a point (within reach), with the position along it (real mm)
-  nearest(p, reach = 0.035 * K) {
+  nearest(p, reach = 0.035 * KT) {
     let best = null;
     for (const w of this.app.objects.all('wall')) {
       const ax = axis(w), dx = p.x - w.a[0], dz = p.z - w.a[1];

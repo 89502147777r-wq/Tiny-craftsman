@@ -1,13 +1,14 @@
 import * as THREE from 'three';
+import { MODEL_SCALE } from '../config.js';
 
 // A walk-behind plate compactor of the 60–90 kg class (the size of a Wacker Neuson
 // VP 1550 / Ammann APF 15/50), modelled in real millimetres and scaled to the
-// model (1:3.5). Local frame: x across, y up, z forward (the travel direction);
+// model. Local frame: x across, y up, z forward (the travel direction);
 // the origin is under the middle of the base plate.
 //   lower  – base plate with the turned-up nose, side skirts, the exciter (shakes hard)
 //   upper  – rubber mounts, frame, belt guard, engine, roll cage (shakes a little)
 //   handle – guide handle on rubber dampers (almost still)
-const S = 1 / 1000 / 3.5;   // real mm → model m
+const S = 1 / 1000 / MODEL_SCALE;   // real mm → model m
 
 export function makePlateCompactor() {
   const root = new THREE.Group();

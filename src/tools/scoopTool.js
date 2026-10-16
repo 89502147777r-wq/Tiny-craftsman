@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { K } from '../config.js';
+import { KT as K } from '../config.js';
 import { materialTint } from '../world/soilColor.js';
 
 // crumb size and how many stay visible on top, per material (soil, sand, 5–20, 20–40)
@@ -123,7 +123,7 @@ export class ScoopTool {
     const app = this.app, t = app.terrain;
     if (!t.inside(p.x, p.z)) return 0;
     const cutY = this._cutAt(p);
-    const got = t.carve(p.x, p.z, this.dir.x, this.dir.y, this.spec, cutY, this.capacity - this.load);
+    const got = t.carve(p.x, p.z, this.dir.x, this.dir.y, this.spec, cutY, this.capacity - this.load, t.take.c > 0);
     if (got > 0) {
       this.load += got;
       if (this.path.length === 0 || Math.hypot(p.x - this.path[this.path.length - 1][0], p.z - this.path[this.path.length - 1][1]) > 0.002) {

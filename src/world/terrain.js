@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAY, SOIL_TILE, TERRAIN_CELL, REPOSE_NATIVE, MATERIALS, M_SOIL, CONCRETE } from '../config.js';
+import { TRAY, SOIL_TILE, TERRAIN_CELL, REPOSE_NATIVE, MATERIALS, M_SOIL, CONCRETE, MODEL_SCALE } from '../config.js';
 
 // loose layers per cell (bottom → top), each of one material (config MATERIALS)
 export const LAYERS = 3;
@@ -286,7 +286,7 @@ export class Terrain {
 
   // One shovel bite. The blade (width w, length len, centred at cx,cz, facing
   // dirx,dirz) cuts everything above cutY. Returns removed volume (m³).
-  carve(cx, cz, dirx, dirz, blade, cutY, maxVol) {
+  carve(cx, cz, dirx, dirz, blade, cutY, maxVol, wet = false) {   // wet: this stroke already scoops fresh concrete
     if (maxVol <= 0) return 0;
     cutY = Math.max(cutY, this.floorY);
     const { nx: n, cell } = this;
@@ -297,6 +297,7 @@ export class Terrain {
     const px = -dirz, pz = dirx; // blade sideways axis
     let removed = 0;
     let touched = false, conc = false;
+    const soil = [];
     const setT = (this.clock || 0) - CONCRETE.stiff * CONCRETE.cure;
     // cut the cells nearest the blade tip first, so a full blade stops cleanly
     for (let iz = Math.max(0, iz0); iz <= Math.min(this.rz, iz1); iz++) {
@@ -335,15 +336,18 @@ export class Terrain {
           if (removed >= maxVol) break;
           continue;
         }
-        const h = this.nat[i] + this.loose[i];
-        if (h <= allowed) continue;
-        const want = Math.min(h - allowed, (maxVol - removed) / this.cellArea);
+        // soil: cut after the concrete, and not at all by a blade scooping a puddle
+        if (this.nat[i] + this.loose[i] > allowed) soil.push(i, allowed);
+      }
+      if (removed >= maxVol) break;
+    }
+    if (!conc && !wet) {
+      for (let k = 0; k < soil.length && removed < maxVol; k += 2) {
+        const i = soil[k], want = Math.min(this.nat[i] + this.loose[i] - soil[k + 1], (maxVol - removed) / this.cellArea);
         if (want <= 0) continue;
         removed += this._take(i, want) * this.cellArea;
         touched = true;
-        if (removed >= maxVol) break;
       }
-      if (removed >= maxVol) break;
     }
     if (touched) this._touch(ix0, iz0, ix1, iz1);
     if (conc) { this._concTouch(Math.max(0, ix0), Math.max(0, iz0), Math.min(this.rx, ix1), Math.min(this.rz, iz1)); }   // the cut fills in a little: fresh concrete flows
@@ -826,12 +830,12 @@ export class Terrain {
   // the surface slope: no flow while the yield stress holds it (h ≤ h0 = tau / (rho g
   // slope)), above it q = rho g h³/(3 mu) (1 − 3/2 r + 1/2 r³) · slope, r = h0 / h.
   // It is applied pairwise and implicitly (stable for any step, exactly conserving).
-  // Units: real ones (the model is 1:3.5). Only the tiles where something moves are
+  // Units: real ones (MODEL_SCALE). Only the tiles where something moves are
   // computed; a tile wakes its neighbours when concrete crosses into them.
   concStep(dt, substeps = 2) {
     if (!this._tList.length) return false;
     const { nx: n, cell, nat, loose, conc, wall, cTime, cSm, cY, vib, cBase, top, rx, rz, TS, tnx } = this;
-    const S = 3.5, G = 9.81, C = CONCRETE, clock = this.clock || 0;
+    const S = MODEL_SCALE, G = 9.81, C = CONCRETE, clock = this.clock || 0;
     const setT = C.stiff * C.cure, stiffT = clock - setT;
     const h = dt / substeps;
     for (let sub = 0; sub < substeps; sub++) {
@@ -921,7 +925,7 @@ export class Terrain {
   // are left to the fine pass: nothing leaks through formwork, nothing piles on set concrete).
   _coarseFlow(list, h, clock, setT) {
     const B = 4, { nx: n, cell, nat, loose, conc, wall, cTime, cSm, cY, vib, rx, rz, TS, tnx } = this;
-    const S = 3.5, G = 9.81, C = CONCRETE, per = TS / B;
+    const S = MODEL_SCALE, G = 9.81, C = CONCRETE, per = TS / B;
     const bw = Math.ceil(this.nx / B), info = (this._cInfo ||= new Map());
     info.clear();
     const blk = (bx, bz) => {
@@ -1127,7 +1131,7 @@ export class Terrain {
   compactStep(x, z, dx, dz, w, len, gain = 0.06) {
     const { nx: n, conc, loose, comp, lH, lM, lN } = this;
     const ax = -dz, az = dx, b = this.cellBox(x, z, Math.hypot(w, len) / 2);
-    const reach = 0.3 / 3.5, SHRINK = [0.17, 0.12, 0.1, 0.1];
+    const reach = 0.3 / MODEL_SCALE, SHRINK = [0.17, 0.12, 0.1, 0.1];
     let most = 0;
     for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) {
       const i = iz * n + ix;

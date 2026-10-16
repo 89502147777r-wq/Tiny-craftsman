@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { RAKE, K } from '../config.js';
+import { RAKE, KT as K } from '../config.js';
 import { variant } from './assets.js';
 
 // A scale garden rake. Local frame: the line of tine tips along X centred at

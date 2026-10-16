@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, M_SOIL, M_SAND, M_G5, M_G20, CONCRETE, PUMP } from './config.js';
+import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, KT, M_SOIL, M_SAND, M_G5, M_G20, CONCRETE, PUMP, DELIVERY } from './config.js';
 import { loadAssets } from './world/assets.js';
 import { buildWorkshop } from './world/workshop.js';
 import { Terrain } from './world/terrain.js';
@@ -63,6 +63,7 @@ async function main() {
   if (stored.backdrop === 'photo1' || stored.backdrop === 'photo2') stored.backdrop = 'posters'; // two prints on the table since BUILD 5
   app.settings = { ...DEFAULT_SETTINGS, ...stored, build: BUILD };
   if (!PUMP.includes(app.settings.pump)) app.settings.pump = DEFAULT_SETTINGS.pump;   // BUILD 23: real pump rates
+  if (!DELIVERY.includes(app.settings.delivery)) app.settings.delivery = DEFAULT_SETTINGS.delivery;   // BUILD 36: truck-sized deliveries
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
   const params = new URLSearchParams(location.search);
   if (params.get('quality')) app.settings.quality = params.get('quality');
@@ -331,8 +332,8 @@ function setTool(t) {
   app.outlineView.setHandles(t === 'mark', app.markTool.selected);
   if (t !== 'shovel' && app.shovelTool.state === 'idle') {
     // lean the shovel against the tray corner when it is not in use
-    const x = -app.terrain.halfX + 0.012 * K, z = app.terrain.halfZ - 0.012 * K;
-    app.shovel.setPose({ pos: new THREE.Vector3(x, app.terrain.heightAt(x, z) - 0.006 * K, z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.22, roll: 0 });
+    const x = -app.terrain.halfX + 0.012 * KT, z = app.terrain.halfZ - 0.012 * KT;
+    app.shovel.setPose({ pos: new THREE.Vector3(x, app.terrain.heightAt(x, z) - 0.006 * KT, z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.22, roll: 0 });
   }
   if (t !== 'rake' && !app.rakeTool.busy) {
     // the rake is put down along the front edge: tines in the soil, handle on the ground
