@@ -14,6 +14,7 @@ export class Journal {
   }
 
   begin(type, meta = {}, clock = 0) {
+    this.onBeforeBegin?.();   // e.g. a physics action still running finishes first
     if (this.pending) this.commit(clock);
     this.pending = { type, meta, t0: clock, snap: this.terrain.snapshot() };
     this.objects.begin();

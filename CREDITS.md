@@ -49,6 +49,7 @@ glTF-Transform (текстуры WebP ≤ 512 px, геометрия meshopt), �
 |---|---|---|
 | three.js r180 (`vendor/three/`, включая `addons/loaders/HDRLoader.js`, `addons/loaders/GLTFLoader.js`, `addons/utils/BufferGeometryUtils.js`) | three.js authors | MIT (`vendor/three/LICENSE`) |
 | meshoptimizer decoder (`vendor/three/addons/libs/meshopt_decoder.module.js`) | Arseny Kapoulkine | MIT |
+| Rapier 3D 0.14.0, физический движок (`vendor/rapier/rapier.es.js`, `@dimforge/rapier3d-compat`, WebAssembly встроен в файл) | Dimforge (Sébastien Crozet и др.), https://rapier.rs | Apache-2.0 (`vendor/rapier/LICENSE`) |
 
 ## Сгенерировано процедурно (наше, без внешних источников)
 
