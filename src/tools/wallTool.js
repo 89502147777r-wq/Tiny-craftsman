@@ -14,6 +14,7 @@ import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 //   delete – tap a unit to take it off (if nothing lies on it); tap an empty wall line
 //            to remove it
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
+const _ray = new THREE.Raycaster();
 
 export class WallTool {
   constructor(app) {
@@ -24,6 +25,9 @@ export class WallTool {
   }
 
   get busy() { return !!this.drag || !!this.hold; }
+  // one finger works on the wall in every mode (the camera: two fingers)
+  blocksOrbit() { return true; }
+
   setMode(m) { this.mode = m; if (m === 'lay') loadPhysics().catch(() => {}); this.app.ui.refresh(); this._focus(); }
   get kind() { return this.app.settings.wallKind || 'block'; }
 
@@ -41,10 +45,26 @@ export class WallTool {
     return best;
   }
 
-  _focus(w) { const v = this.app.wallView; v.focus = w ? w.id : this.lastWall ?? v.focus; v.dirty = true; }
+  // the next course (ghost places + cord) is shown while spreading mortar and laying
+  _focus(w) {
+    const v = this.app.wallView;
+    v.focus = this.mode === 'mortar' || this.mode === 'lay' ? (w ? w.id : this.lastWall ?? null) : null;
+    v.dirty = true;
+  }
+
+  // the point under the finger: on the wall itself (blocks, mortar, the ghost places)
+  // when the finger is on it — the ground point behind a wall would miss it
+  _pt(p, e) {
+    if (!e || e.clientX === undefined || (!e.clientX && !e.clientY)) return p;
+    const app = this.app, v = app.wallView;
+    _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
+    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.mortar, v.ghost], false)[0];
+    return hit ? hit.point : p;
+  }
 
   down(p, e) {
     const app = this.app;
+    p = this._pt(p, e);
     if (this.mode === 'line') {
       this.drag = { a: this._snap([p.x, p.z]), b: [p.x, p.z] };
       return true;
@@ -69,8 +89,9 @@ export class WallTool {
     return false;
   }
 
-  move(p) {
+  move(p, e) {
     const app = this.app;
+    p = this._pt(p, e);
     if (this.hold) this.hold.p.copy(p);
     if (!this.drag) return;
     if (this.mode === 'line') {
