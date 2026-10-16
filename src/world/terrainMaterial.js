@@ -172,12 +172,24 @@ const FRAG_SOIL = `
           vec3 paste = vec3(0.062, 0.062, 0.06) * mix(0.92, 1.05, big) * mix(1.0, 0.82, smoothstep(0.2, 1.0, sm));
           vec3 rock = vec3(0.092, 0.09, 0.086) * mix(0.8, 1.25, shade);   // stones still under a film of paste
           vec3 fresh = mix(paste, rock, stone * 0.8);
-          vec3 setC = vec3(0.42, 0.413, 0.392) * mix(0.88, 1.05, mix(big, 0.6, vConc.z * 0.6));
+          vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.88, 1.05, mix(big, 0.6, vConc.z * 0.6));
           float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * vConc.z);
           setC *= 1.0 - pore * 0.35;
           // dries patchily
           vec3 cc = mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2));
-          // drying starts at the edges and on thin spots
+          // a stripped side: the face cast against the boards — smooth, the joints and
+          // grain of the 150 mm boards printed in it, a few blowholes
+          vec3 wn = normalize(vWNrm);
+          float cside = 1.0 - smoothstep(0.35, 0.7, wn.y);
+          if (cside > 0.001) {
+            float along = abs(wn.x) > abs(wn.z) ? vWPos.z : vWPos.x;
+            float by = fract(vWPos.y / ${(0.15 / 3.5).toFixed(6)});
+            float joint = 1.0 - smoothstep(0.0, 0.035, min(by, 1.0 - by));
+            float grain = tcSNoise(vec2(along * 40.0, vWPos.y * 1400.0)) * 0.6 + tcSNoise(vec2(along * 9.0, vWPos.y * 300.0)) * 0.4;
+            float hole = step(0.985, tcHash(floor(vec2(along, vWPos.y) * 900.0)));
+            vec3 face = mix(vec3(0.07, 0.07, 0.067), vec3(0.17, 0.168, 0.161), smoothstep(0.05, 1.0, cure)) * (0.93 + 0.12 * grain) * (1.0 - 0.28 * joint) * (1.0 - 0.45 * hole);   // (no top-view noise here: it would streak)
+            cc = mix(cc, face, cside);
+          }
           soilC = mix(soilC, cc, concW);
         }
         // the tray bottom shows through where everything has been dug out
@@ -188,7 +200,7 @@ const FRAG_SOIL = `
         vec2 q = vWPos.xz;
         vec4 mk = texture2D(tMask, (q - uPlot.xy) / uPlot.zw);
         float grain = tcHash(floor(q * 2400.0));
-        float chalk = smoothstep(0.25, 0.75, mk.r) * (1.0 - dig) * (1.0 - lse) * step(0.25, grain);
+        float chalk = smoothstep(0.25, 0.75, mk.r) * (1.0 - dig) * (1.0 - lse) * step(0.25, grain) * (1.0 - concW);   // chalk is on the ground, not on concrete
         soilC = mix(soilC, vec3(0.80, 0.79, 0.74), chalk * uChalk * 0.9);
         // levelling overlay inside the outlines
         if (uLevel > 0.5 && mk.g > 0.5) {
@@ -288,14 +300,15 @@ export function makeTerrainMaterial(tex) {
             vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 0.9 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06
                    + vec3(r0 - rx, 0.0, r0 - rz) * (1.0 - 0.85 * vConc.z) * 0.25;
             vec3 cn = normalize(normalize(vNormal) * faceDirection + (viewMatrix * vec4(g, 0.0)).xyz);
-            normal = normalize(mix(normal, cn, cw));
+            normal = normalize(mix(normal, cn, cw * smoothstep(0.35, 0.7, normalize(vWNrm).y)));   // (not on a stripped side: it would streak)
+            normal = normalize(mix(normal, normalize(vNormal) * faceDirection, cw * (1.0 - smoothstep(0.35, 0.7, normalize(vWNrm).y))));   // a cast face is smooth
           }
         }`)
       .replace('#include <aomap_fragment>', ch.ao.replace('tcStoch( aoMap, vAoMapUv, tcMeanArm )', 'mix(tcStoch( aoMap, vAoMapUv, tcMeanArm ), vec4(1.0), smoothstep(0.00008, 0.0006, vConc.x))'))
       .replace('#include <roughnessmap_fragment>', `${ch.rough}${ROUGH_TAIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-15';
+  mat.customProgramCacheKey = () => 'tc-terrain-19';
   return mat;
 }
 
@@ -319,7 +332,7 @@ export function makeLightTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-light-9';
+  mat.customProgramCacheKey = () => 'tc-terrain-light-13';
   return mat;
 }
 

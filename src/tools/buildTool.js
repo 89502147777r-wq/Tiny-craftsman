@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODEL_SCALE, TRAY, MAT, K } from '../config.js';
+import { MODEL_SCALE, TRAY, MAT, K, CONCRETE } from '../config.js';
 import { edges, gradeY, contains } from '../world/outlines.js';
 import { cageForRect, cageForTrench, meshPanel, singleBar } from '../world/rebar.js';
 
@@ -13,6 +13,8 @@ const MM = (v) => v / 1000 / MODEL_SCALE;
 //          bar     – drag a single bar (snaps to the axes)
 //          mesh    – drag a rectangle: welded mesh sheet
 //          tie     – tap a cage: tie every crossing with wire
+//          strip   – tap an outline or a board: the formwork comes off (once the
+//                    concrete has set) and is stacked next to it
 //   both:  delete  – tap a board, stake, bar…
 export class BuildTool {
   constructor(app, kind) {
@@ -32,6 +34,7 @@ export class BuildTool {
       app.ui.toast(id ? 'Удалено' : 'Здесь нечего удалять');
       return true;
     }
+    if (this.mode === 'strip') { this.strip(p, e); return true; }
     if (['outline', 'cage', 'tie'].includes(this.mode)) {
       const o = app.outlineView.pickOutline(p.x, p.z);
       if (!o) { app.ui.toast('Коснитесь контура (разметки)'); return false; }
@@ -114,6 +117,79 @@ export class BuildTool {
       for (const e of edges(o)) app.objects.add(this.run(e.a, e.b, e.n, y1, { outlineId: o.id }));
     });
     app.ui.toast('Опалубка установлена');
+  }
+
+  // Stripping: all the runs of the outline tapped (or the run of the board tapped)
+  // come off in one go; boards and stakes are stacked beside it. While the concrete
+  // behind them is still soft the first tap only warns (a second one strips anyway).
+  strip(p, e) {
+    const { app } = this, t = app.terrain, all = app.objects.all('form');
+    let runs = [];
+    const o = app.outlineView.pickOutline(p.x, p.z);
+    if (o) runs = all.filter((r) => r.outlineId === o.id);
+    if (!runs.length) {
+      const id = app.pickObject(e.clientX, e.clientY, 'form'), r = id && app.objects.get(id);
+      if (r?.type === 'form') runs = r.outlineId ? all.filter((x) => x.outlineId === r.outlineId) : [r];
+    }
+    if (!runs.length) { app.ui.toast('Коснитесь контура с опалубкой или доски'); return; }
+    // is the concrete behind the boards hard enough?
+    const key = runs.map((r) => r.id).join(',');
+    const wait = this.softFor(runs);
+    if (wait > 0 && !(this._force?.key === key && performance.now() < this._force.until)) {
+      this._force = { key, until: performance.now() + 5000 };
+      app.ui.toast(`Бетон ещё не схватился — подождите ~${Math.ceil(wait)} с. Коснитесь ещё раз, чтобы снять сейчас (бетон поплывёт)`);
+      return;
+    }
+    this._force = null;
+    const T = MAT.board.t, H = MAT.board.h;
+    const boards = [];
+    let stakes = 0, stakeLen = 0;
+    for (const r of runs) {
+      const L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]);
+      const count = Math.max(1, Math.ceil((r.y1 - r.y0) / H - 0.2));
+      for (let k = 0; k < count; k++) boards.push(+(L + T).toFixed(5));
+      if (!r.inside) {
+        stakes += Math.max(2, Math.round(L / MAT.stake.step) + 1);
+        stakeLen = Math.max(stakeLen, (r.y1 - r.y0) + 0.0095 * K);
+      }
+    }
+    const spot = this.pileSpot(runs, Math.max(...boards));
+    app.journal.act('strip', { outlineId: runs[0].outlineId, boards: boards.length, stakes }, app.clock, () => {
+      for (const r of runs) app.objects.remove(r.id);
+      app.objects.add({ type: 'formpile', x: spot.x, z: spot.z, yaw: spot.yaw, boards, stakes, stakeLen: stakeLen || 0.08 });
+    });
+    t.cActive = null;
+    app.ui.toast(`Опалубка снята: ${boards.length} досок${stakes ? `, ${stakes} кольев` : ''} — сложены рядом`);
+  }
+
+  // seconds until the concrete next to these runs stops flowing (0 = it has set or there is none)
+  softFor(runs) {
+    const t = this.app.terrain, clock = this.app.clock, setT = CONCRETE.stiff * CONCRETE.cure, m = 0.01 * K;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const r of runs) for (const q of [r.a, r.b]) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); z0 = Math.min(z0, q[1]); z1 = Math.max(z1, q[1]); }
+    let wait = 0;
+    const ix0 = Math.max(0, Math.floor(t.toCellX(x0 - m))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(x1 + m)));
+    const iz0 = Math.max(0, Math.floor(t.toCellZ(z0 - m))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(z1 + m)));
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const i = iz * t.nx + ix;
+      if (t.conc[i] > 1e-5) wait = Math.max(wait, t.cTime[i] + setT - clock);
+    }
+    return wait;
+  }
+
+  // where the stack goes: beside the longest run, outside it, clear of the braces
+  pileSpot(runs, len) {
+    const t = this.app.terrain, H = MAT.board.h;
+    const sorted = runs.slice().sort((p, q) => Math.hypot(q.b[0] - q.a[0], q.b[1] - q.a[1]) - Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]));
+    for (const dist of [0.045 * K, 0.07 * K, 0.025 * K]) for (const r of sorted) {
+      const mx = (r.a[0] + r.b[0]) / 2, mz = (r.a[1] + r.b[1]) / 2;
+      const x = mx + r.n[0] * (dist + 2.2 * H), z = mz + r.n[1] * (dist + 2.2 * H);   // n: away from the outline
+      const yaw = Math.atan2(-(r.b[1] - r.a[1]), r.b[0] - r.a[0]);
+      const ux = Math.cos(yaw) * len / 2, uz = -Math.sin(yaw) * len / 2;
+      if (t.inside(x + ux, z + uz) && t.inside(x - ux, z - uz)) return { x, z, yaw };
+    }
+    const r = sorted[0];
+    return { x: t.clampX((r.a[0] + r.b[0]) / 2 + r.n[0] * 0.05 * K), z: t.clampZ((r.a[1] + r.b[1]) / 2 + r.n[1] * 0.05 * K), yaw: Math.atan2(-(r.b[1] - r.a[1]), r.b[0] - r.a[0]) };
   }
 
   boardRun(a, b) {
