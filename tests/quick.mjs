@@ -198,6 +198,17 @@ console.log('—', sec());
       let ce = 0; for (let i = 0; i < cs.length; i++) ce = Math.max(ce, Math.abs(cs[i] - t.conc[i]));
       out.conc = { vol: (t.concVolume() - c0) / h.poured, leak: leak / all, undo: gone && ce < 1e-9, m3: +(h.poured * 42.875).toFixed(3) };
     }
+    // sand poured onto concrete lies on it (the concrete does not rise); undo exact
+    {
+      const o = tc.objects.all('outline').find((x) => x.kind === 'rect');
+      const cx = (o.x0 + o.x1) / 2, cz = (o.z0 + o.z1) / 2, i = t.index(cx, cz);
+      const c0 = t.conc.slice(), v0 = t.totalVolume();
+      tc.journal.act('test-sand', {}, tc.clock, () => { t.deposit(cx, cz, 2e-5, 0.01, 0, 1); for (let k = 0; k < 4000 && t.active; k++) t.relax(1); });
+      let dc = 0; for (let k = 0; k < c0.length; k++) dc = Math.max(dc, Math.abs(c0[k] - t.conc[k]));
+      const onTop = t.top[i] > 0 && t.topM[i] === 1, vol = Math.abs(t.totalVolume() - v0 - 2e-5) / 2e-5;
+      tc.undo(); const back = t.top.every((x) => x === 0);
+      out.sandOnConc = { onTop, concMoved: dc, vol, back };
+    }
     // spilled concrete outside: the shovel takes it (only it, not the soil) and tips it into the form
     {
       const o = tc.objects.all('outline').find((x) => x.kind === 'rect');
@@ -249,6 +260,7 @@ console.log('—', sec());
     `${play.rake.h0.toFixed(1)} → ${play.rake.h1.toFixed(1)} mm, ${play.rake.drift.toFixed(2)} mm3, ${play.rake.strokes} strokes`);
   check('sand: heap of the ordered volume, shovel carries sand, layers undo exactly', play.mats.group === 'sand' && Math.abs(play.mats.heap - 1) < 1e-4 && play.mats.sand > 0.98 && play.mats.sand < 1.0001 && play.mats.loadSand && play.mats.dumpedSand && play.mats.undo && Math.abs(play.mats.drift) < 1e-4, JSON.stringify(play.mats));
   check('concrete: pumped volume exact, held by the formwork, undo exact', Math.abs(play.conc.vol - 1) < 1e-4 && play.conc.leak < 0.001 && play.conc.undo, JSON.stringify(play.conc));
+  check('sand on concrete lies on top (concrete unchanged), volume exact, undo', play.sandOnConc.onTop && play.sandOnConc.concMoved === 0 && play.sandOnConc.vol < 1e-4 && play.sandOnConc.back, JSON.stringify(play.sandOnConc));
   check('shovel takes spilled fresh concrete and tips it into the form, volume exact, undo', play.shovelConc.loaded && play.shovelConc.took && play.shovelConc.vol < 1e-6 && play.shovelConc.undo, JSON.stringify(play.shovelConc));
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 8 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));
   await page.reload();

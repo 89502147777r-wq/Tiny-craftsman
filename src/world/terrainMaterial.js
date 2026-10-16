@@ -144,8 +144,15 @@ const FRAG_SOIL = `
           vec2 mq = vWPos.xz;
           vec3 cS = texture(tMat, vec3(mq * uMatScale.x, 0.0)).rgb * vec3(1.05, 1.0, 0.86);
           // granite crushed stone: medium grey (the photo is a light driveway gravel)
-          vec3 c5 = texture(tMat, vec3(mq * uMatScale.y, 1.0)).rgb * vec3(0.5, 0.5, 0.52);
-          vec3 c20 = texture(tMat, vec3(mq * uMatScale.z + 0.37, 1.0)).rgb * vec3(0.54, 0.53, 0.53);
+          vec3 c5 = texture(tMat, vec3(mq * uMatScale.y, 1.0)).rgb * vec3(0.56, 0.56, 0.58);
+          vec3 c20 = texture(tMat, vec3(mq * uMatScale.z + 0.37, 1.0)).rgb * vec3(0.46, 0.45, 0.44);
+          // the single stones: 5–20 mm fine and light, 20–40 mm coarse, each stone its own
+          // shade, deep dark gaps between them
+          if (vMat.y + vMat.z > 0.01) {
+            vec3 s5 = tcStones(mq * 300.0), s20 = tcStones(mq * 118.0 + 7.0);
+            c5 *= mix(0.62, 1.0, smoothstep(0.0, 0.3, s5.x)) * (0.9 + 0.2 * tcHash(floor(mq * 300.0)));
+            c20 *= mix(0.35, 1.0, smoothstep(0.0, 0.4, s20.x)) * (0.78 + 0.4 * tcHash(floor(mq * 118.0 + 7.0)));
+          }
           float mSum = vMat.x + vMat.y + vMat.z;
           vec3 mc = (cS * vMat.x + c5 * vMat.y + c20 * vMat.z) / max(0.001, mSum);
           soilC = mix(soilC, mc, smoothstep(0.0, 1.0, clamp(mSum, 0.0, 1.0)));
@@ -308,7 +315,7 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <roughnessmap_fragment>', `${ch.rough}${ROUGH_TAIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-19';
+  mat.customProgramCacheKey = () => 'tc-terrain-20';
   return mat;
 }
 
@@ -332,7 +339,7 @@ export function makeLightTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-light-13';
+  mat.customProgramCacheKey = () => 'tc-terrain-light-14';
   return mat;
 }
 

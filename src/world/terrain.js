@@ -52,6 +52,9 @@ export class Terrain {
     this.meshTiles = new Set();
     this.vib = new Float32Array(N);   // vibrated until (project clock)
     this.cBase = new Float32Array(N);   // set concrete under a fresh layer (that part does not flow)
+    // loose material lying ON the concrete (sand or stone poured onto a slab): thickness, material
+    this.top = new Float32Array(N);
+    this.topM = new Uint8Array(N);
     // taken since the last reset: per material, and soil depth·volume
     this.take = { v: 0, dv: 0, m: new Float64Array(MATERIALS.length), c: 0 };
     this._seg = { m: new Uint8Array(LAYERS + 1), h: new Float64Array(LAYERS + 1) };
@@ -78,7 +81,7 @@ export class Terrain {
         const e = Math.min(ex, ez);
         h += 0.0012 * Math.exp(-e / 3);
         const i = iz * nx + ix;
-        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0; this.ldep[i] = 0; this.lN[i] = 0; this.conc[i] = 0; this.cSm[i] = 0;
+        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0; this.ldep[i] = 0; this.lN[i] = 0; this.conc[i] = 0; this.cSm[i] = 0; this.top[i] = 0;
       }
     }
     this.markAll();
@@ -103,7 +106,7 @@ export class Terrain {
     const iz = Math.min(this.rz, Math.max(0, Math.round(this.toCellZ(z))));
     return iz * this.nx + ix;
   }
-  hAt(i) { return this.nat[i] + this.loose[i] + this.conc[i]; }
+  hAt(i) { return this.nat[i] + this.loose[i] + this.conc[i] + this.top[i]; }
   base(i) { return this.nat[i] + this.loose[i]; }
 
   heightAt(x, z) {
@@ -180,6 +183,7 @@ export class Terrain {
   // when all layers are used, the two lowest merge into the thicker one's material)
   _push(i, add, mat = M_SOIL, depth = 0) {
     if (!(add > 0)) return;
+    if (this.conc[i] > 1e-6) { this._pushTop(i, add, mat); return; }   // onto concrete: it lies on top of it
     const b = i * LAYERS, lH = this.lH, lM = this.lM;
     let n = this.lN[i];
     if (mat === M_SOIL) {
@@ -202,6 +206,14 @@ export class Terrain {
       this.lN[i] = n;
     }
     this._sumLoose(i);
+  }
+
+  // loose material on concrete: one layer per cell; a different material poured on it
+  // mixes in (the cell shows whichever there is more of)
+  _pushTop(i, add, mat) {
+    const t = this.top[i];
+    if (t <= 0 || mat === this.topM[i] || add > t) this.topM[i] = mat;
+    this.top[i] = t + add;
   }
 
   // take from the top layers; the pieces go to seg (top first) when given
@@ -295,6 +307,19 @@ export class Terrain {
         if (out > cell * 1.6) continue;
         const allowed = cutY + out * 3.2; // steep but not perfectly vertical cut
         const i = iz * n + ix;
+        if (this.top[i] > 0) {
+          // sand / stone lying on concrete: the blade takes it first
+          const h = this.hAt(i);
+          if (h > allowed) {
+            const want = Math.min(h - allowed, this.top[i], (maxVol - removed) / this.cellArea);
+            if (want > 0) {
+              this.top[i] -= want; if (this.top[i] < 1e-9) this.top[i] = 0;
+              this.take.m[this.topM[i]] += want; this.take.v += want; removed += want * this.cellArea; touched = true;
+              if (removed >= maxVol) break;
+            }
+          }
+          if (this.top[i] > 0) continue;
+        }
         if (this.conc[i] > 1e-5) {
           // fresh concrete: the blade takes it (not the soil under it); set concrete it cannot cut
           const mob = this.conc[i] - this.cBase[i], h = this.nat[i] + this.loose[i] + this.conc[i];
@@ -440,7 +465,7 @@ export class Terrain {
   // Unconditionally stable, exactly volume-conserving.
   _relaxOnce() {
     const a = this.active;
-    const { nx: n, cell, nat, loose, orig, rx, rz, conc } = this;
+    const { nx: n, cell, nat, loose, orig, rx, rz, conc, top, topM } = this;
     const tN = REPOSE_NATIVE;
     const fwd = (this._sweep = !this._sweep);
     const D1 = cell, D2 = cell * Math.SQRT2;
@@ -456,7 +481,27 @@ export class Terrain {
           const jx = ix + NB[k][0], jz = iz + NB[k][1];
           if (jx < 0 || jx > rx || jz < 0 || jz > rz) continue;
           const j = jz * n + jx;
-          if (conc[i] > 1e-6 || conc[j] > 1e-6) continue;   // under / onto concrete nothing slides
+          if (conc[i] > 1e-6 || conc[j] > 1e-6) {
+            // concrete itself does not slide here, but what lies on it does (sand on a
+            // slab, off its edge), and loose material next to a slab slides onto it
+            const d = nat[i] + loose[i] + conc[i] + top[i] - nat[j] - loose[j] - conc[j] - top[j];
+            const dist = NB[k][2] ? D2 : D1, ad = d < 0 ? -d : d;
+            if (ad <= REPOSE_MIN * dist) continue;
+            const src = d > 0 ? i : j, dst = d > 0 ? j : i, onC = conc[src] > 1e-6;
+            const avail = onC ? top[src] : loose[src];
+            if (avail <= 0) continue;
+            const lim = REPOSE[onC ? topM[src] : this.topMat(src)] * dist;
+            if (ad <= lim) continue;
+            const m = Math.min((ad - lim) * 0.5, avail);
+            if (onC) { top[src] -= m; this._push(dst, m, topM[src], this.ldep[src]); }
+            else this._move(src, dst, m);
+            if (m > 1e-7) {
+              const ax = ix < jx ? ix : jx, bx = ix < jx ? jx : ix, az = iz < jz ? iz : jz, bz = iz < jz ? jz : iz;
+              if (ax < mx0) mx0 = ax; if (bx > mx1) mx1 = bx;
+              if (az < mz0) mz0 = az; if (bz > mz1) mz1 = bz;
+            }
+            continue;
+          }
           const d = nat[i] + loose[i] - nat[j] - loose[j];
           const dist = NB[k][2] ? D2 : D1;
           const ad = d < 0 ? -d : d;
@@ -540,7 +585,7 @@ export class Terrain {
 
   totalVolume() {
     let v = 0;
-    for (let i = 0; i < this.nat.length; i++) v += this.nat[i] - this.floorY + this.loose[i];   // soil and loose materials (not concrete)
+    for (let i = 0; i < this.nat.length; i++) v += this.nat[i] - this.floorY + this.loose[i] + this.top[i];   // soil and loose materials (not concrete)
     return v * this.cellArea;
   }
 
@@ -626,7 +671,7 @@ export class Terrain {
   // recompute the mesh data of a rectangle of cells (with a margin for normals and
   // the cavity term); returns the rectangle that changed
   _updateRect(b) {
-    const { nx: n, cell, nat, loose, orig, rx, rz, conc, cTime, cSm } = this;
+    const { nx: n, cell, nat, loose, orig, rx, rz, conc, cTime, cSm, top, topM } = this;
     const pos = this.aPos.array, nor = this.aNor.array, soil = this.aSoil.array, mats = this.aMat.array, cc = this.aConc.array, { lH, lM, lN } = this;
     const occ = this._occ;
     const OR = 4; // occlusion probe radius (cells)
@@ -635,11 +680,11 @@ export class Terrain {
     const H = (ix, iz) => {
       ix = ix < 0 ? 0 : ix > rx ? rx : ix;
       iz = iz < 0 ? 0 : iz > rz ? rz : iz;
-      const i = iz * n + ix; return nat[i] + loose[i] + conc[i];
+      const i = iz * n + ix; return nat[i] + loose[i] + conc[i] + top[i];
     };
     for (let iz = oz0; iz <= oz1; iz++) for (let ix = ox0; ix <= ox1; ix++) {
       const i = iz * n + ix;
-      const h = nat[i] + loose[i] + conc[i];
+      const h = nat[i] + loose[i] + conc[i] + top[i];
       pos[i * 3 + 1] = h;
       const hx = H(ix + 1, iz) - H(ix - 1, iz), hz = H(ix, iz + 1) - H(ix, iz - 1);
       const inv = 1 / Math.hypot(hx, 2 * cell, hz);
@@ -660,13 +705,21 @@ export class Terrain {
         if (m === 1) f1 += h; else if (m === 2) f2 += h; else if (m === 3) f3 += h;
         rest -= h;
       }
+      if (conc[i] > 1e-6) {
+        // the slab covers the layers under it; what lies on it shows instead
+        f1 = f2 = f3 = 0;
+        const tm = topM[i], th = Math.min(top[i], 0.002);
+        if (tm === 1) f1 = th; else if (tm === 2) f2 = th; else if (tm === 3) f3 = th;
+      }
       mats[i * 3] = f1 * 500; mats[i * 3 + 1] = f2 * 500; mats[i * 3 + 2] = f3 * 500;
-      cc[i * 3] = conc[i]; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
+      // under a cover of sand / stone the concrete fades out (gone at ~1.3 mm of the model)
+      const cover = top[i] > 0 ? Math.pow(Math.max(0, 1 - top[i] / 0.0013), 3) : 1;
+      cc[i * 3] = conc[i] * cover; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
       // the foot of a concrete face (e.g. after the boards are stripped): the face
       // belongs to the concrete, not to the soil below it
       if (conc[i] <= 1e-6 && ix > 0 && ix < rx && iz > 0 && iz < rz) {
         let j = -1, hj = h + 0.002;
-        for (const k of [i - 1, i + 1, i - n, i + n]) { const hk = nat[k] + loose[k] + conc[k]; if (conc[k] > 1e-5 && hk > hj) { hj = hk; j = k; } }
+        for (const k of [i - 1, i + 1, i - n, i + n]) { const hk = nat[k] + loose[k] + conc[k] + top[k]; if (conc[k] > 1e-5 && hk > hj) { hj = hk; j = k; } }
         if (j >= 0) { cc[i * 3] = conc[j]; cc[i * 3 + 1] = cTime[j]; cc[i * 3 + 2] = cSm[j]; }
       }
     }
@@ -767,7 +820,7 @@ export class Terrain {
   // computed; a tile wakes its neighbours when concrete crosses into them.
   concStep(dt, substeps = 2) {
     if (!this._tList.length) return false;
-    const { nx: n, cell, nat, loose, conc, wall, cTime, cSm, cY, vib, cBase, rx, rz, TS, tnx } = this;
+    const { nx: n, cell, nat, loose, conc, wall, cTime, cSm, cY, vib, cBase, top, rx, rz, TS, tnx } = this;
     const S = 3.5, G = 9.81, C = CONCRETE, clock = this.clock || 0;
     const setT = C.stiff * C.cure, stiffT = clock - setT;
     const h = dt / substeps;
@@ -794,7 +847,7 @@ export class Terrain {
               if (wall[j]) {
                 // over the top of a board (more than ~1 cm real above it): it slops over
                 // and falls down the outside in lumps
-                const si = nat[i] + loose[i] + conc[i];
+                const si = nat[i] + loose[i] + conc[i] + top[i];
                 if (conc[i] > 0 && si > wall[j] + 0.003 && cTime[i] >= stiffT) {
                   let kx = jx, kz = jz;
                   for (let q = 0; q < 8 && kx >= 0 && kx <= rx && kz >= 0 && kz <= rz && wall[kz * n + kx]; q++) { kx += NB[k][0]; kz += NB[k][1]; }
@@ -806,7 +859,7 @@ export class Terrain {
               }
               const ci = conc[i], cj = conc[j];
               if (ci <= 0 && cj <= 0) continue;
-              const d = nat[i] + loose[i] + ci - nat[j] - loose[j] - cj;
+              const d = nat[i] + loose[i] + ci + top[i] - nat[j] - loose[j] - cj - top[j];
               const src = d > 0 ? i : j, dst = d > 0 ? j : i;
               const hs = conc[src] - cBase[src];                  // the fresh part flows, not its set base
               if (hs <= 1e-6 || cTime[src] < stiffT) continue;   // nothing to flow, or already set
@@ -874,7 +927,7 @@ export class Terrain {
           const c = conc[i];
           // a board, or concrete that has set: the fine pass only (it would pile up in it)
           if (wall[i] || (c > 1e-7 && (cTime[i] < clock - setT || this.cBase[i] > 0))) { ok = false; break; }
-          sh += nat[i] + loose[i] + c; sc += c; sy += cY[i] * c; st += cTime[i] * c;
+          sh += nat[i] + loose[i] + c + this.top[i]; sc += c; sy += cY[i] * c; st += cTime[i] * c;
           if (vib[i] > clock) v = true;
         }
         if (ok) o = { x0, z0, s: sh / (B * B), c: sc, y: sc > 0 ? sy / sc : 0, t: sc > 0 ? st / sc : clock, v };
@@ -1070,9 +1123,10 @@ export class Terrain {
   snapshot() {
     const s = (this._snap ||= { nat: new Float32Array(this.nat.length), loose: new Float32Array(this.nat.length), ldep: new Float32Array(this.nat.length),
       lH: new Float32Array(this.lH.length), lM: new Uint8Array(this.lM.length), lN: new Uint8Array(this.lN.length),
-      conc: new Float32Array(this.nat.length), cTime: new Float32Array(this.nat.length), cSm: new Float32Array(this.nat.length) });
+      conc: new Float32Array(this.nat.length), cTime: new Float32Array(this.nat.length), cSm: new Float32Array(this.nat.length),
+      top: new Float32Array(this.nat.length), topM: new Uint8Array(this.nat.length) });
     s.nat.set(this.nat); s.loose.set(this.loose); s.ldep.set(this.ldep); s.lH.set(this.lH); s.lM.set(this.lM); s.lN.set(this.lN);
-    s.conc.set(this.conc); s.cTime.set(this.cTime); s.cSm.set(this.cSm);
+    s.conc.set(this.conc); s.cTime.set(this.cTime); s.cSm.set(this.cSm); s.top.set(this.top); s.topM.set(this.topM);
     return s;
   }
 
@@ -1081,6 +1135,7 @@ export class Terrain {
     if (s.ldep) this.ldep.set(s.ldep);
     if (s.lH) { this.lH.set(s.lH); this.lM.set(s.lM); this.lN.set(s.lN); } else this.layersFromLoose();
     if (s.conc) { this.conc.set(s.conc); this.cTime.set(s.cTime); this.cSm.set(s.cSm); } else this.conc.fill(0);
+    if (s.top) { this.top.set(s.top); this.topM.set(s.topM); } else this.top.fill(0);
     this.cActive = null;
     this.active = null;
     this.markAll(); this.active = null;
@@ -1089,9 +1144,9 @@ export class Terrain {
   // Sparse diff between a snapshot and the current state (heights, layers, soil colour).
   diffFrom(s) {
     const idx = [], L = LAYERS;
-    const { nat, loose, lN, lH, lM, conc, cTime, cSm } = this;
+    const { nat, loose, lN, lH, lM, conc, cTime, cSm, top, topM } = this;
     for (let i = 0; i < nat.length; i++) {
-      if (s.nat[i] !== nat[i] || s.loose[i] !== loose[i] || s.lN[i] !== lN[i] || s.conc[i] !== conc[i] || s.cSm[i] !== cSm[i] || s.cTime[i] !== cTime[i]) { idx.push(i); continue; }
+      if (s.nat[i] !== nat[i] || s.loose[i] !== loose[i] || s.lN[i] !== lN[i] || s.conc[i] !== conc[i] || s.cSm[i] !== cSm[i] || s.cTime[i] !== cTime[i] || s.top[i] !== top[i] || s.topM[i] !== topM[i]) { idx.push(i); continue; }
       const b = i * L;
       for (let k = 0; k < lN[i]; k++) if (s.lH[b + k] !== lH[b + k] || s.lM[b + k] !== lM[b + k]) { idx.push(i); break; }
     }
@@ -1101,12 +1156,14 @@ export class Terrain {
       bd: new Float32Array(m), ad: new Float32Array(m), bN: new Uint8Array(m), aN: new Uint8Array(m),
       bH: new Float32Array(m * L), aH: new Float32Array(m * L), bM: new Uint8Array(m * L), aM: new Uint8Array(m * L),
       bC: new Float32Array(m), aC: new Float32Array(m), bT: new Float32Array(m), aT: new Float32Array(m), bS: new Float32Array(m), aS: new Float32Array(m),
+      bP: new Float32Array(m), aP: new Float32Array(m), bPM: new Uint8Array(m), aPM: new Uint8Array(m),
     };
     for (let k = 0; k < m; k++) {
       const i = idx[k];
       d.bn[k] = s.nat[i]; d.bl[k] = s.loose[i]; d.an[k] = nat[i]; d.al[k] = loose[i];
       d.bd[k] = s.ldep[i]; d.ad[k] = this.ldep[i]; d.bN[k] = s.lN[i]; d.aN[k] = lN[i];
       d.bC[k] = s.conc[i]; d.aC[k] = conc[i]; d.bT[k] = s.cTime[i]; d.aT[k] = cTime[i]; d.bS[k] = s.cSm[i]; d.aS[k] = cSm[i];
+      d.bP[k] = s.top[i]; d.aP[k] = top[i]; d.bPM[k] = s.topM[i]; d.aPM[k] = topM[i];
       for (let q = 0; q < L; q++) {
         d.bH[k * L + q] = s.lH[i * L + q]; d.aH[k * L + q] = lH[i * L + q];
         d.bM[k * L + q] = s.lM[i * L + q]; d.aM[k * L + q] = lM[i * L + q];
@@ -1119,6 +1176,7 @@ export class Terrain {
     const N = forward ? d.an : d.bn, Lo = forward ? d.al : d.bl, L = LAYERS;
     const H = forward ? d.aH : d.bH, M = forward ? d.aM : d.bM, C = forward ? d.aN : d.bN, D = forward ? d.ad : d.bd;
     const CC = forward ? d.aC : d.bC, CT = forward ? d.aT : d.bT, CS = forward ? d.aS : d.bS;
+    const P = forward ? d.aP : d.bP, PM = forward ? d.aPM : d.bPM;
     let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
     for (let k = 0; k < d.idx.length; k++) {
       const i = d.idx[k];
@@ -1130,6 +1188,7 @@ export class Terrain {
         if (D) this.ldep[i] = D[k];
       } else this.setLooseSoil(i, Lo[k]);   // older journals: all loose material was soil
       if (CC) { this.conc[i] = CC[k]; this.cTime[i] = CT[k]; this.cSm[i] = CS[k]; }   // BUILD 19+: concrete
+      if (P) { this.top[i] = P[k]; this.topM[i] = PM[k]; } else this.top[i] = 0;   // BUILD 28+: material on concrete
       const ix = i % this.nx, iz = (i / this.nx) | 0;
       if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
     }
@@ -1142,6 +1201,7 @@ export class Terrain {
   materialVolumes() {
     const v = new Array(MATERIALS.length).fill(0), { lN, lH, lM } = this;
     for (let i = 0; i < lN.length; i++) for (let k = 0, b = i * LAYERS; k < lN[i]; k++) v[lM[b + k]] += lH[b + k];
+    for (let i = 0; i < lN.length; i++) if (this.top[i] > 0) v[this.topM[i]] += this.top[i];
     return v.map((x) => x * this.cellArea);
   }
 }

@@ -437,7 +437,8 @@ function buildProject() {
     tray: TRAY,
     terrain: { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, ldep: base.ldep || t.ldep, orig: t.orig,
       layers: { count: 3, n: base.lN || t.lN, h: base.lH || t.lH, m: base.lM || t.lM, materials: ['soil', 'sand', 'gravel 5-20', 'gravel 20-40'] },
-      concrete: { h: base.conc || t.conc, poured: base.cTime || t.cTime, smooth: base.cSm || t.cSm, cureSeconds: CONCRETE.cure } },
+      concrete: { h: base.conc || t.conc, poured: base.cTime || t.cTime, smooth: base.cSm || t.cSm, cureSeconds: CONCRETE.cure },
+      onConcrete: { h: base.top || t.top, m: base.topM || t.topM } },
     objects,
     settings: app.settings,
     camera: app.rig.state(),
@@ -474,6 +475,8 @@ function applyProject(p) {
   if (L && L.h.length === t.lH.length) { t.lH.set(L.h); t.lM.set(L.m); t.lN.set(L.n); } else t.layersFromLoose();   // before BUILD 17: all soil
   const C = p.terrain.concrete;
   if (C && C.h.length === t.conc.length) { t.conc.set(C.h); t.cTime.set(C.poured); t.cSm.set(C.smooth); } else { t.conc.fill(0); t.cSm.fill(0); }
+  const P = p.terrain.onConcrete;   // BUILD 28+: sand / stone lying on concrete
+  if (P && P.h.length === t.top.length) { t.top.set(P.h); t.topM.set(P.m); } else { t.top.fill(0); t.topM.fill(0); }
   t.cActive = null;
   app.clock = p.clock || 0;
   t.sanitizeConcrete(app.clock);

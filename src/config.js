@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:3.5.
-export const BUILD = 27;
+export const BUILD = 28;
 export const STAGE = 3;
 export const MODEL_SCALE = 3.5;
 // Many sizes were first designed at 1:12; K = how much bigger everything built
@@ -40,8 +40,8 @@ export const REPOSE_LOOSE = Math.tan(37 * Math.PI / 180);  // freshly dug loose 
 export const MATERIALS = [
   { id: 'soil', name: 'Грунт', repose: Math.tan(37 * Math.PI / 180) },
   { id: 'sand', name: 'Песок', repose: Math.tan(33 * Math.PI / 180), tile: 1.8 / 3.5, color: 0xc9a46a },
-  { id: 'g5', name: 'Щебень 5–20', repose: Math.tan(37 * Math.PI / 180), tile: 2.0 / 3.5, color: 0x9a9894 },
-  { id: 'g20', name: 'Щебень 20–40', repose: Math.tan(39 * Math.PI / 180), tile: 1.0 / 3.5, color: 0x9c9a95 },
+  { id: 'g5', name: 'Щебень 5–20', repose: Math.tan(37 * Math.PI / 180), tile: 1.0 / 3.5, color: 0xa3a29e },   // tile: real metres per repeat of the photo
+  { id: 'g20', name: 'Щебень 20–40', repose: Math.tan(39 * Math.PI / 180), tile: 2.6 / 3.5, color: 0x86847f },   // stones ~2.5× those of 5–20
 ];
 export const M_SOIL = 0, M_SAND = 1, M_G5 = 2, M_G20 = 3;
 // deliveries (real m³ → model volume: ÷ 3.5³) and the bucket
