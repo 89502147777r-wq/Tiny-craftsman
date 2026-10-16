@@ -195,6 +195,9 @@ export class WallView {
     this.frames = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xff6a1c, roughness: 0.6, emissive: 0x401000 }), this.max.frame);
     this.cord = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshStandardMaterial({ color: 0xff4a1c, roughness: 0.6 }));
     for (const m of [this.blocks, this.bricks, this.mortar]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
+    // pallets beside the walls: the wooden pallet (boards) — the blocks on it are drawn as blocks
+    this.wood = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xb9925e, roughness: 0.85 }), 400);
+    this.wood.castShadow = this.wood.receiveShadow = true; this.wood.frustumCulled = false; this.wood.count = 0; this.group.add(this.wood);
     this.lintels.castShadow = this.lintels.receiveShadow = true;
     for (const m of [this.lintels, this.frames]) { m.frustumCulled = false; m.count = 0; this.group.add(m); }
     this.cord.visible = false; this.group.add(this.cord);
@@ -212,7 +215,8 @@ export class WallView {
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening')].map((r) => r.id));
-    let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0;
+    let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0;
+    const c3 = new THREE.Color();
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [] };
     const P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3();
     const put = (u, id) => {
@@ -257,6 +261,28 @@ export class WallView {
           this.mortar.setMatrixAt(nm++, m.compose(P, q, Sv));
         }
       }
+      // the pallet: 1200 × 800 mm, the rest of the blocks (bricks) stacked on it
+      if (w.pallet && nw < 390) {
+        const [px, pz, pyaw] = w.pallet, g = this.terrainY ? this.terrainY(px, pz) : w.base;
+        const pq = new THREE.Quaternion().setFromAxisAngle(_Y, pyaw), ex = new THREE.Vector3(1, 0, 0).applyQuaternion(pq), ez = new THREE.Vector3(0, 0, 1).applyQuaternion(pq);
+        const at = (a, y, c, sx, sy, sz) => { P.set(px + ex.x * a * S + ez.x * c * S, g + y * S, pz + ex.z * a * S + ez.z * c * S); Sv.set(sx * S, sy * S, sz * S); return m.compose(P, pq, Sv); };
+        for (const c of [-350, 0, 350]) this.wood.setMatrixAt(nw++, at(0, 50, c, 1200, 100, 100));          // bearers
+        for (let a = -540; a <= 540; a += 135) this.wood.setMatrixAt(nw++, at(a, 111, 0, 100, 22, 800));     // top boards
+        // how many are left (all the places of the wall less the laid ones), as a stack
+        let total = 0;
+        for (let r = 0; r < st.n; r++) total += course(w, r, st.walls, st.opens).filter((x) => !x.lintel).length;
+        let left = Math.max(0, total - st.units.filter((u) => !u.lintel).length);
+        const bl = w.kind === 'block';
+        const L = bl ? 600 : 250, Hh = bl ? 250 : 65, Tt = bl ? 300 : 120, na = bl ? 2 : 4, nc = bl ? 2 : 6, nl = bl ? 3 : 6;   // a low stack: it must not hide the wall
+        left = Math.min(left, na * nc * nl);
+        for (let i = 0; i < left; i++) {
+          const lay = Math.floor(i / (na * nc)), j = i % (na * nc), ia = j % na, ic = Math.floor(j / na);
+          const a = (ia - (na - 1) / 2) * (L + 4), c = (ic - (nc - 1) / 2) * (Tt + 4), y = 122 + lay * (Hh + 2) + Hh / 2;
+          at(a, y, c, L, Hh, Tt);
+          if (bl && nb < this.max.block) { this.blocks.setMatrixAt(nb, m.compose(P, pq, Sv)); this.blocks.setColorAt(nb, c3.setRGB(0.86, 0.855, 0.83)); this.owner.blocks[nb++] = null; }
+          else if (!bl && nk < this.max.brick) { const h = hash(i * 7 + w.id); this.bricks.setMatrixAt(nk, m.compose(P, pq, Sv)); this.bricks.setColorAt(nk, c3.setRGB(0.46 + h * 0.14, 0.17 + h * 0.06, 0.11 + h * 0.04)); this.owner.bricks[nk++] = null; }
+        }
+      }
       // planned openings: an orange frame on both faces until the masonry is round them
       for (const o of this.marks ? [...st.opens, ...(this.liveOpening?.wall === w.id ? [this.liveOpening] : [])] : []) {
         const { r0, r1 } = openingRows(w, o), y0 = rowY(w, r0) - (r0 === 0 ? k.bed0 * S : 0), y1 = rowY(w, r1) - k.bed * S;
@@ -289,8 +315,8 @@ export class WallView {
     }
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
     if (this.live) put(this.live, null);
-    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf;
-    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw;
+    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames, this.wood]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     for (const im of [this.blocks, this.bricks]) im.instanceColor.needsUpdate = true;
   }
 
