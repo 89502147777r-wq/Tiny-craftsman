@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, K } from '../config.js';
-import { KINDS, axis, rows, rowY, course, slotPose, covered, wallState } from '../world/walls.js';
+import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, covered, wallState, taken, cutName, openingRows, beddable } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 
 // Walls (aerated concrete blocks or bricks), as on site:
@@ -30,6 +30,7 @@ export class WallTool {
 
   setMode(m) { this.mode = m; if (m === 'lay') loadPhysics().catch(() => {}); this.app.ui.refresh(); this._focus(); }
   get kind() { return this.app.settings.wallKind || 'block'; }
+  get openKind() { return this.app.settings.openKind || 'window'; }
 
   // the wall nearest to a point (within reach), with the position along it (real mm)
   nearest(p, reach = 0.035 * K) {
@@ -48,6 +49,7 @@ export class WallTool {
   // the next course (ghost places + cord) is shown while spreading mortar and laying
   _focus(w) {
     const v = this.app.wallView;
+    v.marks = true;
     v.focus = this.mode === 'mortar' || this.mode === 'lay' ? (w ? w.id : this.lastWall ?? null) : null;
     v.dirty = true;
   }
@@ -58,7 +60,7 @@ export class WallTool {
     if (!e || e.clientX === undefined || (!e.clientX && !e.clientY)) return p;
     const app = this.app, v = app.wallView;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
-    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.mortar, v.ghost], false)[0];
+    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames], false)[0];
     return hit ? hit.point : p;
   }
 
@@ -67,6 +69,13 @@ export class WallTool {
     p = this._pt(p, e);
     if (this.mode === 'line') {
       this.drag = { a: this._snap([p.x, p.z]), b: [p.x, p.z] };
+      return true;
+    }
+    if (this.mode === 'opening') {
+      const n = this.nearest(p);
+      if (!n) { app.ui.toast('Ведите вдоль стены — от одного края проёма до другого'); return true; }
+      this.drag = { w: n.w, s0: n.s, s1: n.s, a: n.s };
+      this.lastWall = n.w.id;
       return true;
     }
     if (this.mode === 'mortar') {
@@ -99,11 +108,17 @@ export class WallTool {
       const L = Math.hypot(this.drag.b[0] - this.drag.a[0], this.drag.b[1] - this.drag.a[1]) * MODEL_SCALE;
       app.ui.showMeasure(`${L.toFixed(2)} м`);
       this._preview();
+    } else if (this.mode === 'opening') {
+      const d = this.drag, ax = axis(d.w);
+      const s = ((p.x - d.w.a[0]) * ax.ux + (p.z - d.w.a[1]) * ax.uz) / S;
+      d.s0 = Math.round(Math.min(d.a, s) / 50) * 50; d.s1 = Math.round(Math.max(d.a, s) / 50) * 50;
+      app.ui.showMeasure(`${OPENINGS[this.openKind].name}: ${(d.s1 - d.s0) / 1000} м`.replace('.', ','));
+      this._showOpening();
     } else if (this.mode === 'mortar') {
       const d = this.drag, ax = axis(d.w);
       const s = ((p.x - d.w.a[0]) * ax.ux + (p.z - d.w.a[1]) * ax.uz) / S;
       d.s0 = Math.min(d.s0, s); d.s1 = Math.max(d.s1, s);
-      const cs = course(d.w, d.row, app.objects.all('wall')), lo = Math.min(...cs.map((x) => x.s0)), hi = Math.max(...cs.map((x) => x.s1));
+      const cs = course(d.w, d.row, app.objects.all('wall'), app.objects.all('opening').filter((o) => o.wall === d.w.id)), lo = Math.min(...cs.map((x) => x.s0)), hi = Math.max(...cs.map((x) => x.s1));
       d.s0 = Math.max(d.s0, lo); d.s1 = Math.min(d.s1, hi);
       app.wallView.live = null;
       this._liveBed = { s0: d.s0, s1: d.s1 };
@@ -130,12 +145,19 @@ export class WallTool {
       this.lastWall = added?.id; this._focus(added);
       app.ui.toast(`${KINDS[rec.kind].name}: стена ${(L * MODEL_SCALE).toFixed(2).replace('.', ',')} м, ${rows(rec)} рядов. Дальше — «Раствор» и «Класть»`);
       void w;
+    } else if (this.mode === 'opening') {
+      this._showOpening(true);
+      this._addOpening(d);
     } else if (this.mode === 'mortar') {
       app.sfx.scrapeStop();
       app.concreteGear.set(null);
       this._liveBed = null; this._showBed();
       if (d.s1 - d.s0 < 50) return;
-      app.journal.act('mortar', { wall: d.w.id, row: d.row }, app.clock, () => app.objects.add({ type: 'bed', wall: d.w.id, row: d.row, s0: +d.s0.toFixed(1), s1: +d.s1.toFixed(1) }));
+      // mortar stays on the masonry under it (none over an opening; on a lintel's bearings)
+      const opens = app.objects.all('opening').filter((o) => o.wall === d.w.id);
+      const parts = beddable(d.w, d.row, app.objects.all('wall'), opens).map(([a, b]) => [Math.max(a, d.s0), Math.min(b, d.s1)]).filter(([a, b]) => b - a > 30);
+      if (!parts.length) return;
+      app.journal.act('mortar', { wall: d.w.id, row: d.row }, app.clock, () => { for (const [a, b] of parts) app.objects.add({ type: 'bed', wall: d.w.id, row: d.row, s0: +a.toFixed(1), s1: +b.toFixed(1) }); });
     }
   }
 
@@ -194,6 +216,35 @@ export class WallTool {
     v.dirty = true;
   }
 
+  // ---- openings ------------------------------------------------------------------------
+  // a door / window opening: its width is dragged along the wall, its height is the
+  // standard one snapped to the courses; it needs room for the lintel's bearing each side
+  _addOpening(d) {
+    const app = this.app, w = d.w, k = KINDS[w.kind], o = OPENINGS[this.openKind], ax = axis(w);
+    const width = d.s1 - d.s0;
+    if (width < o.minW) { app.ui.toast(`${o.name}: проведите шире — не меньше ${o.minW} мм`); return; }
+    if (d.s0 < 250 || d.s1 > ax.L - 250) { app.ui.toast('До угла нужно ≥ 250 мм — там опирается перемычка'); return; }
+    const rec = { type: 'opening', wall: w.id, kind: this.openKind, s0: d.s0, s1: d.s1, y0: o.y0, y1: o.y1 };
+    const { l1 } = openingRows(w, rec);
+    if (l1 > rows(w)) { app.ui.toast(`Стена низкая для ${this.openKind === 'door' ? 'двери' : 'окна'} с перемычкой — нужна высота 2,7 м`); return; }
+    const others = app.objects.all('opening').filter((x) => x.wall === w.id);
+    if (others.some((x) => x.s0 < d.s1 + 500 && x.s1 > d.s0 - 500)) { app.ui.toast('Между проёмами нужен простенок ≥ 500 мм'); return; }
+    // masonry already there?
+    const { r0, r1 } = openingRows(w, rec);
+    if (app.objects.all('unit').some((u) => u.wall === w.id && u.row >= r0 && u.row < l1 && u.s0 < d.s1 && u.s1 > d.s0)) {
+      app.ui.toast('Здесь уже выложено — проём размечают до кладки этих рядов'); return;
+    }
+    app.journal.act('opening', { wall: w.id, kind: rec.kind }, app.clock, () => app.objects.add(rec));
+    app.ui.toast(`${o.name} ${width} мм: ряды ${r0 + 1}–${r1}, перемычка в ряду ${r1 + 1}`);
+    void k;
+  }
+
+  _showOpening(off) {
+    const v = this.app.wallView;
+    v.liveOpening = off || !this.drag ? null : { wall: this.drag.w.id, kind: this.openKind, s0: this.drag.s0, s1: this.drag.s1, y0: OPENINGS[this.openKind].y0, y1: OPENINGS[this.openKind].y1 };
+    v.dirty = true;
+  }
+
   // ---- lay -----------------------------------------------------------------------------
   _lay(p, quiet = false) {
     const app = this.app, n = this.nearest(p);
@@ -201,11 +252,13 @@ export class WallTool {
     const w = n.w, st = wallState(w, app.objects);
     this.lastWall = w.id; this._focus(w);
     if (st.cur >= st.n) { if (!quiet) app.ui.toast('Стена выложена до верха'); this.hold = null; return; }
-    const r = st.cur, cs = course(w, r, st.walls);
-    const free = cs.filter((sl) => !st.units.some((u) => u.row === r && u.i === sl.i));
+    const r = st.cur, cs = course(w, r, st.walls, st.opens);
+    const free = cs.filter((sl) => !taken(st.units, r, sl));
     // the free place nearest the finger that has mortar under it
     const beds = st.beds.filter((b) => b.row === r).map((b) => [b.s0, b.s1]);
-    const ok = free.filter((sl) => covered(beds, sl.s0, sl.s1) > 0.7).sort((a, b) => Math.abs((a.s0 + a.s1) / 2 - n.s) - Math.abs((b.s0 + b.s1) / 2 - n.s));
+    // (a lintel needs mortar under its two bearings)
+    const bedded = (sl) => sl.lintel ? covered(beds, sl.s0, sl.s0 + 200) > 0.7 && covered(beds, sl.s1 - 200, sl.s1) > 0.7 : covered(beds, sl.s0, sl.s1) > 0.7;
+    const ok = free.filter(bedded).sort((a, b) => Math.abs((a.s0 + a.s1) / 2 - n.s) - Math.abs((b.s0 + b.s1) / 2 - n.s));
     if (!ok.length) {
       if (!quiet) app.ui.toast(`Ряд ${r + 1}: сначала «Раствор» — ${w.kind === 'block' ? (r === 0 ? 'цементный раствор' : 'клей') : 'раствор'} под ${w.kind === 'block' ? 'блок' : 'кирпич'}`);
       this.hold = null;
@@ -213,6 +266,9 @@ export class WallTool {
     }
     const sl = ok[0], target = slotPose(w, r, sl);
     const unit = { type: 'unit', wall: w.id, row: r, i: sl.i, s0: +sl.s0.toFixed(1), s1: +sl.s1.toFixed(1), off: sl.off, kind: w.kind, s: target.s.toArray().map((x) => +x.toFixed(6)) };
+    if (sl.lintel) unit.lintel = true;
+    if (sl.cut) { unit.cut = true; app.ui.toast(cutName(w, sl)); }
+    if (sl.lintel) app.ui.toast(`Перемычка ${Math.round(sl.s1 - sl.s0)} мм — по 250 мм опоры с каждой стороны`);
     const go = () => { app.physLoading = false; app.physJob = new LayJob(app, w, unit, target, st); };
     if (physicsReady()) go();
     else { app.physLoading = true; loadPhysics().then(go, () => { app.physLoading = false; app.ui.toast('Физика не загрузилась'); }); }
@@ -222,16 +278,24 @@ export class WallTool {
   // ---- delete --------------------------------------------------------------------------
   _delete(p, e) {
     const app = this.app, id = app.pickObject(e.clientX, e.clientY, 'wall');
+    if (id && app.objects.get(id)?.type === 'opening') {
+      const o = app.objects.get(id);
+      if (app.objects.all('unit').some((u) => u.wall === o.wall && u.lintel && u.s0 < o.s1 && u.s1 > o.s0)) { app.ui.toast('Над проёмом уже перемычка — сначала снимите её'); return; }
+      app.journal.act('opening-remove', {}, app.clock, () => app.objects.remove(id));
+      app.ui.toast('Проём убран — ряды будут сплошными');
+      return;
+    }
     if (id) {
       const u = app.objects.get(id);
-      const above = app.objects.all('unit').some((o) => o.wall === u.wall && o.row === u.row + 1 && o.s0 < u.s1 && o.s1 > u.s0);
+      const rowsUp = u.lintel ? KINDS[u.kind].lintelRows : 1;
+      const above = app.objects.all('unit').some((o) => o.wall === u.wall && o.row === u.row + rowsUp && o.s0 < u.s1 && o.s1 > u.s0);
       if (above) { app.ui.toast('Сверху лежит следующий ряд — сначала снимите его'); return; }
       app.journal.act('unit-remove', {}, app.clock, () => app.objects.remove(id));
       return;
     }
     const n = this.nearest(p);
     if (n && !app.objects.all('unit').some((u) => u.wall === n.w.id)) {
-      app.journal.act('wall-remove', {}, app.clock, () => { for (const b of app.objects.all('bed').filter((b) => b.wall === n.w.id)) app.objects.remove(b.id); app.objects.remove(n.w.id); });
+      app.journal.act('wall-remove', {}, app.clock, () => { for (const b of [...app.objects.all('bed'), ...app.objects.all('opening')].filter((b) => b.wall === n.w.id)) app.objects.remove(b.id); app.objects.remove(n.w.id); });
       app.ui.toast('Линия стены убрана');
     } else app.ui.toast('Коснитесь блока / кирпича, чтобы снять его');
   }
@@ -261,7 +325,7 @@ class LayJob {
     const j = (m) => (Math.random() - 0.5) * m;
     const q0 = target.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(j(0.03), j(0.05), j(0.03))));
     const p0 = p.clone().add(new THREE.Vector3(j(MM(8)), MM(20), j(MM(8))));
-    this.body = this.ep.box(s.x / 2, s.y / 2, s.z / 2, p0, q0, { density: w.kind === 'block' ? 500 : 1800, friction: 0.9 });
+    this.body = this.ep.box(s.x / 2, s.y / 2, s.z / 2, p0, q0, { density: unit.lintel ? 2400 : w.kind === 'block' ? 500 : 1800, friction: 0.9 });
     this.t = 0;
     this.phase = 'drop';
     this.done = false;

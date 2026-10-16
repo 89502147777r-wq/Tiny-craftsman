@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:3.5.
-export const BUILD = 33;
+export const BUILD = 34;
 export const STAGE = 3;
 export const MODEL_SCALE = 3.5;
 // Many sizes were first designed at 1:12; K = how much bigger everything built
@@ -103,6 +103,7 @@ export const DEFAULT_SETTINGS = {
   pump: 0.025,       // concrete pump hose, real m³/s
   wallKind: 'block', // walls: 'block' (aerated concrete) | 'brick' (½ brick) | 'brick2' (1 brick)
   wallHeight: 1500,  // planned wall height, real mm
+  openKind: 'window', // an opening being marked: 'window' | 'door'
 };
 
 // the first outline on a new plot: a 2.6 × 2.1 m slab pit, 75 mm (26 cm) deep
