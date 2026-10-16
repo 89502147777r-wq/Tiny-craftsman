@@ -4,6 +4,7 @@ import { edges, gradeY, contains } from '../world/outlines.js';
 import { cageForRect, cageForTrench, meshPanel, singleBar } from '../world/rebar.js';
 import { loadPhysics, physicsReady } from '../world/physics.js';
 import { StripJob } from './stripJob.js';
+import { RebarJob } from './rebarJob.js';
 
 const MM = (v) => v / 1000 / MODEL_SCALE;
 
@@ -26,7 +27,7 @@ export class BuildTool {
     this.drag = null;
   }
 
-  setMode(m) { this.mode = m; if (m === 'strip') loadPhysics().catch(() => {}); this.app.ui.refresh(); }
+  setMode(m) { this.mode = m; if (['strip', 'cage', 'bar', 'mesh'].includes(m)) loadPhysics().catch(() => {}); this.app.ui.refresh(); }
 
   down(p, e) {
     const { app } = this;
@@ -71,8 +72,9 @@ export class BuildTool {
     const a = [d.a.x, d.a.z], b = [d.b.x, d.b.z];
     if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.008 * K) return;
     if (this.mode === 'board') this.boardRun(a, b);
-    else if (this.mode === 'bar') app.journal.act('rebar-bar', {}, app.clock, () => app.objects.add(singleBar(a, b, app.terrain, app.settings)));
-    else if (this.mode === 'mesh') app.journal.act('rebar-mesh', {}, app.clock, () => app.objects.add(meshPanel(a[0], a[1], b[0], b[1], app.terrain, app.settings)));
+    // bars and mesh sheets are let go and lie where they come to rest (physics)
+    else if (this.mode === 'bar') { const rec = singleBar(a, b, app.terrain, app.settings); this.physics(() => new RebarJob(app, rec, 'rebar-bar', {})); }
+    else if (this.mode === 'mesh') { const rec = meshPanel(a[0], a[1], b[0], b[1], app.terrain, app.settings); this.physics(() => new RebarJob(app, rec, 'rebar-mesh', {})); }
   }
 
   interrupt() { this.drag = null; this.preview(false); this.app.ui.hideMeasure(); }
@@ -143,16 +145,23 @@ export class BuildTool {
       return;
     }
     this._force = null;
-    if (app.stripJob || app.stripLoading) return;
+    if (app.physJob || app.physLoading) return;
     const T = MAT.board.t;
     const spot = this.pileSpot(runs, Math.max(...runs.map((r) => Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) + T)));
     t.cActive = null;
     // the boards come off with real physics (Rapier, loaded on first use)
-    const go = () => { app.stripLoading = false; app.stripJob = new StripJob(app, runs, spot); app.ui.refresh(); };
+    this.physics(() => new StripJob(app, runs, spot));
+  }
+
+  // start an action that runs with real physics (Rapier is loaded on first use)
+  physics(make) {
+    const { app } = this;
+    if (app.physJob || app.physLoading) return;
+    const go = () => { app.physLoading = false; app.physJob = make(); app.ui.refresh(); };
     if (physicsReady()) { go(); return; }
-    app.stripLoading = true;
+    app.physLoading = true;
     app.ui.toast('Загружаю физику…');
-    loadPhysics().then(go, (err) => { app.stripLoading = false; console.error(err); app.ui.toast('Физика не загрузилась'); });
+    loadPhysics().then(go, (err) => { app.physLoading = false; console.error(err); app.ui.toast('Физика не загрузилась'); });
   }
 
   // seconds until the concrete next to these runs stops flowing (0 = it has set or there is none)
@@ -204,8 +213,11 @@ export class BuildTool {
     const { app } = this;
     if (app.objects.all('cage').some((r) => r.outlineId === o.id)) { app.ui.toast('Каркас в этом контуре уже есть'); return; }
     const rec = o.kind === 'rect' ? cageForRect(o, app.terrain, app.settings) : cageForTrench(o, app.terrain, app.settings);
-    app.journal.act('rebar-cage', { outlineId: o.id }, app.clock, () => app.objects.add(rec));
     app.ui.toast(`Каркас: ${rec.bars.length} стержней`);
+    // a slab cage is laid bar by bar with physics; a strip cage (stirrups, tied as a
+    // whole) is placed as it is
+    if (o.kind === 'rect') this.physics(() => new RebarJob(app, rec, 'rebar-cage', { outlineId: o.id }));
+    else app.journal.act('rebar-cage', { outlineId: o.id }, app.clock, () => app.objects.add(rec));
   }
 
   tie(o) {

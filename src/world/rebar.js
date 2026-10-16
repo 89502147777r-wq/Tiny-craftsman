@@ -59,11 +59,8 @@ export class RebarView {
     };
     for (const r of recs) {
       if (r.type === 'bar') rod(...r.a, ...r.b, r.d, r.id);
-      else if (r.type === 'mesh') {
-        const d = r.d;
-        for (let z = r.z0; z <= r.z1 + 1e-6; z += r.cell) rod(r.x0, r.y + d * 0.5, z, r.x1, r.y + d * 0.5, z, d, r.id);
-        for (let x = r.x0; x <= r.x1 + 1e-6; x += r.cell) rod(x, r.y + d * 1.4, r.z0, x, r.y + d * 1.4, r.z1, d, r.id);
-      } else if (r.type === 'cage') {
+      else if (r.type === 'mesh') { for (const b of rodsOf(r)) rod(...b, r.id); }
+      else if (r.type === 'cage') {
         for (const b of r.bars) rod(b[0], b[1], b[2], b[3], b[4], b[5], b[6], r.id);
         for (const c of r.chairs) {
           if (nc >= this.max.chairs) break;
@@ -87,6 +84,20 @@ export class RebarView {
         }
       }
     }
+    // pieces in flight (physics, see rebarJob.js)
+    if (this.live) {
+      for (const b of this.live.rods || []) rod(...b, null);
+      for (const c of this.live.chairs || []) {
+        if (nc >= this.max.chairs) break;
+        p.set(c[0], c[1], c[2]); s.set(CHAIR_R, c[3], CHAIR_R);
+        this.chairs.setMatrixAt(nc, m.compose(p, q.identity(), s)); o.chairs[nc++] = null;
+      }
+      for (const f of this.live.frogs || []) {
+        if (nf >= this.max.frogs) break;
+        p.set(f[0], f[1], f[2]); q.setFromEuler(e.set(0, f[3], 0)); s.set(f[4], f[4], f[4]);
+        this.frogs.setMatrixAt(nf, m.compose(p, q, s)); o.frogs[nf++] = null;
+      }
+    }
     this.rods.count = nr; this.chairs.count = nc; this.frogs.count = nf; this.ties.count = nt;
     for (const im of [this.rods, this.chairs, this.frogs, this.ties]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     aRib.needsUpdate = true;
@@ -99,6 +110,29 @@ export class RebarView {
 }
 
 const _up = new THREE.Vector3(0, 1, 0);
+
+// The bars of a record as [ax,ay,az, bx,by,bz, d] in the plot (a mesh that physics
+// dropped carries its pose: p / q of its centre).
+export function rodsOf(r) {
+  if (r.type === 'bar') return [[...r.a, ...r.b, r.d]];
+  if (r.type === 'cage') return r.bars;
+  if (r.type !== 'mesh') return [];
+  const out = meshLocal(r);
+  if (!r.q) {
+    const c = meshCentre(r);
+    return out.map((b) => [b[0] + c[0], b[1] + c[1], b[2] + c[2], b[3] + c[0], b[4] + c[1], b[5] + c[2], b[6]]);
+  }
+  const q = new THREE.Quaternion().fromArray(r.q), P = new THREE.Vector3().fromArray(r.p), A = new THREE.Vector3(), B = new THREE.Vector3();
+  return out.map((b) => { A.set(b[0], b[1], b[2]).applyQuaternion(q).add(P); B.set(b[3], b[4], b[5]).applyQuaternion(q).add(P); return [A.x, A.y, A.z, B.x, B.y, B.z, b[6]]; });
+}
+// a welded mesh in its own frame (centre of the sheet, at the bottom of the lower bars)
+export function meshCentre(r) { return [(r.x0 + r.x1) / 2, r.y, (r.z0 + r.z1) / 2]; }
+export function meshLocal(r) {
+  const d = r.d, [cx, , cz] = meshCentre(r), out = [];
+  for (let z = r.z0; z <= r.z1 + 1e-6; z += r.cell) out.push([r.x0 - cx, d * 0.5, z - cz, r.x1 - cx, d * 0.5, z - cz, d]);
+  for (let x = r.x0; x <= r.x1 + 1e-6; x += r.cell) out.push([x - cx, d * 1.4, r.z0 - cz, x - cx, d * 1.4, r.z1 - cz, d]);
+  return out;
+}
 
 // ---- builders --------------------------------------------------------------------------
 // Level the bottom bars are laid from: the pit floor under the cage. A high
