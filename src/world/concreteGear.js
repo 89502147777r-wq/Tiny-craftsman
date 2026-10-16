@@ -52,11 +52,22 @@ export class ConcreteGear {
     const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012 / 3.5, 0.012 / 3.5, 1.0 / 3.5, 10), wood);
     stick.position.set(0, 0.09 / 3.5 + 0.48 / 3.5, -0.12 / 3.5); stick.rotation.x = -0.25;
     this.brush.add(head, bristle, stick);
+    // rubber mallet (киянка): black rubber head Ø 65 × 110 mm on a wooden handle
+    this.mallet = new THREE.Group();
+    {
+      const rub = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.85 });
+      const wood2 = new THREE.MeshStandardMaterial({ color: 0xb5895a, roughness: 0.7 });
+      const head2 = new THREE.Mesh(new THREE.CylinderGeometry(0.0325 / 3.5, 0.0325 / 3.5, 0.11 / 3.5, 16), rub);
+      head2.rotation.z = Math.PI / 2;
+      const hnd = new THREE.Mesh(new THREE.CylinderGeometry(0.013 / 3.5, 0.015 / 3.5, 0.32 / 3.5, 10), wood2);
+      hnd.position.set(0, 0.16 / 3.5, -0.03 / 3.5); hnd.rotation.x = -0.2;
+      this.mallet.add(head2, hnd);
+    }
     // plate compactor: a detailed model in real sizes (plateCompactor.js)
     this.plate = makePlateCompactor();
     this.plateOn = false;
     this._t = 0;
-    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate]) {
+    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate, this.mallet]) {
       o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
       o.visible = false;
       this.root.add(o);
@@ -89,6 +100,7 @@ export class ConcreteGear {
     this.trowel.visible = w === 'trowel';
     this.brush.visible = w === 'brush';
     this.plate.visible = w === 'plate';
+    this.mallet.visible = w === 'mallet';
     if (w === 'hose') {
       // the spout held ~25 cm above the concrete; the hose swings behind the hand
       this.pump.aim(this.goal.clone().add(new THREE.Vector3(0, 0.25 / 3.5 + 0.15 / 3.5, 0)), camPos, this._snapHose);
@@ -110,6 +122,9 @@ export class ConcreteGear {
       this.plate.rotation.set(0, this.yaw, 0);
       this._t += dt;
       shakePlateCompactor(this.plate, this.plateOn, this._t);
+    } else if (w === 'mallet') {
+      this.mallet.position.copy(this.goal);
+      this.mallet.rotation.set(0, this.yaw, 0);
     } else if (w === 'trowel') {
       this.trowel.position.copy(this.pos);
       this.trowel.rotation.set(0, this.yaw, 0.04);

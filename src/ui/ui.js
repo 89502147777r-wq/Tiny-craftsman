@@ -14,6 +14,7 @@ const GROUPS = [
   { id: 'found', label: 'Фундамент', icon: 'form' },
   { id: 'concrete', label: 'Бетон', icon: 'hose' },
   { id: 'backfill', label: 'Засыпка', icon: 'plate' },
+  { id: 'walls', label: 'Стены', icon: 'wall' },
   { id: 'machines', label: 'Техника', icon: 'machine' },
 ];
 const m3 = (v) => `${String(v).replace('.', ',')} м³`;
@@ -27,6 +28,12 @@ const HINTS = {
   hose: 'Держите палец — из шланга идёт бетон. Ведите по опалубке, начиная с дальнего угла. Подача — вверху',
   screed: 'Тяните правило по бетону — оно идёт по верху опалубки, лишнее сдвигается вперёд',
   vibro: 'Держите палец в бетоне — вибратор осаживает его, бетон растекается ровно вокруг',
+  wall: {
+    line: 'Проведите ось стены по фундаменту — от угла до угла. Концы прилипают к другим стенам (угол с перевязкой)',
+    mortar: 'Ведите кельмой вдоль стены — на ряд ляжет полоса раствора (у газоблока — клей, первый ряд — на раствор)',
+    lay: 'Коснитесь у стены — блок ляжет в ближайшее место ряда и выровняется киянкой. Держите палец — кладка подряд',
+    delete: 'Коснитесь блока или кирпича, чтобы снять (только верхний). Пустую линию — чтобы убрать',
+  },
   bitumen: 'Ведите кистью по бетону — грани и верх фундамента покроются битумной мастикой',
   plate: 'Ведите виброплиту по засыпке — грунт, песок, щебень уплотняются и оседают. Пройдите 3–4 раза',
   trowel: `Ведите кельмой по свежему бетону — поверхность станет гладкой (пока бетон не схватился, ~${Math.round(0.75 * CONCRETE.cure)} с)`,
@@ -319,6 +326,16 @@ export class UI {
       if (m.selected && !m.trench) out.push(C('Удалить контур', false, () => m.deleteSelected(), 'warn'));
       return out;
     }
+    if (t === 'wall') {
+      const wt = app.wallTool, s = app.settings;
+      const set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
+      const out = [['line', 'Линия'], ['mortar', 'Раствор'], ['lay', 'Класть'], ['delete', 'Удалить']].map(([k, l]) => C(l, wt.mode === k, () => wt.setMode(k), k === 'delete' ? 'warn' : ''));
+      if (wt.mode === 'line') {
+        out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич ½'], ['brick2', 'Кирпич 1']].map(([k, l]) => C(l, (s.wallKind || 'block') === k, () => set({ wallKind: k }))));
+        out.push(...[[1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
+      }
+      return out;
+    }
     if (t === 'form' || t === 'rebar') {
       const b = t === 'form' ? app.formTool : app.rebarTool;
       const modes = t === 'form'
@@ -437,6 +454,7 @@ export class UI {
     if (t === 'mark') hint = HINTS.mark[app.markTool.mode];
     if (t === 'form') hint = HINTS.form[app.formTool.mode];
     if (t === 'rebar') hint = HINTS.rebar[app.rebarTool.mode];
+    if (t === 'wall') hint = app.wallTool.busy || app.physJob ? '' : HINTS.wall[app.wallTool.mode];
     if (t === 'machine') {
       const mt = app.machineTool;
       hint = HINTS.machine[mt.active || 'none'];

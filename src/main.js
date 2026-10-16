@@ -10,6 +10,7 @@ import { SoilParticles } from './world/particles.js';
 import { OutlineView, contains, gradeY } from './world/outlines.js';
 import { FormworkView } from './world/formwork.js';
 import { RebarView } from './world/rebar.js';
+import { WallView } from './world/walls.js';
 import { buildStacks } from './world/stacks.js';
 import { Backdrop } from './world/backdrop.js';
 import { Shovel } from './world/shovel.js';
@@ -29,6 +30,7 @@ import { HoseTool, ScreedTool, VibratorTool, TrowelTool, BitumenTool, PlateTool 
 import { ConcreteGear } from './world/concreteGear.js';
 import { MarkTool } from './tools/markTool.js';
 import { BuildTool } from './tools/buildTool.js';
+import { WallTool } from './tools/wallTool.js';
 import { MachineTool } from './tools/machineTool.js';
 import { Sfx } from './audio/sfx.js';
 import { UI } from './ui/ui.js';
@@ -90,6 +92,7 @@ async function main() {
   app.outlineView = new OutlineView(terrain, app.objects); scene.add(app.outlineView.group);
   app.formView = new FormworkView(tex, app.objects, terrain); scene.add(app.formView.group);
   app.rebarView = new RebarView(app.objects); scene.add(app.rebarView.group);
+  app.wallView = new WallView(app.objects); scene.add(app.wallView.group);
   const u = app.terrainMat.userData.uniforms;
   u.tMask.value = app.outlineView.mask;
   u.uPlot.value.set(-terrain.halfX, -terrain.halfZ, terrain.sizeX, terrain.sizeZ);
@@ -108,6 +111,7 @@ async function main() {
   app.markTool = new MarkTool(app);
   app.formTool = new BuildTool(app, 'form');
   app.rebarTool = new BuildTool(app, 'rebar');
+  app.wallTool = new WallTool(app);
   app.machineTool = new MachineTool(app);
   app.backdrop = new Backdrop(app);
   app.journal.onBeforeCommit = () => app.machineTool.sync();
@@ -205,6 +209,7 @@ function step(dt, time, render = true) {
   for (const t of Object.values(app.concreteTools)) t.update(dt);
   app.machineTool.update(dt);
   app.physJob?.update(dt);
+  app.wallTool.update(dt);
   app.particles.update(dt);
   // soil physics gets a time budget per frame (small piles settle in a blink)
   const budget = app.settings.quality === 'low' ? 2.5 : 4;
@@ -219,6 +224,7 @@ function step(dt, time, render = true) {
   app.outlineView.update();
   app.formView.update();
   app.rebarView.update();
+  app.wallView.update();
   app.shovel.update(dt);
   app.rake.update(dt);
   app.concreteGear.update(dt, app.camera.position);
@@ -307,8 +313,8 @@ function resize() {
 }
 
 // ---- tools ------------------------------------------------------------------------------
-app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, ...app.concreteTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, machine: app.machineTool }[app.tool] || null);
-app.busy = () => !!app.physJob || !!app.physLoading || app.shovelTool.busy || app.rakeTool.busy || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy();
+app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, ...app.concreteTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, wall: app.wallTool, machine: app.machineTool }[app.tool] || null);
+app.busy = () => !!app.physJob || app.wallTool?.busy || !!app.physLoading || app.shovelTool.busy || app.rakeTool.busy || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy();
 
 function setTool(t) {
   if (app.tool === 'shovel' && t !== 'shovel') app.shovelTool.finish();
@@ -332,6 +338,8 @@ function setTool(t) {
     app.rakeTool.putDown();
   }
   if (t === 'machine' && !app.machineTool.active) app.machineTool.active = 'excavator';
+  // the next course of a wall (ghosts, cord) only while working on walls
+  if (t === 'wall') app.wallTool._focus(); else { app.wallView.focus = null; app.wallView.dirty = true; }
   app.ui?.refresh();
 }
 app.setTool = setTool;
@@ -371,7 +379,7 @@ app.gradeAt = (x, z) => {
 const _ray = new THREE.Raycaster();
 app.pickObject = (cx, cy, kind) => {
   _ray.setFromCamera(app.gestures.ndc(cx, cy), app.camera);
-  const views = kind === 'form' ? [app.formView] : [app.rebarView];
+  const views = kind === 'form' ? [app.formView] : kind === 'wall' ? [app.wallView] : [app.rebarView];
   const hits = _ray.intersectObjects(views.map((v) => v.group), true);
   for (const h of hits) for (const v of views) { const id = v.ownerOf(h); if (id) return id; }
   // thin bars are hard to hit: try a fat ray against the bar axes
