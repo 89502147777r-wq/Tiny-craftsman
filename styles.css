@@ -236,7 +236,7 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 #groups .tool { width: 60px; font-size: 10px; }
 @media (min-width: 700px) { #groups .tool { width: 76px; font-size: 10.5px; } }
 /* seven groups on a phone: a little narrower, and the row scrolls if it still does not fit */
-@media (max-width: 440px) { #groups .tool { width: 48px; font-size: 8.8px; } }
+@media (max-width: 440px) { #groups .tool { width: 43px; font-size: 8.2px; } }
 #groups { overflow-x: auto; scrollbar-width: none; max-width: calc(100vw - 16px); }
 #groups::-webkit-scrollbar { display: none; }
 #ui.has-toolrow .subbar { bottom: calc(var(--safe-b) + 134px); }

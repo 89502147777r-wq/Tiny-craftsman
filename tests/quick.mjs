@@ -222,6 +222,25 @@ console.log('—', sec());
       tc.redo();
       out.plate = { settledMm: +((l0 - l1) * 3500).toFixed(1), comp: +c1.toFixed(2), nativeKept: t.nat[t.index(x, z)] === n0, back };
     }
+    // walls: a line, mortar on the first course, a block laid (physics + mallet) at its place, undo
+    {
+      const W = await import('/src/world/walls.js');
+      tc.setTool('wall'); const wt = tc.wallTool; tc.settings.wallKind = 'block'; tc.settings.wallHeight = 1000;
+      wt.setMode('line'); wt.down(new V(-0.5, 0.1, -0.6), e); wt.move(new V(-0.2, 0.1, -0.6)); wt.up();
+      const w = tc.objects.all('wall').at(-1);
+      wt.setMode('lay'); wt.down(new V(-0.45, 0.1, -0.6), e); wt.up();
+      for (let i = 0; i < 200 && (tc.physJob || tc.physLoading); i++) { if (tc.physLoading) await new Promise((r) => setTimeout(r, 50)); else tc.simulate(1 / 30); }
+      const refused = !tc.objects.all('unit').length;
+      wt.setMode('mortar'); wt.down(new V(-0.5, 0.1, -0.6), e); for (let k = 1; k <= 10; k++) wt.move(new V(-0.5 + 0.03 * k, 0.1, -0.6)); wt.up();
+      wt.setMode('lay'); wt.down(new V(-0.45, 0.1, -0.6), e); wt.up();
+      for (let i = 0; i < 400 && (tc.physJob || tc.physLoading); i++) { if (tc.physLoading) await new Promise((r) => setTimeout(r, 50)); else tc.simulate(1 / 30); }
+      const u = tc.objects.all('unit')[0];
+      const sl = u && W.course(w, 0, tc.objects.all('wall')).find((x) => x.i === u.i), tgt = sl && W.slotPose(w, 0, sl);
+      const err = u ? tgt.p.distanceTo(new V().fromArray(u.p)) * 3500 : 99;
+      tc.undo(); const back = !tc.objects.all('unit').length; tc.redo();
+      out.walls = { rows: W.rows(w), refused, laid: !!u, errMm: +err.toFixed(2), back };
+      tc.setTool('camera');
+    }
     // spilled concrete outside: the shovel takes it (only it, not the soil) and tips it into the form
     {
       const o = tc.objects.all('outline').find((x) => x.kind === 'rect');
@@ -275,6 +294,7 @@ console.log('—', sec());
   check('concrete: pumped volume exact, held by the formwork, undo exact', Math.abs(play.conc.vol - 1) < 1e-4 && play.conc.leak < 0.001 && play.conc.undo, JSON.stringify(play.conc));
   check('sand on concrete lies on top (concrete unchanged), volume exact, undo', play.sandOnConc.onTop && play.sandOnConc.concMoved === 0 && play.sandOnConc.vol < 1e-4 && play.sandOnConc.back, JSON.stringify(play.sandOnConc));
   check('plate compactor: loose soil settles and gets compacted, native ground kept, undo exact', play.plate.settledMm > 0.1 && play.plate.comp > 0.1 && play.plate.nativeKept && play.plate.back, JSON.stringify(play.plate));
+  check('walls: needs mortar, a block is laid at its place (physics + mallet), undo', play.walls.refused && play.walls.laid && play.walls.errMm < 2 && play.walls.back && play.walls.rows === 3, JSON.stringify(play.walls));
   check('shovel takes spilled fresh concrete and tips it into the form, volume exact, undo', play.shovelConc.loaded && play.shovelConc.took && play.shovelConc.vol < 1e-6 && play.shovelConc.undo, JSON.stringify(play.shovelConc));
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 8 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));
   await page.reload();
