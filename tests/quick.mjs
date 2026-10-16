@@ -228,10 +228,13 @@ console.log('—', sec());
       tc.formTool._force = null;
       tc.clock += 200; tc.simulate(0.1);
       tc.formTool.down(new V((o.x0 + o.x1) / 2, 0.1, (o.z0 + o.z1) / 2), e);
+      for (let i = 0; i < 200 && tc.stripLoading; i++) await new Promise((r) => setTimeout(r, 50));
+      const running = !!tc.stripJob;
+      for (let i = 0; i < 1200 && tc.stripJob; i++) tc.simulate(1 / 30);   // the boards fall and are stacked (Rapier)
       const pile = tc.objects.all('formpile')[0];
       const stripped = mine() === 0 && !!pile && pile.boards.length >= n0;
       tc.undo(); const back = mine() === n0 && !tc.objects.all('formpile').length; tc.redo();
-      out.strip = { n0, warned, stripped, boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(t.concVolume() - cv) < 1e-12 };
+      out.strip = { n0, warned, running, stripped, items: pile?.items?.length, still: !!pile?.items?.every((it) => it.p.every(Number.isFinite)), boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(t.concVolume() - cv) < 1e-12 };
     }
     tc.setTool('camera');
     await tc.saveNow();
@@ -251,7 +254,7 @@ console.log('—', sec());
   await page.reload();
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const after = await page.evaluate(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(tc.terrain.excavatedVolume() * 1e6).toFixed(3), sand: +(tc.terrain.materialVolumes()[1] * 1e6).toFixed(2), conc: +(tc.terrain.concVolume() * 1e6).toFixed(2) }; });
-  check('stripping: warns while soft, then boards come off into a stack, concrete stays, undo', play.strip.warned && play.strip.stripped && play.strip.back && play.strip.conc && play.strip.n0 > 0, JSON.stringify(play.strip));
+  check('stripping: warns while soft, then boards come off into a stack, concrete stays, undo', play.strip.warned && play.strip.running && play.strip.still && play.strip.stripped && play.strip.back && play.strip.conc && play.strip.n0 > 0, JSON.stringify(play.strip));
   check('project restored after reload', JSON.stringify(after) === JSON.stringify(play.saved), `${JSON.stringify(play.saved)} → ${JSON.stringify(after)}`);
   check('no console errors while playing', errors.length === 0, errors.slice(0, 3).join(' | '));
   const build = fs.readFileSync(path.join(root, 'src/config.js'), 'utf8').match(/BUILD = (\d+)/)[1];

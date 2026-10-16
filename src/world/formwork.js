@@ -106,7 +106,26 @@ export class FormworkView {
       }
     }
     // stripped formwork: boards flat in a stack on the ground, stakes and braces on top
+    const pieces = (list, owner) => {
+      for (const it of list) {
+        p.fromArray(it.p); q.fromArray(it.q); s.fromArray(it.s);
+        if (it.k === 'board' && nb < this.max.boards) {
+          this.boards.setMatrixAt(nb, m.compose(p, q, s));
+          aB.setXYZ(nb, it.u ?? 0.3, it.v ?? 0, (s.x * MODEL_SCALE) / 1.87);
+          this.owner.boards[nb++] = owner;
+        } else if (it.k === 'stake' && ns < this.max.stakes) {
+          this.stakes.setMatrixAt(ns, m.compose(p, q, s));
+          this.owner.stakes[ns++] = owner;
+        } else if (it.k === 'brace' && nr < this.max.braces) {
+          this.braces.setMatrixAt(nr, m.compose(p, q, s));
+          this.owner.braces[nr++] = owner;
+        }
+      }
+    };
+    // boards and stakes in flight (physics, see stripJob.js)
+    if (this.live) pieces(this.live, null);
     for (const r of piles) {
+      if (r.items) { pieces(r.items, r.id); continue; }   // a stack that physics built
       const rnd = mulberry32(r.id * 4447);
       const c = Math.cos(r.yaw), sn = Math.sin(r.yaw);   // along the stack: (c, -sn) in x,z
       const ux = c, uz = -sn, vx = sn, vz = c;
@@ -161,6 +180,44 @@ export class FormworkView {
 }
 
 const _y = new THREE.Vector3(0, 1, 0), _m = new THREE.Matrix4(), _v = new THREE.Vector3(), _q = new THREE.Quaternion();
+
+// The pieces of one formwork run as they stand (the same layout as the view draws):
+// { k: 'board' | 'stake' | 'brace', p, q, s } — p/q/s as the instance matrices use them
+// (a box centred at p scaled by s; a stake from its point at p up by s.y).
+export function runPieces(r, terrain) {
+  const out = [], T = MAT.board.t, H = MAT.board.h, e = new THREE.Euler();
+  const [ax, az] = r.a, [bx, bz] = r.b, [nx, nz] = r.n;
+  const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
+  if (L < 1e-4) return out;
+  const yaw = Math.atan2(-dz, dx), side = r.inside ? -1 : 1;
+  const count = Math.max(1, Math.ceil((r.y1 - r.y0) / H - 0.2));
+  for (let k = 0; k < count; k++) {
+    const over = r.inside ? -T : (k % 2 ? 1 : -1) * T * 0.5;
+    const len = L + T + (r.inside ? over : Math.abs(over));
+    const cx = (ax + bx) / 2 + side * nx * (T / 2) + (dx / L) * (r.inside ? 0 : over * 0.5), cz = (az + bz) / 2 + side * nz * (T / 2) + (dz / L) * (r.inside ? 0 : over * 0.5);
+    const bottom = r.y0 + k * (H + 0.00004), h = Math.min(H, r.y1 - bottom);
+    if (h < H * 0.15) break;
+    out.push({ k: 'board', p: new THREE.Vector3(cx, bottom + h / 2, cz), q: new THREE.Quaternion().setFromEuler(e.set(0, yaw, 0)), s: new THREE.Vector3(len, h, T) });
+  }
+  const nSt = r.inside ? 0 : Math.max(2, Math.round(L / MAT.stake.step) + 1);
+  for (let k = 0; k < nSt; k++) {
+    const t = nSt === 1 ? 0.5 : (0.06 + 0.88 * k / (nSt - 1));
+    const x = ax + dx * t + nx * (T + MAT.stake.s / 2), z = az + dz * t + nz * (T + MAT.stake.s / 2);
+    const g = terrain.inside(x, z) ? terrain.heightAt(x, z) : r.y0;
+    const top = r.y1 + 0.0015 * K, bottom = Math.min(g, r.y0) - 0.008 * K;
+    out.push({ k: 'stake', p: new THREE.Vector3(x, bottom, z), q: new THREE.Quaternion().setFromEuler(e.set(0, yaw, 0)), s: new THREE.Vector3(MAT.stake.s, top - bottom, MAT.stake.s), ground: g });
+    if (k % 2 === 0) {
+      const reach = (r.y1 - g) + 0.012 * K;
+      const fx = x + nx * reach, fz = z + nz * reach;
+      const fg = terrain.inside(fx, fz) ? terrain.heightAt(fx, fz) : g;
+      const A = new THREE.Vector3(x + nx * MAT.stake.s * 0.5, top - 0.002, z + nz * MAT.stake.s * 0.5), B = new THREE.Vector3(fx, fg - 0.001, fz);
+      const D = B.clone().sub(A);
+      const bx2 = D.clone().normalize(), bz2 = new THREE.Vector3().crossVectors(bx2, _y).normalize(), by2 = new THREE.Vector3().crossVectors(bz2, bx2);
+      out.push({ k: 'brace', p: A.clone().add(B).multiplyScalar(0.5), q: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(bx2, by2, bz2)), s: new THREE.Vector3(D.length(), 0.03 / MODEL_SCALE, 0.025 / MODEL_SCALE) });
+    }
+  }
+  return out;
+}
 
 // Build formwork runs around an outline's boundary edges.
 export function runsForEdges(edgeList, y0At, y1) {

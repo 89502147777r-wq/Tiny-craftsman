@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { MODEL_SCALE, TRAY, MAT, K, CONCRETE } from '../config.js';
 import { edges, gradeY, contains } from '../world/outlines.js';
 import { cageForRect, cageForTrench, meshPanel, singleBar } from '../world/rebar.js';
+import { loadPhysics, physicsReady } from '../world/physics.js';
+import { StripJob } from './stripJob.js';
 
 const MM = (v) => v / 1000 / MODEL_SCALE;
 
@@ -24,7 +26,7 @@ export class BuildTool {
     this.drag = null;
   }
 
-  setMode(m) { this.mode = m; this.app.ui.refresh(); }
+  setMode(m) { this.mode = m; if (m === 'strip') loadPhysics().catch(() => {}); this.app.ui.refresh(); }
 
   down(p, e) {
     const { app } = this;
@@ -141,25 +143,16 @@ export class BuildTool {
       return;
     }
     this._force = null;
-    const T = MAT.board.t, H = MAT.board.h;
-    const boards = [];
-    let stakes = 0, stakeLen = 0;
-    for (const r of runs) {
-      const L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]);
-      const count = Math.max(1, Math.ceil((r.y1 - r.y0) / H - 0.2));
-      for (let k = 0; k < count; k++) boards.push(+(L + T).toFixed(5));
-      if (!r.inside) {
-        stakes += Math.max(2, Math.round(L / MAT.stake.step) + 1);
-        stakeLen = Math.max(stakeLen, (r.y1 - r.y0) + 0.0095 * K);
-      }
-    }
-    const spot = this.pileSpot(runs, Math.max(...boards));
-    app.journal.act('strip', { outlineId: runs[0].outlineId, boards: boards.length, stakes }, app.clock, () => {
-      for (const r of runs) app.objects.remove(r.id);
-      app.objects.add({ type: 'formpile', x: spot.x, z: spot.z, yaw: spot.yaw, boards, stakes, stakeLen: stakeLen || 0.08 });
-    });
+    if (app.stripJob || app.stripLoading) return;
+    const T = MAT.board.t;
+    const spot = this.pileSpot(runs, Math.max(...runs.map((r) => Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) + T)));
     t.cActive = null;
-    app.ui.toast(`Опалубка снята: ${boards.length} досок${stakes ? `, ${stakes} кольев` : ''} — сложены рядом`);
+    // the boards come off with real physics (Rapier, loaded on first use)
+    const go = () => { app.stripLoading = false; app.stripJob = new StripJob(app, runs, spot); app.ui.refresh(); };
+    if (physicsReady()) { go(); return; }
+    app.stripLoading = true;
+    app.ui.toast('Загружаю физику…');
+    loadPhysics().then(go, (err) => { app.stripLoading = false; console.error(err); app.ui.toast('Физика не загрузилась'); });
   }
 
   // seconds until the concrete next to these runs stops flowing (0 = it has set or there is none)
@@ -186,7 +179,9 @@ export class BuildTool {
       const x = mx + r.n[0] * (dist + 2.2 * H), z = mz + r.n[1] * (dist + 2.2 * H);   // n: away from the outline
       const yaw = Math.atan2(-(r.b[1] - r.a[1]), r.b[0] - r.a[0]);
       const ux = Math.cos(yaw) * len / 2, uz = -Math.sin(yaw) * len / 2;
-      if (t.inside(x + ux, z + uz) && t.inside(x - ux, z - uz)) return { x, z, yaw };
+      // the whole stack and room around it on the plot (boards slide off a stack a bit)
+      const wx = Math.sin(yaw) * (2.5 * H + MM(500)), wz = Math.cos(yaw) * (2.5 * H + MM(500)), ex = ux * 1.15, ez = uz * 1.15;
+      if ([[1, 1], [1, -1], [-1, 1], [-1, -1]].every(([a, b]) => t.inside(x + ex * a + wx * b, z + ez * a + wz * b))) return { x, z, yaw };
     }
     const r = sorted[0];
     return { x: t.clampX((r.a[0] + r.b[0]) / 2 + r.n[0] * 0.05 * K), z: t.clampZ((r.a[1] + r.b[1]) / 2 + r.n[1] * 0.05 * K), yaw: Math.atan2(-(r.b[1] - r.a[1]), r.b[0] - r.a[0]) };
