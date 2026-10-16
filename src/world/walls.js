@@ -10,10 +10,16 @@ import { MODEL_SCALE } from '../config.js';
 //   unit { wall, row, i, s0, s1, off, p, q, s, kind } – a block / brick as it was laid
 // Sizes in real millimetres; the model is 1:3.5.
 export const KINDS = {
-  block: { name: 'Газоблок', L: 600, H: 250, T: 300, bed0: 20, bed: 3, head: 3 },     // aerated concrete on glue (first course on mortar)
-  brick: { name: 'Кирпич ½', L: 250, H: 65, T: 120, bed0: 12, bed: 12, head: 10 },    // half-brick wall, stretcher bond
-  brick2: { name: 'Кирпич 1', L: 250, H: 65, T: 250, W: 120, bed0: 12, bed: 12, head: 10 },  // one-brick wall: stretcher and header courses
+  block: { name: 'Газоблок', L: 600, H: 250, T: 300, bed0: 20, bed: 3, head: 3, min: 100, lintelRows: 1 },     // aerated concrete on glue (first course on mortar)
+  brick: { name: 'Кирпич ½', L: 250, H: 65, T: 120, bed0: 12, bed: 12, head: 10, min: 55, lintelRows: 2 },    // half-brick wall, stretcher bond
+  brick2: { name: 'Кирпич 1', L: 250, H: 65, T: 250, W: 120, bed0: 12, bed: 12, head: 10, min: 55, lintelRows: 2 },  // one-brick wall: stretcher and header courses
 };
+// openings (real mm above the bottom of the wall) and the lintel over them
+export const OPENINGS = {
+  window: { name: 'Окно', y0: 900, y1: 2100, minW: 500 },
+  door: { name: 'Дверь', y0: 0, y1: 2100, minW: 700 },
+};
+const BEAR = 250;   // a lintel rests 250 mm on the masonry each side
 const S = 1 / 1000 / MODEL_SCALE;   // real mm → model m
 
 export function axis(w) {
@@ -37,11 +43,21 @@ function cornerAt(w, e, walls) {
   return null;
 }
 
-// The slots of one course: [{ i, s0, s1, off, w, rot }] — s along the axis (real mm),
-// off across it, w the size across, rot = 1 for a header (brick across the wall).
-// Running bond: every other course starts with a half; at a corner the courses of the
-// two walls interlock (one passes through, then the other).
-export function course(w, r, walls) {
+// the courses an opening takes (r0 ≤ r < r1) and the lintel over it (r1 … r1 + lintelRows − 1),
+// its edges snapped to the courses
+export function openingRows(w, o) {
+  const k = KINDS[w.kind], c = k.H + k.bed;
+  const r0 = Math.max(0, Math.round((o.y0 - (o.y0 > 0 ? k.bed0 : 0)) / c)), r1 = Math.max(r0 + 1, Math.round((o.y1 - k.bed0) / c));
+  return { r0, r1, l1: r1 + k.lintelRows };
+}
+
+// The places of one course: [{ i, s0, s1, off, w, rot, cut, lintel }] — s along the axis
+// (real mm from a), off across it, w the size across, rot = 1 for a header.
+// The joints follow one running bond over the whole wall (every other course starts
+// with a half; at a corner the courses of the two walls interlock); openings are cut
+// out of it and a lintel bridges each opening in the course above it. A piece shorter
+// than the minimum is never laid: it and its neighbour become two equal cut pieces.
+export function course(w, r, walls, opens = []) {
   const k = KINDS[w.kind], { L } = axis(w);
   let a0 = 0, a1 = L;
   for (const e of [0, 1]) {
@@ -50,24 +66,81 @@ export function course(w, r, walls) {
     const pass = (r + (w.id < o.id ? 0 : 1)) % 2 === 0, t = KINDS[o.kind].T / 2;
     if (e === 0) a0 = pass ? -t : t; else a1 = pass ? L + t : L - t;
   }
+  // what is not masonry in this course: openings, lintels (a lintel is one place)
+  const gaps = [], lintels = [];
+  for (const o of opens) {
+    const { r0, r1, l1 } = openingRows(w, o);
+    if (r >= r0 && r < r1) gaps.push([o.s0, o.s1, 0]);
+    else if (r >= r1 && r < l1) {
+      const g = [Math.max(a0, o.s0 - BEAR), Math.min(a1, o.s1 + BEAR)];
+      gaps.push([g[0], g[1], k.head]);
+      if (r === r1) lintels.push(g);
+    }
+  }
+  gaps.sort((x, y) => x[0] - y[0]);
+  const free = [];
+  let f = a0;
+  for (const [g0, g1, j] of gaps) { if (g0 - j > f) free.push([f, g0 - j]); f = Math.max(f, g1 + j); }
+  if (a1 > f) free.push([f, a1]);
   const out = [];
   const lay = (len0, U, off, wAcross, rot) => {
-    let s = a0, first = true;
-    while (s < a1 - 20) {
-      let len = first ? len0 : U;
-      first = false;
-      const rest = a1 - s;
-      if (rest - len < U * 0.25 && rest > len) len = (rest - k.head) / 2;   // no sliver at the end: two equal cuts
-      len = Math.min(len, rest);
-      out.push({ i: out.length, s0: s, s1: s + len, off, w: wAcross, rot });
-      s += len + k.head;
+    // the bond over the whole course, then clipped to the free stretches
+    const grid = [];
+    for (let s = a0, first = true; s < a1; first = false) { const len = first ? len0 : U; grid.push([s, s + len]); s += len + k.head; }
+    for (const [f0, f1] of free) {
+      const ps = [];
+      for (const [u0, u1] of grid) { const c0 = Math.max(u0, f0), c1 = Math.min(u1, f1); if (c1 - c0 > 1) ps.push([c0, c1]); }
+      // no sliver: a piece under the minimum and its neighbour become two equal cuts
+      const fix = (i, j) => { const t = ps[j][1] - ps[i][0]; const lo = Math.min(ps[i][0], ps[j][0]), hi = Math.max(ps[i][1], ps[j][1]); const h = (hi - lo - k.head) / 2; ps.splice(Math.min(i, j), 2, [lo, lo + h], [hi - h, hi]); void t; };
+      if (ps.length > 1 && ps[0][1] - ps[0][0] < k.min) fix(0, 1);
+      if (ps.length > 1 && ps.at(-1)[1] - ps.at(-1)[0] < k.min) fix(ps.length - 2, ps.length - 1);
+      for (const [c0, c1] of ps) if (c1 - c0 >= Math.min(k.min, 30)) out.push({ s0: c0, s1: c1, off, w: wAcross, rot, cut: c1 - c0 < U - 1 });
     }
   };
   if (w.kind === 'brick2') {
     if (r % 2 === 0) { for (const sg of [-1, 1]) lay(r % 4 === 0 ? k.L : k.L * 0.75, k.L, sg * (k.T - k.W) / 2, k.W, 0); }   // two leaves of stretchers
-    else lay(k.W / 2 + 0, k.W, 0, k.T, 1);                                                                               // headers across
+    else lay(k.W / 2, k.W, 0, k.T, 1);                                                                                   // headers across
   } else lay(r % 2 ? k.L / 2 : k.L, k.L, 0, k.T, 0);
+  for (const [g0, g1] of lintels) out.push({ s0: g0, s1: g1, off: 0, w: k.T, rot: 0, lintel: true });
+  out.sort((x, y) => x.s0 - y.s0 || x.off - y.off);
+  out.forEach((x, i) => { x.i = i; });
   return out;
+}
+
+// where a course is solid (its places merged over the joints): [[s0, s1]…]
+export function solid(w, r, walls, opens) {
+  const iv = course(w, r, walls, opens).map((x) => [x.s0, x.s1]).sort((a, b) => a[0] - b[0]), out = [];
+  for (const [a, b] of iv) { if (out.length && a - out.at(-1)[1] < 20) out.at(-1)[1] = Math.max(out.at(-1)[1], b); else out.push([a, b]); }
+  return out;
+}
+
+// where mortar can go on a course: where the course is solid, but not over an opening
+// below it (at a corner the other wall's course is under the end — that holds it too)
+export function beddable(w, r, walls, opens) {
+  let out = solid(w, r, walls, opens);
+  if (r === 0) return out;
+  for (const o of opens) {
+    const { r0, r1 } = openingRows(w, o);
+    if (r - 1 < r0 || r - 1 >= r1) continue;
+    out = out.flatMap(([a, b]) => [[a, Math.min(b, o.s0)], [Math.max(a, o.s1), b]]).filter(([a, b]) => b - a > 10);
+  }
+  return out;
+}
+
+// is a place taken (a unit of this course covering its middle)
+export function taken(units, r, sl) {
+  const c = (sl.s0 + sl.s1) / 2;
+  return units.some((u) => u.row === r && (u.off || 0) === (sl.off || 0) && u.s0 < c && u.s1 > c);
+}
+
+// what a cut piece is called on site
+export function cutName(w, sl) {
+  const len = Math.round(sl.s1 - sl.s0);
+  if (w.kind === 'block') return `Доборный блок ${len} мм — отпилен по месту`;
+  const L = sl.rot ? KINDS[w.kind].W : KINDS[w.kind].L;
+  const f = len / L;
+  const nm = Math.abs(f - 0.75) < 0.08 ? 'Трёхчетвёрка' : Math.abs(f - 0.5) < 0.08 ? 'Половинка' : Math.abs(f - 0.25) < 0.08 ? 'Четвертка' : 'Кирпич';
+  return `${nm} — ${len} мм, отколот кирочкой`;
 }
 
 // where a slot's unit sits (model): centre, rotation, size (box scale)
@@ -76,7 +149,9 @@ export function slotPose(w, r, sl) {
   const sc = (sl.s0 + sl.s1) / 2 * S, off = sl.off * S;
   const p = new THREE.Vector3(w.a[0] + ux * sc + nx * off, rowY(w, r) + k.H * S / 2, w.a[1] + uz * sc + nz * off);
   const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-uz, ux));
-  const s = new THREE.Vector3((sl.s1 - sl.s0) * S, k.H * S, sl.w * S);
+  const h = sl.lintel ? k.lintelRows * (k.H + k.bed) - k.bed : k.H;
+  p.y = rowY(w, r) + h * S / 2;
+  const s = new THREE.Vector3((sl.s1 - sl.s0) * S, h * S, sl.w * S);
   return { p, q, s };
 }
 
@@ -92,14 +167,14 @@ export function covered(list, s0, s1) {
 export function wallState(w, objects) {
   const units = objects.all('unit').filter((u) => u.wall === w.id);
   const beds = objects.all('bed').filter((b) => b.wall === w.id);
-  const walls = objects.all('wall');
+  const walls = objects.all('wall'), opens = objects.all('opening').filter((o) => o.wall === w.id);
   const n = rows(w);
   let cur = n;
   for (let r = 0; r < n; r++) {
-    const c = course(w, r, walls);
-    if (c.some((sl) => !units.some((u) => u.row === r && u.i === sl.i))) { cur = r; break; }
+    const c = course(w, r, walls, opens);
+    if (c.some((sl) => !taken(units, r, sl))) { cur = r; break; }
   }
-  return { units, beds, walls, cur, n };
+  return { units, beds, walls, opens, cur, n };
 }
 
 // ---- view ------------------------------------------------------------------------------
@@ -111,37 +186,44 @@ export class WallView {
     const box = new THREE.BoxGeometry(1, 1, 1);
     const block = new THREE.MeshStandardMaterial({ map: aeratedTexture(), roughness: 0.92, color: 0xffffff });
     const brick = new THREE.MeshStandardMaterial({ map: brickTexture(), roughness: 0.85, color: 0xffffff });
-    this.max = { block: 4000, brick: 20000, mortar: 24000, ghost: 400 };
+    this.max = { block: 4000, brick: 20000, mortar: 24000, lintel: 200, frame: 800 };
     this.blocks = new THREE.InstancedMesh(box, block, this.max.block);
     this.bricks = new THREE.InstancedMesh(box, brick, this.max.brick);
     this.mortar = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9a968c, roughness: 0.95 }), this.max.mortar);
-    this.ghost = new THREE.InstancedMesh(box, new THREE.MeshBasicMaterial({ color: 0x7fd18a, transparent: true, opacity: 0.22, depthWrite: false }), this.max.ghost);
+    // precast concrete lintels; the marked frame of a planned opening (orange, like the cord)
+    this.lintels = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9c9a94, roughness: 0.9 }), this.max.lintel);
+    this.frames = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xff6a1c, roughness: 0.6, emissive: 0x401000 }), this.max.frame);
     this.cord = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshStandardMaterial({ color: 0xff4a1c, roughness: 0.6 }));
     for (const m of [this.blocks, this.bricks, this.mortar]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
-    this.ghost.frustumCulled = false; this.ghost.count = 0; this.group.add(this.ghost);
+    this.lintels.castShadow = this.lintels.receiveShadow = true;
+    for (const m of [this.lintels, this.frames]) { m.frustumCulled = false; m.count = 0; this.group.add(m); }
     this.cord.visible = false; this.group.add(this.cord);
     for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
-    this.owner = { blocks: [], bricks: [] };
+    this.owner = { blocks: [], bricks: [], lintels: [], frames: [] };
     this.dirty = true;
     this.live = null;      // a unit in the hand / being set (wallTool)
-    this.focus = null;     // wall id whose next course is shown (ghosts + cord)
-    objects.on((id, rec) => { if (['wall', 'unit', 'bed'].includes(rec?.type) || this._known?.has(id)) this.dirty = true; });
+    this.focus = null;     // wall id whose next course gets the cord
+    this.marks = false;    // planned openings shown (while working on walls)
+    objects.on((id, rec) => { if (['wall', 'unit', 'bed', 'opening'].includes(rec?.type) || this._known?.has(id)) this.dirty = true; });
   }
 
   update() {
     if (!this.dirty) return;
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
-    this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed')].map((r) => r.id));
-    let nb = 0, nk = 0, nm = 0, ng = 0;
-    this.owner = { blocks: [], bricks: [] };
+    this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening')].map((r) => r.id));
+    let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0;
+    this.owner = { blocks: [], bricks: [], lintels: [], frames: [] };
     const P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3();
     const put = (u, id) => {
       P.fromArray(u.p); Q.fromArray(u.q); Sv.fromArray(u.s);
       const h = hash(u.row * 131 + u.i * 17 + (id || 0) * 7 + Math.round(u.off || 0));
-      if (u.kind === 'block' && nb < this.max.block) {
+      if (u.lintel) {
+        if (nl < this.max.lintel) { this.lintels.setMatrixAt(nl, m.compose(P, Q, Sv)); this.owner.lintels[nl++] = id; }
+      } else if (u.kind === 'block' && nb < this.max.block) {
+        const cut = u.cut ? 0.035 : 0;   // a sawn face is a shade whiter
         this.blocks.setMatrixAt(nb, m.compose(P, Q, Sv));
-        this.blocks.setColorAt(nb, c.setRGB(0.84 + h * 0.06, 0.835 + h * 0.05, 0.81 + h * 0.05));
+        this.blocks.setColorAt(nb, c.setRGB(0.84 + h * 0.06 + cut, 0.835 + h * 0.05 + cut, 0.81 + h * 0.05 + cut));
         this.owner.blocks[nb++] = id;
       } else if (u.kind !== 'block' && nk < this.max.brick) {
         this.bricks.setMatrixAt(nk, m.compose(P, Q, Sv));
@@ -175,14 +257,26 @@ export class WallView {
           this.mortar.setMatrixAt(nm++, m.compose(P, q, Sv));
         }
       }
-      // the next course: where the units go (ghosts) and the cord stretched along its top
-      if (w.id === this.focus && st.cur < st.n) {
-        const cs = course(w, st.cur, st.walls);
-        for (const sl of cs) {
-          if (st.units.some((u) => u.row === st.cur && u.i === sl.i) || ng >= this.max.ghost) continue;
-          const ps = slotPose(w, st.cur, sl);
-          this.ghost.setMatrixAt(ng++, m.compose(ps.p, ps.q, ps.s.multiplyScalar(1.002)));
+      // planned openings: an orange frame on both faces until the masonry is round them
+      for (const o of this.marks ? [...st.opens, ...(this.liveOpening?.wall === w.id ? [this.liveOpening] : [])] : []) {
+        const { r0, r1 } = openingRows(w, o), y0 = rowY(w, r0) - (r0 === 0 ? k.bed0 * S : 0), y1 = rowY(w, r1) - k.bed * S;
+        const bar = 25 * S;
+        for (const sg of [-1, 1]) {
+          const fo = sg * (k.T / 2 + 3) * S;
+          const at = (s0, s1, ya, yb) => {
+            if (nf >= this.max.frame) return;
+            const sc = (s0 + s1) / 2 * S;
+            P.set(w.a[0] + ux * sc + nx * fo, (ya + yb) / 2, w.a[1] + uz * sc + nz * fo);
+            Sv.set(Math.max(bar, (s1 - s0) * S), Math.max(bar, yb - ya), 4 * S);
+            this.frames.setMatrixAt(nf, m.compose(P, q, Sv)); this.owner.frames[nf++] = o.id;
+          };
+          at(o.s0, o.s0, y0, y1); at(o.s1, o.s1, y0, y1); at(o.s0, o.s1, y1 - bar, y1);
+          if (r0 > 0) at(o.s0, o.s1, y0, y0 + bar);
         }
+      }
+      // the cord stretched along the top of the course being laid
+      if (w.id === this.focus && st.cur < st.n) {
+        const cs = course(w, st.cur, st.walls, st.opens);
         const s0 = Math.min(...cs.map((x) => x.s0)), s1 = Math.max(...cs.map((x) => x.s1));
         const off = (k.T / 2 + 4) * S, y = rowY(w, st.cur) + k.H * S;
         const A = new THREE.Vector3(w.a[0] + ux * (s0 - 150) * S + nx * off, y, w.a[1] + uz * (s0 - 150) * S + nz * off);
@@ -195,14 +289,16 @@ export class WallView {
     }
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
     if (this.live) put(this.live, null);
-    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.ghost.count = ng;
-    for (const im of [this.blocks, this.bricks, this.mortar, this.ghost]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf;
+    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     for (const im of [this.blocks, this.bricks]) im.instanceColor.needsUpdate = true;
   }
 
   ownerOf(hit) {
     if (hit.object === this.blocks) return this.owner.blocks[hit.instanceId];
     if (hit.object === this.bricks) return this.owner.bricks[hit.instanceId];
+    if (hit.object === this.lintels) return this.owner.lintels[hit.instanceId];
+    if (hit.object === this.frames) return this.owner.frames[hit.instanceId];
     return null;
   }
 }

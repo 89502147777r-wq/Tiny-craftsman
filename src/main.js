@@ -339,7 +339,7 @@ function setTool(t) {
   }
   if (t === 'machine' && !app.machineTool.active) app.machineTool.active = 'excavator';
   // the next course of a wall (ghosts, cord) only while working on walls
-  if (t === 'wall') app.wallTool._focus(); else { app.wallView.focus = null; app.wallView.dirty = true; }
+  if (t === 'wall') app.wallTool._focus(); else { app.wallView.focus = null; app.wallView.marks = false; app.wallView.dirty = true; }
   app.ui?.refresh();
 }
 app.setTool = setTool;
