@@ -55,6 +55,10 @@ export class Terrain {
     // loose material lying ON the concrete (sand or stone poured onto a slab): thickness, material
     this.top = new Float32Array(N);
     this.topM = new Uint8Array(N);
+    // bitumen coat on the faces of the concrete (0…1) and how well the loose material
+    // on top is compacted (0 = as tipped … 1 = done with the plate compactor)
+    this.bit = new Float32Array(N);
+    this.comp = new Float32Array(N);
     // taken since the last reset: per material, and soil depth·volume
     this.take = { v: 0, dv: 0, m: new Float64Array(MATERIALS.length), c: 0 };
     this._seg = { m: new Uint8Array(LAYERS + 1), h: new Float64Array(LAYERS + 1) };
@@ -81,7 +85,7 @@ export class Terrain {
         const e = Math.min(ex, ez);
         h += 0.0012 * Math.exp(-e / 3);
         const i = iz * nx + ix;
-        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0; this.ldep[i] = 0; this.lN[i] = 0; this.conc[i] = 0; this.cSm[i] = 0; this.top[i] = 0;
+        this.orig[i] = h; this.nat[i] = h; this.loose[i] = 0; this.ldep[i] = 0; this.lN[i] = 0; this.conc[i] = 0; this.cSm[i] = 0; this.top[i] = 0; this.bit[i] = 0; this.comp[i] = 0;
       }
     }
     this.markAll();
@@ -184,6 +188,7 @@ export class Terrain {
   _push(i, add, mat = M_SOIL, depth = 0) {
     if (!(add > 0)) return;
     if (this.conc[i] > 1e-6) { this._pushTop(i, add, mat); return; }   // onto concrete: it lies on top of it
+    if (this.comp[i] > 0) this.comp[i] *= Math.min(1, this.loose[i] / (this.loose[i] + add * 4));   // fresh material on top: loose again
     const b = i * LAYERS, lH = this.lH, lM = this.lM;
     let n = this.lN[i];
     if (mat === M_SOIL) {
@@ -617,12 +622,15 @@ export class Terrain {
     this.aMat = new THREE.BufferAttribute(mats, 3).setUsage(THREE.DynamicDrawUsage);
     // concrete: thickness, pour time, smoothness (the shader cures it with the clock)
     this.aConc = new THREE.BufferAttribute(cc, 3).setUsage(THREE.DynamicDrawUsage);
+    // bitumen coat, compaction
+    this.aExtra = new THREE.BufferAttribute(new Float32Array(N * 2), 2).setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('position', this.aPos);
     g.setAttribute('normal', this.aNor);
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setAttribute('aSoil', this.aSoil);
     g.setAttribute('aMat', this.aMat);
     g.setAttribute('aConc', this.aConc);
+    g.setAttribute('aExtra', this.aExtra);
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, TRAY.soil, 0), Math.hypot(this.halfX, this.halfZ) + 0.05);
     g.boundingBox = new THREE.Box3(new THREE.Vector3(-this.halfX, 0, -this.halfZ), new THREE.Vector3(this.halfX, 0.3, this.halfZ));
     this.mesh = new THREE.Mesh(g, material);
@@ -646,7 +654,7 @@ export class Terrain {
     this.meshTiles.clear();
     if (!rects.length) return false;
     // several updates before an upload add up: one span of cells per row
-    const n = this.nx, attrs = [this.aPos, this.aNor, this.aSoil, this.aMat, this.aConc];
+    const n = this.nx, attrs = [this.aPos, this.aNor, this.aSoil, this.aMat, this.aConc, this.aExtra];
     if (!this._rowLo) { this._rowLo = new Int32Array(this.nz).fill(1e9); this._rowHi = new Int32Array(this.nz).fill(-1); this._rowsUsed = false; }
     const lo = this._rowLo, hi = this._rowHi;
     if (this._rowsUsed && !this.aPos.updateRanges.length) { lo.fill(1e9); hi.fill(-1); }   // uploaded: start over
@@ -672,7 +680,7 @@ export class Terrain {
   // the cavity term); returns the rectangle that changed
   _updateRect(b) {
     const { nx: n, cell, nat, loose, orig, rx, rz, conc, cTime, cSm, top, topM } = this;
-    const pos = this.aPos.array, nor = this.aNor.array, soil = this.aSoil.array, mats = this.aMat.array, cc = this.aConc.array, { lH, lM, lN } = this;
+    const pos = this.aPos.array, nor = this.aNor.array, soil = this.aSoil.array, mats = this.aMat.array, cc = this.aConc.array, ex = this.aExtra.array, { lH, lM, lN, bit, comp } = this;
     const occ = this._occ;
     const OR = 4; // occlusion probe radius (cells)
     const ox0 = Math.max(0, b.x0 - OR - 1), ox1 = Math.min(rx, b.x1 + OR + 1);
@@ -715,12 +723,13 @@ export class Terrain {
       // under a cover of sand / stone the concrete fades out (gone at ~1.3 mm of the model)
       const cover = top[i] > 0 ? Math.pow(Math.max(0, 1 - top[i] / 0.0013), 3) : 1;
       cc[i * 3] = conc[i] * cover; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
+      ex[i * 2] = bit[i]; ex[i * 2 + 1] = conc[i] > 1e-6 ? 0 : comp[i];
       // the foot of a concrete face (e.g. after the boards are stripped): the face
       // belongs to the concrete, not to the soil below it
       if (conc[i] <= 1e-6 && ix > 0 && ix < rx && iz > 0 && iz < rz) {
         let j = -1, hj = h + 0.002;
         for (const k of [i - 1, i + 1, i - n, i + n]) { const hk = nat[k] + loose[k] + conc[k] + top[k]; if (conc[k] > 1e-5 && hk > hj) { hj = hk; j = k; } }
-        if (j >= 0) { cc[i * 3] = conc[j]; cc[i * 3 + 1] = cTime[j]; cc[i * 3 + 2] = cSm[j]; }
+        if (j >= 0) { cc[i * 3] = conc[j]; cc[i * 3 + 1] = cTime[j]; cc[i * 3 + 2] = cSm[j]; ex[i * 2] = Math.max(bit[i], bit[j]); }
       }
     }
     return { x0: ox0, z0: oz0, x1: ox1, z1: oz1 };
@@ -1089,6 +1098,62 @@ export class Terrain {
     this._concTouch(b.x0, b.z0, b.x1, b.z1);
   }
 
+  // Bitumen mastic brushed on: only where the concrete has a face (a step of more than
+  // ~7 mm real down to the next cell — the stripped side of a slab or a footing),
+  // on the face cell and the foot below it. Returns how much was coated.
+  paintBitumen(x, z, r, amount = 0.25) {
+    const b = this.cellBox(x, z, r), { nx: n, conc, bit, rx, rz } = this;
+    let any = 0;
+    for (let iz = Math.max(1, b.z0); iz <= Math.min(rz - 1, b.z1); iz++) for (let ix = Math.max(1, b.x0); ix <= Math.min(rx - 1, b.x1); ix++) {
+      const i = iz * n + ix;
+      if (Math.hypot(this.toWorldX(ix) - x, this.toWorldZ(iz) - z) > r) continue;
+      const h = this.hAt(i);
+      let face = false;
+      for (const j of [i - 1, i + 1, i - n, i + n]) {
+        const hj = this.hAt(j);
+        if (conc[i] > 1e-5 && h - hj > 0.002) face = true;          // the top edge of a face
+        if (conc[j] > 1e-5 && hj - h > 0.002) face = true;          // its foot
+      }
+      if (!face || bit[i] >= 1) continue;
+      const nb = Math.min(1, bit[i] + amount);
+      any += nb - bit[i];
+      bit[i] = nb;
+    }
+    if (any) this._markMesh(b.x0 - 1, b.z0 - 1, b.x1 + 1, b.z1 + 1);
+    return any;
+  }
+
+  // One stamp of a plate compactor (plate w × len, centred at x,z, moving along dx,dz).
+  // The loose material under it, to the depth the plate reaches (~0.3 m real), gets
+  // denser: each pass brings it closer to fully compacted, and the layer shrinks by
+  // what that material loses (soil ~17 %, sand ~12 %, crushed stone ~10 %).
+  // Returns the settlement it caused (model m, the deepest cell).
+  compactStep(x, z, dx, dz, w, len, gain = 0.06) {
+    const { nx: n, conc, loose, comp, lH, lM, lN } = this;
+    const ax = -dz, az = dx, b = this.cellBox(x, z, Math.hypot(w, len) / 2);
+    const reach = 0.3 / 3.5, SHRINK = [0.17, 0.12, 0.1, 0.1];
+    let most = 0;
+    for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) {
+      const i = iz * n + ix;
+      if (conc[i] > 1e-6 || loose[i] <= 1e-6 || comp[i] >= 1) continue;
+      const rx = this.toWorldX(ix) - x, rz = this.toWorldZ(iz) - z;
+      if (Math.abs(rx * dx + rz * dz) > len / 2 || Math.abs(rx * ax + rz * az) > w / 2) continue;
+      const nc = Math.min(1, comp[i] + gain), dc = nc - comp[i];
+      comp[i] = nc;
+      // shrink the layers from the top down to the plate's reach
+      let rest = reach, lost = 0;
+      for (let k = lN[i] - 1, base = i * LAYERS; k >= 0 && rest > 0; k--) {
+        const h = lH[base + k], part = Math.min(h, rest);
+        const d = part * SHRINK[lM[base + k]] * dc;
+        lH[base + k] = h - d; lost += d; rest -= part;
+      }
+      this._sumLoose(i);
+      if (lost > most) most = lost;
+    }
+    if (most > 0) this._touch(b.x0, b.z0, b.x1, b.z1);
+    return most;
+  }
+
   // steel trowel / float: closes the surface (smooth) and evens small lumps
   trowelStep(x, z, dx, dz, w, len) {
     const { nx: n, conc, cSm } = this;
@@ -1124,9 +1189,9 @@ export class Terrain {
     const s = (this._snap ||= { nat: new Float32Array(this.nat.length), loose: new Float32Array(this.nat.length), ldep: new Float32Array(this.nat.length),
       lH: new Float32Array(this.lH.length), lM: new Uint8Array(this.lM.length), lN: new Uint8Array(this.lN.length),
       conc: new Float32Array(this.nat.length), cTime: new Float32Array(this.nat.length), cSm: new Float32Array(this.nat.length),
-      top: new Float32Array(this.nat.length), topM: new Uint8Array(this.nat.length) });
+      top: new Float32Array(this.nat.length), topM: new Uint8Array(this.nat.length), bit: new Float32Array(this.nat.length), comp: new Float32Array(this.nat.length) });
     s.nat.set(this.nat); s.loose.set(this.loose); s.ldep.set(this.ldep); s.lH.set(this.lH); s.lM.set(this.lM); s.lN.set(this.lN);
-    s.conc.set(this.conc); s.cTime.set(this.cTime); s.cSm.set(this.cSm); s.top.set(this.top); s.topM.set(this.topM);
+    s.conc.set(this.conc); s.cTime.set(this.cTime); s.cSm.set(this.cSm); s.top.set(this.top); s.topM.set(this.topM); s.bit.set(this.bit); s.comp.set(this.comp);
     return s;
   }
 
@@ -1136,6 +1201,7 @@ export class Terrain {
     if (s.lH) { this.lH.set(s.lH); this.lM.set(s.lM); this.lN.set(s.lN); } else this.layersFromLoose();
     if (s.conc) { this.conc.set(s.conc); this.cTime.set(s.cTime); this.cSm.set(s.cSm); } else this.conc.fill(0);
     if (s.top) { this.top.set(s.top); this.topM.set(s.topM); } else this.top.fill(0);
+    if (s.bit) { this.bit.set(s.bit); this.comp.set(s.comp); } else { this.bit.fill(0); this.comp.fill(0); }
     this.cActive = null;
     this.active = null;
     this.markAll(); this.active = null;
@@ -1144,9 +1210,9 @@ export class Terrain {
   // Sparse diff between a snapshot and the current state (heights, layers, soil colour).
   diffFrom(s) {
     const idx = [], L = LAYERS;
-    const { nat, loose, lN, lH, lM, conc, cTime, cSm, top, topM } = this;
+    const { nat, loose, lN, lH, lM, conc, cTime, cSm, top, topM, bit, comp } = this;
     for (let i = 0; i < nat.length; i++) {
-      if (s.nat[i] !== nat[i] || s.loose[i] !== loose[i] || s.lN[i] !== lN[i] || s.conc[i] !== conc[i] || s.cSm[i] !== cSm[i] || s.cTime[i] !== cTime[i] || s.top[i] !== top[i] || s.topM[i] !== topM[i]) { idx.push(i); continue; }
+      if (s.nat[i] !== nat[i] || s.loose[i] !== loose[i] || s.lN[i] !== lN[i] || s.conc[i] !== conc[i] || s.cSm[i] !== cSm[i] || s.cTime[i] !== cTime[i] || s.top[i] !== top[i] || s.topM[i] !== topM[i] || s.bit[i] !== bit[i] || s.comp[i] !== comp[i]) { idx.push(i); continue; }
       const b = i * L;
       for (let k = 0; k < lN[i]; k++) if (s.lH[b + k] !== lH[b + k] || s.lM[b + k] !== lM[b + k]) { idx.push(i); break; }
     }
@@ -1157,6 +1223,7 @@ export class Terrain {
       bH: new Float32Array(m * L), aH: new Float32Array(m * L), bM: new Uint8Array(m * L), aM: new Uint8Array(m * L),
       bC: new Float32Array(m), aC: new Float32Array(m), bT: new Float32Array(m), aT: new Float32Array(m), bS: new Float32Array(m), aS: new Float32Array(m),
       bP: new Float32Array(m), aP: new Float32Array(m), bPM: new Uint8Array(m), aPM: new Uint8Array(m),
+      bB: new Float32Array(m), aB: new Float32Array(m), bK: new Float32Array(m), aK: new Float32Array(m),
     };
     for (let k = 0; k < m; k++) {
       const i = idx[k];
@@ -1164,6 +1231,7 @@ export class Terrain {
       d.bd[k] = s.ldep[i]; d.ad[k] = this.ldep[i]; d.bN[k] = s.lN[i]; d.aN[k] = lN[i];
       d.bC[k] = s.conc[i]; d.aC[k] = conc[i]; d.bT[k] = s.cTime[i]; d.aT[k] = cTime[i]; d.bS[k] = s.cSm[i]; d.aS[k] = cSm[i];
       d.bP[k] = s.top[i]; d.aP[k] = top[i]; d.bPM[k] = s.topM[i]; d.aPM[k] = topM[i];
+      d.bB[k] = s.bit[i]; d.aB[k] = bit[i]; d.bK[k] = s.comp[i]; d.aK[k] = comp[i];
       for (let q = 0; q < L; q++) {
         d.bH[k * L + q] = s.lH[i * L + q]; d.aH[k * L + q] = lH[i * L + q];
         d.bM[k * L + q] = s.lM[i * L + q]; d.aM[k * L + q] = lM[i * L + q];
@@ -1176,7 +1244,7 @@ export class Terrain {
     const N = forward ? d.an : d.bn, Lo = forward ? d.al : d.bl, L = LAYERS;
     const H = forward ? d.aH : d.bH, M = forward ? d.aM : d.bM, C = forward ? d.aN : d.bN, D = forward ? d.ad : d.bd;
     const CC = forward ? d.aC : d.bC, CT = forward ? d.aT : d.bT, CS = forward ? d.aS : d.bS;
-    const P = forward ? d.aP : d.bP, PM = forward ? d.aPM : d.bPM;
+    const P = forward ? d.aP : d.bP, PM = forward ? d.aPM : d.bPM, Bi = forward ? d.aB : d.bB, Ko = forward ? d.aK : d.bK;
     let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
     for (let k = 0; k < d.idx.length; k++) {
       const i = d.idx[k];
@@ -1189,6 +1257,7 @@ export class Terrain {
       } else this.setLooseSoil(i, Lo[k]);   // older journals: all loose material was soil
       if (CC) { this.conc[i] = CC[k]; this.cTime[i] = CT[k]; this.cSm[i] = CS[k]; }   // BUILD 19+: concrete
       if (P) { this.top[i] = P[k]; this.topM[i] = PM[k]; } else this.top[i] = 0;   // BUILD 28+: material on concrete
+      if (Bi) { this.bit[i] = Bi[k]; this.comp[i] = Ko[k]; }   // BUILD 30+: bitumen, compaction
       const ix = i % this.nx, iz = (i / this.nx) | 0;
       if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
     }

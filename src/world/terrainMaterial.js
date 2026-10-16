@@ -87,15 +87,18 @@ const VERT_COMMON = `#include <common>
         attribute vec4 aSoil;
         attribute vec3 aMat;
         attribute vec3 aConc;
+        attribute vec2 aExtra;
         varying vec4 vSoil;
         varying vec3 vMat;
         varying vec3 vConc;
+        varying vec2 vExtra;
         varying vec3 vWPos;
         varying vec3 vWNrm;`;
 const VERT_PROJECT = `#include <project_vertex>
         vSoil = aSoil;
         vMat = aMat;
         vConc = aConc;
+        vExtra = aExtra;
         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
         vWNrm = normalize(mat3(modelMatrix) * objectNormal);`;
 
@@ -109,6 +112,7 @@ const FRAG_DECL = `
         uniform vec3 uMatScale;
         varying vec3 vMat;
         varying vec3 vConc;
+        varying vec2 vExtra;
         uniform float uClock;
         uniform float uCure;
         uniform vec4 uWallMean;
@@ -157,6 +161,8 @@ const FRAG_SOIL = `
           vec3 mc = (cS * vMat.x + c5 * vMat.y + c20 * vMat.z) / max(0.001, mSum);
           soilC = mix(soilC, mc, smoothstep(0.0, 1.0, clamp(mSum, 0.0, 1.0)));
         }
+        // compacted with the plate: denser, a shade darker, the loose crumbs pressed in
+        soilC *= 1.0 - 0.09 * vExtra.y;
         // concrete: wet and dark when fresh, light grey once set; trowelled = even tone
         float concW = smoothstep(0.00008, 0.0006, vConc.x);
         float cure = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
@@ -196,6 +202,10 @@ const FRAG_SOIL = `
             float hole = step(0.985, tcHash(floor(vec2(along, vWPos.y) * 900.0)));
             vec3 face = mix(vec3(0.07, 0.07, 0.067), vec3(0.17, 0.168, 0.161), smoothstep(0.05, 1.0, cure)) * (0.93 + 0.12 * grain) * (1.0 - 0.28 * joint) * (1.0 - 0.45 * hole);   // (no top-view noise here: it would streak)
             cc = mix(cc, face, cside);
+            // bitumen mastic brushed on: black, a little brown where thin, glossy
+            float bt = vExtra.x * cside;
+            vec3 bitC = vec3(0.012, 0.011, 0.01) * (0.85 + 0.3 * grain) + vec3(0.02, 0.012, 0.005) * (1.0 - smoothstep(0.4, 1.0, vExtra.x));
+            cc = mix(cc, bitC, smoothstep(0.0, 0.6, bt));
           }
           soilC = mix(soilC, cc, concW);
         }
@@ -236,6 +246,9 @@ const ROUGH_TAIL = `
           float cw = smoothstep(0.00008, 0.0006, vConc.x), cu = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
           float wetR = mix(0.58, 0.12, vConc.z), dryR = mix(0.9, 0.72, vConc.z);   // moist and matt as poured, the worked paste glistens
           roughnessFactor = mix(roughnessFactor, mix(wetR, dryR, smoothstep(0.1, 0.8, cu)), cw);
+          // bitumen on a face shines
+          float side = 1.0 - smoothstep(0.35, 0.7, normalize(vWNrm).y);
+          roughnessFactor = mix(roughnessFactor, 0.28, smoothstep(0.0, 0.6, vExtra.x * side) * cw);
         }`;
 
 export function makeTerrainMaterial(tex) {
@@ -281,6 +294,7 @@ export function makeTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <normal_fragment_maps>', `${ch.normal}
         float steepF = smoothstep(0.25, 0.75, 1.0 - normalize(vWNrm).y);
+        normal = normalize(mix(normal, normalize(vNormal) * faceDirection, vExtra.y * 0.55));   // compacted: pressed flat
         normal = normalize(mix(normal, normalize(vNormal) * faceDirection, max(steepF * 0.8, smoothstep(0.0, 0.0012, vSoil.y) * 0.45)));
         {
           float ms = clamp(vMat.x + vMat.y + vMat.z, 0.0, 1.0);
@@ -315,7 +329,7 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <roughnessmap_fragment>', `${ch.rough}${ROUGH_TAIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-20';
+  mat.customProgramCacheKey = () => 'tc-terrain-21';
   return mat;
 }
 
@@ -339,7 +353,7 @@ export function makeLightTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-light-14';
+  mat.customProgramCacheKey = () => 'tc-terrain-light-15';
   return mat;
 }
 

@@ -40,7 +40,37 @@ export class ConcreteGear {
     handle.rotation.z = Math.PI / 2;
     handle.position.y = 0.065 / 3.5;
     this.trowel.add(plate, post, handle);
-    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel]) {
+    // bitumen brush: a wide flat brush on a long handle, its bristles black with mastic
+    this.brush = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ color: 0xb08250, roughness: 0.7 });
+    const tar = new THREE.MeshStandardMaterial({ color: 0x0b0a09, roughness: 0.3 });
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.15 / 3.5, 0.03 / 3.5, 0.05 / 3.5), wood);
+    head.position.y = 0.075 / 3.5;
+    const bristle = new THREE.Mesh(new THREE.BoxGeometry(0.15 / 3.5, 0.06 / 3.5, 0.04 / 3.5), tar);
+    bristle.position.y = 0.03 / 3.5;
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012 / 3.5, 0.012 / 3.5, 1.0 / 3.5, 10), wood);
+    stick.position.set(0, 0.09 / 3.5 + 0.48 / 3.5, -0.12 / 3.5); stick.rotation.x = -0.25;
+    this.brush.add(head, bristle, stick);
+    // plate compactor: steel base plate 500 × 600 mm, engine on rubber mounts, guide handle
+    this.plate = new THREE.Group();
+    const yellow = new THREE.MeshStandardMaterial({ color: 0xe0a21a, roughness: 0.5, metalness: 0.2 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.6, metalness: 0.5 });
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.5 / 3.5, 0.025 / 3.5, 0.6 / 3.5), dark);
+    base.position.y = 0.0125 / 3.5;
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(0.5 / 3.5, 0.025 / 3.5, 0.06 / 3.5), dark);
+    lip.position.set(0, 0.03 / 3.5, 0.3 / 3.5); lip.rotation.x = 0.5;   // the turned-up front edge
+    const exciter = new THREE.Mesh(new THREE.CylinderGeometry(0.07 / 3.5, 0.07 / 3.5, 0.3 / 3.5, 16), dark);
+    exciter.rotation.z = Math.PI / 2; exciter.position.y = 0.09 / 3.5;
+    const engine = new THREE.Mesh(new THREE.BoxGeometry(0.3 / 3.5, 0.22 / 3.5, 0.32 / 3.5), yellow);
+    engine.position.set(0, 0.26 / 3.5, -0.03 / 3.5);
+    const tank = new THREE.Mesh(new THREE.BoxGeometry(0.2 / 3.5, 0.06 / 3.5, 0.16 / 3.5), dark);
+    tank.position.set(0, 0.4 / 3.5, -0.02 / 3.5);
+    const guide = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.17 / 3.5, 0.15 / 3.5, -0.2 / 3.5), new THREE.Vector3(-0.2 / 3.5, 0.55 / 3.5, -0.62 / 3.5),
+      new THREE.Vector3(0, 0.8 / 3.5, -0.9 / 3.5), new THREE.Vector3(0.2 / 3.5, 0.55 / 3.5, -0.62 / 3.5), new THREE.Vector3(0.17 / 3.5, 0.15 / 3.5, -0.2 / 3.5),
+    ]), 40, 0.013 / 3.5, 8, false), dark);
+    this.plate.add(base, lip, exciter, engine, tank, guide);
+    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate]) {
       o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
       o.visible = false;
       this.root.add(o);
@@ -71,6 +101,8 @@ export class ConcreteGear {
     this.rule.visible = w === 'screed';
     this.vib.visible = this.cable.visible = w === 'vibro';
     this.trowel.visible = w === 'trowel';
+    this.brush.visible = w === 'brush';
+    this.plate.visible = w === 'plate';
     if (w === 'hose') {
       // the spout held ~25 cm above the concrete; the hose swings behind the hand
       this.pump.aim(this.goal.clone().add(new THREE.Vector3(0, 0.25 / 3.5 + 0.15 / 3.5, 0)), camPos, this._snapHose);
@@ -84,6 +116,12 @@ export class ConcreteGear {
       this.vib.rotation.set(0.15, this.yaw, 0);
       const top = this.vib.localToWorld(new THREE.Vector3(0, 0.4 / 3.5, 0));
       this._tube(this.cable, top, camPos, 0.0045, 0.8);
+    } else if (w === 'brush') {
+      this.brush.position.copy(this.pos);
+      this.brush.rotation.set(0, this.yaw, 0);
+    } else if (w === 'plate') {
+      this.plate.position.copy(this.pos);
+      this.plate.rotation.set(0, this.yaw, 0);
     } else if (w === 'trowel') {
       this.trowel.position.copy(this.pos);
       this.trowel.rotation.set(0, this.yaw, 0.04);
