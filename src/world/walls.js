@@ -8,7 +8,7 @@ import { MODEL_SCALE } from '../config.js';
 //   bed  { wall, row, s0, s1 }                       – a strip of mortar / glue spread on
 //          a course, s along the axis from a (real mm)
 //   unit { wall, row, i, s0, s1, off, p, q, s, kind } – a block / brick as it was laid
-// Sizes in real millimetres; the model is 1:3.5.
+// Sizes in real millimetres, converted with MODEL_SCALE.
 export const KINDS = {
   block: { name: 'Газоблок', L: 600, H: 250, T: 300, bed0: 20, bed: 3, head: 3, min: 100, lintelRows: 1 },     // aerated concrete on glue (first course on mortar)
   brick: { name: 'Кирпич ½', L: 250, H: 65, T: 120, bed0: 12, bed: 12, head: 10, min: 55, lintelRows: 2 },    // half-brick wall, stretcher bond
@@ -310,7 +310,7 @@ export class WallView {
         this.cord.visible = true;
         this.cord.position.copy(A).add(B).multiplyScalar(0.5);
         this.cord.quaternion.setFromUnitVectors(_Y, B.clone().sub(A).normalize());
-        this.cord.scale.set(0.0012 / 3.5, A.distanceTo(B), 0.0012 / 3.5);
+        this.cord.scale.set(0.0012 / MODEL_SCALE, A.distanceTo(B), 0.0012 / MODEL_SCALE);
       }
     }
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;

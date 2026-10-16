@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { RAKE, K } from '../config.js';
+import { RAKE, KT as K } from '../config.js';
 
 // Rake: drag a finger over the ground and the rake follows it, the head across
 // the direction of the stroke. It cuts the top off heaps, drags the soil along

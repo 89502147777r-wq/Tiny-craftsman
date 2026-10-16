@@ -43,7 +43,7 @@ export class MaterialTool {
       this.state = 'pour';
     } else {
       this.total = Infinity;               // until the finger is lifted
-      this.rate = real(BUCKET) / 2;        // one bucket per 2 s
+      this.rate = real(BUCKET) / 3;        // one wheelbarrow per 3 s
       this.drop = 0.035 * K;
       this.spread = 0.004 * K;
       this.state = 'bucket';

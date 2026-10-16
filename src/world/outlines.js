@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAY, K } from '../config.js';
+import { TRAY, K, KT } from '../config.js';
 
 // ---- geometry ------------------------------------------------------------------------
 // Outline records (type 'outline'):
@@ -159,7 +159,7 @@ export class OutlineView {
     this.stakeGeo = makeStakeGeometry();
     this.capGeo = new THREE.BoxGeometry(0.00205 * K, 0.0018 * K, 0.00205 * K);
     this.lineGeo = new THREE.CylinderGeometry(0.00022 * K, 0.00022 * K, 1, 6, 1);
-    this.handleGeo = new THREE.RingGeometry(0.0035 * K, 0.0052 * K, 24).rotateX(-Math.PI / 2);
+    this.handleGeo = new THREE.RingGeometry(0.0035 * KT, 0.0052 * KT, 24).rotateX(-Math.PI / 2);
 
     const W = 2048, H = Math.round(W * terrain.sizeZ / terrain.sizeX);
     this.canvas = document.createElement('canvas');
@@ -278,7 +278,7 @@ export class OutlineView {
   }
 
   // nearest drag handle to a ground point → { id, i } or null
-  pickHandle(x, z, reach = 0.012 * K) {
+  pickHandle(x, z, reach = 0.012 * KT) {
     let best = null, bd = reach;
     for (const it of this.items.values()) {
       handles(it.rec).forEach(([hx, hz], i) => {
@@ -291,7 +291,7 @@ export class OutlineView {
 
   // outline under a ground point (deepest first)
   pickOutline(x, z) {
-    const hits = this.outlines().filter((o) => contains(o, x, z) || distToEdge(o, x, z) < 0.006 * K);
+    const hits = this.outlines().filter((o) => contains(o, x, z) || distToEdge(o, x, z) < 0.006 * KT);
     hits.sort((a, b) => b.depth - a.depth);
     return hits[0] || null;
   }

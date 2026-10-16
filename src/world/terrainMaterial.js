@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAY, LOAM_TILE, MATERIALS, CONCRETE } from '../config.js';
+import { TRAY, LOAM_TILE, MATERIALS, CONCRETE, MODEL_SCALE, RESCALE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks, stochasticUniforms, textureMean } from '../render/stochastic.js';
 import { innerCorner } from './plotShape.js';
 
@@ -153,9 +153,10 @@ const FRAG_SOIL = `
           // the single stones: 5–20 mm fine and light, 20–40 mm coarse, each stone its own
           // shade, deep dark gaps between them
           if (vMat.y + vMat.z > 0.01) {
-            vec3 s5 = tcStones(mq * 300.0), s20 = tcStones(mq * 118.0 + 7.0);
-            c5 *= mix(0.62, 1.0, smoothstep(0.0, 0.3, s5.x)) * (0.9 + 0.2 * tcHash(floor(mq * 300.0)));
-            c20 *= mix(0.35, 1.0, smoothstep(0.0, 0.4, s20.x)) * (0.78 + 0.4 * tcHash(floor(mq * 118.0 + 7.0)));
+            vec2 mqs = mq * ${RESCALE.toFixed(5)};   // stones of real size at the model scale
+            vec3 s5 = tcStones(mqs * 300.0), s20 = tcStones(mqs * 118.0 + 7.0);
+            c5 *= mix(0.62, 1.0, smoothstep(0.0, 0.3, s5.x)) * (0.9 + 0.2 * tcHash(floor(mqs * 300.0)));
+            c20 *= mix(0.35, 1.0, smoothstep(0.0, 0.4, s20.x)) * (0.78 + 0.4 * tcHash(floor(mqs * 118.0 + 7.0)));
           }
           float mSum = vMat.x + vMat.y + vMat.z;
           vec3 mc = (cS * vMat.x + c5 * vMat.y + c20 * vMat.z) / max(0.001, mSum);
@@ -169,7 +170,7 @@ const FRAG_SOIL = `
         {
           // fresh: an even, wet cement paste (only big soft patches of bleed water);
           // set: matt light grey, cloudy, with fine pores; trowelled = more even
-          vec2 cq = vWPos.xz;
+          vec2 cq = vWPos.xz * ${RESCALE.toFixed(5)};   // real sizes of stones, pores, patches
           float big = tcSNoise(cq * 7.0) * 0.6 + tcSNoise(cq * 19.0 + 3.0) * 0.4;   // (shared noise: the light shader has no tcFbm)
           // as poured: a coarse grey mass, the stones of the aggregate showing; the
           // vibrator / rule / trowel bring the darker wet paste up and close it (vConc.z)
@@ -195,17 +196,17 @@ const FRAG_SOIL = `
           vec3 wn = normalize(vWNrm);
           float cside = 1.0 - smoothstep(0.35, 0.7, wn.y);
           if (cside > 0.001) {
-            float along = abs(wn.x) > abs(wn.z) ? vWPos.z : vWPos.x;
-            float by = fract(vWPos.y / ${(0.15 / 3.5).toFixed(6)});
+            float along = (abs(wn.x) > abs(wn.z) ? vWPos.z : vWPos.x) * ${RESCALE.toFixed(5)}, wy = vWPos.y * ${RESCALE.toFixed(5)};
+            float by = fract(vWPos.y / ${(0.15 / MODEL_SCALE).toFixed(6)});
             float joint = 1.0 - smoothstep(0.0, 0.035, min(by, 1.0 - by));
-            float grain = tcSNoise(vec2(along * 40.0, vWPos.y * 1400.0)) * 0.6 + tcSNoise(vec2(along * 9.0, vWPos.y * 300.0)) * 0.4;
-            float hole = step(0.985, tcHash(floor(vec2(along, vWPos.y) * 900.0)));
+            float grain = tcSNoise(vec2(along * 40.0, wy * 1400.0)) * 0.6 + tcSNoise(vec2(along * 9.0, wy * 300.0)) * 0.4;
+            float hole = step(0.985, tcHash(floor(vec2(along, wy) * 900.0)));
             vec3 face = mix(vec3(0.07, 0.07, 0.067), vec3(0.17, 0.168, 0.161), smoothstep(0.05, 1.0, cure)) * (0.93 + 0.12 * grain) * (1.0 - 0.28 * joint) * (1.0 - 0.45 * hole);   // (no top-view noise here: it would streak)
             cc = mix(cc, face, cside);
           }
           // bitumen mastic brushed on (faces and top): black, a little brown where thin
           {
-            float bn = tcSNoise(vWPos.xz * 400.0 + vWPos.y * 300.0);
+            float bn = tcSNoise((vWPos.xz * 400.0 + vWPos.y * 300.0) * ${RESCALE.toFixed(5)});
             vec3 bitC = vec3(0.012, 0.011, 0.01) * (0.85 + 0.3 * bn) + vec3(0.02, 0.012, 0.005) * (1.0 - smoothstep(0.4, 1.0, vExtra.x));
             cc = mix(cc, bitC, smoothstep(0.0, 0.6, vExtra.x));
           }
@@ -311,13 +312,14 @@ export function makeTerrainMaterial(tex) {
             // as poured: lumps and the stones of the aggregate; after vibrator and rule a
             // fine texture; trowelled almost flat
             float rough = pow(1.0 - vConc.z, 1.5);
-            vec2 cq = vWPos.xz * 55.0;
+            vec2 cq = vWPos.xz * (55.0 * ${RESCALE.toFixed(5)});
             float e = 0.3, f0 = tcFbm(cq), fx = tcFbm(cq + vec2(e, 0.0)), fz = tcFbm(cq + vec2(0.0, e));
-            vec3 st = tcStones(vWPos.xz * 240.0), st2 = tcStones(vWPos.xz * 115.0 + 17.0);
+            vec2 sq = vWPos.xz * ${RESCALE.toFixed(5)};
+            vec3 st = tcStones(sq * 240.0), st2 = tcStones(sq * 115.0 + 17.0);
             float sink = 0.45 + 0.5 * vConc.z;
-            float w1 = smoothstep(sink - 0.1, sink + 0.25, st.x) * step(0.45, tcHash(floor(vWPos.xz * 240.0)));
-            float w2 = smoothstep(sink - 0.05, sink + 0.3, st2.x) * step(0.55, tcHash(floor(vWPos.xz * 115.0 + 17.0)));
-            vec2 rq = vWPos.xz * 700.0;
+            float w1 = smoothstep(sink - 0.1, sink + 0.25, st.x) * step(0.45, tcHash(floor(sq * 240.0)));
+            float w2 = smoothstep(sink - 0.05, sink + 0.3, st2.x) * step(0.55, tcHash(floor(sq * 115.0 + 17.0)));
+            vec2 rq = vWPos.xz * (700.0 * ${RESCALE.toFixed(5)});
             float r0 = tcNoise(rq), rx = tcNoise(rq + vec2(0.4, 0.0)), rz = tcNoise(rq + vec2(0.0, 0.4));
             vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 0.9 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06
                    + vec3(r0 - rx, 0.0, r0 - rz) * (1.0 - 0.85 * vConc.z) * 0.25;
@@ -330,7 +332,7 @@ export function makeTerrainMaterial(tex) {
       .replace('#include <roughnessmap_fragment>', `${ch.rough}${ROUGH_TAIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-22';
+  mat.customProgramCacheKey = () => 'tc-terrain-23';
   return mat;
 }
 
@@ -354,7 +356,7 @@ export function makeLightTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <dithering_fragment>', FRAG_CORNER);
   };
-  mat.customProgramCacheKey = () => 'tc-terrain-light-16';
+  mat.customProgramCacheKey = () => 'tc-terrain-light-17';
   return mat;
 }
 

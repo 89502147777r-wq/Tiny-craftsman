@@ -109,6 +109,7 @@ console.log('—', sec());
   await page.reload();
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const play = await page.evaluate(async () => {
+    const SC = (await import('/src/config.js')).MODEL_SCALE;   // real = model × SC
     const tc = window.__tc, V = tc.camera.position.constructor, t = tc.terrain;
     const out = { build: tc.BUILD };
     const tot0 = t.totalVolume();
@@ -156,12 +157,12 @@ console.log('—', sec());
     // sand as sand; undo restores the layers exactly
     tc.ui.openGroup('materials');
     const mats = { group: tc.tool };
-    tc.settings.matMode = 'deliver'; tc.settings.delivery = 0.25;
+    tc.settings.matMode = 'deliver'; tc.settings.delivery = 5;
     const vm0 = t.totalVolume();
     tc.activeTool().down(new V(0.2, 0.1, -0.1));
     for (let i = 0; i < 600 && tc.busy(); i++) tc.simulate(1 / 30);
-    mats.heap = (t.totalVolume() - vm0) / (0.25 / 3.5 ** 3);
-    mats.sand = t.materialVolumes()[1] / (0.25 / 3.5 ** 3);
+    mats.heap = (t.totalVolume() - vm0) / (5 / SC ** 3);
+    mats.sand = t.materialVolumes()[1] / (5 / SC ** 3);
     tc.setTool('shovel');
     tc.shovelTool.down(new V(0.12, 0.1, -0.1)); for (let s = 0; s < 1 && tc.shovelTool.state === 'dig'; s += 0.04) tc.shovelTool.move(new V(0.12 + 0.12 * s, 0.1, -0.1)); tc.shovelTool.up();
     mats.loadSand = tc.shovelTool.mat === 1;
@@ -172,7 +173,7 @@ console.log('—', sec());
     tc.undo(); tc.undo(); tc.redo(); tc.redo();
     let le = 0; for (let i = 0; i < lH.length; i++) le = Math.max(le, Math.abs(lH[i] - t.lH[i]));
     mats.undo = le < 1e-9;
-    mats.drift = (t.totalVolume() - vm0) / (0.25 / 3.5 ** 3) - 1;
+    mats.drift = (t.totalVolume() - vm0) / (5 / SC ** 3) - 1;
     out.mats = mats;
     // setting-out, formwork, cage, ties
     const e = { clientX: 0, clientY: 0 };
@@ -196,7 +197,7 @@ console.log('—', sec());
       const cs = t.conc.slice();
       tc.undo(); const gone = t.concVolume() < 1e-12; tc.redo();
       let ce = 0; for (let i = 0; i < cs.length; i++) ce = Math.max(ce, Math.abs(cs[i] - t.conc[i]));
-      out.conc = { vol: (t.concVolume() - c0) / h.poured, leak: leak / all, undo: gone && ce < 1e-9, m3: +(h.poured * 42.875).toFixed(3) };
+      out.conc = { vol: (t.concVolume() - c0) / h.poured, leak: leak / all, undo: gone && ce < 1e-9, m3: +(h.poured * SC ** 3).toFixed(3) };
     }
     // sand poured onto concrete lies on it (the concrete does not rise); undo exact
     {
@@ -220,7 +221,7 @@ console.log('—', sec());
       const l1 = t.loose[t.index(x, z)], c1 = t.comp[t.index(x, z)];
       tc.undo(); const back = t.loose[t.index(x, z)] === l0 && t.comp[t.index(x, z)] === 0;
       tc.redo();
-      out.plate = { settledMm: +((l0 - l1) * 3500).toFixed(1), comp: +c1.toFixed(2), nativeKept: t.nat[t.index(x, z)] === n0, back };
+      out.plate = { settledMm: +((l0 - l1) * SC * 1000).toFixed(1), comp: +c1.toFixed(2), nativeKept: t.nat[t.index(x, z)] === n0, back };
     }
     // walls: a line, mortar on the first course, a block laid (physics + mallet) at its place, undo
     {
@@ -237,7 +238,7 @@ console.log('—', sec());
       for (let i = 0; i < 400 && (tc.physJob || tc.physLoading); i++) { if (tc.physLoading) await new Promise((r) => setTimeout(r, 50)); else tc.simulate(1 / 30); }
       const u = tc.objects.all('unit')[0];
       const sl = u && W.course(w, 0, tc.objects.all('wall')).find((x) => Math.abs(x.s0 - u.s0) < 1), tgt = sl && W.slotPose(w, 0, sl);
-      const err = u ? tgt.p.distanceTo(new V().fromArray(u.p)) * 3500 : 99;
+      const err = u ? tgt.p.distanceTo(new V().fromArray(u.p)) * SC * 1000 : 99;
       tc.undo(); const back = !tc.objects.all('unit').length; tc.redo();
       out.walls = { rows: W.rows(w), refused, laid: !!u, bed: tc.objects.all('bed').length > 0, errMm: +err.toFixed(2), back };
       tc.setTool('camera');
@@ -246,17 +247,17 @@ console.log('—', sec());
     {
       const o = tc.objects.all('outline').find((x) => x.kind === 'rect');
       tc.setTool('hose'); const h = tc.activeTool();
-      h.down(new V(0.3, 0.1, 0.5)); tc.simulate(0.6); h.up();
+      h.down(new V(0.3, 0.1, 0.75)); tc.simulate(4); h.up();
       for (let i = 0; i < 300 && tc.busy(); i++) tc.simulate(1 / 15);
-      const near = () => { let v = 0; for (let z = 0.4; z <= 0.6; z += t.cell) for (let x = 0.2; x <= 0.4; x += t.cell) v += t.conc[t.index(x, z)]; return v * t.cellArea; };
-      const c0 = t.concVolume(), s0 = t.totalVolume(), at0 = t.conc[t.index(0.3, 0.5)], n0 = near();
+      const near = () => { let v = 0; for (let z = 0.55; z <= 0.95; z += t.cell) for (let x = 0.1; x <= 0.5; x += t.cell) v += t.conc[t.index(x, z)]; return v * t.cellArea; };
+      const c0 = t.concVolume(), s0 = t.totalVolume(), at0 = t.conc[t.index(0.3, 0.75)], n0 = near();
       tc.setTool('shovel'); const sh = tc.shovelTool;
-      sh.down(new V(0.28, 0.1, 0.5)); for (let s = 0; s < 1 && sh.state === 'dig'; s += 0.04) sh.move(new V(0.28 + 0.06 * s, 0.1, 0.5)); sh.up();
+      sh.down(new V(0.28, 0.1, 0.75)); for (let s = 0; s < 1 && sh.state === 'dig'; s += 0.04) sh.move(new V(0.28 + 0.06 * s, 0.1, 0.75)); sh.up();
       const loaded = sh.mat === 9 && sh.load > 0, took = n0 - near() > sh.load * 0.9;
       if (sh.state === 'loaded') { sh.down(new V((o.x0 + o.x1) / 2, 0.1, (o.z0 + o.z1) / 2)); sh.up(); }
       for (let i = 0; i < 400 && sh.state !== 'idle'; i++) tc.simulate(0.05);
       const c1 = t.concVolume(), cs = t.conc.slice();
-      tc.undo(); const back = Math.abs(t.conc[t.index(0.3, 0.5)] - at0) < 1e-9; tc.redo();
+      tc.undo(); const back = Math.abs(t.conc[t.index(0.3, 0.75)] - at0) < 1e-9; tc.redo();
       let ce = 0; for (let i = 0; i < cs.length; i++) ce = Math.max(ce, Math.abs(cs[i] - t.conc[i]));
       out.shovelConc = { loaded, took, vol: Math.abs(c1 / c0 - 1), soil: Math.abs(t.totalVolume() - s0) * 1e9, undo: back && ce < 1e-9 };
     }

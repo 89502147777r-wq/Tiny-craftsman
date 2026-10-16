@@ -1,4 +1,4 @@
-import { MODEL_SCALE, K } from '../config.js';
+import { MODEL_SCALE, K, KT } from '../config.js';
 import { moveHandle, sizeText } from '../world/outlines.js';
 
 const MM = (v) => v / 1000 / MODEL_SCALE;
@@ -98,7 +98,7 @@ export class MarkTool {
     else if (this.creating) {
       const o = app.objects.get(this.creating.id);
       this.creating = null;
-      if (o && o.x1 - o.x0 > 0.012 * K && o.z1 - o.z0 > 0.012 * K) app.journal.commit(app.clock);
+      if (o && o.x1 - o.x0 > 0.012 * KT && o.z1 - o.z0 > 0.012 * KT) app.journal.commit(app.clock);
       else { app.journal.cancel(); this.select(null); }
     }
     app.ui.refresh();
@@ -130,7 +130,7 @@ export class MarkTool {
     return Math.abs(ang - k) < 0.105 ? [a[0] + Math.cos(k) * L, a[1] + Math.sin(k) * L] : pt;
   }
 
-  reach() { return Math.max(0.008 * K, this.app.rig.dist * 0.035); }
+  reach() { return Math.max(0.008 * KT, this.app.rig.dist * 0.035); }
 
   deleteSelected() {
     const { app } = this;

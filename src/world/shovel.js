@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SHOVELS, K } from '../config.js';
+import { SHOVELS, KT as K } from '../config.js';
 import { makeNoise2 } from '../core/rand.js';
 import { variant } from './assets.js';
 

@@ -4,7 +4,7 @@ import { MODEL_SCALE } from '../config.js';
 // Rigid-body physics (Rapier, loaded only when first needed). Everything is
 // simulated in real units — metres, kilograms, seconds, g = 9.81 — so a board
 // falls and bounces like a real one; positions are converted from / to the model
-// (1:3.5) at the edges.
+// (MODEL_SCALE) at the edges.
 //
 // An Episode is one short simulation: the ground of a patch of the plot (soil and
 // concrete, as a triangle mesh) plus the bodies thrown onto it, until they lie still.

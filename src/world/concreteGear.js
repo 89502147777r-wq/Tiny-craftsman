@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PumpHose } from './pumpHose.js';
 import { makePlateCompactor, shakePlateCompactor } from './plateCompactor.js';
+import { MODEL_SCALE } from '../config.js';
 
 // Models of the concrete tools (sizes of the model, real sizes in comments):
 //   hose     – the end hose of a boom pump: a swinging rope simulation (pumpHose.js)
@@ -20,47 +21,47 @@ export class ConcreteGear {
     this.pump = new PumpHose();
     // rule
     this.rule = new THREE.Group();
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(2.0 / 3.5, 0.1 / 3.5, 0.02 / 3.5), alu);
-    bar.position.y = 0.05 / 3.5;
-    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.12 / 3.5, 0.03 / 3.5, 0.03 / 3.5), grip);
-    hand.position.y = 0.115 / 3.5;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(2.0 / MODEL_SCALE, 0.1 / MODEL_SCALE, 0.02 / MODEL_SCALE), alu);
+    bar.position.y = 0.05 / MODEL_SCALE;
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.12 / MODEL_SCALE, 0.03 / MODEL_SCALE, 0.03 / MODEL_SCALE), grip);
+    hand.position.y = 0.115 / MODEL_SCALE;
     this.rule.add(bar, hand);
     // vibrator poker + cable
     this.vib = new THREE.Group();
-    const poker = new THREE.Mesh(new THREE.CylinderGeometry(0.025 / 3.5, 0.022 / 3.5, 0.4 / 3.5, 16), steel);
-    poker.position.y = 0.2 / 3.5;
+    const poker = new THREE.Mesh(new THREE.CylinderGeometry(0.025 / MODEL_SCALE, 0.022 / MODEL_SCALE, 0.4 / MODEL_SCALE, 16), steel);
+    poker.position.y = 0.2 / MODEL_SCALE;
     this.vib.add(poker);
     this.cable = new THREE.Mesh(new THREE.BufferGeometry(), rubber);
     // trowel
     this.trowel = new THREE.Group();
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.45 / 3.5, 0.002 / 3.5 + 0.0004, 0.12 / 3.5), steel);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.45 / MODEL_SCALE, 0.002 / MODEL_SCALE + 0.0004, 0.12 / MODEL_SCALE), steel);
     plate.position.y = 0.0006;
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.02 / 3.5, 0.06 / 3.5, 0.012 / 3.5), steel);
-    post.position.y = 0.03 / 3.5;
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.016 / 3.5, 0.016 / 3.5, 0.14 / 3.5, 12), grip);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.02 / MODEL_SCALE, 0.06 / MODEL_SCALE, 0.012 / MODEL_SCALE), steel);
+    post.position.y = 0.03 / MODEL_SCALE;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.016 / MODEL_SCALE, 0.016 / MODEL_SCALE, 0.14 / MODEL_SCALE, 12), grip);
     handle.rotation.z = Math.PI / 2;
-    handle.position.y = 0.065 / 3.5;
+    handle.position.y = 0.065 / MODEL_SCALE;
     this.trowel.add(plate, post, handle);
     // bitumen brush: a wide flat brush on a long handle, its bristles black with mastic
     this.brush = new THREE.Group();
     const wood = new THREE.MeshStandardMaterial({ color: 0xb08250, roughness: 0.7 });
     const tar = new THREE.MeshStandardMaterial({ color: 0x0b0a09, roughness: 0.3 });
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.15 / 3.5, 0.03 / 3.5, 0.05 / 3.5), wood);
-    head.position.y = 0.075 / 3.5;
-    const bristle = new THREE.Mesh(new THREE.BoxGeometry(0.15 / 3.5, 0.06 / 3.5, 0.04 / 3.5), tar);
-    bristle.position.y = 0.03 / 3.5;
-    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012 / 3.5, 0.012 / 3.5, 1.0 / 3.5, 10), wood);
-    stick.position.set(0, 0.09 / 3.5 + 0.48 / 3.5, -0.12 / 3.5); stick.rotation.x = -0.25;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.15 / MODEL_SCALE, 0.03 / MODEL_SCALE, 0.05 / MODEL_SCALE), wood);
+    head.position.y = 0.075 / MODEL_SCALE;
+    const bristle = new THREE.Mesh(new THREE.BoxGeometry(0.15 / MODEL_SCALE, 0.06 / MODEL_SCALE, 0.04 / MODEL_SCALE), tar);
+    bristle.position.y = 0.03 / MODEL_SCALE;
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012 / MODEL_SCALE, 0.012 / MODEL_SCALE, 1.0 / MODEL_SCALE, 10), wood);
+    stick.position.set(0, 0.09 / MODEL_SCALE + 0.48 / MODEL_SCALE, -0.12 / MODEL_SCALE); stick.rotation.x = -0.25;
     this.brush.add(head, bristle, stick);
     // rubber mallet (киянка): black rubber head Ø 65 × 110 mm on a wooden handle
     this.mallet = new THREE.Group();
     {
       const rub = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.85 });
       const wood2 = new THREE.MeshStandardMaterial({ color: 0xb5895a, roughness: 0.7 });
-      const head2 = new THREE.Mesh(new THREE.CylinderGeometry(0.0325 / 3.5, 0.0325 / 3.5, 0.11 / 3.5, 16), rub);
+      const head2 = new THREE.Mesh(new THREE.CylinderGeometry(0.0325 / MODEL_SCALE, 0.0325 / MODEL_SCALE, 0.11 / MODEL_SCALE, 16), rub);
       head2.rotation.z = Math.PI / 2;
-      const hnd = new THREE.Mesh(new THREE.CylinderGeometry(0.013 / 3.5, 0.015 / 3.5, 0.32 / 3.5, 10), wood2);
-      hnd.position.set(0, 0.16 / 3.5, -0.03 / 3.5); hnd.rotation.x = -0.2;
+      const hnd = new THREE.Mesh(new THREE.CylinderGeometry(0.013 / MODEL_SCALE, 0.015 / MODEL_SCALE, 0.32 / MODEL_SCALE, 10), wood2);
+      hnd.position.set(0, 0.16 / MODEL_SCALE, -0.03 / MODEL_SCALE); hnd.rotation.x = -0.2;
       this.mallet.add(head2, hnd);
     }
     // plate compactor: a detailed model in real sizes (plateCompactor.js)
@@ -103,7 +104,7 @@ export class ConcreteGear {
     this.mallet.visible = w === 'mallet';
     if (w === 'hose') {
       // the spout held ~25 cm above the concrete; the hose swings behind the hand
-      this.pump.aim(this.goal.clone().add(new THREE.Vector3(0, 0.25 / 3.5 + 0.15 / 3.5, 0)), camPos, this._snapHose);
+      this.pump.aim(this.goal.clone().add(new THREE.Vector3(0, 0.25 / MODEL_SCALE + 0.15 / MODEL_SCALE, 0)), camPos, this._snapHose);
       this._snapHose = false;
       this.pump.update(dt);
     } else if (w === 'screed') {
@@ -112,7 +113,7 @@ export class ConcreteGear {
     } else if (w === 'vibro') {
       this.vib.position.copy(this.pos).add(new THREE.Vector3(0, -0.03, 0));   // dipped into the concrete
       this.vib.rotation.set(0.15, this.yaw, 0);
-      const top = this.vib.localToWorld(new THREE.Vector3(0, 0.4 / 3.5, 0));
+      const top = this.vib.localToWorld(new THREE.Vector3(0, 0.4 / MODEL_SCALE, 0));
       this._tube(this.cable, top, camPos, 0.0045, 0.8);
     } else if (w === 'brush') {
       this.brush.position.copy(this.pos);
