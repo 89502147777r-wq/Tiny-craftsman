@@ -209,6 +209,19 @@ console.log('—', sec());
       tc.undo(); const back = t.top.every((x) => x === 0);
       out.sandOnConc = { onTop, concMoved: dc, vol, back };
     }
+    // backfill: the plate compactor settles loose soil (and only loose); undo exact
+    {
+      const x = 0.55, z = -0.3;
+      tc.journal.act('test-soil', {}, tc.clock, () => { t.deposit(x, z, 4e-5, 0.03, 0, 0); for (let k = 0; k < 6000 && t.active; k++) t.relax(1); });
+      const l0 = t.loose[t.index(x, z)], n0 = t.nat[t.index(x, z)];
+      tc.setTool('plate'); const pl = tc.activeTool();
+      pl.down(new V(x - 0.06, 0.1, z)); for (let s = 0; s <= 1; s += 0.05) { pl.move(new V(x - 0.06 + 0.12 * s, 0.1, z)); tc.simulate(1 / 30); } pl.up();
+      for (let i = 0; i < 100 && tc.busy(); i++) tc.simulate(1 / 15);
+      const l1 = t.loose[t.index(x, z)], c1 = t.comp[t.index(x, z)];
+      tc.undo(); const back = t.loose[t.index(x, z)] === l0 && t.comp[t.index(x, z)] === 0;
+      tc.redo();
+      out.plate = { settledMm: +((l0 - l1) * 3500).toFixed(1), comp: +c1.toFixed(2), nativeKept: t.nat[t.index(x, z)] === n0, back };
+    }
     // spilled concrete outside: the shovel takes it (only it, not the soil) and tips it into the form
     {
       const o = tc.objects.all('outline').find((x) => x.kind === 'rect');
@@ -261,6 +274,7 @@ console.log('—', sec());
   check('sand: heap of the ordered volume, shovel carries sand, layers undo exactly', play.mats.group === 'sand' && Math.abs(play.mats.heap - 1) < 1e-4 && play.mats.sand > 0.98 && play.mats.sand < 1.0001 && play.mats.loadSand && play.mats.dumpedSand && play.mats.undo && Math.abs(play.mats.drift) < 1e-4, JSON.stringify(play.mats));
   check('concrete: pumped volume exact, held by the formwork, undo exact', Math.abs(play.conc.vol - 1) < 1e-4 && play.conc.leak < 0.001 && play.conc.undo, JSON.stringify(play.conc));
   check('sand on concrete lies on top (concrete unchanged), volume exact, undo', play.sandOnConc.onTop && play.sandOnConc.concMoved === 0 && play.sandOnConc.vol < 1e-4 && play.sandOnConc.back, JSON.stringify(play.sandOnConc));
+  check('plate compactor: loose soil settles and gets compacted, native ground kept, undo exact', play.plate.settledMm > 0.1 && play.plate.comp > 0.1 && play.plate.nativeKept && play.plate.back, JSON.stringify(play.plate));
   check('shovel takes spilled fresh concrete and tips it into the form, volume exact, undo', play.shovelConc.loaded && play.shovelConc.took && play.shovelConc.vol < 1e-6 && play.shovelConc.undo, JSON.stringify(play.shovelConc));
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 8 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));
   await page.reload();

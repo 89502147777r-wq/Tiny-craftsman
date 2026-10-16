@@ -248,3 +248,95 @@ export class TrowelTool extends ConcreteTool {
 
   done() { if (!this.touched) this.app.ui?.toast(`Кельмой — только по свежему бетону (до ${Math.round(0.75 * CONCRETE.cure)} с после заливки)`); }
 }
+
+// Waterproofing: bitumen mastic brushed onto the faces of the concrete (only where
+// there is a face — the top of a slab stays clean)
+export class BitumenTool extends ConcreteTool {
+  constructor(app) { super(app, 'bitumen'); }
+
+  down(p) {
+    if (this.state !== 'idle') return true;
+    if (!this.app.terrain.inside(p.x, p.z)) return false;
+    this.begin('bitumen', {}, p);
+    this.coated = 0;
+    this.app.sfx.scrapeStart();
+    this.gear.set('brush', this._at(p), 0, true);
+    this._paint(p);
+    return true;
+  }
+
+  _at(p) { return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z); }
+
+  _paint(p) {
+    this.coated += this.app.terrain.paintBitumen(p.x, p.z, 0.09 / MODEL_SCALE, 0.3);
+  }
+
+  move(p) {
+    if (this.state !== 'work') return;
+    const t = this.app.terrain, len = this.steer(p);
+    if (!len) return;
+    const n = Math.ceil(len / (t.cell * 2)), q = new THREE.Vector3();
+    for (let k = 1; k <= n; k++) { q.lerpVectors(this.last, p, k / n); this._paint(q); }
+    this.app.sfx.scrapeLevel(0.15);
+    this.last.copy(p);
+    this.gear.set('brush', this._at(p), Math.atan2(this.dir.x, this.dir.y));
+  }
+
+  done() { if (!this.coated) this.app.ui?.toast('Битумом мажут боковые грани бетона — сначала распалубьте и ведите кистью вдоль края'); }
+}
+
+// Plate compactor: drag it over loose soil / sand / crushed stone — it shakes along and
+// the material settles (each pass about a third of the way to fully compacted)
+export class PlateTool extends ConcreteTool {
+  constructor(app) { super(app, 'plate'); }
+
+  down(p) {
+    if (this.state !== 'idle') return true;
+    if (!this.app.terrain.inside(p.x, p.z)) return false;
+    this.begin('compact', {}, p);
+    this.app.sfx.scrapeStart();
+    this.app.sfx.scrapeLevel(0.5);
+    this.gear.set('plate', this._at(p), Math.atan2(this.dir.x, this.dir.y), true);
+    return true;
+  }
+
+  _at(p) { return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z); }
+
+  move(p) {
+    if (this.state !== 'work') return;
+    const t = this.app.terrain, len = this.steer(p);
+    if (!len) return;
+    const W = 0.5 / MODEL_SCALE, L = 0.6 / MODEL_SCALE, step = t.cell * 1.5;
+    const gain = 0.12 * step / L;   // one pass over a spot: about a quarter of the way (3–4 passes)
+    const n = Math.ceil(len / step), q = new THREE.Vector3();
+    for (let k = 1; k <= n; k++) {
+      q.lerpVectors(this.last, p, k / n);
+      t.compactStep(q.x, q.z, this.dir.x, this.dir.y, W, L, gain);
+    }
+    this.last.copy(p);
+  }
+
+  work() {
+    // the engine thumps, the plate jumps a little
+    this.app.sfx.scrapeLevel(0.45 + Math.random() * 0.15);
+    const j = 0.0004, at = this._at(this.last);
+    at.y += Math.random() * j;
+    this.gear.set('plate', at, Math.atan2(this.dir.x, this.dir.y));
+  }
+
+  // the edges of the settled strip crumble in before the pass is recorded
+  finish() {
+    const t = this.app.terrain;
+    if (this.state !== 'idle') for (let i = 0; i < 40000 && t.active; i++) t.relax(1);
+    super.finish();
+  }
+
+  done() {
+    // settlement of this pass: how much thinner the loose material got (deepest spot)
+    const snap = this.app.journal.done.at(-1)?.diff;
+    let most = 0;
+    if (snap) for (let k = 0; k < snap.idx.length; k++) most = Math.max(most, snap.bl[k] - snap.al[k]);
+    const mm = Math.round(most * MODEL_SCALE * 1000);
+    this.app.ui?.toast(mm > 0 ? `Уплотнено: осадка до ${mm} мм за проход` : 'Виброплита уплотняет насыпанный грунт, песок или щебень (не нетронутую землю)');
+  }
+}
