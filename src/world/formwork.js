@@ -34,14 +34,15 @@ export class FormworkView {
     }
     this.owner = { boards: [], stakes: [], braces: [] };
     this.dirty = true;
-    objects.on((id, rec) => { if (rec?.type === 'form' || this._known?.has(id)) this.dirty = true; });
+    objects.on((id, rec) => { if (rec?.type === 'form' || rec?.type === 'formpile' || this._known?.has(id)) this.dirty = true; });
   }
 
   update() {
     if (!this.dirty) return;
     this.dirty = false;
     const runs = this.objects.all('form');
-    this._known = new Set(runs.map((r) => r.id));
+    const piles = this.objects.all('formpile');
+    this._known = new Set([...runs, ...piles].map((r) => r.id));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
     let nb = 0, ns = 0, nr = 0;
     const aB = this.boards.geometry.attributes.aBoard;
@@ -104,6 +105,45 @@ export class FormworkView {
         }
       }
     }
+    // stripped formwork: boards flat in a stack on the ground, stakes and braces on top
+    for (const r of piles) {
+      const rnd = mulberry32(r.id * 4447);
+      const c = Math.cos(r.yaw), sn = Math.sin(r.yaw);   // along the stack: (c, -sn) in x,z
+      const ux = c, uz = -sn, vx = sn, vz = c;
+      const per = 4, list = r.boards.slice().sort((a, b) => b - a);
+      const maxL = list[0] || 0.1, depth = per * H * 1.04;
+      // it lies on the highest ground under it
+      let g = -Infinity;
+      for (const f of [-0.5, 0, 0.5]) for (const w of [-0.5, 0.5]) {
+        const x = r.x + ux * maxL * f + vx * depth * w, z = r.z + uz * maxL * f + vz * depth * w;
+        g = Math.max(g, this.terrain.inside(x, z) ? this.terrain.heightAt(x, z) : 0);
+      }
+      let y = g;
+      for (let k = 0; k < list.length && nb < this.max.boards; k++) {
+        const row = k % per, layer = (k / per) | 0;
+        const off = (row - (per - 1) / 2) * H * 1.04 + (rnd() - 0.5) * 0.001, shift = (rnd() - 0.5) * 0.004;
+        p.set(r.x + vx * off + ux * shift, g + layer * (T + 0.0002) + T / 2, r.z + vz * off + uz * shift);
+        q.setFromEuler(e.set(0, r.yaw + (rnd() - 0.5) * 0.02, 0));
+        s.set(list[k], T, H);
+        this.boards.setMatrixAt(nb, m.compose(p, q, s));
+        aB.setXYZ(nb, rnd(), Math.floor(rnd() * 8) / 8, (list[k] * MODEL_SCALE) / 1.87);
+        this.owner.boards[nb] = r.id;
+        nb++;
+        y = g + (layer + 1) * (T + 0.0002);
+      }
+      // stakes across the top, side by side
+      const sl = r.stakeLen || 0.25, S2 = MAT.stake.s;
+      for (let k = 0; k < r.stakes && ns < this.max.stakes; k++) {
+        const along = (k - (r.stakes - 1) / 2) * S2 * 1.15 + (rnd() - 0.5) * 0.002;
+        p.set(r.x + ux * along - vx * sl / 2, y + S2 / 2 + ((k % 3) === 1 ? S2 : 0), r.z + uz * along - vz * sl / 2);
+        // lying across the stack: the stake's y axis turned onto v
+        q.setFromUnitVectors(_y, _v.set(vx, 0, vz)).premultiply(_q.setFromAxisAngle(_v, (rnd() - 0.5) * 0.4));
+        s.set(S2, sl, S2);
+        this.stakes.setMatrixAt(ns, m.compose(p, q, s));
+        this.owner.stakes[ns] = r.id;
+        ns++;
+      }
+    }
     this.boards.count = nb; this.stakes.count = ns; this.braces.count = nr;
     // the boards hold the concrete
     this.terrain.setWalls(runs.map((r) => ({ a: r.a, b: r.b, n: r.inside ? [-r.n[0], -r.n[1]] : r.n, t: T, top: r.y1 })));
@@ -120,7 +160,7 @@ export class FormworkView {
   }
 }
 
-const _y = new THREE.Vector3(0, 1, 0), _m = new THREE.Matrix4();
+const _y = new THREE.Vector3(0, 1, 0), _m = new THREE.Matrix4(), _v = new THREE.Vector3(), _q = new THREE.Quaternion();
 
 // Build formwork runs around an outline's boundary edges.
 export function runsForEdges(edgeList, y0At, y1) {

@@ -662,6 +662,13 @@ export class Terrain {
       }
       mats[i * 3] = f1 * 500; mats[i * 3 + 1] = f2 * 500; mats[i * 3 + 2] = f3 * 500;
       cc[i * 3] = conc[i]; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
+      // the foot of a concrete face (e.g. after the boards are stripped): the face
+      // belongs to the concrete, not to the soil below it
+      if (conc[i] <= 1e-6 && ix > 0 && ix < rx && iz > 0 && iz < rz) {
+        let j = -1, hj = h + 0.002;
+        for (const k of [i - 1, i + 1, i - n, i + n]) { const hk = nat[k] + loose[k] + conc[k]; if (conc[k] > 1e-5 && hk > hj) { hj = hk; j = k; } }
+        if (j >= 0) { cc[i * 3] = conc[j]; cc[i * 3 + 1] = cTime[j]; cc[i * 3 + 2] = cSm[j]; }
+      }
     }
     return { x0: ox0, z0: oz0, x1: ox1, z1: oz1 };
   }

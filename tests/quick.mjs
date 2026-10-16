@@ -217,6 +217,22 @@ console.log('—', sec());
       out.shovelConc = { loaded, took, vol: Math.abs(c1 / c0 - 1), soil: Math.abs(t.totalVolume() - s0) * 1e9, undo: back && ce < 1e-9 };
     }
     out.objects = { outlines: tc.objects.all('outline').length, forms: tc.objects.all('form').length, cages: tc.objects.all('cage').length, tied: tc.objects.all('cage').some((c) => c.tied) };
+    // stripping: soft concrete only warns; once it has set the boards come off into a stack; undo
+    {
+      const o = tc.objects.all('outline').find((x) => x.kind === 'rect');
+      const mine = () => tc.objects.all('form').filter((f) => f.outlineId === o.id).length;
+      const n0 = mine(), cv = t.concVolume();
+      tc.setTool('form'); tc.formTool.setMode('strip');
+      tc.formTool.down(new V((o.x0 + o.x1) / 2, 0.1, (o.z0 + o.z1) / 2), e);
+      const warned = mine() === n0;
+      tc.formTool._force = null;
+      tc.clock += 200; tc.simulate(0.1);
+      tc.formTool.down(new V((o.x0 + o.x1) / 2, 0.1, (o.z0 + o.z1) / 2), e);
+      const pile = tc.objects.all('formpile')[0];
+      const stripped = mine() === 0 && !!pile && pile.boards.length >= n0;
+      tc.undo(); const back = mine() === n0 && !tc.objects.all('formpile').length; tc.redo();
+      out.strip = { n0, warned, stripped, boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(t.concVolume() - cv) < 1e-12 };
+    }
     tc.setTool('camera');
     await tc.saveNow();
     out.saved = { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(t.excavatedVolume() * 1e6).toFixed(3), sand: +(t.materialVolumes()[1] * 1e6).toFixed(2), conc: +(t.concVolume() * 1e6).toFixed(2) };
@@ -235,6 +251,7 @@ console.log('—', sec());
   await page.reload();
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const after = await page.evaluate(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(tc.terrain.excavatedVolume() * 1e6).toFixed(3), sand: +(tc.terrain.materialVolumes()[1] * 1e6).toFixed(2), conc: +(tc.terrain.concVolume() * 1e6).toFixed(2) }; });
+  check('stripping: warns while soft, then boards come off into a stack, concrete stays, undo', play.strip.warned && play.strip.stripped && play.strip.back && play.strip.conc && play.strip.n0 > 0, JSON.stringify(play.strip));
   check('project restored after reload', JSON.stringify(after) === JSON.stringify(play.saved), `${JSON.stringify(play.saved)} → ${JSON.stringify(after)}`);
   check('no console errors while playing', errors.length === 0, errors.slice(0, 3).join(' | '));
   const build = fs.readFileSync(path.join(root, 'src/config.js'), 'utf8').match(/BUILD = (\d+)/)[1];
