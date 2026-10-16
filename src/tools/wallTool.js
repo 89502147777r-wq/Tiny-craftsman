@@ -6,11 +6,13 @@ import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 // Walls (aerated concrete blocks or bricks), as on site:
 //   line   – drag the axis of a wall over the foundation (ends snap to other walls'
 //            ends → a corner, and to the axes)
-//   mortar – drag the trowel along the course: a strip of mortar / glue is spread
-//   lay    – tap at the wall: a block / brick is set into the nearest free place of
-//            the course (only on mortar, only over a finished course below); it is
-//            lowered by hand, settles on the mortar (physics) and is tapped level with
-//            the mallet. Hold the finger to keep laying.
+//   opening– drag along a wall: a window / door opening (a lintel goes over it)
+//   lay    – take a block (brick, lintel) from the pallet beside the wall and carry it
+//            to the wall: it snaps to the nearest free place of the course being laid
+//            (found on the screen — no need to hit the wall exactly), the mortar under
+//            it shows; let go — the mortar is spread, the block is set down, settles
+//            (physics) and is tapped level with the mallet. Let go away from the wall —
+//            it goes back on the pallet.
 //   delete – tap a unit to take it off (if nothing lies on it); tap an empty wall line
 //            to remove it
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
@@ -21,14 +23,43 @@ export class WallTool {
     this.app = app;
     this.mode = 'line';
     this.drag = null;
-    this.hold = null;
+    // the tray of blocks in the corner of the screen: drag a block out of it onto a wall
+    // (the pallet by the wall may be out of the picture)
+    this.tray = typeof document !== 'undefined' ? document.getElementById('wall-tray') : null;
+    if (this.tray) {
+      const g = (e) => app.gestures.ground(e.clientX, e.clientY) || this._lastP || new THREE.Vector3();
+      this.tray.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (this.mode !== 'lay' || app.physJob || app.physLoading) return;
+        const w = this._trayWall();
+        if (!w) { app.ui.toast('Все стены выложены до верха'); return; }
+        try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ }
+        this.carry = { pallet: w, snap: null, tray: true };
+        this.tray.classList.add('active');
+        loadPhysics().catch(() => {});
+        this._carryMove(g(e), e);
+      });
+      this.tray.addEventListener('pointermove', (e) => { if (this.carry?.tray) { e.preventDefault(); this._carryMove(g(e), e); } });
+      this.tray.addEventListener('pointerup', (e) => { if (this.carry?.tray) { e.preventDefault(); this.tray.classList.remove('active'); this._carryDrop(); } });
+      this.tray.addEventListener('pointercancel', () => { if (this.carry?.tray) { this.tray.classList.remove('active'); this._carryCancel(); } });
+    }
   }
 
-  get busy() { return !!this.drag || !!this.hold; }
+  get busy() { return !!this.drag || !!this.carry; }
   // one finger works on the wall in every mode (the camera: two fingers)
   blocksOrbit() { return true; }
 
-  setMode(m) { this.mode = m; if (m === 'lay') loadPhysics().catch(() => {}); this.app.ui.refresh(); this._focus(); }
+  setMode(m) {
+    this.mode = m;
+    if (m === 'lay') {
+      loadPhysics().catch(() => {});
+      // walls laid out before the pallets existed get theirs now
+      const bare = this.app.objects.all('wall').filter((w) => !w.pallet);
+      if (bare.length) this.app.journal.act('pallets', {}, this.app.clock, () => { for (const w of bare) this.app.objects.update(w.id, { pallet: this._palletSpot(w) }); });
+    }
+    this.app.ui.refresh();
+    this._focus();
+  }
   get kind() { return this.app.settings.wallKind || 'block'; }
   get openKind() { return this.app.settings.openKind || 'window'; }
 
@@ -50,7 +81,7 @@ export class WallTool {
   _focus(w) {
     const v = this.app.wallView;
     v.marks = true;
-    v.focus = this.mode === 'mortar' || this.mode === 'lay' ? (w ? w.id : this.lastWall ?? null) : null;
+    v.focus = this.mode === 'lay' ? (w ? w.id : this.lastWall ?? null) : null;
     v.dirty = true;
   }
 
@@ -78,20 +109,15 @@ export class WallTool {
       this.lastWall = n.w.id;
       return true;
     }
-    if (this.mode === 'mortar') {
-      const n = this.nearest(p);
-      if (!n) { app.ui.toast('Ведите кельмой вдоль стены'); return false; }
-      const st = wallState(n.w, app.objects);
-      if (st.cur >= st.n) { app.ui.toast('Стена выложена до верха'); return false; }
-      this.drag = { w: n.w, row: st.cur, s0: n.s, s1: n.s };
-      this.lastWall = n.w.id; this._focus(n.w);
-      app.concreteGear.set('trowel', new THREE.Vector3(p.x, rowY(n.w, st.cur), p.z), Math.atan2(axis(n.w).ux, axis(n.w).uz), true);
-      app.sfx.scrapeStart();
-      return true;
-    }
     if (this.mode === 'lay') {
-      this.hold = { p: p.clone(), next: 0 };
-      this._lay(p);
+      if (app.physJob || app.physLoading) return true;   // the last one is still being set
+      const w = this._palletAt(e, p);
+      if (!w) { app.ui.toast(app.objects.all('wall').length ? 'Тяните блок из лотка справа (или с поддона у стены) на стену' : 'Сначала проведите линию стены'); return true; }
+      this.carry = { pallet: w, p: p.clone(), snap: null };
+      this.lastWall = w.id; this._focus(w);
+      loadPhysics().catch(() => {});
+      app.sfx?.stab?.();
+      this._carryMove(p, e);
       return true;
     }
     if (this.mode === 'delete') { this._delete(p, e); return true; }
@@ -101,7 +127,7 @@ export class WallTool {
   move(p, e) {
     const app = this.app;
     p = this._pt(p, e);
-    if (this.hold) this.hold.p.copy(p);
+    if (this.carry) { this._carryMove(p, e); return; }
     if (!this.drag) return;
     if (this.mode === 'line') {
       this.drag.b = this._snap([p.x, p.z], this.drag.a);
@@ -114,24 +140,13 @@ export class WallTool {
       d.s0 = Math.round(Math.min(d.a, s) / 50) * 50; d.s1 = Math.round(Math.max(d.a, s) / 50) * 50;
       app.ui.showMeasure(`${OPENINGS[this.openKind].name}: ${(d.s1 - d.s0) / 1000} м`.replace('.', ','));
       this._showOpening();
-    } else if (this.mode === 'mortar') {
-      const d = this.drag, ax = axis(d.w);
-      const s = ((p.x - d.w.a[0]) * ax.ux + (p.z - d.w.a[1]) * ax.uz) / S;
-      d.s0 = Math.min(d.s0, s); d.s1 = Math.max(d.s1, s);
-      const cs = course(d.w, d.row, app.objects.all('wall'), app.objects.all('opening').filter((o) => o.wall === d.w.id)), lo = Math.min(...cs.map((x) => x.s0)), hi = Math.max(...cs.map((x) => x.s1));
-      d.s0 = Math.max(d.s0, lo); d.s1 = Math.min(d.s1, hi);
-      app.wallView.live = null;
-      this._liveBed = { s0: d.s0, s1: d.s1 };
-      app.concreteGear.set('trowel', new THREE.Vector3(p.x, rowY(d.w, d.row), p.z), Math.atan2(ax.ux, ax.uz));
-      app.sfx.scrapeLevel(0.2);
-      this._showBed();
     }
   }
 
   up() {
     const app = this.app, d = this.drag;
+    if (this.carry) { this._carryDrop(); return; }
     this.drag = null;
-    this.hold = null;
     app.ui.hideMeasure();
     this._preview(true);
     if (!d) return;
@@ -140,33 +155,21 @@ export class WallTool {
       if (L < 0.3 / MODEL_SCALE) { app.ui.toast('Стена короче 30 см — проведите длиннее'); return; }
       const rec = { type: 'wall', a: d.a.map((x) => +x.toFixed(5)), b: d.b.map((x) => +x.toFixed(5)), kind: this.kind, height: app.settings.wallHeight || 1500 };
       rec.base = +this._baseOf(rec).toFixed(5);
+      rec.pallet = this._palletSpot(rec);
       const w = app.journal.act('wall-line', { kind: rec.kind }, app.clock, () => app.objects.add(rec));
       const added = app.objects.all('wall').at(-1);
       this.lastWall = added?.id; this._focus(added);
-      app.ui.toast(`${KINDS[rec.kind].name}: стена ${(L * MODEL_SCALE).toFixed(2).replace('.', ',')} м, ${rows(rec)} рядов. Дальше — «Раствор» и «Класть»`);
+      app.ui.toast(`${KINDS[rec.kind].name}: стена ${(L * MODEL_SCALE).toFixed(2).replace('.', ',')} м, ${rows(rec)} рядов. Рядом поддон — «Класть»: берите блок и несите к стене`);
       void w;
     } else if (this.mode === 'opening') {
       this._showOpening(true);
       this._addOpening(d);
-    } else if (this.mode === 'mortar') {
-      app.sfx.scrapeStop();
-      app.concreteGear.set(null);
-      this._liveBed = null; this._showBed();
-      if (d.s1 - d.s0 < 50) return;
-      // mortar stays on the masonry under it (none over an opening; on a lintel's bearings)
-      const opens = app.objects.all('opening').filter((o) => o.wall === d.w.id);
-      const parts = beddable(d.w, d.row, app.objects.all('wall'), opens).map(([a, b]) => [Math.max(a, d.s0), Math.min(b, d.s1)]).filter(([a, b]) => b - a > 30);
-      if (!parts.length) return;
-      app.journal.act('mortar', { wall: d.w.id, row: d.row }, app.clock, () => { for (const [a, b] of parts) app.objects.add({ type: 'bed', wall: d.w.id, row: d.row, s0: +a.toFixed(1), s1: +b.toFixed(1) }); });
     }
   }
 
-  interrupt() { this.drag = null; this.hold = null; this._preview(true); this.app.ui.hideMeasure(); }
+  interrupt() { this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
 
-  // holding the finger in «lay»: the next unit as soon as the last one is set
-  update() {
-    if (this.hold && this.mode === 'lay' && !this.app.physJob && !this.app.physLoading && performance.now() > this.hold.next) this._lay(this.hold.p, true);
-  }
+  update() {}
 
   // ---- line ----------------------------------------------------------------------------
   _snap(q, from) {
@@ -245,34 +248,160 @@ export class WallTool {
     v.dirty = true;
   }
 
-  // ---- lay -----------------------------------------------------------------------------
-  _lay(p, quiet = false) {
-    const app = this.app, n = this.nearest(p);
-    if (!n) { if (!quiet) app.ui.toast('Коснитесь у стены (сначала проведите её линию)'); return; }
-    const w = n.w, st = wallState(w, app.objects);
-    this.lastWall = w.id; this._focus(w);
-    if (st.cur >= st.n) { if (!quiet) app.ui.toast('Стена выложена до верха'); this.hold = null; return; }
-    const r = st.cur, cs = course(w, r, st.walls, st.opens);
-    const free = cs.filter((sl) => !taken(st.units, r, sl));
-    // the free place nearest the finger that has mortar under it
-    const beds = st.beds.filter((b) => b.row === r).map((b) => [b.s0, b.s1]);
-    // (a lintel needs mortar under its two bearings)
-    const bedded = (sl) => sl.lintel ? covered(beds, sl.s0, sl.s0 + 200) > 0.7 && covered(beds, sl.s1 - 200, sl.s1) > 0.7 : covered(beds, sl.s0, sl.s1) > 0.7;
-    const ok = free.filter(bedded).sort((a, b) => Math.abs((a.s0 + a.s1) / 2 - n.s) - Math.abs((b.s0 + b.s1) / 2 - n.s));
-    if (!ok.length) {
-      if (!quiet) app.ui.toast(`Ряд ${r + 1}: сначала «Раствор» — ${w.kind === 'block' ? (r === 0 ? 'цементный раствор' : 'клей') : 'раствор'} под ${w.kind === 'block' ? 'блок' : 'кирпич'}`);
-      this.hold = null;
-      return;
+  // ---- lay: carry from the pallet -------------------------------------------------------
+  // the pallet of a new wall: beside its middle, on the side the camera sees (or, for a
+  // building already started, outside it), on the plot
+  _palletSpot(w) {
+    // beyond an end of the wall and a little to the side the camera sees: within reach,
+    // but it never stands between the camera and the wall
+    const app = this.app, t = app.terrain, ax = axis(w), k = KINDS[w.kind];
+    const cam = app.camera.position, side = (cam.x - w.a[0]) * ax.nx + (cam.z - w.a[1]) * ax.nz >= 0 ? 1 : -1;
+    const along = 900 * S, aside = (k.T / 2 + 500) * S, yaw = +Math.atan2(-ax.uz, ax.ux).toFixed(4);
+    const walls = app.objects.all('wall').filter((o) => o.id !== w.id);
+    const clear = (x, z) => t.inside(x, z) && walls.every((o) => { const oa = axis(o), dx = x - o.a[0], dz = z - o.a[1], s = (dx * oa.ux + dz * oa.uz) / S; return s < -700 || s > oa.L + 700 || Math.abs(dx * oa.nx + dz * oa.nz) > 0.2; });
+    const cands = [
+      [w.a[0] - ax.ux * along + ax.nx * aside * side, w.a[1] - ax.uz * along + ax.nz * aside * side],
+      [w.b[0] + ax.ux * along + ax.nx * aside * side, w.b[1] + ax.uz * along + ax.nz * aside * side],
+      [w.a[0] - ax.ux * along - ax.nx * aside * side, w.a[1] - ax.uz * along - ax.nz * aside * side],
+      [w.b[0] + ax.ux * along - ax.nx * aside * side, w.b[1] + ax.uz * along - ax.nz * aside * side],
+      [(w.a[0] + w.b[0]) / 2 + ax.nx * (aside + 0.2) * side, (w.a[1] + w.b[1]) / 2 + ax.nz * (aside + 0.2) * side],
+    ];
+    const c = cands.find(([x, z]) => clear(x, z)) || cands.find(([x, z]) => t.inside(x, z)) || cands[4];
+    return [+c[0].toFixed(5), +c[1].toFixed(5), yaw];
+  }
+
+  _screen(v) {
+    const r = this.app.renderer.domElement.getBoundingClientRect(), q = v.clone().project(this.app.camera);
+    return { x: r.left + (q.x + 1) / 2 * r.width, y: r.top + (1 - q.y) / 2 * r.height, front: q.z < 1 };
+  }
+
+  // the pallet under the finger (on the screen, generous)
+  _palletAt(e, p) {
+    let best = null, bd = Infinity;
+    for (const w of this.app.objects.all('wall')) {
+      if (!w.pallet) continue;
+      const c = new THREE.Vector3(w.pallet[0], this.app.terrain.heightAt(w.pallet[0], w.pallet[1]) + 0.06, w.pallet[1]);
+      let d;
+      if (e && (e.clientX || e.clientY)) { const sp = this._screen(c); d = Math.hypot(sp.x - e.clientX, sp.y - e.clientY); if (d > 80) continue; }
+      else { d = Math.hypot(p.x - c.x, p.z - c.z) * 1000; if (d > 0.09 * 1000) continue; }
+      if (d < bd) { bd = d; best = w; }
     }
-    const sl = ok[0], target = slotPose(w, r, sl);
-    const unit = { type: 'unit', wall: w.id, row: r, i: sl.i, s0: +sl.s0.toFixed(1), s1: +sl.s1.toFixed(1), off: sl.off, kind: w.kind, s: target.s.toArray().map((x) => +x.toFixed(6)) };
-    if (sl.lintel) unit.lintel = true;
-    if (sl.cut) { unit.cut = true; app.ui.toast(cutName(w, sl)); }
+    return best;
+  }
+
+  // the free place of a course being laid nearest the finger on the screen (≤ 90 px)
+  _snapTo(e, p) {
+    const app = this.app;
+    let best = null, bd = Infinity;
+    for (const w of app.objects.all('wall')) {
+      const st = wallState(w, app.objects);
+      if (st.cur >= st.n) continue;
+      const k = KINDS[w.kind];
+      for (const sl of course(w, st.cur, st.walls, st.opens)) {
+        if (taken(st.units, st.cur, sl)) continue;
+        const pose = slotPose(w, st.cur, sl), top = pose.p.clone(); top.y = rowY(w, st.cur) + k.H * S;
+        let d;
+        if (e && (e.clientX || e.clientY)) { const sp = this._screen(top); if (!sp.front) continue; d = Math.hypot(sp.x - e.clientX, sp.y - e.clientY); if (d > 90) continue; }
+        else { d = Math.hypot(p.x - top.x, p.z - top.z) * 3500; if (d > 400) continue; }
+        if (w.id === this.lastWall) d -= 6;
+        if (d < bd) { bd = d; best = { w, sl, st, pose }; }
+      }
+    }
+    return best;
+  }
+
+  _unitFor(w, r, sl, pose) {
+    const u = { type: 'unit', wall: w.id, row: r, i: sl.i, s0: +sl.s0.toFixed(1), s1: +sl.s1.toFixed(1), off: sl.off, kind: w.kind, s: pose.s.toArray().map((x) => +x.toFixed(6)) };
+    if (sl.lintel) u.lintel = true;
+    if (sl.cut) u.cut = true;
+    return u;
+  }
+
+  _carryMove(p, e) {
+    const app = this.app, c = this.carry, v = app.wallView;
+    this._lastP = p;
+    const snap = this._snapTo(e, p);
+    const was = c.snap && `${c.snap.w.id}:${c.snap.sl.s0}`;
+    c.snap = snap;
+    if (snap) {
+      const { w, sl, st, pose } = snap, u = this._unitFor(w, st.cur, sl, pose);
+      const lift = pose.p.clone(); lift.y += MM(25);
+      v.live = { ...u, p: lift.toArray(), q: pose.q.toArray() };
+      // the mortar it will be set in
+      const parts = this._bedFor(w, st.cur, sl);
+      v.liveBed = parts.length ? { wall: w.id, row: st.cur, s0: parts[0][0], s1: parts.at(-1)[1] } : null;
+      if (was !== `${w.id}:${sl.s0}`) { this.lastWall = w.id; this._focus(w); }
+    } else {
+      // in the hand: under the finger, above the ground
+      const pw = c.pallet, k = KINDS[pw.kind], ax = axis(pw);
+      const s = new THREE.Vector3(k.L * S, k.H * S, k.T * S);
+      if (pw.kind === 'brick2') s.z = k.W * S;
+      v.live = { type: 'unit', kind: pw.kind, row: 0, i: 0, s: s.toArray(), p: [p.x, p.y + MM(350), p.z], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-ax.uz, ax.ux)).toArray() };
+      v.liveBed = null;
+    }
+    v.dirty = true;
+    app.ui.refresh();
+  }
+
+  // the mortar under a place: on the masonry below it (a lintel: its two bearings)
+  _bedFor(w, r, sl) {
+    const app = this.app, opens = app.objects.all('opening').filter((o) => o.wall === w.id);
+    return beddable(w, r, app.objects.all('wall'), opens).map(([a, b]) => [Math.max(a, sl.s0), Math.min(b, sl.s1)]).filter(([a, b]) => b - a > 10);
+  }
+
+  // the wall the tray serves: the one being worked on, else the first one not finished
+  _trayWall() {
+    const walls = this.app.objects.all('wall');
+    const open = walls.filter((w) => { const st = wallState(w, this.app.objects); return st.cur < st.n; });
+    return open.find((w) => w.id === this.lastWall) || open[0] || null;
+  }
+
+  // the tray: shown while laying, labelled with the material
+  syncTray() {
+    if (!this.tray) return;
+    const on = this.app.tool === 'wall' && this.mode === 'lay' && this.app.objects.all('wall').length > 0;
+    this.tray.hidden = !on;
+    if (!on) return;
+    const w = this._trayWall(), kind = w?.kind || this.kind;
+    this.tray.classList.toggle('brick', kind !== 'block');
+    const lab = document.getElementById('wall-tray-label');
+    if (lab) lab.textContent = kind === 'block' ? 'Газоблок' : 'Кирпич';
+  }
+
+  _carryCancel() {
+    const v = this.app.wallView;
+    this.carry = null; v.live = null; v.liveBed = null; v.dirty = true;
+    this.app.ui.refresh();
+  }
+
+  _carryDrop() {
+    const app = this.app, snap = this.carry.snap;
+    this._carryCancel();
+    if (!snap) { app.ui.toast('Блок вернули на поддон — поднесите его к ряду на стене'); return; }
+    const { w, sl, st, pose } = snap, u = this._unitFor(w, st.cur, sl, pose);
+    if (sl.cut) app.ui.toast(cutName(w, sl));
     if (sl.lintel) app.ui.toast(`Перемычка ${Math.round(sl.s1 - sl.s0)} мм — по 250 мм опоры с каждой стороны`);
-    const go = () => { app.physLoading = false; app.physJob = new LayJob(app, w, unit, target, st); };
+    const beds = this._bedFor(w, st.cur, sl);
+    const go = () => { app.physLoading = false; app.physJob = new LayJob(app, w, u, pose, st, beds); };
     if (physicsReady()) go();
     else { app.physLoading = true; loadPhysics().then(go, () => { app.physLoading = false; app.ui.toast('Физика не загрузилась'); }); }
-    if (this.hold) this.hold.next = performance.now() + 120;
+  }
+
+  // what is going on, for the hint line: wall · course · place
+  status() {
+    const app = this.app, walls = app.objects.all('wall');
+    if (!walls.length) return '';
+    const c = this.carry;
+    if (c?.snap) {
+      const { w, sl, st } = c.snap, cs = course(w, st.cur, st.walls, st.opens);
+      const what = sl.lintel ? 'перемычка' : sl.cut ? `добор ${Math.round(sl.s1 - sl.s0)} мм` : w.kind === 'block' ? 'блок' : 'кирпич';
+      return `Стена ${walls.indexOf(w) + 1} · ряд ${st.cur + 1} из ${st.n} · место ${cs.indexOf(cs.find((x) => x.s0 === sl.s0 && x.off === sl.off)) + 1} из ${cs.length} — ${what}. Отпустите`;
+    }
+    if (c) return 'Несите к стене — блок сам встанет в ближайшее место ряда';
+    const w = walls.find((x) => x.id === this.lastWall) || walls[0], st = wallState(w, app.objects);
+    if (st.cur >= st.n) return `Стена ${walls.indexOf(w) + 1} выложена до верха`;
+    const cs = course(w, st.cur, st.walls, st.opens), left = cs.filter((sl) => !taken(st.units, st.cur, sl)).length;
+    return `Стена ${walls.indexOf(w) + 1} · ряд ${st.cur + 1} из ${st.n}: осталось ${left} из ${cs.length}. Тяните блок из лотка на стену`;
   }
 
   // ---- delete --------------------------------------------------------------------------
@@ -305,11 +434,13 @@ export class WallTool {
 // units around, the bed, the foundation), then three taps of the rubber mallet bring it
 // to the cord and the level. One journal entry.
 class LayJob {
-  constructor(app, w, unit, target, st) {
+  constructor(app, w, unit, target, st, beds = []) {
     this.app = app;
     this.unit = unit;
     this.target = target;
     this.pending = app.journal.begin('lay', { wall: w.id, row: unit.row, i: unit.i }, app.clock);
+    // the mortar is spread first (same journal entry)
+    for (const [a, b] of beds) app.objects.add({ type: 'bed', wall: w.id, row: unit.row, s0: +a.toFixed(1), s1: +b.toFixed(1) });
     const p = target.p, s = target.s, pad = 0.12;
     this.ep = new Episode(app.terrain, p.x - pad, p.z - pad, p.x + pad, p.z + pad, 2, 120);
     this.ep.maxV = 0.6;
@@ -380,8 +511,9 @@ class LayJob {
     app.journal.commit(app.clock);
     this._dispose();
     app.concreteGear.set(null);
+    app.ui?.refresh();
     const w = app.objects.get(this.unit.wall), st = w && wallState(w, app.objects);
-    if (st && st.cur > this.unit.row) app.ui?.toast(st.cur >= st.n ? 'Стена выложена до верха' : `Ряд ${this.unit.row + 1} готов — проверьте уровнем; дальше раствор на ряд ${st.cur + 1}`);
+    if (st && st.cur > this.unit.row) app.ui?.toast(st.cur >= st.n ? 'Стена выложена до верха' : `Ряд ${this.unit.row + 1} готов — дальше ряд ${st.cur + 1}`);
   }
 
   _dispose() {

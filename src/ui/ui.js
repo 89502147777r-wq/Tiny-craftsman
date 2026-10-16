@@ -31,8 +31,7 @@ const HINTS = {
   wall: {
     line: 'Проведите ось стены по фундаменту — от угла до угла (зелёная полоса — будущая стена). Концы прилипают к другим стенам — угол с перевязкой',
     opening: 'Проведите вдоль стены от края до края проёма — разметится окно (низ 900, верх 2100 мм) или дверь (до 2100 мм). Кладка обойдёт его, сверху ляжет перемычка',
-    mortar: 'Ведите кельмой вдоль стены — на ряд ляжет раствор (над проёмами — нет). Оранжевый шнур — причалка, по нему выравнивается ряд',
-    lay: 'Коснитесь стены там, куда класть — блок ляжет в ближайшее место ряда (на раствор) и выровняется киянкой. Где не хватает целого — добор. Держите палец — подряд',
+    lay: 'Тяните блок из лотка справа (или с поддона у стены) на стену — он встанет в ближайшее место ряда, раствор ляжет сам',
     delete: 'Коснитесь блока или кирпича, чтобы снять (только верхний), оранжевой рамки — убрать проём, пустой линии — убрать стену',
   },
   bitumen: 'Ведите кистью по бетону — грани и верх фундамента покроются битумной мастикой',
@@ -330,7 +329,7 @@ export class UI {
     if (t === 'wall') {
       const wt = app.wallTool, s = app.settings;
       const set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
-      const out = [['line', 'Линия'], ['opening', 'Проём'], ['mortar', 'Раствор'], ['lay', 'Класть'], ['delete', 'Удалить']].map(([k, l]) => C(l, wt.mode === k, () => wt.setMode(k), k === 'delete' ? 'warn' : ''));
+      const out = [['line', 'Линия'], ['opening', 'Проём'], ['lay', 'Класть'], ['delete', 'Удалить']].map(([k, l]) => C(l, wt.mode === k, () => wt.setMode(k), k === 'delete' ? 'warn' : ''));
       if (wt.mode === 'line') {
         out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич ½'], ['brick2', 'Кирпич 1']].map(([k, l]) => C(l, (s.wallKind || 'block') === k, () => set({ wallKind: k }))));
         out.push(...[[1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
@@ -456,7 +455,8 @@ export class UI {
     if (t === 'mark') hint = HINTS.mark[app.markTool.mode];
     if (t === 'form') hint = HINTS.form[app.formTool.mode];
     if (t === 'rebar') hint = HINTS.rebar[app.rebarTool.mode];
-    if (t === 'wall') hint = app.wallTool.busy || app.physJob ? '' : HINTS.wall[app.wallTool.mode];
+    app.wallTool?.syncTray();
+    if (t === 'wall') hint = app.wallTool.mode === 'lay' ? (app.wallTool.status() || HINTS.wall.lay) : app.wallTool.busy || app.physJob ? '' : HINTS.wall[app.wallTool.mode];
     if (t === 'machine') {
       const mt = app.machineTool;
       hint = HINTS.machine[mt.active || 'none'];
