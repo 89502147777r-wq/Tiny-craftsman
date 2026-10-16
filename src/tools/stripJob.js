@@ -213,7 +213,7 @@ export class StripJob {
     this.ep?.dispose(); this.ep = null;
     this.app.formView.live = null;
     this.app.formView.dirty = true;
-    if (this.app.stripJob === this) this.app.stripJob = null;
+    if (this.app.physJob === this) this.app.physJob = null;
   }
 
   // run to the end at once (redo, tests, leaving the page)

@@ -239,9 +239,9 @@ console.log('—', sec());
       tc.formTool._force = null;
       tc.clock += 200; tc.simulate(0.1);
       tc.formTool.down(new V((o.x0 + o.x1) / 2, 0.1, (o.z0 + o.z1) / 2), e);
-      for (let i = 0; i < 200 && tc.stripLoading; i++) await new Promise((r) => setTimeout(r, 50));
-      const running = !!tc.stripJob;
-      for (let i = 0; i < 1200 && tc.stripJob; i++) tc.simulate(1 / 30);   // the boards fall and are stacked (Rapier)
+      for (let i = 0; i < 200 && tc.physLoading; i++) await new Promise((r) => setTimeout(r, 50));
+      const running = !!tc.physJob;
+      for (let i = 0; i < 1200 && tc.physJob; i++) tc.simulate(1 / 30);   // the boards fall and are stacked (Rapier)
       const pile = tc.objects.all('formpile')[0];
       const stripped = mine() === 0 && !!pile && pile.boards.length >= n0;
       tc.undo(); const back = mine() === n0 && !tc.objects.all('formpile').length; tc.redo();

@@ -98,7 +98,7 @@ async function main() {
   app.rig = new CameraRig(camera);
   app.journal = new Journal(terrain, app.objects);
   // a physics action still running (stripping) finishes before the next one starts
-  app.journal.onBeforeBegin = () => { const j = app.stripJob; if (j && !j.finishing) { j.finishing = true; j.finish(); } };
+  app.journal.onBeforeBegin = () => { const j = app.physJob; if (j && !j.finishing) { j.finishing = true; j.finish(); } };
   app.recorder = new Recorder();
   app.sfx = new Sfx();
   app.shovelTool = new ScoopTool(app, app.shovel);
@@ -204,7 +204,7 @@ function step(dt, time, render = true) {
   for (const t of Object.values(app.materialTools)) t.update(dt);
   for (const t of Object.values(app.concreteTools)) t.update(dt);
   app.machineTool.update(dt);
-  app.stripJob?.update(dt);
+  app.physJob?.update(dt);
   app.particles.update(dt);
   // soil physics gets a time budget per frame (small piles settle in a blink)
   const budget = app.settings.quality === 'low' ? 2.5 : 4;
@@ -308,7 +308,7 @@ function resize() {
 
 // ---- tools ------------------------------------------------------------------------------
 app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, ...app.concreteTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, machine: app.machineTool }[app.tool] || null);
-app.busy = () => !!app.stripJob || !!app.stripLoading || app.shovelTool.busy || app.rakeTool.busy || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy();
+app.busy = () => !!app.physJob || !!app.physLoading || app.shovelTool.busy || app.rakeTool.busy || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy();
 
 function setTool(t) {
   if (app.tool === 'shovel' && t !== 'shovel') app.shovelTool.finish();
@@ -337,7 +337,7 @@ function setTool(t) {
 app.setTool = setTool;
 
 function undo() {
-  if (app.stripJob?.abort()) { app.ui.refresh(); return; }
+  if (app.physJob?.abort()) { app.ui.refresh(); return; }
   if (app.shovelTool.abort()) { app.ui.refresh(); return; }
   if (app.rakeTool.abort()) { app.ui.refresh(); return; }
   for (const t of Object.values(app.materialTools)) if (t.abort()) { app.ui.refresh(); return; }
@@ -347,7 +347,7 @@ function undo() {
   app.ui.refresh();
 }
 function redo() {
-  app.stripJob?.finish();
+  app.physJob?.finish();
   if (app.shovelTool.busy) app.shovelTool.finish();
   app.rakeTool.finish();
   for (const t of Object.values(app.materialTools)) t.finish();

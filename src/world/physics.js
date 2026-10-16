@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 
 // Rigid-body physics (Rapier, loaded only when first needed). Everything is
@@ -23,13 +24,15 @@ export function loadPhysics() {
 }
 export const physicsReady = () => !!R;
 
-export const DENSITY = { wood: 500, steel: 7850 };   // kg/m³ (pine boards and stakes, rebar)
+export const DENSITY = { wood: 500, steel: 7850 };
+const _Y = new THREE.Vector3(0, 1, 0);   // kg/m³ (pine boards and stakes, rebar)
 
 export class Episode {
   // the ground: cells of the terrain inside the box x0…x1, z0…z1 (model units), every `st` cells
-  constructor(terrain, x0, z0, x1, z1, st = 3) {
+  constructor(terrain, x0, z0, x1, z1, st = 3, hz = 60) {
     this.world = new R.World({ x: 0, y: -9.81, z: 0 });
-    this.world.timestep = 1 / 60;
+    this.hz = hz;
+    this.world.timestep = 1 / hz;
     const t = terrain;
     const ix0 = Math.max(0, Math.floor(t.toCellX(x0))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(x1)));
     const iz0 = Math.max(0, Math.floor(t.toCellZ(z0))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(z1)));
@@ -68,6 +71,40 @@ export class Episode {
     return body;
   }
 
+  // ---- shapes for rebar (model units in, real units inside) ---------------------------
+  // a fixed bar / chair / support the moving pieces can lie on
+  staticCapsule(A, B, r) {
+    const d = new THREE.Vector3().subVectors(B, A), L = d.length();
+    if (L < 1e-6) return;
+    const q = new THREE.Quaternion().setFromUnitVectors(_Y, d.divideScalar(L)), c = new THREE.Vector3().addVectors(A, B).multiplyScalar(0.5);
+    this.world.createCollider(R.ColliderDesc.capsule(L / 2 * S, r * S).setTranslation(c.x * S, c.y * S, c.z * S).setRotation(q).setFriction(0.7));
+  }
+  staticCylinder(p, r, h) {   // p: centre of the base
+    this.world.createCollider(R.ColliderDesc.cylinder(h / 2 * S, r * S).setTranslation(p.x * S, (p.y + h / 2) * S, p.z * S).setFriction(0.8));
+  }
+  staticBox(p, q, hx, hy, hz) {
+    this.world.createCollider(R.ColliderDesc.cuboid(hx * S, hy * S, hz * S).setTranslation(p.x * S, p.y * S, p.z * S).setRotation(q).setFriction(0.7));
+  }
+  // a rigid body made of bars (one bar, or a welded / tied mesh): rods given in the
+  // body's own frame as [ax,ay,az, bx,by,bz, d] (model), body at p / q
+  rods(list, p, q, { kinematic = false, extend = 0 } = {}) {
+    const d = (kinematic ? R.RigidBodyDesc.kinematicPositionBased() : R.RigidBodyDesc.dynamic())
+      .setTranslation(p.x * S, p.y * S, p.z * S).setRotation({ x: q.x, y: q.y, z: q.z, w: q.w })
+      .setLinearDamping(0.1).setAngularDamping(0.5).setCcdEnabled(true);   // thin and fast: no tunnelling
+    const body = this.world.createRigidBody(d);
+    const A = new THREE.Vector3(), B = new THREE.Vector3(), c = new THREE.Vector3(), qq = new THREE.Quaternion();
+    for (const r of list) {
+      A.set(r[0], r[1], r[2]); B.set(r[3], r[4], r[5]);
+      const L = A.distanceTo(B);
+      if (L < 1e-6) continue;
+      qq.setFromUnitVectors(_Y, B.clone().sub(A).divideScalar(L)); c.addVectors(A, B).multiplyScalar(0.5);
+      this.world.createCollider(R.ColliderDesc.capsule((L / 2 + extend * r[6]) * S, Math.max(r[6] / 2 * S, 0.008)).setTranslation(c.x * S, c.y * S, c.z * S).setRotation(qq)   // ≥ 8 mm: a thinner solid slips through
+        .setDensity(DENSITY.steel).setFriction(0.7).setRestitution(0.05), body);
+    }
+    this.bodies.push(body);
+    return body;
+  }
+
   dynamic(body) { body.setBodyType(R.RigidBodyType.Dynamic, true); }
   kinematic(body) { body.setBodyType(R.RigidBodyType.KinematicPositionBased, true); }
   moveTo(body, p, q) {
@@ -80,11 +117,12 @@ export class Episode {
     if (ang) body.setAngvel({ x: ang.x, y: ang.y, z: ang.z }, true);
   }
 
-  // fixed 60 Hz steps for the time that passed (at most 6 per frame)
+  // fixed steps (60 Hz, 120 for thin bars) for the time that passed (at most 0.1 s per frame)
   step(dt, before) {
     this.acc += Math.min(dt, 0.1);
     let n = 0;
-    while (this.acc >= 1 / 60 && n < 6) {
+    const h = 1 / this.hz, max = Math.ceil(0.1 * this.hz);
+    while (this.acc >= h && n < max) {
       before?.(this.time);
       this.world.step();
       // a piece knocked by a carried one (carried pieces push with no limit) only
@@ -95,7 +133,7 @@ export class Episode {
         if (lv > this.maxV) { const k = this.maxV / lv; b.setLinvel({ x: v.x * k, y: v.y * k, z: v.z * k }, true); }
         if (lw > this.maxW) { const k = this.maxW / lw; b.setAngvel({ x: w.x * k, y: w.y * k, z: w.z * k }, true); }
       }
-      this.acc -= 1 / 60; this.time += 1 / 60; n++;
+      this.acc -= h; this.time += h; n++;
     }
     return n;
   }
