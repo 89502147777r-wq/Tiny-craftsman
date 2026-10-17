@@ -318,51 +318,93 @@ export class WallTool {
     return best || (kind ? this._newWall(p, kind) : null);
   }
 
-  // where a new wall would go: along the edge of the foundation under the finger (a pit
-  // slab: its outer face flush with the edge, corner to corner; a strip: on its middle),
-  // or a tier on the top of a wall of another material. The first place of it nearest
-  // the finger. (A virtual wall record: added when the block is let go.)
+  // where a new wall would go. On the top of a wall of another material: a tier on it.
+  // Else on the surface under the finger (a slab, a strip, the ground): near an edge of
+  // it the wall runs along that edge, its outer face flush with it; further in it is a
+  // partition, running across to the nearest edge or wall face (both ways, up to the
+  // edges of the surface and the faces of the walls it meets). «Повернуть» turns it.
+  // The first place of it nearest the finger. (A virtual wall record: added when the
+  // block is let go.)
   _newWall(p, kind) {
-    const app = this.app, walls = app.objects.all('wall'), k = KINDS[kind], h = k.T / 2 * S;
+    const app = this.app, walls = app.objects.all('wall'), k = KINDS[kind];
     const seg = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1e-12, t = Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.z - a[1]) * dz) / l2)); return Math.hypot(a[0] + dx * t - p.x, a[1] + dz * t - p.z); };
-    const cands = [];
-    for (const o of app.objects.all('outline')) {
-      if (o.kind === 'rect') {
-        const A = [o.x0 + h, o.z0 + h], B = [o.x1 - h, o.z0 + h], C = [o.x1 - h, o.z1 - h], D = [o.x0 + h, o.z1 - h];
-        for (const [a, b] of [[A, B], [B, C], [C, D], [D, A]]) cands.push({ a, b, reach: 0.05 });
-      } else for (let i = 0; i + 1 < o.pts.length; i++) cands.push({ a: o.pts[i], b: o.pts[i + 1], reach: Math.max(0.04, o.width / 2 + 0.02) });
-    }
-    // a run that already has a wall on the foundation is that wall's
-    const has = (a, b) => {
-      const l = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / l, uz = (b[1] - a[1]) / l;
-      return walls.some((w) => {
-        if (w.on) return false;
-        const ax = axis(w), mx = (w.a[0] + w.b[0]) / 2 - a[0], mz = (w.a[1] + w.b[1]) / 2 - a[1], t = mx * ux + mz * uz;
-        return Math.abs(ax.ux * uz - ax.uz * ux) < 0.1 && Math.abs(mx * uz - mz * ux) < 0.03 && t > -0.05 && t < l + 0.05;
-      });
-    };
-    let best = null, bd = Infinity;
-    for (const c of cands) {
-      if (Math.hypot(c.b[0] - c.a[0], c.b[1] - c.a[1]) < 0.3 / MODEL_SCALE || has(c.a, c.b)) continue;
-      const d = seg(c.a, c.b);
-      if (d < c.reach && d < bd) { bd = d; best = c; }
-    }
     // tiers: the top of a wall of another material with nothing on it yet
+    let tier = null, bd = Infinity;
     for (const w0 of walls) {
       if (w0.kind === kind || walls.some((o) => o.on === w0.id)) continue;
-      const d = seg(w0.a, w0.b) - 0.01;
-      if (d < KINDS[w0.kind].T / 2 * S + 0.02 && p.y > topY(w0) - 0.03 && d < bd) { bd = d; best = { a: w0.a, b: w0.b, on: w0.id }; }
+      const d = seg(w0.a, w0.b);
+      if (d < KINDS[w0.kind].T / 2 * S + 0.01 && p.y > topY(w0) - 0.02 && d < bd) { bd = d; tier = w0; }
     }
-    if (!best) return null;
-    const rec = { type: 'wall', id: app.objects.nextId, a: best.a.map((x) => +x.toFixed(5)), b: best.b.map((x) => +x.toFixed(5)), kind, height: app.settings.wallHeight || 1500 };
-    if (best.on) { rec.on = best.on; rec.base = +topY(walls.find((w) => w.id === best.on)).toFixed(5); }
-    else rec.base = +this._baseOf(rec).toFixed(5);
+    let rec;
+    if (tier) rec = { a: tier.a, b: tier.b, on: tier.id, base: topY(tier) };
+    else {
+      const run = this._run(p, k);
+      if (!run) return null;
+      rec = { a: run.a, b: run.b };
+    }
+    rec = { type: 'wall', id: app.objects.nextId, a: rec.a.map((x) => +x.toFixed(5)), b: rec.b.map((x) => +x.toFixed(5)), kind, height: app.settings.wallHeight || 1500, ...(rec.on ? { on: rec.on, base: +rec.base.toFixed(5) } : {}) };
+    if (!rec.on) rec.base = +this._baseOf(rec).toFixed(5);
     const st = wallState(rec, app.objects, [rec]), ax = axis(rec);
     const s = ((p.x - rec.a[0]) * ax.ux + (p.z - rec.a[1]) * ax.uz) / S;
     let pick = null, pd = Infinity;
     for (const { r, sl } of layable(rec, st)) { if (r) continue; const d = Math.abs((sl.s0 + sl.s1) / 2 - s); if (d < pd) { pd = d; pick = sl; } }
     if (!pick) return null;
     return { w: rec, r: 0, sl: pick, st, pose: slotPose(rec, 0, pick), create: true };
+  }
+
+  // the run of a new wall through p on the surface there (see _newWall): { a, b } or null
+  _run(p, k) {
+    const app = this.app, t = app.terrain, walls = app.objects.all('wall').filter((w) => !w.on), T = k.T * S;
+    if (!t.inside(p.x, p.z)) return null;
+    const conc = (x, z) => t.conc[t.index(x, z)] > 1e-4;
+    const onConc = conc(p.x, p.z), h0 = t.heightAt(p.x, p.z);
+    // the same surface: concrete stays concrete; any surface: no step up or down
+    const same = (x, z) => t.inside(x, z) && (!onConc || conc(x, z)) && Math.abs(t.heightAt(x, z) - h0) < (onConc ? 0.012 : 0.005);
+    const far = (onConc ? 15 : 1.5) / MODEL_SCALE, st = t.cell * 0.75;
+    // how far the surface goes from q along (dx, dz), and where a wall face stops it
+    const reach = (q, dx, dz) => {
+      let d = 0;
+      while (d < far && same(q.x + dx * (d + st), q.z + dz * (d + st))) d += st;
+      let edge = d < far, wall = Infinity, hit = null;
+      for (const w of walls) {
+        const ax = axis(w), den = dx * ax.nx + dz * ax.nz;
+        if (Math.abs(den) < 0.5) continue;   // parallel: does not stop it
+        const dist = -((q.x - w.a[0]) * ax.nx + (q.z - w.a[1]) * ax.nz) / den;   // to its axis
+        const face = dist - KINDS[w.kind].T / 2 * S / Math.abs(den);
+        if (face < -1e-4 || face >= Math.min(d, wall)) continue;
+        const x = q.x + dx * dist, z = q.z + dz * dist, along = ((x - w.a[0]) * ax.ux + (z - w.a[1]) * ax.uz) / S;
+        if (along < -KINDS[w.kind].T / 2 - 50 || along > ax.L + KINDS[w.kind].T / 2 + 50) continue;
+        wall = face;
+        // at the end of that wall: a corner (the two meet on their axes and interlock)
+        const tip = [w.a, w.b].find((c) => Math.hypot(c[0] - x, c[1] - z) < KINDS[w.kind].T * S);
+        hit = tip ? dist : null;
+      }
+      if (wall < d) return { d: wall, wall: true, corner: hit };
+      return { d, edge };
+    };
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => ({ dx, dz, ...reach(p, dx, dz) }));
+    const near = dirs.reduce((m, x) => (x.d < m.d ? x : m));
+    const band = T + 0.4 / MODEL_SCALE;
+    // along the nearest edge (flush with it), or a partition towards it; «Повернуть» swaps
+    let along = near.d < band && near.edge && !near.wall;
+    if (app.settings.wallTurn) along = !along;
+    const ux = along ? -near.dz : near.dx, uz = along ? near.dx : near.dz;
+    const q = p.clone();
+    if (along && near.edge) { q.x += near.dx * (near.d - T / 2); q.z += near.dz * (near.d - T / 2); }
+    else { // a partition: on a 50 mm grid across
+      const g = 50 * S;
+      if (ux) q.z = Math.round(q.z / g) * g; else q.x = Math.round(q.x / g) * g;
+    }
+    const end = (sg) => { const r = reach(q, ux * sg, uz * sg); return r.wall ? (r.corner ?? r.d) : Math.max(0, r.d - T / 2); };
+    const e1 = end(1), e0 = end(-1);
+    if (e0 + e1 < 0.3 / MODEL_SCALE) return null;
+    const a = [q.x - ux * e0, q.z - uz * e0], b = [q.x + ux * e1, q.z + uz * e1];
+    // the run of a wall already there belongs to it
+    const ul = Math.hypot(ux, uz);
+    if (walls.some((w) => { const ax = axis(w); return Math.abs(ax.ux * uz - ax.uz * ux) / ul < 0.1 && Math.abs((q.x - w.a[0]) * ax.nx + (q.z - w.a[1]) * ax.nz) < (KINDS[w.kind].T * S + T) / 2 && ((q.x - w.a[0]) * ax.ux + (q.z - w.a[1]) * ax.uz) / S > -100 && ((q.x - w.a[0]) * ax.ux + (q.z - w.a[1]) * ax.uz) / S < ax.L + 100; })) return null;
+    // corners: an end near another wall's end takes it exactly
+    for (const e of [a, b]) for (const w of walls) for (const c of [w.a, w.b]) if (Math.hypot(e[0] - c[0], e[1] - c[1]) < 0.012) { e[0] = c[0]; e[1] = c[1]; }
+    return { a, b };
   }
 
   _unitFor(w, r, sl, pose) {
@@ -382,6 +424,7 @@ export class WallTool {
       const { w, r, sl, pose } = snap, u = this._unitFor(w, r, sl, pose);
       const lift = pose.p.clone(); lift.y += MM(25);
       v.live = { ...u, p: lift.toArray(), q: pose.q.toArray() };
+      v.hl = { p: pose.p.toArray(), q: pose.q.toArray(), s: pose.s.toArray(), ok: true };
       // the mortar it will be set in
       const parts = this._bedFor(w, r, sl);
       v.liveBed = parts.length ? { wall: w.id, row: r, s0: parts[0][0], s1: parts.at(-1)[1] } : null;
@@ -390,7 +433,11 @@ export class WallTool {
       // in the hand: under the finger, above the ground
       const k = KINDS[c.kind], yaw = c.pallet ? (() => { const ax = axis(c.pallet); return Math.atan2(-ax.uz, ax.ux); })() : app.rig?.yaw || 0;
       const s = new THREE.Vector3(k.L * S, k.H * S, (k.nb ? k.W : k.T) * S);
-      v.live = { type: 'unit', kind: c.kind, row: 0, i: 0, s: s.toArray(), p: [p.x, p.y + MM(350), p.z], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).toArray() };
+      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).toArray();
+      v.live = { type: 'unit', kind: c.kind, row: 0, i: 0, s: s.toArray(), p: [p.x, p.y + MM(350), p.z], q };
+      // nothing to set it on here: the spot under the finger in red
+      const g = app.terrain.inside(p.x, p.z) ? Math.max(p.y, app.terrain.heightAt(p.x, p.z)) : p.y;
+      v.hl = { p: [p.x, g + s.y / 2, p.z], q, s: s.toArray(), ok: false };
       v.liveBed = null;
     }
     v.dirty = true;
@@ -433,7 +480,7 @@ export class WallTool {
 
   _carryCancel() {
     const v = this.app.wallView;
-    this.carry = null; v.live = null; v.liveBed = null; v.dirty = true;
+    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.dirty = true;
     this.app.ui.refresh();
   }
 
@@ -444,7 +491,7 @@ export class WallTool {
     const { w, r, sl, st, pose } = snap, u = this._unitFor(w, r, sl, pose);
     if (snap.create) {
       w.pallet = this._palletSpot(w);
-      app.ui.toast(`${KINDS[w.kind].name}: новая ${w.on ? 'стена на ' + KINDS[app.objects.get(w.on).kind].name.toLowerCase() : 'стена по краю фундамента'} — ${(axis(w).L / 1000).toFixed(2).replace('.', ',')} м, ${rows(w)} рядов`);
+      app.ui.toast(`${KINDS[w.kind].name}: новая ${w.on ? 'стена на ' + KINDS[app.objects.get(w.on).kind].name.toLowerCase() : 'стена'} — ${(axis(w).L / 1000).toFixed(2).replace('.', ',')} м, ${rows(w)} рядов`);
     }
     if (sl.cut) app.ui.toast(cutName(w, sl));
     if (sl.lintel) app.ui.toast(`Перемычка ${Math.round(sl.s1 - sl.s0)} мм — по 250 мм опоры с каждой стороны`);
@@ -462,13 +509,13 @@ export class WallTool {
     if (c?.snap) {
       if (c.snap.create) {
         const w = c.snap.w;
-        return `Новая стена «${KINDS[w.kind].name}» ${w.on ? 'на стене ' + (walls.findIndex((x) => x.id === w.on) + 1) : 'по краю фундамента'}: ${(axis(w).L / 1000).toFixed(2).replace('.', ',')} м, ${rows(w)} рядов. Отпустите — первый ${w.kind === 'block' ? 'блок' : 'кирпич'}`;
+        return `Новая стена «${KINDS[w.kind].name}» ${w.on ? 'на стене ' + (walls.findIndex((x) => x.id === w.on) + 1) : 'от края до края'}: ${(axis(w).L / 1000).toFixed(2).replace('.', ',')} м, ${rows(w)} рядов. Отпустите — первый ${w.kind === 'block' ? 'блок' : 'кирпич'}`;
       }
       const { w, r, sl, st } = c.snap, cs = course(w, r, st.walls, st.opens);
       const what = sl.lintel ? 'перемычка' : sl.cut ? `добор ${Math.round(sl.s1 - sl.s0)} мм` : w.kind === 'block' ? 'блок' : 'кирпич';
       return `Стена ${walls.indexOf(w) + 1} · ряд ${r + 1} из ${st.n} · место ${cs.indexOf(cs.find((x) => x.s0 === sl.s0 && x.off === sl.off)) + 1} из ${cs.length} — ${what}. Отпустите`;
     }
-    if (c) return 'Несите к стене, к краю фундамента или на верх стены из другого материала';
+    if (c) return 'Красный — сюда не встанет. Несите на плиту, фундамент или землю, к стене или на верх стены из другого материала';
     const w = this._trayWall();
     if (!w) return `${KINDS[this.kind].name}: тяните из лотка на край фундамента — начнётся стена вдоль него (или на верх стены из другого материала — ярус)`;
     const st = wallState(w, app.objects);

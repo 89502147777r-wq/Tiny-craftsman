@@ -286,6 +286,10 @@ export class WallView {
     this.lintels.castShadow = this.lintels.receiveShadow = true;
     for (const m of [this.lintels, this.frames]) { m.frustumCulled = false; m.count = 0; this.group.add(m); }
     this.cord.visible = false; this.group.add(this.cord);
+    // where the carried unit would go: green — it can, red — it cannot
+    this.hlMesh = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x35d06a, transparent: true, opacity: 0.45, depthWrite: false }));
+    this.hlMesh.renderOrder = 5; this.hlMesh.visible = false; this.group.add(this.hlMesh);
+    this.hl = null;        // { p, q, s, ok }
     for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [] };
     this.dirty = true;
@@ -396,6 +400,12 @@ export class WallView {
     }
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
     if (this.live) put(this.live, null);
+    this.hlMesh.visible = !!this.hl;
+    if (this.hl) {
+      this.hlMesh.position.fromArray(this.hl.p); this.hlMesh.quaternion.fromArray(this.hl.q);
+      this.hlMesh.scale.fromArray(this.hl.s).multiplyScalar(1.03);
+      this.hlMesh.material.color.setHex(this.hl.ok ? 0x35d06a : 0xe8402a);
+    }
     this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw;
     for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames, this.wood]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     for (const im of [this.blocks, this.bricks]) im.instanceColor.needsUpdate = true;
