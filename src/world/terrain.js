@@ -1092,10 +1092,10 @@ export class Terrain {
       const i = iz * n + ix;
       if (conc[i] <= 0) continue;
       const d = Math.hypot(this.toWorldX(ix) - x, this.toWorldZ(iz) - z) / r;
-      if (d < 1) cSm[i] = Math.max(cSm[i], Math.min(0.35, cSm[i] + 0.02 * (1 - d)));
+      if (d < 1) cSm[i] = Math.max(cSm[i], Math.min(0.5, cSm[i] + 0.05 * (1 - d)));
     }
     // fluidised for a moment: the flow (concStep) does the rest
-    const until = (this.clock || 0) + 0.35;
+    const until = (this.clock || 0) + 0.7;
     for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) {
       const i = iz * n + ix;
       if (conc[i] > 0 && Math.hypot(this.toWorldX(ix) - x, this.toWorldZ(iz) - z) < r) this.vib[i] = until;
