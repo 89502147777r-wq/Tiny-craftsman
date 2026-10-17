@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:10.47 (860 mm = 9 m).
-export const BUILD = 45;
+export const BUILD = 46;
 export const STAGE = 3;
 export const MODEL_SCALE = 9000 / 860;   // 1:10.47 — 860 mm of the model is 9 m
 // how much finer everything is than at the old 1:3.5 (texture sizes of stones, pores …)
@@ -20,7 +20,7 @@ export const MACHINES_ENABLED = false;
 // (sx, sz = which corner: -x left, -z far side). Side 1 = the left side
 // (crane photo), side 2 = the far side (billboard); `first` = the axis side 1
 // runs along. The photos blend over the rounded corner, so there is no seam.
-export const BACKDROP = { sx: -1, sz: -1, first: 'z', radius: 0.24, height: 1.35 };
+export const BACKDROP = { sx: -1, sz: -1, first: 'z', radius: 0.36, height: 1.35 };
 
 export const TRAY = {
   innerX: 2.4,        // inner size of the plywood tray along X

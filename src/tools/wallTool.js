@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
-import { placeBrick } from './freeBrick.js';
+import { placeBrick, freeTops, topAt } from './freeBrick.js';
 
 // Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
 //   lay    – take a block (brick) from the tray or the pallet and carry it: onto a wall
@@ -195,11 +195,11 @@ export class WallTool {
 
   // the foundation under the wall: its highest point (the first bed evens out the rest)
   _baseOf(w) {
-    const t = this.app.terrain, ax = axis(w), half = KINDS[w.kind].T / 2 * S;
+    const t = this.app.terrain, ax = axis(w), half = KINDS[w.kind].T / 2 * S, fb = freeTops(this.app);
     let m = -Infinity;
     for (let s = 0; s <= ax.L; s += 20) for (const o of [-half, 0, half]) {
       const x = w.a[0] + ax.ux * s * S + ax.nx * o, z = w.a[1] + ax.uz * s * S + ax.nz * o;
-      if (t.inside(x, z)) m = Math.max(m, t.heightAt(x, z));
+      if (t.inside(x, z)) m = Math.max(m, t.heightAt(x, z), topAt(fb, x, z));   // the ground, a slab, the top of free brickwork
     }
     return Number.isFinite(m) ? m : 0.1;
   }
@@ -377,10 +377,15 @@ export class WallTool {
     const app = this.app, t = app.terrain, walls = app.objects.all('wall').filter((w) => !w.on), T = k.T * S;
     if (!t.inside(p.x, p.z)) return null;
     const conc = (x, z) => t.conc[t.index(x, z)] > 1e-4;
-    const onConc = conc(p.x, p.z), h0 = t.heightAt(p.x, p.z);
-    // the same surface: concrete stays concrete; any surface: no step up or down
-    const same = (x, z) => t.inside(x, z) && (!onConc || conc(x, z)) && Math.abs(t.heightAt(x, z) - h0) < (onConc ? 0.012 : 0.005);
-    const far = (onConc ? 15 : 1.5) / MODEL_SCALE, st = t.cell * 0.75;
+    // the free brickwork is a surface too: a block wall can go on its top
+    const fb = freeTops(app), top = (x, z) => topAt(fb, x, z);
+    const onBricks = top(p.x, p.z) > t.heightAt(p.x, p.z);
+    const onConc = !onBricks && conc(p.x, p.z), h0 = onBricks ? top(p.x, p.z) : t.heightAt(p.x, p.z);
+    // the same surface: the top of the same course of bricks; concrete stays concrete;
+    // any surface: no step up or down
+    const same = (x, z) => t.inside(x, z) && (onBricks ? Math.abs(top(x, z) - h0) < 0.003
+      : top(x, z) <= t.heightAt(x, z) && (!onConc || conc(x, z)) && Math.abs(t.heightAt(x, z) - h0) < (onConc ? 0.012 : 0.005));
+    const far = (onConc || onBricks ? 15 : 1.5) / MODEL_SCALE, st = t.cell * 0.75;
     // how far the surface goes from q along (dx, dz), and where a wall face stops it
     const reach = (q, dx, dz) => {
       let d = 0;
@@ -415,7 +420,10 @@ export class WallTool {
       const g = 50 * S;
       if (ux) q.z = Math.round(q.z / g) * g; else q.x = Math.round(q.x / g) * g;
     }
-    const end = (sg) => { const r = reach(q, ux * sg, uz * sg); return r.wall ? (r.corner ?? r.d) : Math.max(0, r.d - T / 2); };
+    // how far it runs: measured from the finger (on the surface — the flush axis q may be
+    // off a surface narrower than the wall, e.g. a block wall on a brick course)
+    const pq = (q.x - p.x) * ux + (q.z - p.z) * uz;
+    const end = (sg) => { const r = reach(p, ux * sg, uz * sg); return (r.wall ? (r.corner ?? r.d) : Math.max(0, r.d - (onBricks ? 0 : T / 2))) + pq * -sg; };   // on bricks: flush with their ends
     const e1 = end(1), e0 = end(-1);
     if (e0 + e1 < 0.3 / MODEL_SCALE) return null;
     const a = [q.x - ux * e0, q.z - uz * e0], b = [q.x + ux * e1, q.z + uz * e1];

@@ -85,22 +85,25 @@ export class Backdrop {
   // The photo backdrop, the way miniature photographers do it: one sheet of
   // photo paper glued tight to the outside of the box along two sides that
   // meet at the rounded corner. Side 1 (far side) shows the crane photo,
-  // side 2 (right side) the billboard; across the rounded corner one photo
-  // fades into the other, so there is no seam. The sheet runs from the table
+  // side 2 (right side) the billboard; the two prints are butted in the middle
+  // of the rounded corner (each covers its own side and half the curve). The sheet runs from the table
   // up past the rim; the photos start at the rim, where the soil ends.
   async _buildPosters() {
     const [crane, board] = await Promise.all([this._photo('assets/backdrops/site-crane.jpg'), this._photo('assets/backdrops/site-billboard.jpg')]);
     for (const t of [crane, board]) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.needsUpdate = true; }
-    const geo = makeWrapSheet(crane.image.width / crane.image.height, board.image.width / board.image.height);
-    const front = new THREE.MeshStandardMaterial({ map: crane, roughness: 0.6, side: THREE.FrontSide });
+    const geo = makeWrapSheet(crane.image.width / crane.image.height, board.image.width / board.image.height, sampler(crane.image), sampler(board.image));
+    // matte photo paper: diffuse only — no glare on the rounded corner
+    const front = new THREE.MeshLambertMaterial({ map: crane, side: THREE.FrontSide });
     front.onBeforeCompile = (sh) => {
       sh.uniforms.tB = { value: board };
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 uvB;\nattribute float aMix;\nvarying vec2 vUvB;\nvarying float vMix;')
-        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvUvB = uvB; vMix = aMix;');
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tB;\nvarying vec2 vUvB;\nvarying float vMix;')
-        .replace('#include <map_fragment>', 'vec4 sampledDiffuseColor = mix(texture2D(map, vMapUv), texture2D(tB, vUvB), vMix);\ndiffuseColor *= sampledDiffuseColor;');
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 uvB;\nattribute float aMix;\nattribute vec3 aGain1;\nattribute vec3 aGain2;\nvarying vec2 vUvB;\nvarying float vMix;\nvarying vec3 vG1;\nvarying vec3 vG2;')
+        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvUvB = uvB; vMix = aMix; vG1 = aGain1; vG2 = aGain2;');
+      // each print toned towards the other one near the joint (same brightness and colour
+      // across it), and a feather of a few centimetres instead of a hard line
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tB;\nvarying vec2 vUvB;\nvarying float vMix;\nvarying vec3 vG1;\nvarying vec3 vG2;')
+        .replace('#include <map_fragment>', 'vec4 cA = texture2D(map, vMapUv); cA.rgb *= vG1;\nvec4 cB = texture2D(tB, vUvB); cB.rgb *= vG2;\nvec4 sampledDiffuseColor = mix(cA, cB, smoothstep(0.0, 1.0, vMix));\ndiffuseColor *= sampledDiffuseColor;');
     };
-    front.customProgramCacheKey = () => 'tc-backdrop-wrap';
+    front.customProgramCacheKey = () => 'tc-backdrop-wrap-3';
     const back = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.85, side: THREE.BackSide });
     const g = new THREE.Group();
     g.name = 'posters';
@@ -130,6 +133,23 @@ export class Backdrop {
       this.cache[url] = t; res(t);
     }, undefined, rej));
   }
+}
+
+// read a photo's colours (linear-ish 0…1) at a texture coordinate, from a small copy
+function sampler(img) {
+  const w = 256, h = Math.max(8, Math.round(256 * img.height / img.width));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); g.drawImage(img, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data, lin = (x) => Math.pow(x / 255, 2.2);
+  return (u, v) => {
+    const x = Math.min(w - 1, Math.max(0, Math.round(u * (w - 1)))), y = Math.min(h - 1, Math.max(0, Math.round((1 - v) * (h - 1))));
+    let r = 0, gg = 0, b = 0, n = 0;
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+      const xx = Math.min(w - 1, Math.max(0, x + dx)), yy = Math.min(h - 1, Math.max(0, y + dy)), k = (yy * w + xx) * 4;
+      r += lin(d[k]); gg += lin(d[k + 1]); b += lin(d[k + 2]); n++;
+    }
+    return [r / n, gg / n, b / n];
+  };
 }
 
 const half = (h) => {
@@ -175,7 +195,7 @@ function groundColour(t) {
 // the rounded corner, along side 2. Attributes: uv → photo 1 (crane), uvB →
 // photo 2 (billboard), aMix → 0 on side 1 … 1 on side 2 (blend over the corner).
 // Each photo "covers" its part (cropped, ground kept), starting at the rim.
-function makeWrapSheet(aspect1, aspect2) {
+function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
   const { sx, sz, radius, height: H, first = 'x' } = BACKDROP;
   const e = 0.0012; // paper on the plywood
   const ox = TRAY.innerX / 2 + TRAY.wall + e, oz = TRAY.innerZ / 2 + TRAY.wall + e, R = radius + e;
@@ -194,7 +214,7 @@ function makeWrapSheet(aspect1, aspect2) {
   }
   const a0 = Math.atan2(n1[1], n1[0]);
   let da = Math.atan2(n2[1], n2[0]) - a0; if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2;
-  for (let i = 1; i < 24; i++) { const a = a0 + da * (i / 24); arc.push([cx + Math.cos(a) * R, cz + Math.sin(a) * R]); }
+  for (let i = 1; i < 48; i++) { const a = a0 + da * (i / 48); arc.push([cx + Math.cos(a) * R, cz + Math.sin(a) * R]); }
   const path = [...side1, ...arc, ...side2];
   const s = [0];
   for (let i = 1; i < path.length; i++) s.push(s[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
@@ -210,17 +230,25 @@ function makeWrapSheet(aspect1, aspect2) {
       return [flip ? 1 - u : u, (y - rim) / k];
     };
   };
-  const map1 = cover(0, L2, aspect1), map2 = cover(L1, total, aspect2);
+  const mid = s[side1.length + 23], FE = 0.025, FAR = 0.35, map1 = cover(0, mid, aspect1), map2 = cover(mid, total, aspect2);
   const ys = [0, rim - 0.004];
   for (let i = 0; i <= 16; i++) ys.push(rim + (H * i) / 16);
-  const pos = [], uv = [], uvB = [], mix = [], idx = [];
+  // the colour of each print at the joint, row by row (a strip a few cm wide on its side):
+  // both are toned to their mean there, fading back to the true colours FAR away
+  const gains = ys.map((y) => {
+    const yy = Math.max(y, rim) + 0.02, avg = (f, map, a, b) => { const c = [0, 0, 0]; for (let k = 0; k < 4; k++) { const [u, v] = map(a + (b - a) * (k + 0.5) / 4, yy); const q = f(u, v); c[0] += q[0] / 4; c[1] += q[1] / 4; c[2] += q[2] / 4; } return c; };
+    const c1 = avg(sample1, map1, mid - 0.06, mid), c2 = avg(sample2, map2, mid, mid + 0.06);
+    const g = (a, b) => Math.min(1.5, Math.max(0.67, ((a + b) / 2 + 0.02) / (a + 0.02)));
+    return [[0, 1, 2].map((k) => g(c1[k], c2[k])), [0, 1, 2].map((k) => g(c2[k], c1[k]))];
+  });
+  const pos = [], uv = [], uvB = [], mix = [], g1 = [], g2 = [], idx = [];
   for (let j = 0; j < ys.length; j++) for (let i = 0; i < path.length; i++) {
     pos.push(path[i][0], ys[j], path[i][1]);
     uv.push(...map1(s[i], Math.max(ys[j], rim)));
     uvB.push(...map2(s[i], Math.max(ys[j], rim)));
-    // cross-fade over the middle of the rounded corner only (less ghosting)
-    const t = Math.min(1, Math.max(0, (s[i] - (L1 + (L2 - L1) * 0.3)) / ((L2 - L1) * 0.4)));
-    mix.push(t * t * (3 - 2 * t));
+    mix.push(Math.min(1, Math.max(0, (s[i] - mid + FE) / (2 * FE))));
+    const w = Math.max(0, 1 - Math.abs(s[i] - mid) / FAR), sm = w * w * (3 - 2 * w);
+    for (let k = 0; k < 3; k++) { g1.push(1 + (gains[j][0][k] - 1) * sm); g2.push(1 + (gains[j][1][k] - 1) * sm); }
   }
   const n = path.length;
   for (let j = 0; j < ys.length - 1; j++) for (let i = 0; i < n - 1; i++) {
@@ -232,6 +260,8 @@ function makeWrapSheet(aspect1, aspect2) {
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('uvB', new THREE.Float32BufferAttribute(uvB, 2));
   g.setAttribute('aMix', new THREE.Float32BufferAttribute(mix, 1));
+  g.setAttribute('aGain1', new THREE.Float32BufferAttribute(g1, 3));
+  g.setAttribute('aGain2', new THREE.Float32BufferAttribute(g2, 3));
   g.setIndex(idx);
   g.computeVertexNormals();
   // the printed side must face the box (inwards)

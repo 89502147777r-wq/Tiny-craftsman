@@ -268,6 +268,13 @@ console.log('—', sec());
           upMm: +((u3.p[1] - u1.p[1]) * SC * 1000).toFixed(1), onBlockMm: blk ? +((u4.p[1] - u4.s[1] / 2 - blk.p[1] - blk.s[1] / 2) * SC * 1000).toFixed(1) : null,
         };
         tc.undo(); out.tiers.undo = tc.objects.all('unit').length === n0 + 3; tc.redo();
+        // a block on the free brickwork: a block wall along it, on its top
+        for (let k = 2; k <= 4; k++) await put(new V(u1.p[0] + mm(260 * k), u1.p[1] + mm(33), u1.p[2]));
+        const last = tc.objects.all('unit').at(-1), wn = tc.objects.all('wall').length;
+        tc.settings.wallKind = 'block'; tc.settings.wallHeight = 1000;
+        wt.carry = { kind: 'block', pallet: null, snap: null }; wt._carryMove(new V(last.p[0], last.p[1] + last.s[1] / 2, last.p[2]), null); wt._carryDrop(); await settle();
+        const bw = tc.objects.all('wall').length > wn ? tc.objects.all('wall').at(-1) : null;
+        out.tiers.blockOnBricks = bw ? { baseMm: +((bw.base - (last.p[1] + last.s[1] / 2)) * SC * 1000).toFixed(1), L: Math.round(W.axis(bw).L), units: tc.objects.all('unit').filter((u) => u.wall === bw.id).length } : null;
         tc.settings.wallHeight = 1000; tc.settings.wallKind = 'block';
       }
       tc.setTool('camera');
@@ -325,7 +332,7 @@ console.log('—', sec());
   check('concrete: pumped volume exact, held by the formwork, undo exact', Math.abs(play.conc.vol - 1) < 1e-4 && play.conc.leak < 0.001 && play.conc.undo, JSON.stringify(play.conc));
   check('sand on concrete lies on top (concrete unchanged), volume exact, undo', play.sandOnConc.onTop && play.sandOnConc.concMoved === 0 && play.sandOnConc.vol < 1e-4 && play.sandOnConc.back, JSON.stringify(play.sandOnConc));
   check('plate compactor: loose soil settles and gets compacted, native ground kept, undo exact', play.plate.settledMm > 0.1 && play.plate.comp > 0.1 && play.plate.nativeKept && play.plate.back, JSON.stringify(play.plate));
-  check('free brickwork: along the slab edge, continues the course (260 mm, level), next course 77 mm up, red with nothing under, on blockwork, undo', play.tiers?.laid === 4 && play.tiers.okAll && play.tiers.red && play.tiers.along && Math.abs(play.tiers.stepMm - 260) < 1 && play.tiers.level && Math.abs(play.tiers.upMm - 77) < 1 && Math.abs(play.tiers.onBlockMm - 12) < 2 && play.tiers.undo, JSON.stringify(play.tiers));
+  check('free brickwork: along the slab edge, continues the course (260 mm, level), next course 77 mm up, red with nothing under, on blockwork, undo; a block wall on the free bricks', play.tiers?.laid === 4 && play.tiers.okAll && play.tiers.red && play.tiers.along && Math.abs(play.tiers.stepMm - 260) < 1 && play.tiers.level && Math.abs(play.tiers.upMm - 77) < 1 && Math.abs(play.tiers.onBlockMm - 12) < 2 && play.tiers.undo && Math.abs(play.tiers.blockOnBricks?.baseMm) < 1.5 && play.tiers.blockOnBricks.L > 700 && play.tiers.blockOnBricks.units === 1, JSON.stringify(play.tiers));
   check('walls: a block carried from the pallet (let go in the open → back), laid at its place with mortar, undo', play.walls.refused && play.walls.laid && play.walls.bed && play.walls.errMm < 2 && play.walls.back && play.walls.rows === 3, JSON.stringify(play.walls));
   check('shovel takes spilled fresh concrete and tips it into the form, volume exact, undo', play.shovelConc.loaded && play.shovelConc.took && play.shovelConc.vol < 1e-6 && play.shovelConc.undo, JSON.stringify(play.shovelConc));
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 8 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));
