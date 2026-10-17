@@ -133,6 +133,48 @@ export function taken(units, r, sl) {
   return units.some((u) => u.row === r && (u.off || 0) === (sl.off || 0) && u.s0 < c && u.s1 > c);
 }
 
+// can a place of course r be laid now: the course below must be there under it (a wall
+// is raised in steps — a course may run ahead over the part already laid below it).
+// Over an opening nothing is needed (a lintel rests on its two bearings); beyond the
+// ends of the course below (a corner: the other wall's course) it is not checked.
+export function supported(w, r, sl, units, walls, opens) { return support(w, r, units, walls, opens)(sl); }
+function support(w, r, units, walls, opens) {
+  if (r === 0) return () => true;
+  const k = KINDS[w.kind], below = course(w, r - 1, walls, opens);
+  if (!below.length) return () => false;
+  const lo = Math.min(...below.map((x) => x.s0)), hi = Math.max(...below.map((x) => x.s1));
+  const laid = units.filter((u) => u.row === r - 1 || (u.lintel && u.row < r && u.row + k.lintelRows >= r)).map((u) => [u.s0 - k.head - 1, u.s1 + k.head + 1]);
+  const beds = beddable(w, r, walls, opens);
+  return (sl) => {
+    for (const [a, b] of beds) {
+      const c0 = Math.max(a, sl.s0, lo), c1 = Math.min(b, sl.s1, hi);
+      if (c1 - c0 > 1 && covered(laid, c0, c1) < 0.98) return false;
+    }
+    return true;
+  };
+}
+
+// the free places that can be laid now, over all courses: [{ r, sl }]
+export function layable(w, st) {
+  const out = [];
+  for (let r = st.cur; r < st.n; r++) {
+    const ok = support(w, r, st.units, st.walls, st.opens);
+    for (const sl of course(w, r, st.walls, st.opens)) if (!taken(st.units, r, sl) && ok(sl)) out.push({ r, sl });
+  }
+  return out;
+}
+
+// the pallet beside a wall: how many units are still to lay, and how many of them are on
+// the pallet standing there now (a pallet holds `cap`; an empty one is replaced by a full one)
+export const PALLET = { block: { na: 2, nc: 2, nl: 6 }, brick: { na: 4, nc: 6, nl: 6 } };
+export function palletStock(w, st) {
+  let total = 0;
+  for (let r = 0; r < st.n; r++) total += course(w, r, st.walls, st.opens).filter((x) => !x.lintel).length;
+  const left = Math.max(0, total - st.units.filter((u) => !u.lintel).length);
+  const g = PALLET[w.kind === 'block' ? 'block' : 'brick'], cap = g.na * g.nc * g.nl;
+  return { left, cap, on: left ? (left - 1) % cap + 1 : 0, pallets: Math.ceil(left / cap) };
+}
+
 // what a cut piece is called on site
 export function cutName(w, sl) {
   const len = Math.round(sl.s1 - sl.s0);
@@ -189,7 +231,7 @@ export class WallView {
     this.max = { block: 4000, brick: 20000, mortar: 24000, lintel: 200, frame: 800 };
     this.blocks = new THREE.InstancedMesh(box, block, this.max.block);
     this.bricks = new THREE.InstancedMesh(box, brick, this.max.brick);
-    this.mortar = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9a968c, roughness: 0.95 }), this.max.mortar);
+    this.mortar = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x4a4740, roughness: 0.95 }), this.max.mortar);
     // precast concrete lintels; the marked frame of a planned opening (orange, like the cord)
     this.lintels = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9c9a94, roughness: 0.9 }), this.max.lintel);
     this.frames = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xff6a1c, roughness: 0.6, emissive: 0x401000 }), this.max.frame);
@@ -268,13 +310,9 @@ export class WallView {
         const at = (a, y, c, sx, sy, sz) => { P.set(px + ex.x * a * S + ez.x * c * S, g + y * S, pz + ex.z * a * S + ez.z * c * S); Sv.set(sx * S, sy * S, sz * S); return m.compose(P, pq, Sv); };
         for (const c of [-350, 0, 350]) this.wood.setMatrixAt(nw++, at(0, 50, c, 1200, 100, 100));          // bearers
         for (let a = -540; a <= 540; a += 135) this.wood.setMatrixAt(nw++, at(a, 111, 0, 100, 22, 800));     // top boards
-        // how many are left (all the places of the wall less the laid ones), as a stack
-        let total = 0;
-        for (let r = 0; r < st.n; r++) total += course(w, r, st.walls, st.opens).filter((x) => !x.lintel).length;
-        let left = Math.max(0, total - st.units.filter((u) => !u.lintel).length);
-        const bl = w.kind === 'block';
-        const L = bl ? 600 : 250, Hh = bl ? 250 : 65, Tt = bl ? 300 : 120, na = bl ? 2 : 4, nc = bl ? 2 : 6, nl = bl ? 3 : 6;   // a low stack: it must not hide the wall
-        left = Math.min(left, na * nc * nl);
+        // what is left on this pallet, as a stack (a full one replaces an empty one)
+        const left = palletStock(w, st).on, bl = w.kind === 'block', pg = PALLET[bl ? 'block' : 'brick'];
+        const L = bl ? 600 : 250, Hh = bl ? 250 : 65, Tt = bl ? 300 : 120, na = pg.na, nc = pg.nc;
         for (let i = 0; i < left; i++) {
           const lay = Math.floor(i / (na * nc)), j = i % (na * nc), ia = j % na, ic = Math.floor(j / na);
           const a = (ia - (na - 1) / 2) * (L + 4), c = (ic - (nc - 1) / 2) * (Tt + 4), y = 122 + lay * (Hh + 2) + Hh / 2;
@@ -343,6 +381,9 @@ function aeratedTexture() {
     g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
   }
   for (let y = 0; y < 256; y += 3) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.06})`; g.fillRect(0, y, 256, 1); }
+  // the joint: glue squeezed out and the shadow of the chamfered edge — a dark line round each face
+  g.strokeStyle = 'rgba(70,66,60,0.85)'; g.lineWidth = 5; g.strokeRect(0, 0, 256, 256);
+  g.strokeStyle = 'rgba(90,86,80,0.35)'; g.lineWidth = 12; g.strokeRect(0, 0, 256, 256);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return t;
 }
@@ -358,8 +399,9 @@ function brickTexture() {
     g.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 2, 1 + Math.random() * 2);
   }
   const e = g.createLinearGradient(0, 0, 0, 128);
-  e.addColorStop(0, 'rgba(60,30,20,0.25)'); e.addColorStop(0.08, 'rgba(0,0,0,0)'); e.addColorStop(0.92, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(60,30,20,0.25)');
+  e.addColorStop(0, 'rgba(40,22,15,0.6)'); e.addColorStop(0.07, 'rgba(0,0,0,0)'); e.addColorStop(0.93, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(40,22,15,0.6)');
   g.fillStyle = e; g.fillRect(0, 0, 128, 128);
+  g.strokeStyle = 'rgba(45,40,36,0.8)'; g.lineWidth = 4; g.strokeRect(0, 0, 128, 128);   // the mortar joint round it
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }

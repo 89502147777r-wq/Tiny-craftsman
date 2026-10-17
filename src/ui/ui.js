@@ -330,8 +330,8 @@ export class UI {
       const wt = app.wallTool, s = app.settings;
       const set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
       const out = [['line', 'Линия'], ['opening', 'Проём'], ['lay', 'Класть'], ['delete', 'Удалить']].map(([k, l]) => C(l, wt.mode === k, () => wt.setMode(k), k === 'delete' ? 'warn' : ''));
+      if (wt.mode === 'line' || wt.mode === 'lay') out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич ½'], ['brick2', 'Кирпич 1']].map(([k, l]) => C(l, (s.wallKind || 'block') === k, () => { set({ wallKind: k }); if (wt.mode === 'lay' && !wt._trayWall()) app.ui.toast(wt._noWall()); })));
       if (wt.mode === 'line') {
-        out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич ½'], ['brick2', 'Кирпич 1']].map(([k, l]) => C(l, (s.wallKind || 'block') === k, () => set({ wallKind: k }))));
         out.push(...[[1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
       }
       if (wt.mode === 'opening') out.push(...[['window', 'Окно'], ['door', 'Дверь']].map(([k, l]) => C(l, (s.openKind || 'window') === k, () => set({ openKind: k }))));
