@@ -103,7 +103,7 @@ export class Backdrop {
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tB;\nvarying vec2 vUvB;\nvarying float vMix;\nvarying vec3 vG1;\nvarying vec3 vG2;')
         .replace('#include <map_fragment>', 'vec4 cA = texture2D(map, vMapUv); cA.rgb *= vG1;\nvec4 cB = texture2D(tB, vUvB); cB.rgb *= vG2;\nvec4 sampledDiffuseColor = mix(cA, cB, smoothstep(0.0, 1.0, vMix));\ndiffuseColor *= sampledDiffuseColor;');
     };
-    front.customProgramCacheKey = () => 'tc-backdrop-wrap-3';
+    front.customProgramCacheKey = () => 'tc-backdrop-wrap-4';
     const back = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.85, side: THREE.BackSide });
     const g = new THREE.Group();
     g.name = 'posters';
@@ -223,16 +223,15 @@ function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
   const d0 = [path[1][0] - path[0][0], path[1][1] - path[0][1]], right = [-n1[1], n1[0]];
   const flip = d0[0] * right[0] + d0[1] * right[1] < 0;
   const rim = TRAY.height;
-  const cover = (s0, s1, aspect) => {
-    const W = s1 - s0, k = Math.max(W / aspect, H);
-    return (si, y) => {
-      const u = 0.5 + ((si - s0) - W / 2) / (aspect * k);
-      return [flip ? 1 - u : u, (y - rim) / k];
-    };
-  };
-  const mid = s[side1.length + 23], FE = 0.025, FAR = 0.35, map1 = cover(0, mid, aspect1), map2 = cover(mid, total, aspect2);
+  // the two prints are the two halves of one panorama (as on the real diorama): each runs
+  // to the joint with its own edge, uncropped, both at one scale and bottom at the rim, so
+  // the horizon, the sky and the ground run on across the corner
+  const mid = s[side1.length + 23], FE = 0.025, FAR = 0.35;
+  const k = Math.max(H, mid / aspect1, (total - mid) / aspect2);
+  const map1 = (si, y) => { const u = 1 - (mid - si) / (aspect1 * k); return [flip ? 1 - u : u, (y - rim) / k]; };
+  const map2 = (si, y) => { const u = (si - mid) / (aspect2 * k); return [flip ? 1 - u : u, (y - rim) / k]; };
   const ys = [0, rim - 0.004];
-  for (let i = 0; i <= 16; i++) ys.push(rim + (H * i) / 16);
+  for (let i = 0; i <= 16; i++) ys.push(rim + (k * i) / 16);   // the sheet as tall as the prints: all their sky
   // the colour of each print at the joint, row by row (a strip a few cm wide on its side):
   // both are toned to their mean there, fading back to the true colours FAR away
   const gains = ys.map((y) => {
