@@ -62,9 +62,9 @@ async function main() {
   if ((stored.build || 0) < 9) delete stored.target; // BUILD 9: pits are 6 shovel passes deep
   if (stored.backdrop === 'photo1' || stored.backdrop === 'photo2') stored.backdrop = 'posters'; // two prints on the table since BUILD 5
   app.settings = { ...DEFAULT_SETTINGS, ...stored, build: BUILD };
-  // the pump gives more: × 2 in BUILD 42, × 2.5 more in BUILD 43 (a stored choice follows)
-  if (stored?.pump !== undefined && !stored.pumpX5) app.settings.pump *= stored.pumpX2 ? 2.5 : 5;
-  app.settings.pumpX2 = app.settings.pumpX5 = true;
+  // the pump gives more: × 2 in BUILD 42, × 2.5 in BUILD 43, × 2.5 in BUILD 44 (a stored choice follows)
+  if (stored?.pump !== undefined && !stored.pumpX12) app.settings.pump *= stored.pumpX5 ? 2.5 : stored.pumpX2 ? 6.25 : 12.5;
+  app.settings.pumpX2 = app.settings.pumpX5 = app.settings.pumpX12 = true;
   if (typeof app.settings.pump === 'number') app.settings.pump = PUMP.reduce((a, v) => (Math.abs(v - app.settings.pump) < Math.abs(a - app.settings.pump) ? v : a));   // the nearest step
   if (!PUMP.includes(app.settings.pump)) app.settings.pump = DEFAULT_SETTINGS.pump;   // BUILD 23: real pump rates
   if (!DELIVERY.includes(app.settings.delivery)) app.settings.delivery = DEFAULT_SETTINGS.delivery;   // BUILD 36: truck-sized deliveries
