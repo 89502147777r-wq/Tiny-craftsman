@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
-import { placeBrick, freeTops, topAt } from './freeBrick.js';
+import { placeUnit, freeTops, topAt } from './freeBrick.js';
 
 // Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
 //   lay    – take a block (brick) from the tray or the pallet and carry it: onto a wall
@@ -319,7 +319,7 @@ export class WallTool {
         if (d < bd) { bd = d; best = { w, r, sl, st, pose }; }
       }
     }
-    return best || (kind ? this._newWall(p, kind, e) : null);
+    return best;
   }
 
   // where a new wall would go. On the top of a wall of another material: a tier on it.
@@ -445,20 +445,31 @@ export class WallTool {
   _carryMove(p, e) {
     const app = this.app, c = this.carry, v = app.wallView;
     this._lastP = p;
-    if (c.kind !== 'block') {
-      // a brick: free brickwork (freeBrick.js) — next to a brick, on the masonry, on the ground
-      const f = placeBrick(app, p, (x) => this._screen(x), e && (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : null, !!app.settings.wallTurn);
+    // where it goes: a brick — free masonry (freeBrick.js); a block — the next place of a
+    // block wall if one is there, else beside / on other masonry (free), else a new block
+    // wall on the bare slab, else a free block on the ground
+    const fing = e && (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : null, scr = (x) => this._screen(x), turn = !!app.settings.wallTurn;
+    let free = null, snap = null;
+    if (c.kind !== 'block') free = placeUnit(app, 'brick', p, scr, fing, turn);
+    else {
+      snap = this._snapTo(e, p);
+      if (!snap) { const f = placeUnit(app, 'block', p, scr, fing, turn, { ground: false }); if (f?.ok) free = f; }
+      if (!snap && !free) snap = this._newWall(p, 'block', e);
+      if (!snap && !free) free = placeUnit(app, 'block', p, scr, fing, turn);
+    }
+    if (c.kind !== 'block' || free) {
+      const f = free;
       c.free = f; c.snap = null;
       if (f) {
         const lift = f.p.clone(); lift.y += MM(25);
-        v.live = { type: 'unit', kind: 'brick', row: 0, i: 0, s: f.s.toArray(), p: lift.toArray(), q: f.q.toArray() };
+        v.live = { type: 'unit', kind: f.kind, row: 0, i: 0, s: f.s.toArray(), p: lift.toArray(), q: f.q.toArray() };
         v.hl = { p: f.p.toArray(), q: f.q.toArray(), s: f.s.toArray(), ok: f.ok };
       } else { v.live = null; v.hl = null; }
       v.liveBed = null; v.dirty = true;
       app.ui.refresh();
       return;
     }
-    const snap = this._snapTo(e, p);
+    c.free = undefined;
     const was = c.snap && `${c.snap.w.id}:${c.snap.sl.s0}`;
     c.snap = snap;
     if (snap) {
@@ -526,12 +537,12 @@ export class WallTool {
   }
 
   _carryDrop() {
-    const app = this.app, snap = this.carry.snap, free = this.carry.kind !== 'block' ? this.carry.free : undefined;
+    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind;
     this._carryCancel();
     if (free !== undefined) {
-      if (!free?.ok) { app.ui.toast('Сюда кирпич не встанет (врезается в кладку или висит в воздухе) — вернули на поддон'); return; }
-      const u = { type: 'unit', free: true, kind: 'brick', row: 0, i: 0, s0: 0, s1: 0, off: 0, s: free.s.toArray().map((x) => +x.toFixed(6)) };
-      const pose = { p: free.p, q: free.q, s: free.s, bedY: free.bedY };
+      if (!free?.ok) { app.ui.toast(`Сюда ${ck === 'block' ? 'блок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`); return; }
+      const u = { type: 'unit', free: true, kind: free.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)) };
+      const pose = { p: free.p, q: free.q, s: free.s, bedY: free.bedY, bedT: free.bedT };
       const go = () => { app.physLoading = false; app.physJob = new LayJob(app, null, u, pose, null, []); };
       if (physicsReady()) go();
       else { app.physLoading = true; loadPhysics().then(go, () => { app.physLoading = false; app.ui.toast('Физика не загрузилась'); }); }
@@ -555,8 +566,11 @@ export class WallTool {
   status() {
     const app = this.app, walls = app.objects.all('wall');
     const c = this.carry;
+    if (c?.free) {
+      const nm = c.kind === 'block' ? 'Блок' : 'Кирпич';
+      return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
+    }
     if (this.kind !== 'block' || (c && c.kind !== 'block')) {
-      if (c?.free) return c.free.ok ? 'Кирпич встанет на подсвеченное место. Отпустите' : 'Красный — сюда не встанет. Поднесите к кирпичу, на кладку или на плиту';
       if (c) return 'Несите к кирпичу (продолжит ряд, ляжет рядом или повернёт за угол), на кладку или на плиту';
       return 'Кирпич: тяните из лотка — к кирпичу, на кладку или на плиту. Поворот сам; «↻ Повернуть» — для первого кирпича';
     }
@@ -632,7 +646,7 @@ class LayJob {
       if (q.distanceTo(p) > 0.2) continue;
       this.ep.staticBox(q, new THREE.Quaternion().fromArray(u.q), u.s[0] / 2 * 0.999, u.s[1] / 2, u.s[2] / 2 * 0.999);
     }
-    const k = KINDS[w ? w.kind : unit.kind], bedT = (w && unit.row === 0 ? k.bed0 : k.bed) * S;
+    const k = KINDS[w ? w.kind : unit.kind], bedT = w ? (unit.row === 0 ? k.bed0 : k.bed) * S : target.bedT;
     this.ep.staticBox(new THREE.Vector3(p.x, w ? rowY(w, unit.row) - bedT / 2 : target.bedY, p.z), target.q, s.x / 2, bedT / 2, s.z / 2);
     // the hand puts it down a few mm off and slightly askew, 2 cm above
     const j = (m) => (Math.random() - 0.5) * m;
