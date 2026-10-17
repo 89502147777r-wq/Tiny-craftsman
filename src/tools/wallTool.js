@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, K, KT } from '../config.js';
-import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, covered, wallState, taken, cutName, openingRows, beddable } from '../world/walls.js';
+import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 
 // Walls (aerated concrete blocks or bricks), as on site:
@@ -32,7 +32,7 @@ export class WallTool {
         e.preventDefault(); e.stopPropagation();
         if (this.mode !== 'lay' || app.physJob || app.physLoading) return;
         const w = this._trayWall();
-        if (!w) { app.ui.toast('Все стены выложены до верха'); return; }
+        if (!w) { app.ui.toast(this._noWall()); return; }
         try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ }
         this.carry = { pallet: w, snap: null, tray: true };
         this.tray.classList.add('active');
@@ -114,6 +114,7 @@ export class WallTool {
       const w = this._palletAt(e, p);
       if (!w) { app.ui.toast(app.objects.all('wall').length ? 'Тяните блок из лотка справа (или с поддона у стены) на стену' : 'Сначала проведите линию стены'); return true; }
       this.carry = { pallet: w, p: p.clone(), snap: null };
+      app.settings.wallKind = w.kind;
       this.lastWall = w.id; this._focus(w);
       loadPhysics().catch(() => {});
       app.sfx?.stab?.();
@@ -290,21 +291,24 @@ export class WallTool {
   }
 
   // the free place of a course being laid nearest the finger on the screen (≤ 90 px)
+  // (any course: a course may run ahead over the part of the one below already laid);
+  // only walls of the material carried
   _snapTo(e, p) {
-    const app = this.app;
+    const app = this.app, kind = this.carry?.pallet?.kind;
     let best = null, bd = Infinity;
     for (const w of app.objects.all('wall')) {
+      if (kind && w.kind !== kind) continue;
       const st = wallState(w, app.objects);
       if (st.cur >= st.n) continue;
       const k = KINDS[w.kind];
-      for (const sl of course(w, st.cur, st.walls, st.opens)) {
-        if (taken(st.units, st.cur, sl)) continue;
-        const pose = slotPose(w, st.cur, sl), top = pose.p.clone(); top.y = rowY(w, st.cur) + k.H * S;
+      for (const { r, sl } of layable(w, st)) {
+        const pose = slotPose(w, r, sl), top = pose.p.clone(); top.y = rowY(w, r) + k.H * S;
         let d;
         if (e && (e.clientX || e.clientY)) { const sp = this._screen(top); if (!sp.front) continue; d = Math.hypot(sp.x - e.clientX, sp.y - e.clientY); if (d > 90) continue; }
         else { d = Math.hypot(p.x - top.x, p.z - top.z) * 3500; if (d > 400) continue; }
         if (w.id === this.lastWall) d -= 6;
-        if (d < bd) { bd = d; best = { w, sl, st, pose }; }
+        d += (r - st.cur) * 2;   // the lower course first, when two are as near
+        if (d < bd) { bd = d; best = { w, r, sl, st, pose }; }
       }
     }
     return best;
@@ -324,12 +328,12 @@ export class WallTool {
     const was = c.snap && `${c.snap.w.id}:${c.snap.sl.s0}`;
     c.snap = snap;
     if (snap) {
-      const { w, sl, st, pose } = snap, u = this._unitFor(w, st.cur, sl, pose);
+      const { w, r, sl, pose } = snap, u = this._unitFor(w, r, sl, pose);
       const lift = pose.p.clone(); lift.y += MM(25);
       v.live = { ...u, p: lift.toArray(), q: pose.q.toArray() };
       // the mortar it will be set in
-      const parts = this._bedFor(w, st.cur, sl);
-      v.liveBed = parts.length ? { wall: w.id, row: st.cur, s0: parts[0][0], s1: parts.at(-1)[1] } : null;
+      const parts = this._bedFor(w, r, sl);
+      v.liveBed = parts.length ? { wall: w.id, row: r, s0: parts[0][0], s1: parts.at(-1)[1] } : null;
       if (was !== `${w.id}:${sl.s0}`) { this.lastWall = w.id; this._focus(w); }
     } else {
       // in the hand: under the finger, above the ground
@@ -350,10 +354,17 @@ export class WallTool {
   }
 
   // the wall the tray serves: the one being worked on, else the first one not finished
+  // (of the material chosen)
   _trayWall() {
-    const walls = this.app.objects.all('wall');
+    const walls = this.app.objects.all('wall').filter((w) => w.kind === this.kind);
     const open = walls.filter((w) => { const st = wallState(w, this.app.objects); return st.cur < st.n; });
     return open.find((w) => w.id === this.lastWall) || open[0] || null;
+  }
+  palletLeft(w) { return palletStock(w, wallState(w, this.app.objects)).on; }
+  _noWall() {
+    const n = KINDS[this.kind].name;
+    return this.app.objects.all('wall').some((w) => w.kind === this.kind) ? `Стены «${n}» выложены до верха`
+      : `Стены из материала «${n}» нет: «Линия» → «${n}» → проведите стену (или выберите материал своей стены)`;
   }
 
   // the tray: shown while laying, labelled with the material
@@ -362,10 +373,12 @@ export class WallTool {
     const on = this.app.tool === 'wall' && this.mode === 'lay' && this.app.objects.all('wall').length > 0;
     this.tray.hidden = !on;
     if (!on) return;
-    const w = this._trayWall(), kind = w?.kind || this.kind;
+    const kind = this.kind;
     this.tray.classList.toggle('brick', kind !== 'block');
     const lab = document.getElementById('wall-tray-label');
     if (lab) lab.textContent = kind === 'block' ? 'Газоблок' : 'Кирпич';
+    const w = this._trayWall(), left = w ? this.palletLeft(w) : 0;
+    this.tray.title = w ? `На поддоне: ${left}` : '';
   }
 
   _carryCancel() {
@@ -378,10 +391,10 @@ export class WallTool {
     const app = this.app, snap = this.carry.snap;
     this._carryCancel();
     if (!snap) { app.ui.toast('Блок вернули на поддон — поднесите его к ряду на стене'); return; }
-    const { w, sl, st, pose } = snap, u = this._unitFor(w, st.cur, sl, pose);
+    const { w, r, sl, st, pose } = snap, u = this._unitFor(w, r, sl, pose);
     if (sl.cut) app.ui.toast(cutName(w, sl));
     if (sl.lintel) app.ui.toast(`Перемычка ${Math.round(sl.s1 - sl.s0)} мм — по 250 мм опоры с каждой стороны`);
-    const beds = this._bedFor(w, st.cur, sl);
+    const beds = this._bedFor(w, r, sl);
     const go = () => { app.physLoading = false; app.physJob = new LayJob(app, w, u, pose, st, beds); };
     if (physicsReady()) go();
     else { app.physLoading = true; loadPhysics().then(go, () => { app.physLoading = false; app.ui.toast('Физика не загрузилась'); }); }
@@ -393,15 +406,15 @@ export class WallTool {
     if (!walls.length) return '';
     const c = this.carry;
     if (c?.snap) {
-      const { w, sl, st } = c.snap, cs = course(w, st.cur, st.walls, st.opens);
+      const { w, r, sl, st } = c.snap, cs = course(w, r, st.walls, st.opens);
       const what = sl.lintel ? 'перемычка' : sl.cut ? `добор ${Math.round(sl.s1 - sl.s0)} мм` : w.kind === 'block' ? 'блок' : 'кирпич';
-      return `Стена ${walls.indexOf(w) + 1} · ряд ${st.cur + 1} из ${st.n} · место ${cs.indexOf(cs.find((x) => x.s0 === sl.s0 && x.off === sl.off)) + 1} из ${cs.length} — ${what}. Отпустите`;
+      return `Стена ${walls.indexOf(w) + 1} · ряд ${r + 1} из ${st.n} · место ${cs.indexOf(cs.find((x) => x.s0 === sl.s0 && x.off === sl.off)) + 1} из ${cs.length} — ${what}. Отпустите`;
     }
     if (c) return 'Несите к стене — блок сам встанет в ближайшее место ряда';
-    const w = walls.find((x) => x.id === this.lastWall) || walls[0], st = wallState(w, app.objects);
+    const w = this._trayWall() || walls.find((x) => x.id === this.lastWall) || walls[0], st = wallState(w, app.objects);
     if (st.cur >= st.n) return `Стена ${walls.indexOf(w) + 1} выложена до верха`;
-    const cs = course(w, st.cur, st.walls, st.opens), left = cs.filter((sl) => !taken(st.units, st.cur, sl)).length;
-    return `Стена ${walls.indexOf(w) + 1} · ряд ${st.cur + 1} из ${st.n}: осталось ${left} из ${cs.length}. Тяните блок из лотка на стену`;
+    const cs = course(w, st.cur, st.walls, st.opens), left = cs.filter((sl) => !taken(st.units, st.cur, sl)).length, ps = palletStock(w, st);
+    return `Стена ${walls.indexOf(w) + 1} · ряд ${st.cur + 1} из ${st.n}: осталось ${left} из ${cs.length} · на поддоне ${ps.on} из ${ps.cap}${ps.pallets > 1 ? ` (ещё поддонов: ${ps.pallets - 1})` : ''}. Тяните блок из лотка на стену`;
   }
 
   // ---- delete --------------------------------------------------------------------------
