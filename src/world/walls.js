@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
+import { mortarOf } from '../tools/freeBrick.js';
 
 // Masonry walls, laid the way they are on site.
 // Records (objects store):
@@ -398,18 +399,12 @@ export class WallView {
         this.cord.scale.set(0.0012 / MODEL_SCALE, A.distanceTo(B), 0.0012 / MODEL_SCALE);
       }
     }
-    // free brickwork: each brick in its mortar (a box a little inside its faces, half a
-    // joint longer at each end and a bed under it: the joints show between the bricks)
-    {
-      const K = KINDS.brick, j = K.head * S, b = K.bed * S, inset = 8 * S;
-      for (const u of O.all('unit')) {
-        if (!u.free) continue;
-        put(u, u.id);
-        if (nm >= this.max.mortar) continue;
-        Q.fromArray(u.q); P.fromArray(u.p); P.y -= b / 2 + 1.5 * S;   // its top a little under the brick's (no flicker)
-        Sv.set(u.s[0] + j, u.s[1] + b - 3 * S, Math.max(0.0001, u.s[2] - 2 * inset));
-        this.mortar.setMatrixAt(nm++, m.compose(P, Q, Sv));
-      }
+    // free masonry: the units, the bed under each and a head joint only between neighbours
+    for (const u of O.all('unit')) if (u.free) put(u, u.id);
+    for (const j of mortarOf(O.all('unit'))) {
+      if (nm >= this.max.mortar) break;
+      P.set(j.x, j.y, j.z); Q.setFromAxisAngle(_Y, j.yaw); Sv.set(j.l, j.h, j.w);
+      this.mortar.setMatrixAt(nm++, m.compose(P, Q, Sv));
     }
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
     if (this.live) put(this.live, null);
@@ -465,9 +460,8 @@ function brickTexture() {
     g.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 2, 1 + Math.random() * 2);
   }
   const e = g.createLinearGradient(0, 0, 0, 128);
-  e.addColorStop(0, 'rgba(40,22,15,0.6)'); e.addColorStop(0.07, 'rgba(0,0,0,0)'); e.addColorStop(0.93, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(40,22,15,0.6)');
+  e.addColorStop(0, 'rgba(60,30,20,0.22)'); e.addColorStop(0.06, 'rgba(0,0,0,0)'); e.addColorStop(0.94, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(60,30,20,0.22)');
   g.fillStyle = e; g.fillRect(0, 0, 128, 128);
-  g.strokeStyle = 'rgba(45,40,36,0.8)'; g.lineWidth = 4; g.strokeRect(0, 0, 128, 128);   // the mortar joint round it
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
