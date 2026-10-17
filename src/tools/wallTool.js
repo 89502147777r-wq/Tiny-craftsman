@@ -328,12 +328,17 @@ export class WallTool {
   _newWall(p, kind) {
     const app = this.app, walls = app.objects.all('wall'), k = KINDS[kind];
     const seg = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1e-12, t = Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.z - a[1]) * dz) / l2)); return Math.hypot(a[0] + dx * t - p.x, a[1] + dz * t - p.z); };
-    // tiers: the top of a wall of another material with nothing on it yet
+    // tiers: on what is laid of a wall of another material (nothing on it yet): the
+    // courses not laid yet are dropped from it — the new material goes on from here
     let tier = null, bd = Infinity;
     for (const w0 of walls) {
       if (w0.kind === kind || walls.some((o) => o.on === w0.id)) continue;
+      const k0 = KINDS[w0.kind], laid = app.objects.all('unit').filter((u) => u.wall === w0.id);
+      if (!laid.length) continue;
+      const nl = Math.max(...laid.map((u) => u.row + (u.lintel ? k0.lintelRows : 1)));
+      const cap = { ...w0, height: k0.bed0 + nl * (k0.H + k0.bed) };
       const d = seg(w0.a, w0.b);
-      if (d < KINDS[w0.kind].T / 2 * S + 0.01 && p.y > topY(w0) - 0.02 && d < bd) { bd = d; tier = w0; }
+      if (d < k0.T / 2 * S + 0.01 && p.y > topY(cap) - 0.03 && d < bd) { bd = d; tier = cap; }
     }
     let rec;
     if (tier) rec = { a: tier.a, b: tier.b, on: tier.id, base: topY(tier) };
@@ -344,12 +349,12 @@ export class WallTool {
     }
     rec = { type: 'wall', id: app.objects.nextId, a: rec.a.map((x) => +x.toFixed(5)), b: rec.b.map((x) => +x.toFixed(5)), kind, height: app.settings.wallHeight || 1500, ...(rec.on ? { on: rec.on, base: +rec.base.toFixed(5) } : {}) };
     if (!rec.on) rec.base = +this._baseOf(rec).toFixed(5);
-    const st = wallState(rec, app.objects, [rec]), ax = axis(rec);
+    const extra = tier ? [rec, tier] : [rec], st = wallState(rec, app.objects, extra), ax = axis(rec);
     const s = ((p.x - rec.a[0]) * ax.ux + (p.z - rec.a[1]) * ax.uz) / S;
     let pick = null, pd = Infinity;
     for (const { r, sl } of layable(rec, st)) { if (r) continue; const d = Math.abs((sl.s0 + sl.s1) / 2 - s); if (d < pd) { pd = d; pick = sl; } }
     if (!pick) return null;
-    return { w: rec, r: 0, sl: pick, st, pose: slotPose(rec, 0, pick), create: true };
+    return { w: rec, r: 0, sl: pick, st, pose: slotPose(rec, 0, pick), create: true, cap: tier && tier.height !== walls.find((o) => o.id === tier.id).height ? { id: tier.id, height: tier.height } : null };
   }
 
   // the run of a new wall through p on the surface there (see _newWall): { a, b } or null
@@ -496,7 +501,7 @@ export class WallTool {
     if (sl.cut) app.ui.toast(cutName(w, sl));
     if (sl.lintel) app.ui.toast(`Перемычка ${Math.round(sl.s1 - sl.s0)} мм — по 250 мм опоры с каждой стороны`);
     const beds = this._bedFor(w, r, sl);
-    const go = () => { app.physLoading = false; app.physJob = new LayJob(app, w, u, pose, st, beds, snap.create ? w : null); this.lastWall = w.id; };
+    const go = () => { app.physLoading = false; app.physJob = new LayJob(app, w, u, pose, st, beds, snap.create ? w : null, snap.cap); this.lastWall = w.id; };
     if (physicsReady()) go();
     else { app.physLoading = true; loadPhysics().then(go, () => { app.physLoading = false; app.ui.toast('Физика не загрузилась'); }); }
   }
@@ -556,11 +561,12 @@ export class WallTool {
 // units around, the bed, the foundation), then three taps of the rubber mallet bring it
 // to the cord and the level. One journal entry.
 class LayJob {
-  constructor(app, w, unit, target, st, beds = [], newWall = null) {
+  constructor(app, w, unit, target, st, beds = [], newWall = null, cap = null) {
     this.app = app;
     this.unit = unit;
     this.target = target;
     this.pending = app.journal.begin('lay', { wall: w.id, row: unit.row, i: unit.i }, app.clock);
+    if (cap) app.objects.update(cap.id, { height: cap.height });   // the wall below ends where it is laid to
     if (newWall) app.objects.add(newWall);   // the first block starts the wall (same journal entry)
     // the mortar is spread first (same journal entry)
     for (const [a, b] of beds) app.objects.add({ type: 'bed', wall: w.id, row: unit.row, s0: +a.toFixed(1), s1: +b.toFixed(1) });
