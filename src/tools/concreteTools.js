@@ -208,7 +208,7 @@ export class VibratorTool extends ConcreteTool {
 
   work(dt) {
     const t = this.app.terrain;
-    t.vibrate(this.p.x, this.p.z, 0.4 / MODEL_SCALE);   // acts ~0.4 m around the poker
+    t.vibrate(this.p.x, this.p.z, 0.8 / MODEL_SCALE);   // acts ~0.8 m around the poker (a strong one)
     this.app.sfx.scrapeLevel(0.35 + Math.random() * 0.1);
     // the poker shivers
     const j = 0.0006;
