@@ -331,9 +331,10 @@ export class UI {
       const set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
       const out = [['lay', 'Класть'], ['opening', 'Проём'], ['line', 'Линия'], ['delete', 'Удалить']].map(([k, l]) => C(l, wt.mode === k, () => wt.setMode(k), k === 'delete' ? 'warn' : ''));
       if (wt.mode === 'line' || wt.mode === 'lay') {
-        out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич ½'], ['brick2', '1'], ['brick3', '1½'], ['brick4', '2'], ['brick5', '2½']].map(([k, l]) => C(l, (s.wallKind || 'block') === k, () => set({ wallKind: k }))));
+        const brick = (s.wallKind || 'block') !== 'block';
+        out.push(C('Газоблок', !brick, () => set({ wallKind: 'block' })), C('Кирпич', brick, () => set({ wallKind: 'brick' })));
         if (wt.mode === 'lay') out.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
-        out.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
+        if (!brick) out.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
       }
       if (wt.mode === 'opening') out.push(...[['window', 'Окно'], ['door', 'Дверь']].map(([k, l]) => C(l, (s.openKind || 'window') === k, () => set({ openKind: k }))));
       return out;
