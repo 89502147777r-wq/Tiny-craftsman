@@ -452,10 +452,9 @@ export class WallTool {
     let free = null, snap = null;
     if (c.kind !== 'block') free = placeUnit(app, 'brick', p, scr, fing, turn);
     else {
+      // the next place of a block wall drawn with «Линия», else free: beside / on / on the ground
       snap = this._snapTo(e, p);
-      if (!snap) { const f = placeUnit(app, 'block', p, scr, fing, turn, { ground: false }); if (f?.ok) free = f; }
-      if (!snap && !free) snap = this._newWall(p, 'block', e);
-      if (!snap && !free) free = placeUnit(app, 'block', p, scr, fing, turn);
+      if (!snap) free = placeUnit(app, 'block', p, scr, fing, turn);
     }
     if (c.kind !== 'block' || free) {
       const f = free;

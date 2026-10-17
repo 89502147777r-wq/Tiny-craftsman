@@ -71,12 +71,12 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     const nx = -n.uz, nz = n.ux, bed = bedOf(n.u, D);   // the same course: the same bed under it
     for (const sg of [-1, 1]) {
       const a = n.hl + J + L / 2;
-      cands.push(cand(n.x + n.ux * a * sg, n.z + n.uz * a * sg, n.yaw, n.bot, bed, 'beside'));
+      { const cc = cand(n.x + n.ux * a * sg, n.z + n.uz * a * sg, n.yaw, n.bot, bed, 'beside'); cc.across = false; cands.push(cc); }
       const b = n.hw + J + W / 2;
-      cands.push(cand(n.x + nx * b * sg, n.z + nz * b * sg, n.yaw, n.bot, bed, 'beside'));
+      { const cc = cand(n.x + nx * b * sg, n.z + nz * b * sg, n.yaw, n.bot, bed, 'beside'); cc.leaf = true; cands.push(cc); }
       for (const sd of [-1, 1]) {
         const c = n.hl + J + W / 2, f = L / 2 - n.hw;
-        cands.push(cand(n.x + n.ux * c * sg + nx * f * sd, n.z + n.uz * c * sg + nz * f * sd, n.yaw + Math.PI / 2, n.bot, bed, 'beside'));
+        const cc = cand(n.x + n.ux * c * sg + nx * f * sd, n.z + n.uz * c * sg + nz * f * sd, n.yaw + Math.PI / 2, n.bot, bed, 'beside'); cc.across = true; cands.push(cc);
       }
     }
   }
@@ -84,10 +84,10 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   // or turned across it
   for (const b of boxes) {
     if (!(inside(b, p.x, p.z, 0.006) || near(b, 170))) continue;
-    const bx = -b.uz, bz = b.ux, q = (L + J) / 4, n = Math.floor(b.hl / q);
+    const bx = -b.uz, bz = b.ux, q = (L + J) / 4, n = Math.floor((b.hl + L / 2) / q), onFace = inside(b, p.x, p.z, 0.002) && Math.abs(p.y - b.top) < 0.002;   // the finger on its top face
     for (let k = -n; k <= n; k++) for (const [yaw, half] of [[b.yaw, W / 2], [b.yaw + Math.PI / 2, L / 2]]) {
       const offs = new Set([0, +(b.hw - half).toFixed(7), -(b.hw - half).toFixed(7)]);
-      for (const o of offs) { const c = cand(b.x + b.ux * k * q + bx * o, b.z + b.uz * k * q + bz * o, yaw, b.top + B, B, 'top'); c.across = yaw !== b.yaw; cands.push(c); }
+      for (const o of offs) { const c = cand(b.x + b.ux * k * q + bx * o, b.z + b.uz * k * q + bz * o, yaw, b.top + B, B, 'top'); c.across = yaw !== b.yaw; c.onFace = onFace; cands.push(c); }
     }
   }
   // on the ground / a slab (the first bed is thicker under a block: mortar, not glue)
@@ -107,15 +107,30 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     cands.push(c);
   }
   // score: on the screen (the top centre of it), else in the plot
+  // a magnet: a place on the top or on the ground next to a unit of the same course, with
+  // a gap, is pulled up to it (one joint) — the course stays tight
+  for (const c of cands) {
+    if (c.how === 'beside') continue;
+    let pull = null;
+    for (const n of boxes) {
+      if (n.kind !== D.kind || Math.abs(n.bot - c.bot) > 0.0006 || Math.abs(Math.sin(n.yaw - c.yaw)) > 0.05) continue;
+      const dx = c.x - n.x, dz = c.z - n.z, along = dx * n.ux + dz * n.uz, side = -dx * n.uz + dz * n.ux;
+      if (Math.abs(side) > Math.max(n.hw, c.hw) * 0.6) continue;
+      const gap = Math.abs(along) - n.hl - c.hl - J;
+      if (gap > 1e-5 && gap < L * 0.6 && (!pull || gap < pull.gap)) pull = { gap, dx: -Math.sign(along) * n.ux * gap, dz: -Math.sign(along) * n.uz * gap, side, n };
+    }
+    if (pull) { c.x += pull.dx; c.z += pull.dz; }
+  }
   const bias = { beside: 0, top: finger ? 22 : 20, ground: finger ? 45 : 60 };
   let best = null, bd = Infinity, bestBad = null, bb = Infinity;
   for (const c of cands) {
-    const top = new THREE.Vector3(c.x, c.top, c.z);
+    const top = new THREE.Vector3(c.x, (c.bot + c.top) / 2, c.z);   // its middle: where the finger holds it
     let d;
     if (finger) { const sp = screen(top); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 110) continue; }
     else { d = top.distanceTo(p) * 4000; }
-    d += bias[c.how];
-    if (c.across !== undefined && c.across !== !!turn) d += finger ? 25 : 120;   // on the masonry: along it (across with «Повернуть»)
+    d += c.how === 'top' && c.onFace ? 0 : bias[c.how];
+    if (c.leaf && !inside(c, p.x, p.z)) d += finger ? 25 : 60;   // the next leaf: only where the finger really is
+    if (c.across !== undefined && c.across !== !!turn) d += finger ? 30 : 120;   // along (across / a corner with «Повернуть»)
     const ok = !boxes.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b)) && supported(t, boxes, c);
     if (ok && d < bd) { bd = d; best = c; }
     if (!ok && d < bb) { bb = d; bestBad = c; }
@@ -130,7 +145,8 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
 // (3 of 9 points) on a top at its bed, or on the ground
 function supported(t, boxes, c) {
   const bed = c.bot - (c.bed ?? 0);
-  const on = (x, z) => boxes.some((u) => Math.abs(u.top - bed) < 0.0015 && inside(u, x, z)) || (t.inside(x, z) && t.heightAt(x, z) > bed - 0.004 && t.heightAt(x, z) < bed + 0.0015);
+  // on a top at its bed (a joint between two is bridged), or on the ground
+  const on = (x, z) => boxes.some((u) => Math.abs(u.top - bed) < 0.0015 && inside(u, x, z, KINDS.brick.head * S)) || (t.inside(x, z) && t.heightAt(x, z) > bed - 0.004 && t.heightAt(x, z) < bed + 0.0015);
   if (!on(c.x, c.z)) return false;
   let n = 0;
   for (const a of [-0.8, 0, 0.8]) for (const b of [-0.8, 0, 0.8]) if (on(c.x + c.ux * c.hl * a - c.uz * c.hw * b, c.z + c.uz * c.hl * a + c.ux * c.hw * b)) n++;
