@@ -229,10 +229,10 @@ console.log('—', sec());
       tc.setTool('wall'); const wt = tc.wallTool; tc.settings.wallKind = 'block'; tc.settings.wallHeight = 1000;
       wt.setMode('line'); wt.down(new V(-0.5, 0.1, -0.6), e); wt.move(new V(-0.2, 0.1, -0.6)); wt.up();
       const w = tc.objects.all('wall').at(-1);
-      // carry a block from the pallet: let go in the open → back on the pallet; at the wall → laid
+      // carry a block from the pallet: let go off the plot → back on the pallet; at the wall → laid
       wt.setMode('lay');
       const pal = () => new V(w.pallet[0], 0.1, w.pallet[1]);
-      wt.down(pal(), e); wt.move(new V(w.pallet[0] + 0.3, 0.1, w.pallet[1] + 0.3), e); wt.up();
+      wt.down(pal(), e); wt.move(new V(1.6, 0.1, 0), e); wt.up();
       const refused = !tc.objects.all('unit').length;
       wt.down(pal(), e); wt.move(new V(-0.45, 0.1, -0.6), e); wt.up();
       for (let i = 0; i < 400 && (tc.physJob || tc.physLoading); i++) { if (tc.physLoading) await new Promise((r) => setTimeout(r, 50)); else tc.simulate(1 / 30); }
