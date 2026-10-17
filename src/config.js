@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:10.47 (860 mm = 9 m).
-export const BUILD = 41;
+export const BUILD = 42;
 export const STAGE = 3;
 export const MODEL_SCALE = 9000 / 860;   // 1:10.47 — 860 mm of the model is 9 m
 // how much finer everything is than at the old 1:3.5 (texture sizes of stones, pores …)
@@ -64,7 +64,7 @@ export const BUCKET = 0.1;   // a 100 l wheelbarrow (real m³)
 // viscosity mu (Pa·s) — how fast it flows above it; density rho. Vibration fluidises it
 // (tau, mu drop to tauVib, muVib). It sets after `stiff` of `cure` seconds.
 export const CONCRETE = { tau: 250, mu: 25, rho: 2400, tauVib: 6, muVib: 4, cure: 300, stiff: 0.35, color: 0x7d7b76 };
-export const PUMP = [0.01, 0.025, 0.05];   // pump hose delivery, real m³ per second (36 / 90 / 180 m³/h)
+export const PUMP = [0.02, 0.05, 0.1];   // pump hose delivery, real m³ per second (72 / 180 / 360 m³/h — doubled for the game)
 
 export const REPOSE_NATIVE = Math.tan(78 * Math.PI / 180); // undisturbed cohesive ground
 
@@ -106,7 +106,7 @@ export const DEFAULT_SETTINGS = {
   quiet: false,      // quiet mode: one round button instead of the panels (for filming)
   matMode: 'deliver', // sand / crushed stone: 'deliver' a heap or pour from a 'bucket'
   delivery: 3,       // size of a delivered heap, real m³
-  pump: 0.025,       // concrete pump hose, real m³/s
+  pump: 0.05,        // concrete pump hose, real m³/s
   wallTurn: false,   // a new wall: the other direction (along ↔ across)
   wallKind: 'block', // walls: 'block' (aerated concrete) | 'brick' … 'brick5' (½ … 2½ bricks)
   wallHeight: 1500,  // planned wall height, real mm
