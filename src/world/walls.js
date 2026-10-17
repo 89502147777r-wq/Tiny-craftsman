@@ -4,9 +4,10 @@ import { mortarOf } from '../tools/freeBrick.js';
 
 // Masonry walls, laid the way they are on site.
 // Records (objects store):
-//   wall { a:[x,z], b:[x,z], kind, base, height, on } – the axis of a wall (model units),
+//   wall { a:[x,z], b:[x,z], kind, base, height, on, v } – the axis of a wall (model units),
 //          base = the top of what it stands on, height = planned (real mm); on = the
-//          wall it stands on (a tier: a brick plinth, the blockwork on it, …), same axis
+//          wall it stands on (a tier: a brick plinth, the blockwork on it, …), same axis;
+//          v = 2: whole units at corners / butt joints, the cut piece in the middle
 //   bed  { wall, row, s0, s1 }                       – a strip of mortar / glue spread on
 //          a course, s along the axis from a (real mm)
 //   unit { wall, row, i, s0, s1, off, p, q, s, kind } – a block / brick as it was laid
@@ -70,6 +71,62 @@ function cornerAt(w, e, walls) {
   return null;
 }
 
+// does end e of a wall butt into the face of another wall of its level (a partition)?
+function abutsAt(w, e, walls) {
+  const p = e ? w.b : w.a, lv = level(w, walls);
+  for (const o of walls) {
+    if (o.id === w.id || level(o, walls) !== lv) continue;
+    const ax = axis(o), dx = p[0] - o.a[0], dz = p[1] - o.a[1], t = KINDS[o.kind].T / 2 * S;
+    const d = Math.abs(dx * ax.nx + dz * ax.nz), s = (dx * ax.ux + dz * ax.uz) / S;
+    if (Math.abs(d - t) < 0.003 && s > -KINDS[o.kind].T / 2 && s < ax.L + KINDS[o.kind].T / 2) return true;
+  }
+  return false;
+}
+
+// a course laid from an anchored start (a whole unit there) and, when the far end is
+// anchored too, from that end as well: whole units at both ends, the cut piece(s) in
+// between — placed so that its joints miss the joints of the course below (`avoid`),
+// with a half unit next to the first one when nothing else staggers them
+function anchoredGrid(a0, a1, len0, U, len1, k, avoid = []) {
+  const both = len1 > 0;
+  if (!both) { const out = []; for (let s = a0, first = true; s < a1; first = false) { const len = first ? len0 : U; out.push([s, s + len]); s += len + k.head; } return out; }
+  if (a1 - a0 <= U + 1) return [[a0, a1]];
+  const h = k.head, mid = (a0 + a1) / 2, N = Math.ceil((a1 - a0) / (U + h)) + 1;
+  let best = null, bs = Infinity;
+  const xs = [0];
+  for (let x = Math.max(k.min, 100); x < U - 1; x += 25) xs.push(x);
+  for (const half of [0, U / 2]) for (const halfB of [0, U / 2]) for (let n = 0; n <= N; n++) for (const x of xs) {
+    // from a0: a whole one, (a half), n more whole ones, (a cut of x); from a1: whole ones
+    // back to them; what is left between is one more cut (or nothing)
+    const fw = [[a0, a0 + len0]];
+    let s = a0 + len0 + h, ok = true;
+    if (half) { fw.push([s, s + half]); s += half + h; }
+    for (let i = 0; i < n; i++) { if (s + U > a1 - U - h + 1) { ok = false; break; } fw.push([s, s + U]); s += U + h; }
+    if (!ok) break;
+    if (x) { if (s + x > a1 - U - h + 1) continue; fw.push([s, s + x]); s += x + h; }
+    const bw = [[a1 - len1, a1]];
+    let e = a1 - len1 - h;
+    if (halfB) { if (e - halfB < s + k.min) continue; bw.unshift([e - halfB, e]); e -= halfB + h; }   // a half next to the whole one at a1
+    while (e - U >= s - 1) {
+      bw.unshift([e - U, e]); e -= U + h;
+      if (Math.abs(e + h - s) < 1) break;
+      if (e - U < s && e - s < k.min) break;
+    }
+    const gap = e - s, pieces = [...fw];
+    if (gap >= k.min) pieces.push([s, e]);
+    else if (gap > -h + 1) continue;   // a sliver: not this way
+    pieces.push(...bw);
+    pieces.sort((p1, p2) => p1[0] - p2[0]);
+    if (pieces.some((p1, i) => i && p1[0] < pieces[i - 1][1] + h - 1)) continue;
+    const joints = pieces.slice(0, -1).map((p1) => p1[1] + h / 2);
+    const clash = joints.filter((j) => avoid.some((a) => Math.abs(a - j) < 100)).length;
+    const cuts = pieces.filter((p1) => p1[1] - p1[0] < U - 1);
+    const score = clash * 1000 + (half ? 40 : 0) + (halfB ? 40 : 0) + cuts.length * 30 + Math.abs((cuts[0] ? (cuts[0][0] + cuts[0][1]) / 2 : mid) - mid) / 50;
+    if (score < bs) { bs = score; best = pieces; }
+  }
+  return best || [[a0, a1]];
+}
+
 // the courses an opening takes (r0 ≤ r < r1) and the lintel over it (r1 … r1 + lintelRows − 1),
 // its edges snapped to the courses
 export function openingRows(w, o) {
@@ -87,6 +144,10 @@ export function openingRows(w, o) {
 export function course(w, r, walls, opens = []) {
   const k = KINDS[w.kind], { L } = axis(w);
   let a0 = 0, a1 = L;
+  // an end at a corner or butting into another wall is anchored: the course starts there
+  // with a whole unit (the corner overlap already staggers the joints), and the cut piece
+  // goes into the middle of the wall — never at a corner
+  const corner = [0, 1].map((e) => !!cornerAt(w, e, walls)), anch = [0, 1].map((e) => corner[e] || abutsAt(w, e, walls));
   for (const e of [0, 1]) {
     const o = cornerAt(w, e, walls);
     if (!o) continue;
@@ -110,10 +171,16 @@ export function course(w, r, walls, opens = []) {
   for (const [g0, g1, j] of gaps) { if (g0 - j > f) free.push([f, g0 - j]); f = Math.max(f, g1 + j); }
   if (a1 > f) free.push([f, a1]);
   const out = [];
-  const lay = (len0, U, off, wAcross, rot) => {
+  const lay = (len0, U, off, wAcross, rot, single = true) => {
     // the bond over the whole course, then clipped to the free stretches
-    const grid = [];
-    for (let s = a0, first = true; s < a1; first = false) { const len = first ? len0 : U; grid.push([s, s + len]); s += len + k.head; }
+    let grid = [];
+    if (single && w.v >= 2 && (anch[0] || anch[1])) {
+      const below = r > 0 ? courseMemo(w, r - 1, walls, opens).filter((x) => !x.lintel && (x.off || 0) === off).map((x) => x.s1 + k.head / 2) : [];
+      // at a corner a whole unit every course; butting into a wall: whole and half by turns
+      const endLen = (e) => (corner[e] ? U : r % 2 ? U / 2 : U);
+      grid = anchoredGrid(a0, a1, anch[0] ? endLen(0) : len0, U, anch[1] ? endLen(1) : 0, k, below);
+    }
+    else for (let s = a0, first = true; s < a1; first = false) { const len = first ? len0 : U; grid.push([s, s + len]); s += len + k.head; }
     for (const [f0, f1] of free) {
       const ps = [];
       for (const [u0, u1] of grid) { const c0 = Math.max(u0, f0), c1 = Math.min(u1, f1); if (c1 - c0 > 1) ps.push([c0, c1]); }
@@ -131,8 +198,8 @@ export function course(w, r, walls, opens = []) {
     let x = -k.T / 2;
     for (const leaf of brickLeaves(k.nb, r)) {
       const wd = leaf === 'S' ? k.W : k.L, off = x + wd / 2;
-      if (leaf === 'S') lay(r % 4 === 0 ? k.L : k.L * 0.75, k.L, off, k.W, 0);
-      else lay(k.W / 2, k.W, off, k.L, 1);
+      if (leaf === 'S') lay(r % 4 === 0 ? k.L : k.L * 0.75, k.L, off, k.W, 0, false);
+      else lay(k.W / 2, k.W, off, k.L, 1, false);
       x += wd + k.head;
     }
   } else lay(r % 2 ? k.L / 2 : k.L, k.L, 0, k.T, 0);
@@ -140,6 +207,15 @@ export function course(w, r, walls, opens = []) {
   out.sort((x, y) => x.s0 - y.s0 || x.off - y.off);
   out.forEach((x, i) => { x.i = i; });
   return out;
+}
+
+// course() remembered for a while (a course depends on the course below it)
+const _memo = new Map();
+function courseMemo(w, r, walls, opens) {
+  const key = JSON.stringify([w.id, w.a, w.b, w.kind, w.height, w.base, w.v, w.on, r, walls.map((o) => [o.id, o.a, o.b, o.kind, o.on]), opens.map((o) => [o.s0, o.s1, o.kind, o.y0, o.y1])]);
+  let c = _memo.get(key);
+  if (!c) { if (_memo.size > 3000) _memo.clear(); c = course(w, r, walls, opens); _memo.set(key, c); }
+  return c;
 }
 
 // where a course is solid (its places merged over the joints): [[s0, s1]…]

@@ -162,7 +162,7 @@ export class WallTool {
     if (this.mode === 'line') {
       const L = Math.hypot(d.b[0] - d.a[0], d.b[1] - d.a[1]);
       if (L < 0.3 / MODEL_SCALE) { app.ui.toast('Стена короче 30 см — проведите длиннее'); return; }
-      const rec = { type: 'wall', a: d.a.map((x) => +x.toFixed(5)), b: d.b.map((x) => +x.toFixed(5)), kind: this.kind, height: app.settings.wallHeight || 1500 };
+      const rec = { type: 'wall', a: d.a.map((x) => +x.toFixed(5)), b: d.b.map((x) => +x.toFixed(5)), kind: this.kind, height: app.settings.wallHeight || 1500, v: 2 };
       rec.base = +this._baseOf(rec).toFixed(5);
       rec.pallet = this._palletSpot(rec);
       const w = app.journal.act('wall-line', { kind: rec.kind }, app.clock, () => app.objects.add(rec));
@@ -361,7 +361,7 @@ export class WallTool {
       if (!run) return null;
       rec = { a: run.a, b: run.b };
     }
-    rec = { type: 'wall', id: app.objects.nextId, a: rec.a.map((x) => +x.toFixed(5)), b: rec.b.map((x) => +x.toFixed(5)), kind, height: app.settings.wallHeight || 1500, ...(rec.on ? { on: rec.on, base: +rec.base.toFixed(5) } : {}) };
+    rec = { type: 'wall', id: app.objects.nextId, a: rec.a.map((x) => +x.toFixed(5)), b: rec.b.map((x) => +x.toFixed(5)), kind, height: app.settings.wallHeight || 1500, v: 2, ...(rec.on ? { on: rec.on, base: +rec.base.toFixed(5) } : {}) };
     if (!rec.on) rec.base = +this._baseOf(rec).toFixed(5);
     const extra = tier ? [rec, tier] : [rec], st = wallState(rec, app.objects, extra), ax = axis(rec);
     const px = tierP ? tierP[0] : p.x, pz = tierP ? tierP[1] : p.z;
@@ -612,7 +612,11 @@ export class WallTool {
       const above = app.objects.all('unit').some((o) => o.id !== u.id && ((!u.free && ((o.wall === u.wall && !o.free && o.row === u.row + rowsUp) || (tier && o.wall === tier.id && o.row === 0)) && o.s0 < u.s1 && o.s1 > u.s0)
         || (o.p[1] - o.s[1] / 2 > top - 1e-4 && o.p[1] - o.s[1] / 2 - top < 0.003 && Math.hypot(o.p[0] - u.p[0], o.p[2] - u.p[2]) < (u.s[0] + o.s[0]) / 2 - 0.001)));
       if (above) { app.ui.toast('Сверху лежит следующий ряд — сначала снимите его'); return; }
-      app.journal.act('unit-remove', {}, app.clock, () => app.objects.remove(id));
+      // the mortar spread for it goes with it (the bed of a wall course is a record of its own)
+      app.journal.act('unit-remove', {}, app.clock, () => {
+        if (!u.free) for (const b of app.objects.all('bed')) if (b.wall === u.wall && b.row === u.row && b.s0 >= u.s0 - 1 && b.s1 <= u.s1 + 1) app.objects.remove(b.id);
+        app.objects.remove(id);
+      });
       return;
     }
     const n = this.nearest(p);
