@@ -32,7 +32,8 @@ export class WallTool {
     // (the pallet by the wall may be out of the picture)
     this.tray = typeof document !== 'undefined' ? document.getElementById('wall-tray') : null;
     if (this.tray) {
-      const g = (e) => app.gestures.ground(e.clientX, e.clientY) || this._lastP || new THREE.Vector3();
+      // the point under the finger: on the masonry when it is over it (else the ground behind it)
+      const g = (e) => this._pt(app.gestures.ground(e.clientX, e.clientY) || this._lastP || new THREE.Vector3(), e);
       this.tray.addEventListener('pointerdown', (e) => {
         e.preventDefault(); e.stopPropagation();
         if (this.mode !== 'lay' || app.physJob || app.physLoading) return;
@@ -95,8 +96,9 @@ export class WallTool {
     if (!e || e.clientX === undefined || (!e.clientX && !e.clientY)) return p;
     const app = this.app, v = app.wallView;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
-    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames], false)[0];
-    return hit ? hit.point : p;
+    // laid masonry only (not the unit in the hand, not the stacks on the pallets)
+    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames], false).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
+    return hit ? hit.point.clone() : p;
   }
 
   down(p, e) {
@@ -315,7 +317,7 @@ export class WallTool {
         if (d < bd) { bd = d; best = { w, r, sl, st, pose }; }
       }
     }
-    return best || (kind ? this._newWall(p, kind) : null);
+    return best || (kind ? this._newWall(p, kind, e) : null);
   }
 
   // where a new wall would go. On the top of a wall of another material: a tier on it.
@@ -325,20 +327,30 @@ export class WallTool {
   // edges of the surface and the faces of the walls it meets). «Повернуть» turns it.
   // The first place of it nearest the finger. (A virtual wall record: added when the
   // block is let go.)
-  _newWall(p, kind) {
+  _newWall(p, kind, e) {
     const app = this.app, walls = app.objects.all('wall'), k = KINDS[kind];
     const seg = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1e-12, t = Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.z - a[1]) * dz) / l2)); return Math.hypot(a[0] + dx * t - p.x, a[1] + dz * t - p.z); };
     // tiers: on what is laid of a wall of another material (nothing on it yet): the
     // courses not laid yet are dropped from it — the new material goes on from here
-    let tier = null, bd = Infinity;
+    let tier = null, bd = Infinity, tierP = null, tp = null;
     for (const w0 of walls) {
       if (w0.kind === kind || walls.some((o) => o.on === w0.id)) continue;
+      tp = null;
       const k0 = KINDS[w0.kind], laid = app.objects.all('unit').filter((u) => u.wall === w0.id);
       if (!laid.length) continue;
       const nl = Math.max(...laid.map((u) => u.row + (u.lintel ? k0.lintelRows : 1)));
       const cap = { ...w0, height: k0.bed0 + nl * (k0.H + k0.bed) };
-      const d = seg(w0.a, w0.b);
-      if (d < k0.T / 2 * S + 0.01 && p.y > topY(cap) - 0.03 && d < bd) { bd = d; tier = cap; }
+      // near the top of what is laid: on the screen (the finger over its top edge), or in the plot
+      const ty = topY(cap);
+      let d = Infinity;
+      if (e && (e.clientX || e.clientY)) {
+        const A = this._screen(new THREE.Vector3(w0.a[0], ty, w0.a[1])), B = this._screen(new THREE.Vector3(w0.b[0], ty, w0.b[1]));
+        const dx = B.x - A.x, dy = B.y - A.y, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((e.clientX - A.x) * dx + (e.clientY - A.y) * dy) / l2));
+        const ds = Math.hypot(A.x + dx * t - e.clientX, A.y + dy * t - e.clientY);
+        if (A.front && B.front && ds < 45) { d = ds / 1e4; tp = [w0.a[0] + (w0.b[0] - w0.a[0]) * t, w0.a[1] + (w0.b[1] - w0.a[1]) * t]; }
+      }
+      if (d === Infinity) { const dw = seg(w0.a, w0.b); if (dw < k0.T / 2 * S + 0.01 && p.y > ty - 0.03) d = dw; }
+      if (d < bd) { bd = d; tier = cap; tierP = tp; }
     }
     let rec;
     if (tier) rec = { a: tier.a, b: tier.b, on: tier.id, base: topY(tier) };
@@ -350,7 +362,8 @@ export class WallTool {
     rec = { type: 'wall', id: app.objects.nextId, a: rec.a.map((x) => +x.toFixed(5)), b: rec.b.map((x) => +x.toFixed(5)), kind, height: app.settings.wallHeight || 1500, ...(rec.on ? { on: rec.on, base: +rec.base.toFixed(5) } : {}) };
     if (!rec.on) rec.base = +this._baseOf(rec).toFixed(5);
     const extra = tier ? [rec, tier] : [rec], st = wallState(rec, app.objects, extra), ax = axis(rec);
-    const s = ((p.x - rec.a[0]) * ax.ux + (p.z - rec.a[1]) * ax.uz) / S;
+    const px = tierP ? tierP[0] : p.x, pz = tierP ? tierP[1] : p.z;
+    const s = ((px - rec.a[0]) * ax.ux + (pz - rec.a[1]) * ax.uz) / S;
     let pick = null, pd = Infinity;
     for (const { r, sl } of layable(rec, st)) { if (r) continue; const d = Math.abs((sl.s0 + sl.s1) / 2 - s); if (d < pd) { pd = d; pick = sl; } }
     if (!pick) return null;
