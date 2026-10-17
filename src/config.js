@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:10.47 (860 mm = 9 m).
-export const BUILD = 37;
+export const BUILD = 38;
 export const STAGE = 3;
 export const MODEL_SCALE = 9000 / 860;   // 1:10.47 — 860 mm of the model is 9 m
 // how much finer everything is than at the old 1:3.5 (texture sizes of stones, pores …)
@@ -107,7 +107,7 @@ export const DEFAULT_SETTINGS = {
   matMode: 'deliver', // sand / crushed stone: 'deliver' a heap or pour from a 'bucket'
   delivery: 3,       // size of a delivered heap, real m³
   pump: 0.025,       // concrete pump hose, real m³/s
-  wallKind: 'block', // walls: 'block' (aerated concrete) | 'brick' (½ brick) | 'brick2' (1 brick)
+  wallKind: 'block', // walls: 'block' (aerated concrete) | 'brick' … 'brick5' (½ … 2½ bricks)
   wallHeight: 1500,  // planned wall height, real mm
   openKind: 'window', // an opening being marked: 'window' | 'door'
 };

@@ -1,10 +1,15 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, K, KT } from '../config.js';
-import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock } from '../world/walls.js';
+import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 
-// Walls (aerated concrete blocks or bricks), as on site:
-//   line   – drag the axis of a wall over the foundation (ends snap to other walls'
+// Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
+//   lay    – take a block (brick) from the tray or the pallet and carry it: onto a wall
+//            it snaps to the nearest free place that has masonry under it; onto the edge
+//            of the foundation (a slab or a strip) the first block starts a wall along that
+//            edge, from corner to corner; onto the top of a wall of another material it
+//            starts a tier on it (a brick plinth → the blockwork → …)
+//   line   – (optional) drag the axis of a wall over the foundation (ends snap to other walls'
 //            ends → a corner, and to the axes)
 //   opening– drag along a wall: a window / door opening (a lintel goes over it)
 //   lay    – take a block (brick, lintel) from the pallet beside the wall and carry it
@@ -21,7 +26,7 @@ const _ray = new THREE.Raycaster();
 export class WallTool {
   constructor(app) {
     this.app = app;
-    this.mode = 'line';
+    this.mode = 'lay';
     this.drag = null;
     // the tray of blocks in the corner of the screen: drag a block out of it onto a wall
     // (the pallet by the wall may be out of the picture)
@@ -32,9 +37,8 @@ export class WallTool {
         e.preventDefault(); e.stopPropagation();
         if (this.mode !== 'lay' || app.physJob || app.physLoading) return;
         const w = this._trayWall();
-        if (!w) { app.ui.toast(this._noWall()); return; }
         try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ }
-        this.carry = { pallet: w, snap: null, tray: true };
+        this.carry = { kind: this.kind, pallet: w, snap: null, tray: true };
         this.tray.classList.add('active');
         loadPhysics().catch(() => {});
         this._carryMove(g(e), e);
@@ -71,7 +75,7 @@ export class WallTool {
       const s = (dx * ax.ux + dz * ax.uz) / S, d = Math.abs(dx * ax.nx + dz * ax.nz);
       if (s < -200 || s > ax.L + 200) continue;
       // the wall being worked on wins at a corner (the finger is as near to the other one)
-      const dd = w.id === this.lastWall ? d - 0.012 : d;
+      const dd = (w.id === this.lastWall ? d - 0.012 : d) - level(w, this.app.objects.all('wall')) * 0.004;   // the upper tier first
       if (d < reach && (!best || dd < best.dd)) best = { w, s, d, dd };
     }
     return best;
@@ -112,8 +116,8 @@ export class WallTool {
     if (this.mode === 'lay') {
       if (app.physJob || app.physLoading) return true;   // the last one is still being set
       const w = this._palletAt(e, p);
-      if (!w) { app.ui.toast(app.objects.all('wall').length ? 'Тяните блок из лотка справа (или с поддона у стены) на стену' : 'Сначала проведите линию стены'); return true; }
-      this.carry = { pallet: w, p: p.clone(), snap: null };
+      if (!w) { app.ui.toast('Тяните блок из лотка справа (или с поддона у стены) — на край фундамента или на стену'); return true; }
+      this.carry = { kind: w.kind, pallet: w, p: p.clone(), snap: null };
       app.settings.wallKind = w.kind;
       this.lastWall = w.id; this._focus(w);
       loadPhysics().catch(() => {});
@@ -294,7 +298,7 @@ export class WallTool {
   // (any course: a course may run ahead over the part of the one below already laid);
   // only walls of the material carried
   _snapTo(e, p) {
-    const app = this.app, kind = this.carry?.pallet?.kind;
+    const app = this.app, kind = this.carry?.kind;
     let best = null, bd = Infinity;
     for (const w of app.objects.all('wall')) {
       if (kind && w.kind !== kind) continue;
@@ -311,7 +315,54 @@ export class WallTool {
         if (d < bd) { bd = d; best = { w, r, sl, st, pose }; }
       }
     }
-    return best;
+    return best || (kind ? this._newWall(p, kind) : null);
+  }
+
+  // where a new wall would go: along the edge of the foundation under the finger (a pit
+  // slab: its outer face flush with the edge, corner to corner; a strip: on its middle),
+  // or a tier on the top of a wall of another material. The first place of it nearest
+  // the finger. (A virtual wall record: added when the block is let go.)
+  _newWall(p, kind) {
+    const app = this.app, walls = app.objects.all('wall'), k = KINDS[kind], h = k.T / 2 * S;
+    const seg = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1e-12, t = Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.z - a[1]) * dz) / l2)); return Math.hypot(a[0] + dx * t - p.x, a[1] + dz * t - p.z); };
+    const cands = [];
+    for (const o of app.objects.all('outline')) {
+      if (o.kind === 'rect') {
+        const A = [o.x0 + h, o.z0 + h], B = [o.x1 - h, o.z0 + h], C = [o.x1 - h, o.z1 - h], D = [o.x0 + h, o.z1 - h];
+        for (const [a, b] of [[A, B], [B, C], [C, D], [D, A]]) cands.push({ a, b, reach: 0.05 });
+      } else for (let i = 0; i + 1 < o.pts.length; i++) cands.push({ a: o.pts[i], b: o.pts[i + 1], reach: Math.max(0.04, o.width / 2 + 0.02) });
+    }
+    // a run that already has a wall on the foundation is that wall's
+    const has = (a, b) => {
+      const l = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / l, uz = (b[1] - a[1]) / l;
+      return walls.some((w) => {
+        if (w.on) return false;
+        const ax = axis(w), mx = (w.a[0] + w.b[0]) / 2 - a[0], mz = (w.a[1] + w.b[1]) / 2 - a[1], t = mx * ux + mz * uz;
+        return Math.abs(ax.ux * uz - ax.uz * ux) < 0.1 && Math.abs(mx * uz - mz * ux) < 0.03 && t > -0.05 && t < l + 0.05;
+      });
+    };
+    let best = null, bd = Infinity;
+    for (const c of cands) {
+      if (Math.hypot(c.b[0] - c.a[0], c.b[1] - c.a[1]) < 0.3 / MODEL_SCALE || has(c.a, c.b)) continue;
+      const d = seg(c.a, c.b);
+      if (d < c.reach && d < bd) { bd = d; best = c; }
+    }
+    // tiers: the top of a wall of another material with nothing on it yet
+    for (const w0 of walls) {
+      if (w0.kind === kind || walls.some((o) => o.on === w0.id)) continue;
+      const d = seg(w0.a, w0.b) - 0.01;
+      if (d < KINDS[w0.kind].T / 2 * S + 0.02 && p.y > topY(w0) - 0.03 && d < bd) { bd = d; best = { a: w0.a, b: w0.b, on: w0.id }; }
+    }
+    if (!best) return null;
+    const rec = { type: 'wall', id: app.objects.nextId, a: best.a.map((x) => +x.toFixed(5)), b: best.b.map((x) => +x.toFixed(5)), kind, height: app.settings.wallHeight || 1500 };
+    if (best.on) { rec.on = best.on; rec.base = +topY(walls.find((w) => w.id === best.on)).toFixed(5); }
+    else rec.base = +this._baseOf(rec).toFixed(5);
+    const st = wallState(rec, app.objects, [rec]), ax = axis(rec);
+    const s = ((p.x - rec.a[0]) * ax.ux + (p.z - rec.a[1]) * ax.uz) / S;
+    let pick = null, pd = Infinity;
+    for (const { r, sl } of layable(rec, st)) { if (r) continue; const d = Math.abs((sl.s0 + sl.s1) / 2 - s); if (d < pd) { pd = d; pick = sl; } }
+    if (!pick) return null;
+    return { w: rec, r: 0, sl: pick, st, pose: slotPose(rec, 0, pick), create: true };
   }
 
   _unitFor(w, r, sl, pose) {
@@ -337,10 +388,9 @@ export class WallTool {
       if (was !== `${w.id}:${sl.s0}`) { this.lastWall = w.id; this._focus(w); }
     } else {
       // in the hand: under the finger, above the ground
-      const pw = c.pallet, k = KINDS[pw.kind], ax = axis(pw);
-      const s = new THREE.Vector3(k.L * S, k.H * S, k.T * S);
-      if (pw.kind === 'brick2') s.z = k.W * S;
-      v.live = { type: 'unit', kind: pw.kind, row: 0, i: 0, s: s.toArray(), p: [p.x, p.y + MM(350), p.z], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-ax.uz, ax.ux)).toArray() };
+      const k = KINDS[c.kind], yaw = c.pallet ? (() => { const ax = axis(c.pallet); return Math.atan2(-ax.uz, ax.ux); })() : app.rig?.yaw || 0;
+      const s = new THREE.Vector3(k.L * S, k.H * S, (k.nb ? k.W : k.T) * S);
+      v.live = { type: 'unit', kind: c.kind, row: 0, i: 0, s: s.toArray(), p: [p.x, p.y + MM(350), p.z], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).toArray() };
       v.liveBed = null;
     }
     v.dirty = true;
@@ -370,7 +420,7 @@ export class WallTool {
   // the tray: shown while laying, labelled with the material
   syncTray() {
     if (!this.tray) return;
-    const on = this.app.tool === 'wall' && this.mode === 'lay' && this.app.objects.all('wall').length > 0;
+    const on = this.app.tool === 'wall' && this.mode === 'lay';
     this.tray.hidden = !on;
     if (!on) return;
     const kind = this.kind;
@@ -390,12 +440,16 @@ export class WallTool {
   _carryDrop() {
     const app = this.app, snap = this.carry.snap;
     this._carryCancel();
-    if (!snap) { app.ui.toast('Блок вернули на поддон — поднесите его к ряду на стене'); return; }
+    if (!snap) { app.ui.toast('Блок вернули на поддон — поднесите его к ряду на стене, к краю фундамента или на верх стены из другого материала'); return; }
     const { w, r, sl, st, pose } = snap, u = this._unitFor(w, r, sl, pose);
+    if (snap.create) {
+      w.pallet = this._palletSpot(w);
+      app.ui.toast(`${KINDS[w.kind].name}: новая ${w.on ? 'стена на ' + KINDS[app.objects.get(w.on).kind].name.toLowerCase() : 'стена по краю фундамента'} — ${(axis(w).L / 1000).toFixed(2).replace('.', ',')} м, ${rows(w)} рядов`);
+    }
     if (sl.cut) app.ui.toast(cutName(w, sl));
     if (sl.lintel) app.ui.toast(`Перемычка ${Math.round(sl.s1 - sl.s0)} мм — по 250 мм опоры с каждой стороны`);
     const beds = this._bedFor(w, r, sl);
-    const go = () => { app.physLoading = false; app.physJob = new LayJob(app, w, u, pose, st, beds); };
+    const go = () => { app.physLoading = false; app.physJob = new LayJob(app, w, u, pose, st, beds, snap.create ? w : null); this.lastWall = w.id; };
     if (physicsReady()) go();
     else { app.physLoading = true; loadPhysics().then(go, () => { app.physLoading = false; app.ui.toast('Физика не загрузилась'); }); }
   }
@@ -406,12 +460,18 @@ export class WallTool {
     if (!walls.length) return '';
     const c = this.carry;
     if (c?.snap) {
+      if (c.snap.create) {
+        const w = c.snap.w;
+        return `Новая стена «${KINDS[w.kind].name}» ${w.on ? 'на стене ' + (walls.findIndex((x) => x.id === w.on) + 1) : 'по краю фундамента'}: ${(axis(w).L / 1000).toFixed(2).replace('.', ',')} м, ${rows(w)} рядов. Отпустите — первый ${w.kind === 'block' ? 'блок' : 'кирпич'}`;
+      }
       const { w, r, sl, st } = c.snap, cs = course(w, r, st.walls, st.opens);
       const what = sl.lintel ? 'перемычка' : sl.cut ? `добор ${Math.round(sl.s1 - sl.s0)} мм` : w.kind === 'block' ? 'блок' : 'кирпич';
       return `Стена ${walls.indexOf(w) + 1} · ряд ${r + 1} из ${st.n} · место ${cs.indexOf(cs.find((x) => x.s0 === sl.s0 && x.off === sl.off)) + 1} из ${cs.length} — ${what}. Отпустите`;
     }
-    if (c) return 'Несите к стене — блок сам встанет в ближайшее место ряда';
-    const w = this._trayWall() || walls.find((x) => x.id === this.lastWall) || walls[0], st = wallState(w, app.objects);
+    if (c) return 'Несите к стене, к краю фундамента или на верх стены из другого материала';
+    const w = this._trayWall();
+    if (!w) return `${KINDS[this.kind].name}: тяните из лотка на край фундамента — начнётся стена вдоль него (или на верх стены из другого материала — ярус)`;
+    const st = wallState(w, app.objects);
     if (st.cur >= st.n) return `Стена ${walls.indexOf(w) + 1} выложена до верха`;
     const cs = course(w, st.cur, st.walls, st.opens), left = cs.filter((sl) => !taken(st.units, st.cur, sl)).length, ps = palletStock(w, st);
     return `Стена ${walls.indexOf(w) + 1} · ряд ${st.cur + 1} из ${st.n}: осталось ${left} из ${cs.length} · на поддоне ${ps.on} из ${ps.cap}${ps.pallets > 1 ? ` (ещё поддонов: ${ps.pallets - 1})` : ''}. Тяните блок из лотка на стену`;
@@ -430,12 +490,14 @@ export class WallTool {
     if (id) {
       const u = app.objects.get(id);
       const rowsUp = u.lintel ? KINDS[u.kind].lintelRows : 1;
-      const above = app.objects.all('unit').some((o) => o.wall === u.wall && o.row === u.row + rowsUp && o.s0 < u.s1 && o.s1 > u.s0);
+      const w = app.objects.get(u.wall), tier = w && u.row + rowsUp >= rows(w) ? app.objects.all('wall').find((o) => o.on === w.id) : null;
+      const above = app.objects.all('unit').some((o) => ((o.wall === u.wall && o.row === u.row + rowsUp) || (tier && o.wall === tier.id && o.row === 0)) && o.s0 < u.s1 && o.s1 > u.s0);
       if (above) { app.ui.toast('Сверху лежит следующий ряд — сначала снимите его'); return; }
       app.journal.act('unit-remove', {}, app.clock, () => app.objects.remove(id));
       return;
     }
     const n = this.nearest(p);
+    if (n && app.objects.all('wall').some((o) => o.on === n.w.id)) { app.ui.toast('На этой стене стоит следующий ярус — сначала уберите его'); return; }
     if (n && !app.objects.all('unit').some((u) => u.wall === n.w.id)) {
       app.journal.act('wall-remove', {}, app.clock, () => { for (const b of [...app.objects.all('bed'), ...app.objects.all('opening')].filter((b) => b.wall === n.w.id)) app.objects.remove(b.id); app.objects.remove(n.w.id); });
       app.ui.toast('Линия стены убрана');
@@ -447,11 +509,12 @@ export class WallTool {
 // units around, the bed, the foundation), then three taps of the rubber mallet bring it
 // to the cord and the level. One journal entry.
 class LayJob {
-  constructor(app, w, unit, target, st, beds = []) {
+  constructor(app, w, unit, target, st, beds = [], newWall = null) {
     this.app = app;
     this.unit = unit;
     this.target = target;
     this.pending = app.journal.begin('lay', { wall: w.id, row: unit.row, i: unit.i }, app.clock);
+    if (newWall) app.objects.add(newWall);   // the first block starts the wall (same journal entry)
     // the mortar is spread first (same journal entry)
     for (const [a, b] of beds) app.objects.add({ type: 'bed', wall: w.id, row: unit.row, s0: +a.toFixed(1), s1: +b.toFixed(1) });
     const p = target.p, s = target.s, pad = 0.12;

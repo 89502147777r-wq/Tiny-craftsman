@@ -241,6 +241,30 @@ console.log('—', sec());
       const err = u ? tgt.p.distanceTo(new V().fromArray(u.p)) * SC * 1000 : 99;
       tc.undo(); const back = !tc.objects.all('unit').length; tc.redo();
       out.walls = { rows: W.rows(w), refused, laid: !!u, bed: tc.objects.all('bed').length > 0, errMm: +err.toFixed(2), back };
+      // no line: a brick (2 bricks thick) let go on the edge of the slab starts a plinth along
+      // it; its top course laid, a block on it starts a tier of blockwork; undo
+      {
+        const o = tc.objects.all('outline').find((x) => x.kind === 'rect'), settle = async () => { for (let i = 0; i < 400 && (tc.physJob || tc.physLoading); i++) { if (tc.physLoading) await new Promise((r) => setTimeout(r, 50)); else tc.simulate(1 / 30); } };
+        const carry = async (kind, p) => { tc.settings.wallKind = kind; wt.carry = { kind, pallet: null, snap: null }; wt._carryMove(p, e); wt._carryDrop(); await settle(); };
+        const n0 = tc.objects.all('wall').length;
+        tc.settings.wallHeight = 500;
+        await carry('brick4', new V((o.x0 + o.x1) / 2, 0.1, o.z0 + 0.01));
+        const pl = tc.objects.all('wall').at(-1), plinth = tc.objects.all('wall').length === n0 + 1 && pl.kind === 'brick4' && tc.objects.all('unit').some((x) => x.wall === pl.id);
+        tc.journal.act('test-fill', {}, tc.clock, () => {
+          const st = W.wallState(pl, tc.objects);
+          for (let r = 0; r < st.n; r++) for (const sl of W.course(pl, r, st.walls, st.opens)) {
+            if (W.taken(tc.objects.all('unit').filter((x) => x.wall === pl.id), r, sl)) continue;
+            const ps = W.slotPose(pl, r, sl);
+            tc.objects.add({ type: 'unit', wall: pl.id, row: r, i: sl.i, s0: sl.s0, s1: sl.s1, off: sl.off, kind: pl.kind, s: ps.s.toArray(), p: ps.p.toArray(), q: ps.q.toArray() });
+          }
+        });
+        tc.settings.wallHeight = 2700;
+        await carry('block', new V((pl.a[0] + pl.b[0]) / 2, W.topY(pl) + 0.001, (pl.a[1] + pl.b[1]) / 2));
+        const tw = tc.objects.all('wall').find((x) => x.on === pl.id), onTop = !!tw && Math.abs(tw.base - W.topY(pl)) < 1e-5 && tc.objects.all('unit').some((x) => x.wall === tw.id);
+        tc.undo(); const gone = !tc.objects.all('wall').some((x) => x.on === pl.id); tc.redo();
+        out.tiers = { plinth, leaves: [0, 1].map((r) => W.brickLeaves(4, r).join('')).join('/'), T: W.KINDS.brick4.T, onTop, gone };
+        tc.settings.wallHeight = 1000; tc.settings.wallKind = 'block';
+      }
       tc.setTool('camera');
     }
     // spilled concrete outside: the shovel takes it (only it, not the soil) and tips it into the form
@@ -296,6 +320,7 @@ console.log('—', sec());
   check('concrete: pumped volume exact, held by the formwork, undo exact', Math.abs(play.conc.vol - 1) < 1e-4 && play.conc.leak < 0.001 && play.conc.undo, JSON.stringify(play.conc));
   check('sand on concrete lies on top (concrete unchanged), volume exact, undo', play.sandOnConc.onTop && play.sandOnConc.concMoved === 0 && play.sandOnConc.vol < 1e-4 && play.sandOnConc.back, JSON.stringify(play.sandOnConc));
   check('plate compactor: loose soil settles and gets compacted, native ground kept, undo exact', play.plate.settledMm > 0.1 && play.plate.comp > 0.1 && play.plate.nativeKept && play.plate.back, JSON.stringify(play.plate));
+  check('walls without a line: a 2-brick plinth along the slab edge (chain bond), blockwork tier on it, undo', play.tiers?.plinth && play.tiers.leaves === 'SHS/HH' && play.tiers.T === 510 && play.tiers.onTop && play.tiers.gone, JSON.stringify(play.tiers));
   check('walls: a block carried from the pallet (let go in the open → back), laid at its place with mortar, undo', play.walls.refused && play.walls.laid && play.walls.bed && play.walls.errMm < 2 && play.walls.back && play.walls.rows === 3, JSON.stringify(play.walls));
   check('shovel takes spilled fresh concrete and tips it into the form, volume exact, undo', play.shovelConc.loaded && play.shovelConc.took && play.shovelConc.vol < 1e-6 && play.shovelConc.undo, JSON.stringify(play.shovelConc));
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 8 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));

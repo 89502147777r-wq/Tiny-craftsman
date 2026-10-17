@@ -3,17 +3,43 @@ import { MODEL_SCALE } from '../config.js';
 
 // Masonry walls, laid the way they are on site.
 // Records (objects store):
-//   wall { a:[x,z], b:[x,z], kind, base, height }   – the axis of a wall (model units),
-//          base = the top of the foundation it stands on, height = planned (real mm)
+//   wall { a:[x,z], b:[x,z], kind, base, height, on } – the axis of a wall (model units),
+//          base = the top of what it stands on, height = planned (real mm); on = the
+//          wall it stands on (a tier: a brick plinth, the blockwork on it, …), same axis
 //   bed  { wall, row, s0, s1 }                       – a strip of mortar / glue spread on
 //          a course, s along the axis from a (real mm)
 //   unit { wall, row, i, s0, s1, off, p, q, s, kind } – a block / brick as it was laid
 // Sizes in real millimetres, converted with MODEL_SCALE.
 export const KINDS = {
   block: { name: 'Газоблок', L: 600, H: 250, T: 300, bed0: 20, bed: 3, head: 3, min: 100, lintelRows: 1 },     // aerated concrete on glue (first course on mortar)
-  brick: { name: 'Кирпич ½', L: 250, H: 65, T: 120, bed0: 12, bed: 12, head: 10, min: 55, lintelRows: 2 },    // half-brick wall, stretcher bond
-  brick2: { name: 'Кирпич 1', L: 250, H: 65, T: 250, W: 120, bed0: 12, bed: 12, head: 10, min: 55, lintelRows: 2 },  // one-brick wall: stretcher and header courses
+  // brick walls by thickness in half-bricks (nb): ½ = 120, 1 = 250, 1½ = 380, 2 = 510, 2½ = 640 mm,
+  // chain bond (stretcher and header courses alternate)
+  brick: brickKind('Кирпич ½', 1),
+  brick2: brickKind('Кирпич 1', 2),
+  brick3: brickKind('Кирпич 1½', 3),
+  brick4: brickKind('Кирпич 2', 4),
+  brick5: brickKind('Кирпич 2½', 5),
 };
+function brickKind(name, nb) { return { name, nb, L: 250, H: 65, T: nb * 120 + (nb - 1) * 10, W: 120, bed0: 12, bed: 12, head: 10, min: 55, lintelRows: 2 }; }
+// what a course of a brick wall is made of, from one face to the other: S – a stretcher
+// leaf (120 across), H – a header leaf (250 across). Stretcher courses start with a
+// stretcher face, header courses with headers: the leaves overlap the joints below.
+export function brickLeaves(nb, r) {
+  const seq = [];
+  let rem = nb;
+  if (nb === 1 || r % 2 === 0) { seq.push('S'); rem--; }
+  while (rem >= 2) { seq.push('H'); rem -= 2; }
+  if (rem) seq.push('S');
+  return seq;
+}
+// the level of a tier (0 = on the foundation)
+export function level(w, walls) {
+  let n = 0, c = w;
+  while (c?.on && n < 8) { c = walls.find((o) => o.id === c.on); n++; }
+  return n;
+}
+// the top of a wall (model y): what the next tier stands on
+export function topY(w) { const k = KINDS[w.kind]; return rowY(w, rows(w) - 1) + k.H * S; }
 // openings (real mm above the bottom of the wall) and the lintel over them
 export const OPENINGS = {
   window: { name: 'Окно', y0: 900, y1: 2100, minW: 500 },
@@ -35,9 +61,9 @@ export function rowY(w, r) { const k = KINDS[w.kind]; return w.base + (k.bed0 + 
 
 // the other wall meeting this one at end e (0 = a, 1 = b): a corner
 function cornerAt(w, e, walls) {
-  const p = e ? w.b : w.a, tol = 0.012;
+  const p = e ? w.b : w.a, tol = 0.012, lv = level(w, walls);
   for (const o of walls) {
-    if (o.id === w.id) continue;
+    if (o.id === w.id || level(o, walls) !== lv) continue;
     for (const q of [o.a, o.b]) if (Math.hypot(p[0] - q[0], p[1] - q[1]) < tol) return o;
   }
   return null;
@@ -97,9 +123,17 @@ export function course(w, r, walls, opens = []) {
       for (const [c0, c1] of ps) if (c1 - c0 >= Math.min(k.min, 30)) out.push({ s0: c0, s1: c1, off, w: wAcross, rot, cut: c1 - c0 < U - 1 });
     }
   };
-  if (w.kind === 'brick2') {
-    if (r % 2 === 0) { for (const sg of [-1, 1]) lay(r % 4 === 0 ? k.L : k.L * 0.75, k.L, sg * (k.T - k.W) / 2, k.W, 0); }   // two leaves of stretchers
-    else lay(k.W / 2, k.W, 0, k.T, 1);                                                                                   // headers across
+  if (k.nb === 1) lay(r % 2 ? k.L / 2 : k.L, k.L, 0, k.T, 0);   // half-brick: stretcher bond
+  else if (k.nb) {
+    // leaves across the wall from one face: stretchers (¾ start every other stretcher
+    // course: the joints step a quarter brick) and headers (a closer first)
+    let x = -k.T / 2;
+    for (const leaf of brickLeaves(k.nb, r)) {
+      const wd = leaf === 'S' ? k.W : k.L, off = x + wd / 2;
+      if (leaf === 'S') lay(r % 4 === 0 ? k.L : k.L * 0.75, k.L, off, k.W, 0);
+      else lay(k.W / 2, k.W, off, k.L, 1);
+      x += wd + k.head;
+    }
   } else lay(r % 2 ? k.L / 2 : k.L, k.L, 0, k.T, 0);
   for (const [g0, g1] of lintels) out.push({ s0: g0, s1: g1, off: 0, w: k.T, rot: 0, lintel: true });
   out.sort((x, y) => x.s0 - y.s0 || x.off - y.off);
@@ -137,14 +171,21 @@ export function taken(units, r, sl) {
 // is raised in steps — a course may run ahead over the part already laid below it).
 // Over an opening nothing is needed (a lintel rests on its two bearings); beyond the
 // ends of the course below (a corner: the other wall's course) it is not checked.
-export function supported(w, r, sl, units, walls, opens) { return support(w, r, units, walls, opens)(sl); }
-function support(w, r, units, walls, opens) {
-  if (r === 0) return () => true;
-  const k = KINDS[w.kind], below = course(w, r - 1, walls, opens);
+function support(w, r, st) {
+  const k = KINDS[w.kind];
+  let units = st.units, lw = w, lr = r - 1;
+  if (r === 0) {
+    // a tier: on the top course of the wall below
+    const low = w.on && st.walls.find((o) => o.id === w.on);
+    if (!low) return () => true;
+    units = st.lowUnits || []; lw = low; lr = rows(low) - 1;
+  }
+  const lk = KINDS[lw.kind], lopen = lw === w ? st.opens : (st.lowOpens || []);
+  const below = course(lw, lr, st.walls, lopen);
   if (!below.length) return () => false;
   const lo = Math.min(...below.map((x) => x.s0)), hi = Math.max(...below.map((x) => x.s1));
-  const laid = units.filter((u) => u.row === r - 1 || (u.lintel && u.row < r && u.row + k.lintelRows >= r)).map((u) => [u.s0 - k.head - 1, u.s1 + k.head + 1]);
-  const beds = beddable(w, r, walls, opens);
+  const laid = units.filter((u) => u.row === lr || (u.lintel && u.row <= lr && u.row + lk.lintelRows > lr)).map((u) => [u.s0 - lk.head - 1, u.s1 + lk.head + 1]);
+  const beds = beddable(w, r, st.walls, st.opens);
   return (sl) => {
     for (const [a, b] of beds) {
       const c0 = Math.max(a, sl.s0, lo), c1 = Math.min(b, sl.s1, hi);
@@ -158,7 +199,7 @@ function support(w, r, units, walls, opens) {
 export function layable(w, st) {
   const out = [];
   for (let r = st.cur; r < st.n; r++) {
-    const ok = support(w, r, st.units, st.walls, st.opens);
+    const ok = support(w, r, st);
     for (const sl of course(w, r, st.walls, st.opens)) if (!taken(st.units, r, sl) && ok(sl)) out.push({ r, sl });
   }
   return out;
@@ -206,17 +247,19 @@ export function covered(list, s0, s1) {
 }
 
 // the state of a wall: units by row, beds by row, the lowest course not finished
-export function wallState(w, objects) {
+export function wallState(w, objects, extra = []) {
   const units = objects.all('unit').filter((u) => u.wall === w.id);
   const beds = objects.all('bed').filter((b) => b.wall === w.id);
-  const walls = objects.all('wall'), opens = objects.all('opening').filter((o) => o.wall === w.id);
+  const walls = [...objects.all('wall'), ...extra], opens = objects.all('opening').filter((o) => o.wall === w.id);
   const n = rows(w);
   let cur = n;
   for (let r = 0; r < n; r++) {
     const c = course(w, r, walls, opens);
     if (c.some((sl) => !taken(units, r, sl))) { cur = r; break; }
   }
-  return { units, beds, walls, opens, cur, n };
+  const lowUnits = w.on ? objects.all('unit').filter((u) => u.wall === w.on) : null;
+  const lowOpens = w.on ? objects.all('opening').filter((o) => o.wall === w.on) : null;
+  return { units, beds, walls, opens, cur, n, lowUnits, lowOpens };
 }
 
 // ---- view ------------------------------------------------------------------------------
@@ -299,7 +342,7 @@ export class WallView {
           if (B.s0 - A.s1 > k.head * 1.5 || B.s0 < A.s1) continue;
           const sc = (A.s1 + B.s0) / 2 * S, y = rowY(w, A.row) + k.H * S / 2;
           P.set(w.a[0] + ux * sc + nx * (A.off || 0) * S, y, w.a[1] + uz * sc + nz * (A.off || 0) * S);
-          Sv.set((B.s0 - A.s1) * S, k.H * S * 0.96, (A.rot ? k.T : (k.W || k.T)) * S * 0.92);
+          Sv.set((B.s0 - A.s1) * S, k.H * S * 0.96, A.s[2] * 0.92);
           this.mortar.setMatrixAt(nm++, m.compose(P, q, Sv));
         }
       }
