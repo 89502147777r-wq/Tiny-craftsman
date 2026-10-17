@@ -250,7 +250,7 @@ export function covered(list, s0, s1) {
 export function wallState(w, objects, extra = []) {
   const units = objects.all('unit').filter((u) => u.wall === w.id);
   const beds = objects.all('bed').filter((b) => b.wall === w.id);
-  const walls = [...objects.all('wall'), ...extra], opens = objects.all('opening').filter((o) => o.wall === w.id);
+  const walls = [...objects.all('wall').filter((o) => !extra.some((e) => e.id === o.id)), ...extra], opens = objects.all('opening').filter((o) => o.wall === w.id);
   const n = rows(w);
   let cur = n;
   for (let r = 0; r < n; r++) {
