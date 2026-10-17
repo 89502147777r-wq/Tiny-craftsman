@@ -142,3 +142,13 @@ function edgeNear(t, p) {
   }
   return best;
 }
+
+// the tops of the free brickwork, for laying blocks on it: the highest top over (x, z)
+// (the joints bridged), or -Infinity
+export function freeTops(app) { return app.objects.all('unit').filter((u) => u.free && u.p && u.s && u.q).map(boxOf); }
+export function topAt(boxes, x, z) {
+  let h = -Infinity;
+  for (const b of boxes) if (b.top > h && inside(b, x, z, J * 0.75)) h = b.top;
+  return h;
+}
+
