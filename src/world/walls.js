@@ -398,6 +398,19 @@ export class WallView {
         this.cord.scale.set(0.0012 / MODEL_SCALE, A.distanceTo(B), 0.0012 / MODEL_SCALE);
       }
     }
+    // free brickwork: each brick in its mortar (a box a little inside its faces, half a
+    // joint longer at each end and a bed under it: the joints show between the bricks)
+    {
+      const K = KINDS.brick, j = K.head * S, b = K.bed * S, inset = 8 * S;
+      for (const u of O.all('unit')) {
+        if (!u.free) continue;
+        put(u, u.id);
+        if (nm >= this.max.mortar) continue;
+        Q.fromArray(u.q); P.fromArray(u.p); P.y -= b / 2 + 1.5 * S;   // its top a little under the brick's (no flicker)
+        Sv.set(u.s[0] + j, u.s[1] + b - 3 * S, Math.max(0.0001, u.s[2] - 2 * inset));
+        this.mortar.setMatrixAt(nm++, m.compose(P, Q, Sv));
+      }
+    }
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
     if (this.live) put(this.live, null);
     this.hlMesh.visible = !!this.hl;
