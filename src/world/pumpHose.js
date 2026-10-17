@@ -1,15 +1,18 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 
+// drawn 2.5 × larger than true scale, so it reads on the screen beside the house
+const G = 2.5 / MODEL_SCALE;
+
 // The end hose of a boom concrete pump: a heavy rubber hose (DN125, ~140 mm outside,
-// MODEL_SCALE m long real) hanging from the boom tip. Simulated as a rope
+// 3.5 m long real) hanging from the boom tip. Simulated as a rope
 // (Verlet points with length constraints and gravity): the end is pulled towards
 // the finger, so the hose swings and lags when it is moved; the boom tip follows
 // slowly. Ribbed rubber, dirty with concrete towards the end; a steel end coupling
 // with a handle bar to hold it by.
 const N = 26;                 // rope points
-const LEN = 3.5 / MODEL_SCALE;        // hose length (model m)
-const R = 0.07 / MODEL_SCALE;         // outer radius
+const LEN = 3.5 * G;        // hose length (model m)
+const R = 0.07 * G;         // outer radius
 const SEG = LEN / (N - 1);
 
 export class PumpHose {
@@ -27,16 +30,16 @@ export class PumpHose {
     const grip = new THREE.MeshStandardMaterial({ color: 0xd8641e, roughness: 0.65 });
     // end: coupling ring + short steel spout, and a bent handle bar on one side
     this.end = new THREE.Group();
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.12, R * 1.12, 0.06 / MODEL_SCALE, 24), steel);
-    ring.position.y = -0.03 / MODEL_SCALE;
-    const spout = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.9, R * 0.95, 0.1 / MODEL_SCALE, 24, 1, true), steel);
-    spout.position.y = -0.1 / MODEL_SCALE;
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.12, R * 1.12, 0.06 * G, 24), steel);
+    ring.position.y = -0.03 * G;
+    const spout = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.9, R * 0.95, 0.1 * G, 24, 1, true), steel);
+    spout.position.y = -0.1 * G;
     const bar = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
-      new THREE.Vector3(R * 1.1, -0.01 / MODEL_SCALE, 0), new THREE.Vector3(R * 1.1 + 0.12 / MODEL_SCALE, 0.02 / MODEL_SCALE, 0),
-      new THREE.Vector3(R * 1.1 + 0.14 / MODEL_SCALE, 0.18 / MODEL_SCALE, 0), new THREE.Vector3(R * 1.05, 0.22 / MODEL_SCALE, 0),
-    ]), 20, 0.012 / MODEL_SCALE, 10, false), steel);
-    const gripM = new THREE.Mesh(new THREE.CylinderGeometry(0.017 / MODEL_SCALE, 0.017 / MODEL_SCALE, 0.11 / MODEL_SCALE, 12), grip);
-    gripM.position.set(R * 1.1 + 0.14 / MODEL_SCALE, 0.1 / MODEL_SCALE, 0);
+      new THREE.Vector3(R * 1.1, -0.01 * G, 0), new THREE.Vector3(R * 1.1 + 0.12 * G, 0.02 * G, 0),
+      new THREE.Vector3(R * 1.1 + 0.14 * G, 0.18 * G, 0), new THREE.Vector3(R * 1.05, 0.22 * G, 0),
+    ]), 20, 0.012 * G, 10, false), steel);
+    const gripM = new THREE.Mesh(new THREE.CylinderGeometry(0.017 * G, 0.017 * G, 0.11 * G, 12), grip);
+    gripM.position.set(R * 1.1 + 0.14 * G, 0.1 * G, 0);
     this.end.add(ring, spout, bar, gripM);
     // the concrete coming out: a heavy, slightly wobbling stream down to the surface
     const wet = new THREE.MeshStandardMaterial({ color: 0x65635e, roughness: 0.22, metalness: 0 });   // wet cement paste
@@ -121,7 +124,7 @@ export class PumpHose {
     const col = new Float32Array(pos.count * 3);
     const rings = 61, radial = 13;
     for (let j = 0; j < rings; j++) {
-      const u = j / (rings - 1), along = u * LEN * MODEL_SCALE;   // real metres from the boom
+      const u = j / (rings - 1), along = u * LEN / G;   // real metres from the boom
       const rib = 1 + 0.035 * Math.pow(Math.max(0, Math.cos(along / 0.05 * Math.PI * 2)), 6);
       const dirt = Math.max(0, (along - 2.4) / 1.1);
       for (let k = 0; k < radial; k++) {
@@ -164,7 +167,7 @@ export class PumpHose {
   }
 
   // where the concrete comes out, and in which direction
-  spout(out = new THREE.Vector3()) { return out.set(0, -0.15 / MODEL_SCALE, 0).applyQuaternion(this.end.quaternion).add(this.end.position); }
+  spout(out = new THREE.Vector3()) { return out.set(0, -0.15 * G, 0).applyQuaternion(this.end.quaternion).add(this.end.position); }
   flow(out = new THREE.Vector3()) { return out.set(0, -1, 0).applyQuaternion(this.end.quaternion); }
 }
 
