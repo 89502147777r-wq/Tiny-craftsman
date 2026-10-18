@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PumpHose } from './pumpHose.js';
 import { makePlateCompactor, shakePlateCompactor } from './plateCompactor.js';
 import { MODEL_SCALE } from '../config.js';
+import { loadModel } from './machines/models.js';
 
 // Models of the concrete tools (sizes of the model, real sizes in comments):
 //   hose     – the end hose of a boom pump: a swinging rope simulation (pumpHose.js, 2.5 ×)
@@ -125,6 +126,18 @@ export class ConcreteGear {
       this.pailConc = new THREE.Mesh(new THREE.CircleGeometry(rt * 0.97, 24), wet);
       this.pailConc.rotation.x = -Math.PI / 2;
       this.pailBody.add(shell, bottom, rim, handle, this.pailConc);
+      // the real bucket (a CC BY model, CREDITS.md) replaces the drawn one once loaded: its
+      // rim Ø 300 mm, standing on its bottom, the rim at the group's y = 0
+      loadModel('bucket').then(({ scene }) => {
+        const bb = new THREE.Box3().setFromObject(scene), sz = bb.getSize(new THREE.Vector3());
+        const k = 2 * rt / Math.max(sz.x, sz.z) * 1.04;
+        scene.scale.setScalar(k);
+        scene.position.set(-(bb.min.x + bb.max.x) / 2 * k, -sz.y * k, -(bb.min.z + bb.max.z) / 2 * k);
+        scene.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+        for (const o of [shell, bottom, rim, handle]) o.visible = false;
+        this.pailBody.add(scene);
+        this.pailH = sz.y * k;
+      }).catch(() => {});
       // the body sits beside the lip point: the lip is its rim towards the wall
       this.pailBody.position.x = rt;
       this.pail.add(this.pailBody);

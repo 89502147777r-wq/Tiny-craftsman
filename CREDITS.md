@@ -27,7 +27,7 @@
 Модели взяты из открытого набора Objaverse (только файлы с лицензией CC BY 4.0) и **изменены**: оптимизированы
 glTF-Transform (текстуры WebP ≤ 512 px, геометрия meshopt), приведены к масштабу 1:12; у КАМАЗа скрыт кузов-тент,
 вместо него кодом добавлены барабан миксера, лоток, бак, лестница и рама; к трактору кодом добавлен фронтальный погрузчик;
-у экскаватора детали стрелы, рукояти и ковша управляются кинематикой игры.
+у экскаватора детали стрелы, рукояти и ковша управляются кинематикой игры; ведро масштабировано до Ø 300 мм.
 
 | Файл | Модель | Автор | Лицензия | Источник |
 |---|---|---|---|---|
@@ -36,6 +36,7 @@ glTF-Transform (текстуры WebP ≤ 512 px, геометрия meshopt), �
 | `assets/models/tractor.glb` | Tractor | le0tard | CC BY 4.0 | https://sketchfab.com/3d-models/278fc1e0516c401eba358d3aa2e55635 |
 | `assets/models/concrete-pump.glb` | Concrete pump | rhymone | CC BY 4.0 | https://sketchfab.com/3d-models/8e883fffc1b14e089304c41c5d9b484a |
 | `assets/models/site-mixer.glb` | Hormigonera | rafarelo | CC BY 4.0 | https://sketchfab.com/3d-models/7eb177b8abec4735b6644d74bb10ba82 |
+| `assets/models/bucket.glb` — ведро для бетона | Plasticbucket | Alexander.Treiner | CC BY 4.0 | https://sketchfab.com/3d-models/10d60b25c7ac4c0c9de056686ed01002 |
 
 ## Фото-задники
 
