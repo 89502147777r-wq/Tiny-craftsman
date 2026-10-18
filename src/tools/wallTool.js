@@ -4,6 +4,7 @@ import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, 
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt } from './freeBrick.js';
 import { placeLintel, placeProp, uRun, cageRec, uStrength } from './lintels.js';
+import { Squeeze, FAT } from './mortarSqueeze.js';
 
 // Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
 //   lay    – take a block (brick) from the tray or the pallet and carry it: onto a wall
@@ -726,7 +727,13 @@ class LayJob {
       this.ep.staticBox(q, new THREE.Quaternion().fromArray(u.q), u.s[0] / 2 * 0.999, u.s[1] / 2, u.s[2] / 2 * 0.999);
     }
     const k = KINDS[w ? w.kind : unit.kind], bedT = w ? (unit.row === 0 ? k.bed0 : k.bed) * S : target.bedT;
-    this.ep.staticBox(new THREE.Vector3(p.x, w ? rowY(w, unit.row) - bedT / 2 : target.bedY, p.z), target.q, s.x / 2, bedT / 2, s.z / 2);
+    const bedBot = (w ? rowY(w, unit.row) : target.bedY + bedT / 2) - bedT;
+    // a brick goes onto mortar spread thicker than the joint: it is pressed down into it and
+    // squeezes the rest out of the open sides (mortarSqueeze.js), then the trowel cuts it off
+    const brick = !!k?.nb && !unit.lintel && bedT > 0;
+    const bedH = brick ? bedT * FAT : bedT;
+    this.ep.staticBox(new THREE.Vector3(p.x, bedBot + bedH / 2, p.z), target.q, s.x / 2, bedH / 2, s.z / 2);
+    this.sq = brick ? new Squeeze(app, null, target, bedT, bedBot) : null;
     // the hand puts it down a few mm off and slightly askew, 2 cm above
     const j = (m) => (Math.random() - 0.5) * m;
     const q0 = target.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(j(0.03), j(0.05), j(0.03))));
@@ -767,8 +774,36 @@ class LayJob {
         this.app.sfx?.stab?.();
         this.from.lerp(this.target.p, 0.6); this.fromQ.slerp(this.target.q, 0.6);
         ep.moveTo(this.body, this.from, this.fromQ);
-        if (this.taps >= 3) { this._commit(); return; }
+        if (this.taps >= 3) {
+          // a brick: the pressed-out mortar is cut off with the trowel, side by side
+          if (this.sq && this.sq.order.length) { this.phase = 'trim'; this.trimT = 0; this.trimK = 0; g.ktrowelLump = 0; }
+          else { this._commit(); return; }
+        }
       }
+    }
+    if (this.phase === 'trim') {
+      // the trowel: set against the face at the joint, slanted, drawn along it in 0,4 s
+      const sq = this.sq, order = sq.order, g = this.app.concreteGear, T = 0.4, lead = 0.12;
+      this.trimT += dt;
+      const k = order[this.trimK];
+      const t = Math.min(1, Math.max(0, (this.trimT - lead) / T));
+      const at = sq.at(k, Math.max(0.02, t));
+      sq.trim(k, t);
+      g.ktrowelTilt = 1.0;
+      g.ktrowelLump = Math.cbrt(sq.lump * 0.75 / Math.PI) * 1.4;
+      // (its +z out of the face: yaw from the normal)
+      g.set('ktrowel', at.p, Math.atan2(at.n[0], at.n[1]), this.trimT < dt * 1.5);
+      if (this.trimT > lead + T + 0.06) {
+        this.trimK++; this.trimT = 0;
+        if (this.trimK >= order.length) { this._commit(); return; }
+      }
+    }
+    if (this.sq) {
+      // the bed is pressed to where the brick is now
+      const { p } = this._pose();
+      this.sq.press(p.y - this.target.s.y / 2);
+      const v = this.app.wallView;
+      v.squeeze.geometry.dispose(); v.squeeze.geometry = this.sq.geometry(); v.squeeze.visible = true;
     }
     this._show();
   }
@@ -796,6 +831,7 @@ class LayJob {
 
   _dispose() {
     this.done = true;
+    if (this.sq) { const v = this.app.wallView; v.squeeze.visible = false; this.sq = null; }
     this.ep?.dispose(); this.ep = null;
     this.app.wallView.live = null; this.app.wallView.dirty = true;
     if (this.app.physJob === this) this.app.physJob = null;

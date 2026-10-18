@@ -164,10 +164,13 @@ export function cageForRect(o, terrain, st) {
   const d = MM(st.rebarD), step = MM(st.rebarStep), cover = MM(st.cover);
   const x0 = o.x0 + cover, x1 = o.x1 - cover, z0 = o.z0 + cover, z1 = o.z1 - cover;
   const floor = groundMax(terrain, { x0, z0, x1, z1 });
-  const top = gradeY(o) + MM(st.slab);
+  // the slab stands on what is in the pit (the cushion may be above the design level):
+  // its top is a slab's thickness above that, or the design top if higher
+  const top = Math.max(gradeY(o), floor) + MM(st.slab);
   const yb = floor + cover;                 // centre line of the lowest bars
-  const yt = Math.max(yb + 3 * d, top - cover - d);
-  const twoLayers = yt - yb > 3.5 * d;
+  // always two layers (bottom and top mesh), held apart by the frogs
+  const yt = Math.max(yb + 5 * d, top - cover - d);
+  const twoLayers = true;
   const bars = [], chairs = [], frogs = [], ties = [];
   const xs = spread(x0, x1, step), zs = spread(z0, z1, step);
   const layer = (y) => {
@@ -183,7 +186,8 @@ export function cageForRect(o, terrain, st) {
       const g = terrain.inside(x, z) ? terrain.heightAt(x, z) : floor;
       chairs.push([x, g, z, chairH(yb - d / 2 - g)]);
     }
-    if (twoLayers && i % 3 === 1 && j % 3 === 1) frogs.push([x + step * 0.25, yb + d * 1.5, z, (i % 2) * Math.PI / 2, yt - yb - 2 * d]);
+    // frogs («лягушки»), each tied to both layers: every 3rd crossing, chequered (~0,6 m)
+    if (twoLayers && i % 3 === 1 && (j + (Math.floor(i / 3) % 2) * 1) % 3 === 1) frogs.push([x + step * 0.25, yb + d * 1.5, z, (i % 2) * Math.PI / 2, yt - yb - 2 * d]);
   }));
   return { type: 'cage', outlineId: o.id, bars, chairs, frogs, ties, tied: false, d, step };
 }

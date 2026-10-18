@@ -375,6 +375,10 @@ export class WallView {
     this.lintels.castShadow = this.lintels.receiveShadow = true;
     for (const m of [this.lintels, this.frames]) { m.frustumCulled = false; m.count = 0; this.group.add(m); }
     this.cord.visible = false; this.group.add(this.cord);
+    // the mortar under a brick being laid and what is pressed out of it (mortarSqueeze.js)
+    this.squeeze = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x5a564e, roughness: 0.75, side: THREE.DoubleSide }));
+    this.squeeze.castShadow = this.squeeze.receiveShadow = true; this.squeeze.frustumCulled = false; this.squeeze.visible = false;
+    this.group.add(this.squeeze);
     // where the carried unit would go: green — it can, red — it cannot
     this.hlMesh = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x35d06a, transparent: true, opacity: 0.45, depthWrite: false }));
     this.hlMesh.renderOrder = 5; this.hlMesh.visible = false; this.group.add(this.hlMesh);
