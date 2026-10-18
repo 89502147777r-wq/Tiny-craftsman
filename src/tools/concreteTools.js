@@ -68,9 +68,9 @@ class ConcreteTool {
     const u = this._uAt(e);
     if (!u) return false;
     if (!(u.fill > 0.05)) { this.app.ui?.toast(u.type === 'belt' ? 'В опалубке пояса ещё нет бетона — сначала залейте (ведро или шланг)' : 'В лотке U-блоков ещё нет бетона — сначала залейте (Бетон → Ведро)'); return true; }
-    const t0 = u.pourT ?? u.castT;
-    if (u.set || (t0 != null && this.app.clock - t0 > 0.75 * CONCRETE.cure)) { this.app.ui?.toast('Бетон в лотке уже схватился — его не провибрировать и не загладить'); return true; }
-    this.begin(type, { u: u.id }, new THREE.Vector3(u.p[0], u.p[1], u.p[2]));
+    const t0 = u.wetT ?? u.pourT ?? u.castT;   // (from the last fresh concrete)
+    if (u.set || (t0 != null && this.app.clock - t0 > 0.75 * CONCRETE.cure)) { this.app.ui?.toast(u.type === 'belt' ? 'Бетон пояса уже схватился — его не провибрировать и не загладить' : 'Бетон в лотке уже схватился — его не провибрировать и не загладить'); return true; }
+    this.begin(type, { u: u.id }, this._uHit.clone());
     const ch = makeChannel(this.app, u);
     this.uw = { ch, top: topOf(u), i: ch.at(this._uHit.x, this._uHit.z) };
     this.uw.last = this.uw.i;
@@ -171,7 +171,8 @@ export class HoseTool extends ConcreteTool {
     const app = this.app;
     if (!this.ch?.has(this.uT)) { if (this.ch) this.ch.write(app); this.ch = makeChannel(app, this.uT); }
     const ch = this.ch, i = ch.at(this.p.x, this.p.z);
-    if (!ch.full && ch.h[i] < ch.cap - 2) { ch.pour(i, 4 * dt); this.poured += 0.004 * dt / MODEL_SCALE ** 3; }
+    const lps = this.uT.type === 'belt' ? 12 : 4;   // (a ring beam takes the hose at 12 l/s)
+    if (!ch.full && ch.h[i] < ch.cap - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
     else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast('Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
     else if (!this.warned) { this.warned = true; app.ui?.toast('U-блоки залиты доверху — отпустите'); }
     ch.step(dt);

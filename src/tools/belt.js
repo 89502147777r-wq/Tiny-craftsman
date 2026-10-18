@@ -215,7 +215,8 @@ export class BeltChannel {
   topY() { return this.b.top + this.b.H; }
   pour(k, l) {
     const per = 1e-3 / (BELT.cell * BELT.cell * 1e-6) * 1000;   // mm per litre on one cell (400)
-    const ks = [k, ...this.P.nb[k].filter((q) => q >= 0)], w = 1 / ks.length;
+    // (it lands across the whole width of the beam at once: a splat ~350 mm round)
+    const ks = [...this._near(k, 3)], w = 1 / ks.length;
     for (const q of ks) this.h[q] += l * w * per;
   }
   _flow(d, yieldMm, kk, only) {
@@ -227,7 +228,7 @@ export class BeltChannel {
         if (q < 0 || (only && !only.has(q))) continue;
         const dh = h[k] - h[q], e = Math.abs(dh) - yieldMm;
         if (e <= 0) continue;
-        const f = Math.sign(dh) * e * kk * d * 0.25;
+        const f = Math.sign(dh) * e * kk * d * 0.4;
         h[k] -= f; h[q] += f; moved += Math.abs(f);
       }
     }
@@ -295,7 +296,9 @@ export class BeltChannel {
     if (!b) return;
     const lv = this.h.map((v) => Math.round(Math.max(0, Math.min(this.cap, v)) * 2) / 2), sm = this.sm.map((v) => Math.round(v * 100) / 100);
     const fill = +(lv.reduce((a, v) => a + v, 0) / lv.length / this.cap).toFixed(4);
-    app.objects.update(b.id, { lv, sm, fill, ...(b.castT == null && fill > 0 ? { castT: +app.clock.toFixed(2) } : {}), ...(fill >= 0.95 && b.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
+    // wetT: when fresh concrete was last added (it stays workable from then on)
+    const more = fill > (b.fill || 0) + 1e-4;
+    app.objects.update(b.id, { lv, sm, fill, ...(more ? { wetT: +app.clock.toFixed(2) } : {}), ...(b.castT == null && fill > 0 ? { castT: +app.clock.toFixed(2) } : {}), ...(fill >= 0.95 && b.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
     if (app.wallView.beltLive) app.wallView.beltLive.delete(b.id);
   }
 }

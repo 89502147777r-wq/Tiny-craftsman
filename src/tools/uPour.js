@@ -165,7 +165,7 @@ export class Channel {
       const fill = +(lv.reduce((a, v) => a + v, 0) / UN / UDEPTH).toFixed(4);
       const sm = sms.get(id).map((v) => Math.round(v * 100) / 100);
       if (u.lv && u.lv.every((v, k) => v === lv[k]) && Array.isArray(u.sm) && u.sm.every((v, k) => v === sm[k])) continue;
-      app.objects.update(id, { lv, fill, sm, ...(u.castT == null && fill > 0 ? { castT: +app.clock.toFixed(2) } : {}), ...(fill >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
+      app.objects.update(id, { lv, fill, sm, ...(fill > (u.fill || 0) + 1e-4 ? { wetT: +app.clock.toFixed(2) } : {}), ...(u.castT == null && fill > 0 ? { castT: +app.clock.toFixed(2) } : {}), ...(fill >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
     }
   }
 }

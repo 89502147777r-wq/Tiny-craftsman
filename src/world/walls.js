@@ -576,7 +576,7 @@ export class WallView {
       const u = a.u;
       P.fromArray(u.p); Q.fromArray(u.q); Sv.fromArray(u.s); m.compose(P, Q, Sv);
       // (the colour comes from the concrete shader, by the time it was poured; set = long ago)
-      const c = [1, 1, 1], tp = u.set ? -1e6 : u.pourT ?? u.castT ?? 1e9;
+      const c = [1, 1, 1], tp = u.set ? -1e6 : Math.max(u.wetT ?? -1e9, u.pourT ?? -1e9, u.castT ?? -1e9) > -1e9 ? Math.max(u.wetT ?? -1e9, u.pourT ?? -1e9, u.castT ?? -1e9) : 1e9;
       const nL = endOf(a, -1), nR = endOf(a, 1);
       // the stations along: the two ends and the cell centres
       const sm = smOf(u);
@@ -609,7 +609,7 @@ export class WallView {
     for (const b of this.objects.all('belt')) {
       const live = this.beltLive?.get(b.id), lv = live?.lv ?? b.lv, sw = live?.sm ?? b.sm ?? [];
       if (!lv.some((h) => h > 0.3)) continue;
-      const P = plan(b), { ni, nj, c } = b, tp = b.set ? -1e6 : b.pourT ?? b.castT ?? 1e9;
+      const P = plan(b), { ni, nj, c } = b, tw = Math.max(b.wetT ?? -1e9, b.pourT ?? -1e9, b.castT ?? -1e9), tp = b.set ? -1e6 : tw > -1e9 ? tw : 1e9;
       const vh = new Map(), vs = new Map();
       const corner = (i, j) => {
         const key = j * (ni + 1) + i;
