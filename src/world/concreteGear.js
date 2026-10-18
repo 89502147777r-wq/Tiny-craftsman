@@ -103,7 +103,7 @@ export class ConcreteGear {
       this.mallet.add(head2, face, hnd);
       this.malletL = L; this.malletH = hl;
     }
-    // a 12 l builder's bucket (galvanised, Ø 300 / 250 × 290 mm, a wire handle) with
+    // a builder's bucket (galvanised, Ø 300 / 250 × 290 mm, a wire handle; it holds 24 l: the game's own) with
     // concrete: the group's origin is the point of its lip it pours over; pailTilt (rad)
     // tips it about that point, pailStream — the level the stream falls to (or null)
     this.pail = new THREE.Group();
@@ -210,15 +210,21 @@ export class ConcreteGear {
       // tipped over the lip, its body to the right of it (seen side-on from the camera)
       const c = new THREE.Vector3(camPos.x - this.pos.x, 0, camPos.z - this.pos.z).normalize();
       const d = new THREE.Vector3(-c.z, 0, c.x).multiplyScalar(0.9).addScaledVector(c, 0.3).normalize();
-      this.pail.position.copy(this.pos);
-      this.pail.rotation.set(0, Math.atan2(-d.z, d.x), this.pailTilt, 'YXZ');
+      // the goal is the top of the U-blocks under the lip: the lip is held 110 mm above it,
+      // higher while the bucket is still upright so no part of it dips into the blocks
+      // (the lowest corner of its profile, tipped by pailTilt, stays 25 mm above them)
+      const th = this.pailTilt, sn = Math.sin(th), cs = Math.cos(th), rt = this.pailRt, rb = this.pailRb, h = this.pailH;
+      const low = Math.min(0, 2 * rt * sn, (rt - rb) * sn - h * cs, (rt + rb) * sn - h * cs);
+      this._lift = Math.max(0.11 / MODEL_SCALE, 0.025 / MODEL_SCALE - low);
+      this.pail.position.copy(this.pos); this.pail.position.y += this._lift;
+      this.pail.rotation.set(0, Math.atan2(-d.z, d.x), th, 'YXZ');
       // the concrete in it: lower as it empties (it is drawn level with the rim when tipped)
       this.pailConc.position.y = -this.pailH * (1 - Math.max(0.05, this.pailLeft) * 0.85);
       this.pailConc.visible = this.pailLeft > 0.02 && this.pailTilt < 1.0;
       const f = this.pailFlow;
       f.visible = this.pailStream != null;
       if (f.visible) {
-        const top = this.pos, hgt = Math.max(0.0005, top.y - this.pailStream), r = 0.018 / MODEL_SCALE * (0.8 + 0.2 * Math.sin(this._t * 40));
+        const top = this.pail.position, hgt = Math.max(0.0005, top.y - this.pailStream), r = 0.018 / MODEL_SCALE * (0.8 + 0.2 * Math.sin(this._t * 40));
         this._t += dt;
         f.position.set(top.x, top.y - hgt / 2, top.z);
         f.scale.set(r, hgt, r * 0.8);

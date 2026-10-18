@@ -187,11 +187,11 @@ export class HoseTool extends ConcreteTool {
   }
 }
 
-// A bucket of concrete (12 l) poured by hand into the channel of the U-blocks: hold the
+// A bucket of concrete (24 l) poured by hand into the channel of the U-blocks: hold the
 // finger over the U-blocks — the bucket tips over the channel and the concrete runs out
 // of its lip, heaps up and flows along the run (uPour.js); the more it empties, the more
 // it is tipped. Each press is a fresh bucket from the mixer and one journal entry.
-export const PAIL_L = 12;
+export const PAIL_L = 24;
 export class PailTool extends ConcreteTool {
   constructor(app) { super(app, 'pail'); }
 
@@ -231,7 +231,7 @@ export class PailTool extends ConcreteTool {
   // camera's side
   _pose(snap = false) {
     const at = this.ch.point(this.i), u = this.uT, top = u.p[1] + u.s[1] / 2;
-    const lip = new THREE.Vector3(at.x, top + 0.11 / MODEL_SCALE, at.z);
+    const lip = new THREE.Vector3(at.x, top, at.z);   // (the gear holds the lip above it, clear of the blocks)
     const g = this.gear;
     g.pailTilt = this.tilt; g.pailLeft = this.left / PAIL_L;
     g.pailStream = this.flow > 0.05 ? at.y : null;
