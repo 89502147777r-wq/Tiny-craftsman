@@ -117,7 +117,9 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     if (c.how === 'beside') continue;
     let best = null;
     for (const n of boxes) {
-      if ((n.kind !== D.grp && n.kind !== 'lintel') || Math.abs(n.bot - c.bot) > 0.0006) continue;
+      // (auto-alignment: a neighbour a little higher or lower — an uneven slab, a course
+      // laid a little off — still sets the line; within a third of a course)
+      if ((n.kind !== D.grp && n.kind !== 'lintel') || Math.abs(n.bot - c.bot) > 0.35 * H) continue;
       const dx = c.x - n.x, dz = c.z - n.z, along = dx * n.ux + dz * n.uz, side = -dx * n.uz + dz * n.ux;
       const par = Math.abs(Math.sin(c.yaw - n.yaw)) < 0.05, perp = Math.abs(Math.cos(c.yaw - n.yaw)) < 0.05;
       const spots = [];
@@ -135,7 +137,20 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
       for (const [ta, ts, kind] of spots) {
         const d = Math.hypot(along - ta, side - ts);
         // (in that unit's course: its height and its bed)
-        if (d < L * 0.45) { snapped.push({ ...c, x: n.x + n.ux * ta - n.uz * ts, z: n.z + n.uz * ta + n.ux * ts, bot: n.bot, top: n.bot + H, bed: c.how === 'ground' ? bedOf(n.u, D) : c.bed, snap: kind === 'flush' ? 2 : 1 }); c.gone = true; }   // (the loose place goes: only the true one stays)
+        if (d < L * 0.45) {
+          const x = n.x + n.ux * ta - n.uz * ts, z = n.z + n.uz * ta + n.ux * ts;
+          // its height: that unit's course; on the ground the bed takes up the unevenness
+          // (thicker or thinner, within reason); on a top it stays on what is under it
+          let bot = n.bot, bed = c.how === 'ground' ? bedOf(n.u, D) : c.bed;
+          if (Math.abs(n.bot - c.bot) > 0.0006) {
+            if (c.how === 'ground') {
+              const g = groundUnder(t, x, z, c);
+              if (n.bot - g >= B0 * 0.4 && n.bot - g <= B0 * 2.5) bed = n.bot - g;
+              else { bot = g + B0; bed = B0; }
+            } else { bot = c.bot; bed = c.bed; }
+          }
+          snapped.push({ ...c, x, z, bot, top: bot + H, bed, snap: kind === 'flush' ? 2 : 1 }); c.gone = true;   // (the loose place goes: only the true one stays)
+        }
       }
     }
     void best;
@@ -171,8 +186,50 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   }
   const c = best || bestBad;
   if (!c) return null;
+  if (best && !c.snap) alignToBelow(t, boxes, c, D);
   const q = new THREE.Quaternion().setFromAxisAngle(_Y, c.yaw);
   return { ok: !!best, how: c.how, kind: D.kind, half: !!opts.half, bedMm: Math.round((c.bed ?? B) / S), p: new THREE.Vector3(c.x, c.bot + H / 2, c.z), q, s: new THREE.Vector3(L, H, W), bedY: c.bot - (c.bed ?? B) / 2, bedT: c.bed ?? B };
+}
+
+// Auto-alignment: a place on the masonry is set true to the course under it — square
+// to it (the angle rounded to it), a face flush with the nearest face under it when they
+// are within 60 mm, an end flush with an end under it within 30 mm (a corner) — so the
+// courses stay plumb even where the finger (or the unit below) was a little off. Not
+// when it leaves it hanging or runs into something.
+function alignToBelow(t, boxes, c, D) {
+  const bed = c.bot - (c.bed ?? 0);
+  const under = boxes.filter((b) => Math.abs(b.top - bed) < 0.0015 && overlap2(c, b));
+  if (!under.length) return;
+  const was = { x: c.x, z: c.z, yaw: c.yaw, ux: c.ux, uz: c.uz };
+  // square to the biggest one under it
+  const b0 = under.reduce((a, b) => (b.hl * b.hw > a.hl * a.hw ? b : a));
+  const k = Math.round((c.yaw - b0.yaw) / (Math.PI / 2));
+  if (Math.abs(c.yaw - b0.yaw - k * Math.PI / 2) < 0.1) { c.yaw = b0.yaw + k * Math.PI / 2; c.ux = Math.cos(c.yaw); c.uz = -Math.sin(c.yaw); }
+  // the faces: along c's two axes, the nearest parallel face under it
+  for (const [ax, az, half, tol] of [[-c.uz, c.ux, c.hw, 60 * S], [c.ux, c.uz, c.hl, 30 * S]]) {
+    let best = null;
+    for (const b of under) for (const [bx, bz, bh] of [[-b.uz, b.ux, b.hw], [b.ux, b.uz, b.hl]]) {
+      if (Math.abs(ax * bx + az * bz) < 0.995) continue;
+      const sb = (b.x * ax + b.z * az), sc = (c.x * ax + c.z * az);
+      for (const fb of [sb - bh, sb + bh]) for (const fc of [sc - half, sc + half]) {
+        const d = fb - fc;
+        if (Math.abs(d) < tol && (!best || Math.abs(d) < Math.abs(best))) best = d;
+      }
+    }
+    if (best) { c.x += ax * best; c.z += az * best; }
+  }
+  const clash = boxes.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b));
+  if (clash || !supported(t, boxes, c)) Object.assign(c, was);
+}
+
+// the highest ground under a place (its middle and near its corners)
+function groundUnder(t, x, z, c) {
+  let g = -Infinity;
+  for (const [a, b] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const px = x + c.ux * c.hl * a * 0.95 - c.uz * c.hw * b * 0.95, pz = z + c.uz * c.hl * a * 0.95 + c.ux * c.hw * b * 0.95;
+    if (t.inside(px, pz)) g = Math.max(g, t.heightAt(px, pz));
+  }
+  return g;
 }
 
 // it stands: its centre over something (it does not tip over) and at least a third of it
@@ -196,7 +253,12 @@ function edgeNear(t, p) {
   for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     let d = 0;
     while (d < far && same(p.x + dx * (d + st), p.z + dz * (d + st))) d += st;
-    if (d < far && (!best || d < best.d)) best = { d: d + st / 2, nx: dx, nz: dz, ux: -dz, uz: dx };
+    if (d >= far) continue;
+    // the edge is between d and d + st: found to a fraction of a millimetre (the first
+    // course is set flush with it)
+    let lo = d, hi = d + st;
+    for (let k = 0; k < 8; k++) { const m = (lo + hi) / 2; if (same(p.x + dx * m, p.z + dz * m)) lo = m; else hi = m; }
+    if (!best || lo < best.d) best = { d: (lo + hi) / 2, nx: dx, nz: dz, ux: -dz, uz: dx };
   }
   return best;
 }

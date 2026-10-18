@@ -782,8 +782,8 @@ class LayJob {
       }
     }
     if (this.phase === 'trim') {
-      // the trowel: set against the face at the joint, slanted, drawn along it in 0,4 s
-      const sq = this.sq, order = sq.order, g = this.app.concreteGear, T = 0.4, lead = 0.12;
+      // the trowel: set against the face at the joint, slanted, drawn along it in 0,18 s
+      const sq = this.sq, order = sq.order, g = this.app.concreteGear, T = 0.18, lead = 0.05;   // (one quick stroke a side)
       this.trimT += dt;
       const k = order[this.trimK];
       const t = Math.min(1, Math.max(0, (this.trimT - lead) / T));
@@ -793,7 +793,7 @@ class LayJob {
       g.ktrowelLump = Math.cbrt(sq.lump * 0.75 / Math.PI) * 1.4;
       // (its +z out of the face: yaw from the normal)
       g.set('ktrowel', at.p, Math.atan2(at.n[0], at.n[1]), this.trimT < dt * 1.5);
-      if (this.trimT > lead + T + 0.06) {
+      if (this.trimT > lead + T + 0.03) {
         this.trimK++; this.trimT = 0;
         if (this.trimK >= order.length) { this._commit(); return; }
       }
