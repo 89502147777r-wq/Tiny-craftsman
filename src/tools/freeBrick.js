@@ -93,7 +93,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   // on the ground / a slab (the first bed is thicker under a block: mortar, not glue)
   if (opts.ground !== false && t.inside(p.x, p.z)) {
     const e = edgeNear(t, p);
-    let yaw = e ? Math.atan2(-e.uz, e.ux) : 0;
+    let yaw = opts.yaw ?? (e ? Math.atan2(-e.uz, e.ux) : 0);
     if (turn) yaw += Math.PI / 2;
     let x = p.x, z = p.z;
     if (e && !turn && e.d < W / 2 + 0.03) { x += e.nx * (e.d - W / 2); z += e.nz * (e.d - W / 2); }   // flush with the edge
@@ -110,6 +110,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   // a magnet: a place on the top or on the ground near a unit of the same course is set
   // exactly against it — in line with it and one joint away (parallel), or into the
   // corner at its end, flush with one of its faces (turned) — the course stays true
+  const snapped = [];
   for (const c of cands) {
     if (c.how === 'beside') continue;
     let best = null;
@@ -120,22 +121,33 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
       const spots = [];
       if (par) {
         if (Math.abs(side) > n.hw + c.hw) continue;
-        spots.push([Math.sign(along || 1) * (n.hl + J + c.hl), 0]);
+        spots.push([Math.sign(along || 1) * (n.hl + J + c.hl), 0, 'line']);
       } else if (perp) {
         // turned: across the end of n, flush with one of its faces …
-        spots.push([Math.sign(along || 1) * (n.hl + J + c.hw), Math.sign(side || 1) * (c.hl - n.hw)]);
+        spots.push([Math.sign(along || 1) * (n.hl + J + c.hw), Math.sign(side || 1) * (c.hl - n.hw), 'flush']);
         // … or its end butting into the long face of n, flush with n's end (n runs past the corner)
-        for (const e of [-1, 1]) spots.push([e * (n.hl - c.hw), Math.sign(side || 1) * (n.hw + J + c.hl)]);
-        // … or just butting into it where it is (over what is under it)
-        if (Math.abs(along) <= n.hl + c.hw) spots.push([along, Math.sign(side || 1) * (n.hw + J + c.hl)]);
+        for (const e of [-1, 1]) spots.push([e * (n.hl - c.hw), Math.sign(side || 1) * (n.hw + J + c.hl), 'flush']);
+        // … or just butting into it where it is (over what is under it) — only when flush won't do
+        if (Math.abs(along) <= n.hl + c.hw) spots.push([along, Math.sign(side || 1) * (n.hw + J + c.hl), 'free']);
       } else continue;
-      for (const [ta, ts] of spots) {
+      for (const [ta, ts, kind] of spots) {
         const d = Math.hypot(along - ta, side - ts);
-        if (d < L * 0.45 && (!best || d < best.d)) best = { d, x: n.x + n.ux * ta - n.uz * ts, z: n.z + n.uz * ta + n.ux * ts };
+        // (in that unit's course: its height and its bed)
+        if (d < L * 0.45) { snapped.push({ ...c, x: n.x + n.ux * ta - n.uz * ts, z: n.z + n.uz * ta + n.ux * ts, bot: n.bot, top: n.bot + H, bed: c.how === 'ground' ? bedOf(n.u, D) : c.bed, snap: kind === 'flush' ? 2 : 1 }); c.gone = true; }   // (the loose place goes: only the true one stays)
       }
     }
-    if (best) { c.x = best.x; c.z = best.z; }
+    void best;
   }
+  for (let i = cands.length - 1; i >= 0; i--) if (cands[i].gone) cands.splice(i, 1);
+  cands.push(...snapped);
+  // no turning by itself: every place has the direction of the work (the last unit laid,
+  // or what it goes on / by), «Повернуть» turns it by 90°
+  if (opts.yaw != null) {
+    const want = opts.yaw + (turn ? Math.PI / 2 : 0);
+    for (let i = cands.length - 1; i >= 0; i--) if (Math.abs(Math.sin(cands[i].yaw - want)) > 0.05) cands.splice(i, 1);
+  } else if (turn) {
+    for (let i = cands.length - 1; i >= 0; i--) if (cands[i].how !== 'ground' && !cands[i].across) cands.splice(i, 1);
+  } else for (let i = cands.length - 1; i >= 0; i--) if (cands[i].across) cands.splice(i, 1);
   const bias = { beside: 0, top: finger ? 22 : 20, ground: finger ? 45 : 60 };
   let best = null, bd = Infinity, bestBad = null, bb = Infinity;
   // places by / on the masonry first: when one of them fits, the bare ground (often the
@@ -150,8 +162,8 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     d += c.how === 'top' && c.onFace ? 0 : bias[c.how];
     if (c.late) d += finger ? 50 : 100;
     if (c.leaf && !inside(c, p.x, p.z)) d += finger ? 25 : 60;   // the next leaf: only where the finger really is
-    if (c.across !== undefined && c.across !== !!turn) d += finger ? 30 : 120;   // along (across / a corner with «Повернуть»)
-    const ok = !boxes.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b)) && supported(t, boxes, c);
+    if (c.snap) d -= c.snap === 2 ? (finger ? 45 : 60) : (finger ? 6 : 10);   // set true against a neighbour (into a corner flush wins)
+    const ok = !boxes.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b)) && supported(t, boxes, c, c.snap === 2);
     if (ok && d < bd) { bd = d; best = c; }
     if (!ok && d < bb) { bb = d; bestBad = c; }
   }
@@ -163,11 +175,11 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
 
 // it stands: its centre over something (it does not tip over) and at least a third of it
 // (3 of 9 points) on a top at its bed, or on the ground
-function supported(t, boxes, c) {
+function supported(t, boxes, c, lenient = false) {
   const bed = c.bot - (c.bed ?? 0);
   // on a top at its bed (a joint between two is bridged), or on the ground
   const on = (x, z) => boxes.some((u) => Math.abs(u.top - bed) < 0.0015 && inside(u, x, z, KINDS.brick.head * S)) || (t.inside(x, z) && t.heightAt(x, z) > bed - 0.004 && t.heightAt(x, z) < bed + 0.0015);
-  if (!on(c.x, c.z)) return false;
+  if (!lenient && !on(c.x, c.z)) return false;   // (set true into a corner: a third under it is enough)
   let n = 0;
   for (const a of [-0.8, 0, 0.8]) for (const b of [-0.8, 0, 0.8]) if (on(c.x + c.ux * c.hl * a - c.uz * c.hw * b, c.z + c.uz * c.hl * a + c.ux * c.hw * b)) n++;
   return n >= 3;

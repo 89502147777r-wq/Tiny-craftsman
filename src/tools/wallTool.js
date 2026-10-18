@@ -450,11 +450,13 @@ export class WallTool {
     // wall on the bare slab, else a free block on the ground
     const fing = e && (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : null, scr = (x) => this._screen(x), turn = !!app.settings.wallTurn;
     let free = null, snap = null;
-    if (c.kind !== 'block') free = placeUnit(app, 'brick', p, scr, fing, turn);
+    // the direction of the work: the last unit laid of this kind («Повернуть» turns it)
+    const ref = app.settings.freeYaw?.[c.kind === 'block' ? 'block' : 'brick'];
+    if (c.kind !== 'block') free = placeUnit(app, 'brick', p, scr, fing, turn, { yaw: ref });
     else {
       // the next place of a block wall drawn with «Линия», else free: beside / on / on the ground
       snap = this._snapTo(e, p);
-      if (!snap) free = placeUnit(app, 'block', p, scr, fing, turn);
+      if (!snap) free = placeUnit(app, 'block', p, scr, fing, turn, { yaw: ref });
     }
     if (c.kind !== 'block' || free) {
       const f = free;
@@ -542,6 +544,9 @@ export class WallTool {
       if (!free?.ok) { app.ui.toast(`Сюда ${ck === 'block' ? 'блок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`); return; }
       const u = { type: 'unit', free: true, kind: free.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)) };
       const pose = { p: free.p, q: free.q, s: free.s, bedY: free.bedY, bedT: free.bedT };
+      // the next one goes the same way; «Повернуть» was for this one
+      app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [free.kind]: +(2 * Math.atan2(free.q.y, free.q.w)).toFixed(5) };
+      if (app.settings.wallTurn) { app.settings.wallTurn = false; app.applySettings(); }
       const go = () => { app.physLoading = false; app.physJob = new LayJob(app, null, u, pose, null, []); };
       if (physicsReady()) go();
       else { app.physLoading = true; loadPhysics().then(go, () => { app.physLoading = false; app.ui.toast('Физика не загрузилась'); }); }

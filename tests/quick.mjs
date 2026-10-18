@@ -269,7 +269,7 @@ console.log('—', sec());
         };
         tc.undo(); out.tiers.undo = tc.objects.all('unit').length === n0 + 3; tc.redo();
         // a block on the free brickwork: a block wall along it, on its top
-        for (let k = 2; k <= 6; k++) await put(new V(u1.p[0] + mm(260 * k), u1.p[1] + mm(33), u1.p[2]));
+        for (let k = 2; k <= 6; k++) await put(new V(u1.p[0] + mm(260 * k), top, u1.p[2]));   // (the finger on the slab: the course goes on)
         const last = tc.objects.all('unit').at(-1), wn = tc.objects.all('wall').length;
         tc.settings.wallKind = 'block'; tc.settings.wallHeight = 1000;
         wt.carry = { kind: 'block', pallet: null, snap: null }; wt._carryMove(new V(last.p[0], last.p[1] + last.s[1] / 2, last.p[2]), null); wt._carryDrop(); await settle();
