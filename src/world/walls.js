@@ -353,7 +353,7 @@ export class WallView {
     this.max = { block: 4000, brick: 20000, mortar: 24000, lintel: 200, frame: 800 };
     this.blocks = new THREE.InstancedMesh(box, block, this.max.block);
     this.bricks = new THREE.InstancedMesh(box, brick, this.max.brick);
-    this.mortar = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x4a4740, roughness: 0.95 }), this.max.mortar);
+    this.mortar = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x8a857b, roughness: 0.95 }), this.max.mortar);   // cement-sand mortar: light grey
     // precast concrete lintels; the marked frame of a planned opening (orange, like the cord)
     this.lintels = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9c9a94, roughness: 0.9 }), this.max.lintel);
     this.frames = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xff6a1c, roughness: 0.6, emissive: 0x401000 }), this.max.frame);
@@ -376,7 +376,7 @@ export class WallView {
     for (const m of [this.lintels, this.frames]) { m.frustumCulled = false; m.count = 0; this.group.add(m); }
     this.cord.visible = false; this.group.add(this.cord);
     // the mortar under a brick being laid and what is pressed out of it (mortarSqueeze.js)
-    this.squeeze = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x5a564e, roughness: 0.75, side: THREE.DoubleSide }));
+    this.squeeze = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x7c776e, roughness: 0.7, side: THREE.DoubleSide }));
     this.squeeze.castShadow = this.squeeze.receiveShadow = true; this.squeeze.frustumCulled = false; this.squeeze.visible = false;
     this.group.add(this.squeeze);
     // where the carried unit would go: green — it can, red — it cannot

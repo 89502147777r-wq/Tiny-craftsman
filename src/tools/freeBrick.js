@@ -108,6 +108,24 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     c.bot = g + B0; c.top = c.bot + H;
     cands.push(c);
   }
+  // the first course on the ground / a slab is laid to one level (a level line, as on
+  // site), not following every bump of the slab: a place by the ground takes the level of
+  // the course already there nearby, and its bed is whatever is between it and the slab
+  // (0,4 … 2,5 × the usual bed). The first unit sets the level: the highest point of the
+  // slab under it + the usual bed.
+  const groundCourse = boxes.filter((b) => b.kind === D.grp && b.u.free && (() => { const g = groundUnder(t, b.x, b.z, b); return g > -Infinity && b.bot - g < B0 * 2.6 && !boxes.some((o) => o !== b && o.top <= b.bot + 1e-5 && o.top > g + 1e-4 && overlap2(o, b)); })());
+  for (const c of cands) {
+    if (c.how === 'top' || c.gone) continue;
+    const g = groundUnder(t, c.x, c.z, c);
+    if (g === -Infinity || boxes.some((o) => o.top <= c.bot + 1e-5 && o.top > g + 1e-4 && overlap2(o, c))) continue;   // (not on the ground)
+    if (c.how === 'ground' && !c.snap) {
+      let lv = null, dl = 0.2;
+      for (const b of groundCourse) { const d = Math.hypot(b.x - c.x, b.z - c.z); if (d < dl && Math.abs(b.bot - c.bot) < 0.35 * H) { dl = d; lv = b.bot; } }
+      if (lv != null && lv - g >= B0 * 0.4 && lv - g <= B0 * 2.5) { c.bot = lv; c.top = lv + H; }
+    }
+    const bed = c.bot - g;
+    if (bed >= B0 * 0.4 && bed <= B0 * 2.5) c.bed = bed;
+  }
   // score: on the screen (the top centre of it), else in the plot
   // a magnet: a place on the top or on the ground near a unit of the same course is set
   // exactly against it — in line with it and one joint away (parallel), or into the
@@ -270,7 +288,7 @@ export function mortarOf(units) {
   const cell = 0.03, grid = new Map(), key = (x, z) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
   list.forEach((b, i) => { const k = key(b.x, b.z); (grid.get(k) || grid.set(k, []).get(k)).push(i); });
   for (const [i, b] of list.entries()) {
-    const D = dims(b.kind), inset = (b.kind === 'block' ? 4 : 10) * S, bed = bedOf(b.u, D);
+    const D = dims(b.kind), inset = 1 * S, bed = bedOf(b.u, D);   // (struck flush with the faces: the joint shows)
     // the bed
     out.push({ x: b.x, y: b.bot - bed / 2, z: b.z, yaw: b.yaw, l: b.hl * 2 - 2 * inset, h: bed, w: b.hw * 2 - 2 * inset });
     // head joints to the neighbours along it (each pair once)

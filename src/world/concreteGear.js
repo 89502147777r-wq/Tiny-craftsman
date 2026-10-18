@@ -156,7 +156,7 @@ export class ConcreteGear {
       neck.position.set(M(-15), M(26), M(60));
       const hnd = new THREE.Mesh(new THREE.CylinderGeometry(M(13), M(15), M(115), 12), new THREE.MeshStandardMaterial({ color: 0x8a5a33, roughness: 0.6 }));
       hnd.rotation.x = Math.PI / 2; hnd.position.set(M(-15), M(52), M(120));
-      this.ktLump = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshStandardMaterial({ color: 0x5a564e, roughness: 0.75 }));
+      this.ktLump = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshStandardMaterial({ color: 0x7c776e, roughness: 0.7 }));
       this.ktLump.scale.set(1, 0.45, 1); this.ktLump.position.set(0, 0, M(35)); this.ktLump.visible = false;
       this.ktBlade.add(neck, hnd, this.ktLump);
       this.ktrowel.add(this.ktBlade);

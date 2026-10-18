@@ -818,8 +818,9 @@ class LayJob {
 
   _commit() {
     const app = this.app;
-    // what is left after the mallet: well under a millimetre and a tenth of a degree
-    const p = this.from, q = this.fromQ;
+    // the mallet brings it to the cord and the level: exactly where it goes (what was left
+    // after the taps, a fraction of a millimetre, used to add up along a course)
+    const p = this.target.p, q = this.target.q;
     app.objects.add({ ...this.unit, p: p.toArray().map((x) => +x.toFixed(6)), q: q.toArray().map((x) => +x.toFixed(6)) });
     app.journal.commit(app.clock);
     this._dispose();
