@@ -13,6 +13,14 @@ const MM_PER_L = 1 / (0.05 * 0.15);   // 1 l over one 50 × 150 mm cell: 133 mm
 const YIELD = 1.2;                    // mm of level difference between cells it holds
 const K = 7;                          // how fast it flows (1/s)
 
+// how much the surface has been worked (0 as poured … 1 vibrated and trowelled): the
+// stones sink, the paste closes over them, it is flatter and glossier
+export const SM0 = 0.3;
+export function worked(u) {
+  if (Array.isArray(u.sm) && u.sm.length === UN) return u.sm.slice();
+  return new Array(UN).fill(SM0);
+}
+
 export function levels(u) {
   if (Array.isArray(u.lv) && u.lv.length === UN) return u.lv.slice();
   return new Array(UN).fill(Math.min(1, u.fill || 0) * UDEPTH);
@@ -35,7 +43,11 @@ export class Channel {
     }
     this.ids = new Set(this.blocks.map((b) => b.u.id));
     this.h = [];
-    for (const b of this.blocks) { const l = levels(b.u); this.h.push(...(b.rev ? l.reverse() : l)); }
+    this.sm = [];
+    for (const b of this.blocks) {
+      const l = levels(b.u), w = worked(b.u);
+      this.h.push(...(b.rev ? l.reverse() : l)); this.sm.push(...(b.rev ? w.reverse() : w));
+    }
     this.spilt = 0;
   }
 
@@ -91,6 +103,31 @@ export class Channel {
     return moved;
   }
 
+  // the vibrator: within r samples of i the concrete loses its stiffness and runs level
+  // (no yield), the worked share rises
+  vibrate(i, r, dt) {
+    const h = this.h, n = h.length, i0 = Math.max(0, i - r), i1 = Math.min(n - 1, i + r);
+    const subs = Math.max(1, Math.ceil(dt * K * 2 / 0.2)), d = dt / subs;
+    for (let s = 0; s < subs; s++) for (let j = i0; j < i1; j++) { const q = (h[j] - h[j + 1]) * K * 2 * d * 0.5; h[j] -= q; h[j + 1] += q; }
+    for (let j = i0; j <= i1; j++) this.sm[j] = Math.min(1, this.sm[j] + dt * 1.2 * (1 - Math.abs(j - i) / (r + 1)));
+  }
+
+  // the rule drawn over sample i in direction sg (±1), riding on the rims: what stands above
+  // the rim is pushed on ahead (off the end of the run it falls off)
+  screed(i, sg) {
+    const h = this.h, ex = h[i] - UDEPTH;
+    if (ex > 0) { h[i] = UDEPTH; const j = i + sg; if (j >= 0 && j < h.length) h[j] += ex; else this.spilt += ex / MM_PER_L; }
+    this.sm[i] = Math.min(1, Math.max(this.sm[i], 0.55));
+  }
+
+  // the float over samples i0 … i1: a closed, smooth surface (and a little more level)
+  trowel(i0, i1, dt) {
+    const h = this.h, a = Math.max(0, Math.min(i0, i1)), b = Math.min(h.length - 1, Math.max(i0, i1));
+    for (let j = a; j < b; j++) { const q = (h[j] - h[j + 1]) * 0.25; h[j] -= q; h[j + 1] += q; }
+    for (let j = a; j <= b; j++) this.sm[j] = Math.min(1, this.sm[j] + 0.35);
+    void dt;
+  }
+
   // let it come to rest
   settle() { for (let k = 0; k < 600 && this.step(0.05) > 0.05; k++); }
 
@@ -102,16 +139,25 @@ export class Channel {
     this.blocks.forEach((b, k) => { const l = this.h.slice(k * UN, k * UN + UN); m.set(b.u.id, b.rev ? l.reverse() : l); });
     return m;
   }
+  smById() {
+    const m = new Map();
+    this.blocks.forEach((b, k) => { const l = this.sm.slice(k * UN, k * UN + UN); m.set(b.u.id, b.rev ? l.reverse() : l); });
+    return m;
+  }
+  // (the view, while it is being worked)
+  show(v) { v.fillLive = this.byId(); v.fillLiveSm = this.smById(); v.fillDirty = true; }
 
   // into the records (in the open journal entry)
   write(app) {
+    const sms = this.smById();
     for (const [id, l] of this.byId()) {
       const u = app.objects.get(id);
       if (!u) continue;
       const lv = l.map((v) => Math.round(Math.max(0, Math.min(UDEPTH, v)) * 2) / 2);
       const fill = +(lv.reduce((a, v) => a + v, 0) / UN / UDEPTH).toFixed(4);
-      if (u.lv && u.lv.every((v, k) => v === lv[k])) continue;
-      app.objects.update(id, { lv, fill, ...(u.castT == null && fill > 0 ? { castT: +app.clock.toFixed(2) } : {}), ...(fill >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
+      const sm = sms.get(id).map((v) => Math.round(v * 100) / 100);
+      if (u.lv && u.lv.every((v, k) => v === lv[k]) && Array.isArray(u.sm) && u.sm.every((v, k) => v === sm[k])) continue;
+      app.objects.update(id, { lv, fill, sm, ...(u.castT == null && fill > 0 ? { castT: +app.clock.toFixed(2) } : {}), ...(fill >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
     }
   }
 }
