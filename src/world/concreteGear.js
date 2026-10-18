@@ -84,22 +84,61 @@ export class ConcreteGear {
     const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012 / MODEL_SCALE, 0.012 / MODEL_SCALE, 1.0 / MODEL_SCALE, 10), wood);
     stick.position.set(0, 0.09 / MODEL_SCALE + 0.48 / MODEL_SCALE, -0.12 / MODEL_SCALE); stick.rotation.x = -0.25;
     this.brush.add(head, bristle, stick);
-    // rubber mallet (киянка): black rubber head Ø 65 × 110 mm on a wooden handle
+    // rubber mallet (киянка): black rubber head Ø 65 × 110 mm on a wooden handle 320 mm.
+    // Held by the end of the handle (the group's origin — the wrist), the handle level
+    // at the strike, the head's axis upright: it hits with its flat face; the swing
+    // turns it up about the wrist (malletSwing, rad)
     this.mallet = new THREE.Group();
+    this.malletSwing = 0;
     {
       const rub = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.85 });
       const wood2 = new THREE.MeshStandardMaterial({ color: 0xb5895a, roughness: 0.7 });
-      const head2 = new THREE.Mesh(new THREE.CylinderGeometry(0.0325 / MODEL_SCALE, 0.0325 / MODEL_SCALE, 0.11 / MODEL_SCALE, 16), rub);
-      head2.rotation.z = Math.PI / 2;
-      const hnd = new THREE.Mesh(new THREE.CylinderGeometry(0.013 / MODEL_SCALE, 0.015 / MODEL_SCALE, 0.32 / MODEL_SCALE, 10), wood2);
-      hnd.position.set(0, 0.16 / MODEL_SCALE, -0.03 / MODEL_SCALE); hnd.rotation.x = -0.2;
-      this.mallet.add(head2, hnd);
+      const L = 0.32 / MODEL_SCALE, r = 0.0325 / MODEL_SCALE, hl = 0.11 / MODEL_SCALE;
+      const head2 = new THREE.Mesh(new THREE.CylinderGeometry(r, r, hl, 20), rub);
+      head2.position.set(0, 0, -L);
+      const face = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.96, r * 0.96, hl * 0.02, 20), new THREE.MeshStandardMaterial({ color: 0x262626, roughness: 0.95 }));
+      face.position.set(0, -hl / 2, -L);
+      const hnd = new THREE.Mesh(new THREE.CylinderGeometry(0.013 / MODEL_SCALE, 0.015 / MODEL_SCALE, L - r, 10), wood2);
+      hnd.rotation.x = Math.PI / 2; hnd.position.set(0, 0, -(L - r) / 2);
+      this.mallet.add(head2, face, hnd);
+      this.malletL = L; this.malletH = hl;
+    }
+    // a 12 l builder's bucket (galvanised, Ø 300 / 250 × 290 mm, a wire handle) with
+    // concrete: the group's origin is the point of its lip it pours over; pailTilt (rad)
+    // tips it about that point, pailStream — the level the stream falls to (or null)
+    this.pail = new THREE.Group();
+    this.pailTilt = 0; this.pailStream = null; this.pailLeft = 1;
+    {
+      const zinc = new THREE.MeshStandardMaterial({ color: 0xb8bcc0, roughness: 0.45, metalness: 0.7, side: THREE.DoubleSide });
+      const wet = new THREE.MeshStandardMaterial({ color: 0x4f4c48, roughness: 0.3 });
+      const rt = 0.15 / MODEL_SCALE, rb = 0.125 / MODEL_SCALE, h = 0.29 / MODEL_SCALE;
+      this.pailBody = new THREE.Group();
+      const shell = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 28, 1, true), zinc);
+      shell.position.y = -h / 2;
+      const bottom = new THREE.Mesh(new THREE.CircleGeometry(rb, 28), zinc);
+      bottom.rotation.x = -Math.PI / 2; bottom.position.y = -h;
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(rt, 0.004 / MODEL_SCALE, 6, 32), zinc);
+      rim.rotation.x = Math.PI / 2;
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(rt * 0.98, 0.003 / MODEL_SCALE, 6, 24, Math.PI), new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.5, metalness: 0.8 }));
+      handle.rotation.y = Math.PI / 2; handle.position.y = -0.03 / MODEL_SCALE;
+      // the concrete in it (its surface; it slides down as it empties)
+      this.pailConc = new THREE.Mesh(new THREE.CircleGeometry(rt * 0.97, 24), wet);
+      this.pailConc.rotation.x = -Math.PI / 2;
+      this.pailBody.add(shell, bottom, rim, handle, this.pailConc);
+      // the body sits beside the lip point: the lip is its rim towards the wall
+      this.pailBody.position.x = rt;
+      this.pail.add(this.pailBody);
+      this.pailH = h; this.pailRt = rt; this.pailRb = rb;
+      // the stream from the lip
+      this.pailFlow = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 10, 1, true), wet);
+      this.pailFlow.visible = false;
+      this.root.add(this.pailFlow);
     }
     // plate compactor: a detailed model in real sizes (plateCompactor.js)
     this.plate = makePlateCompactor();
     this.plateOn = false;
     this._t = 0;
-    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate, this.mallet]) {
+    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate, this.mallet, this.pail]) {
       o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
       o.visible = false;
       this.root.add(o);
@@ -133,6 +172,8 @@ export class ConcreteGear {
     this.brush.visible = w === 'brush';
     this.plate.visible = w === 'plate';
     this.mallet.visible = w === 'mallet';
+    this.pail.visible = w === 'pail';
+    if (w !== 'pail') this.pailFlow.visible = false;
     if (w === 'hose') {
       // the spout held ~25 cm above the concrete; the hose swings behind the hand
       this.pump.aim(this.goal.clone().add(new THREE.Vector3(0, 2.5 * (0.25 + 0.15) / MODEL_SCALE, 0)), camPos, this._snapHose);
@@ -156,8 +197,33 @@ export class ConcreteGear {
       this._t += dt;
       shakePlateCompactor(this.plate, this.plateOn, this._t);
     } else if (w === 'mallet') {
-      this.mallet.position.copy(this.goal);
-      this.mallet.rotation.set(0, this.yaw, 0);
+      // goal: the strike point (the middle of the top of the unit); the hand is off
+      // towards the camera, the handle level at the strike
+      // (to the right of the unit and a little towards the camera: the swing is seen side-on)
+      const c = new THREE.Vector3(camPos.x - this.goal.x, 0, camPos.z - this.goal.z).normalize();
+      const d = new THREE.Vector3(-c.z, 0, c.x).multiplyScalar(0.85).addScaledVector(c, 0.5).normalize();
+      const yaw = Math.atan2(d.x, d.z);
+      this.mallet.position.copy(this.goal).addScaledVector(d, this.malletL);
+      this.mallet.position.y += this.malletH / 2;
+      this.mallet.rotation.set(this.malletSwing, yaw, 0, 'YXZ');
+    } else if (w === 'pail') {
+      // tipped over the lip, its body to the right of it (seen side-on from the camera)
+      const c = new THREE.Vector3(camPos.x - this.pos.x, 0, camPos.z - this.pos.z).normalize();
+      const d = new THREE.Vector3(-c.z, 0, c.x).multiplyScalar(0.9).addScaledVector(c, 0.3).normalize();
+      this.pail.position.copy(this.pos);
+      this.pail.rotation.set(0, Math.atan2(-d.z, d.x), this.pailTilt, 'YXZ');
+      // the concrete in it: lower as it empties (it is drawn level with the rim when tipped)
+      this.pailConc.position.y = -this.pailH * (1 - Math.max(0.05, this.pailLeft) * 0.85);
+      this.pailConc.visible = this.pailLeft > 0.02 && this.pailTilt < 1.0;
+      const f = this.pailFlow;
+      f.visible = this.pailStream != null;
+      if (f.visible) {
+        const top = this.pos, hgt = Math.max(0.0005, top.y - this.pailStream), r = 0.018 / MODEL_SCALE * (0.8 + 0.2 * Math.sin(this._t * 40));
+        this._t += dt;
+        f.position.set(top.x, top.y - hgt / 2, top.z);
+        f.scale.set(r, hgt, r * 0.8);
+        f.rotation.set(0, 0, 0);
+      }
     } else if (w === 'trowel') {
       this.trowel.position.copy(this.pos);
       this.trowel.rotation.set(0, this.yaw, 0.04);

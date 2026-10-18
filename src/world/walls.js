@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { levels, UN } from '../tools/uPour.js';
 import { MODEL_SCALE } from '../config.js';
 import { mortarOf } from '../tools/freeBrick.js';
 
@@ -362,9 +363,12 @@ export class WallView {
     this.wood = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xb9925e, roughness: 0.85 }), this.max.wood);
     // U-blocks (a channel open upwards: the shell of a monolithic lintel) and the concrete in them
     this.ublocks = new THREE.InstancedMesh(uShape(), block, this.max.block);
-    this.fill = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), this.max.block);
-    this.fill.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.max.block * 3), 3);
-    for (const m of [this.ublocks, this.fill]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
+    // the concrete in the channels: one surface along each run (its levels: uPour.js)
+    this.fill = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, side: THREE.DoubleSide }));
+    this.fillLive = null;   // levels by U-block id while it is being poured (the tool)
+    this.fillDirty = false;
+    for (const m of [this.ublocks, this.fill]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; this.group.add(m); }
+    this.ublocks.count = 0;
     this.wood.castShadow = this.wood.receiveShadow = true; this.wood.frustumCulled = false; this.wood.count = 0; this.group.add(this.wood);
     this.lintels.castShadow = this.lintels.receiveShadow = true;
     for (const m of [this.lintels, this.frames]) { m.frustumCulled = false; m.count = 0; this.group.add(m); }
@@ -383,7 +387,7 @@ export class WallView {
   }
 
   update() {
-    if (!this.dirty) return;
+    if (!this.dirty) { if (this.fillDirty) this._buildFill(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening')].map((r) => r.id));
@@ -399,14 +403,6 @@ export class WallView {
       } else if (u.kind === 'ublock') {
         // a U-block: the shell (its channel open upwards) and the concrete in the channel
         if (nu < this.max.block) { this.ublocks.setMatrixAt(nu, m.compose(P, Q, Sv)); this.owner.ublocks[nu++] = id; }
-        if (u.fill > 0 && nc < this.max.block) {
-          const base = 60 / 250, fh = Math.min(1, u.fill) * (1 - base - 0.02);
-          const up = new THREE.Vector3(0, 1, 0);
-          const C = P.clone().addScaledVector(up, Sv.y * (-0.5 + base + fh / 2));
-          this.fill.setMatrixAt(nc, m.compose(C, Q, new THREE.Vector3(Sv.x * 0.995, Sv.y * fh, Sv.z * 150 / 300)));
-          this.fill.setColorAt(nc, c.setRGB(...(u.set ? [0.62, 0.61, 0.58] : [0.4, 0.39, 0.37])));
-          this.owner.fill[nc++] = id;
-        }
       } else if (u.kind === 'prop') {
         // a temporary prop: the board and two posts down to the floor
         if (nw < this.max.wood - 3) {
@@ -518,10 +514,75 @@ export class WallView {
       this.hlMesh.scale.fromArray(this.hl.s).multiplyScalar(1.03);
       this.hlMesh.material.color.setHex(this.hl.ok ? 0x35d06a : 0xe8402a);
     }
-    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu; this.fill.count = nc;
-    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames, this.wood, this.ublocks, this.fill]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
-    this.fill.instanceColor.needsUpdate = true;
+    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu;
+    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames, this.wood, this.ublocks]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this._buildFill();
     for (const im of [this.blocks, this.bricks]) im.instanceColor.needsUpdate = true;
+  }
+
+  // the concrete in the U-block channels: a surface over the levels of each block (UN
+  // samples, joined to the next block of the run), a little higher at the walls (it
+  // clings), end caps where the run ends; fresh — dark and wet, set — light
+  _buildFill() {
+    this.fillDirty = false;
+    const us = this.objects.all('unit').filter((u) => u.kind === 'ublock');
+    const lvOf = (u) => this.fillLive?.get(u.id) ?? levels(u);
+    const pos = [], col = [], idx = [], own = [];
+    const m = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3(), v = new THREE.Vector3();
+    const info = us.map((u) => { const yaw = 2 * Math.atan2(u.q[1], u.q[3]); return { u, lv: lvOf(u), ux: Math.cos(yaw), uz: -Math.sin(yaw) }; });
+    // the neighbour's level at the shared end (or null)
+    const endOf = (a, sg) => {
+      for (const b of info) {
+        if (b === a || Math.abs(b.u.p[1] - a.u.p[1]) > 0.0008) continue;
+        const dx = b.u.p[0] - a.u.p[0], dz = b.u.p[2] - a.u.p[2], al = (dx * a.ux + dz * a.uz) * sg, sd = -dx * a.uz + dz * a.ux;
+        if (Math.abs(sd) > 0.0008 || Math.abs(al - (a.u.s[0] + b.u.s[0]) / 2) > 0.0015) continue;
+        // which end of b touches: the one facing a
+        const same = b.ux * a.ux + b.uz * a.uz > 0;
+        return (sg > 0) === same ? b.lv[0] : b.lv[UN - 1];
+      }
+      return null;
+    };
+    const fl = 60 / 250 - 0.5, hy = (h) => fl + Math.max(0, h) / 250, zs = [-0.25, -0.15, 0, 0.15, 0.25], lift = [1.5, 0.4, 0, 0.4, 1.5];
+    for (const a of info) {
+      const lv = a.lv;
+      if (!lv.some((h) => h > 0.3)) continue;
+      const u = a.u;
+      P.fromArray(u.p); Q.fromArray(u.q); Sv.fromArray(u.s); m.compose(P, Q, Sv);
+      const c = u.set ? [0.64, 0.63, 0.6] : [0.4, 0.39, 0.37];
+      const nL = endOf(a, -1), nR = endOf(a, 1);
+      // the stations along: the two ends and the cell centres
+      const st = [[-0.5, nL != null ? (lv[0] + nL) / 2 : lv[0]]];
+      for (let i = 0; i < UN; i++) st.push([-0.5 + (i + 0.5) / UN, lv[i]]);
+      st.push([0.5, nR != null ? (lv[UN - 1] + nR) / 2 : lv[UN - 1]]);
+      const o = pos.length / 3, mh = Sv.y;
+      for (const [x, h] of st) for (let k = 0; k < zs.length; k++) {
+        v.set(x, hy(h + (h > 0.3 ? lift[k] : 0)), zs[k]).applyMatrix4(m);
+        pos.push(v.x, v.y, v.z); col.push(...c);
+      }
+      const W = zs.length;
+      for (let i = 0; i + 1 < st.length; i++) for (let k = 0; k + 1 < W; k++) {
+        const p0 = o + i * W + k, p1 = p0 + 1, p2 = p0 + W, p3 = p2 + 1;
+        idx.push(p0, p1, p2, p1, p3, p2); own.push(u.id, u.id);
+      }
+      // end caps where the run ends (the open end of the channel)
+      for (const [x, h, open, flip] of [[-0.5, st[0][1], nL == null, true], [0.5, st.at(-1)[1], nR == null, false]]) {
+        if (!open || h < 0.3) continue;
+        const b = pos.length / 3;
+        for (const [y, z] of [[hy(0), -0.25], [hy(0), 0.25], [hy(h), -0.25], [hy(h), 0.25]]) { v.set(x, y, z).applyMatrix4(m); pos.push(v.x, v.y, v.z); col.push(...c.map((q) => q * 0.85)); }
+        if (flip) idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); else idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
+        own.push(u.id, u.id);
+      }
+      void mh;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    this.fill.geometry.dispose();
+    this.fill.geometry = g;
+    this.fill.visible = idx.length > 0;
+    this.owner.fill = own;
   }
 
   ownerOf(hit) {
@@ -530,7 +591,7 @@ export class WallView {
     if (hit.object === this.lintels) return this.owner.lintels[hit.instanceId];
     if (hit.object === this.frames) return this.owner.frames[hit.instanceId];
     if (hit.object === this.ublocks) return this.owner.ublocks[hit.instanceId];
-    if (hit.object === this.fill) return this.owner.fill[hit.instanceId];
+    if (hit.object === this.fill) return this.owner.fill[Math.floor(hit.faceIndex)] ?? null;
     if (hit.object === this.wood) return this.owner.wood[hit.instanceId] ?? null;
     return null;
   }
