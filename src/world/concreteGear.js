@@ -134,11 +134,38 @@ export class ConcreteGear {
       this.pailFlow.visible = false;
       this.root.add(this.pailFlow);
     }
+    // bricklayer's trowel (кельма): a pointed steel blade 180 × 115 mm, a cranked neck and
+    // a wooden handle. The group's origin is the middle of the blade's side edge, local x
+    // along that edge, the blade reaching out to +z: held at a slant against the face of
+    // the masonry (ktrowelTilt) it cuts the pressed-out mortar off; ktrowelLump — the
+    // mortar collected on it (radius, model)
+    this.ktrowel = new THREE.Group();
+    this.ktrowelTilt = 0.6; this.ktrowelLump = 0;
+    {
+      const M = (v) => v / 1000 / MODEL_SCALE;
+      const sh = new THREE.Shape();
+      sh.moveTo(M(-90), 0); sh.lineTo(M(90), 0);
+      sh.quadraticCurveTo(M(70), M(60), M(-10), M(115));
+      sh.quadraticCurveTo(M(-70), M(80), M(-90), 0);
+      const blade = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: M(1.5), bevelEnabled: false, curveSegments: 10 }), steel);
+      blade.rotation.x = Math.PI / 2;   // the shape's y → +z (out from the edge), its thickness → down
+      this.ktBlade = new THREE.Group();
+      this.ktBlade.add(blade);
+      // the neck rises from the middle of the blade, the handle goes on out and up
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(M(4), M(4), M(55), 8), steel);
+      neck.position.set(M(-15), M(26), M(60));
+      const hnd = new THREE.Mesh(new THREE.CylinderGeometry(M(13), M(15), M(115), 12), new THREE.MeshStandardMaterial({ color: 0x8a5a33, roughness: 0.6 }));
+      hnd.rotation.x = Math.PI / 2; hnd.position.set(M(-15), M(52), M(120));
+      this.ktLump = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshStandardMaterial({ color: 0x5a564e, roughness: 0.75 }));
+      this.ktLump.scale.set(1, 0.45, 1); this.ktLump.position.set(0, 0, M(35)); this.ktLump.visible = false;
+      this.ktBlade.add(neck, hnd, this.ktLump);
+      this.ktrowel.add(this.ktBlade);
+    }
     // plate compactor: a detailed model in real sizes (plateCompactor.js)
     this.plate = makePlateCompactor();
     this.plateOn = false;
     this._t = 0;
-    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate, this.mallet, this.pail]) {
+    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate, this.mallet, this.pail, this.ktrowel]) {
       o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
       o.visible = false;
       this.root.add(o);
@@ -173,6 +200,7 @@ export class ConcreteGear {
     this.plate.visible = w === 'plate';
     this.mallet.visible = w === 'mallet';
     this.pail.visible = w === 'pail';
+    this.ktrowel.visible = w === 'ktrowel';
     if (w !== 'pail') this.pailFlow.visible = false;
     if (w === 'hose') {
       // the spout held ~25 cm above the concrete; the hose swings behind the hand
@@ -206,6 +234,14 @@ export class ConcreteGear {
       this.mallet.position.copy(this.goal).addScaledVector(d, this.malletL);
       this.mallet.position.y += this.malletH / 2;
       this.mallet.rotation.set(this.malletSwing, yaw, 0, 'YXZ');
+    } else if (w === 'ktrowel') {
+      // goal: the bottom of the joint on the face; yaw: the face's outward normal (+z)
+      this.ktrowel.position.copy(this.pos);
+      this.ktrowel.rotation.set(0, this.yaw, 0);
+      this.ktBlade.rotation.set(-this.ktrowelTilt, 0, 0);
+      const r = this.ktrowelLump;
+      this.ktLump.visible = r > 1e-5;
+      if (r > 1e-5) { this.ktLump.scale.set(r * 1.3, r * 0.55, r); this.ktLump.position.set(0, r * 0.3, r * 1.1); }
     } else if (w === 'pail') {
       // tipped over the lip, its body to the right of it (seen side-on from the camera)
       const c = new THREE.Vector3(camPos.x - this.pos.x, 0, camPos.z - this.pos.z).normalize();
