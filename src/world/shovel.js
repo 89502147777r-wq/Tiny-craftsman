@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SHOVELS, KT as K } from '../config.js';
 import { makeNoise2 } from '../core/rand.js';
 import { variant } from './assets.js';
+import { loadModel } from './machines/models.js';
 
 // A scale shovel. Local frame: blade tip at the origin, handle along +Y,
 // working (front) face of the blade towards +Z. The parts are drawn at the
@@ -50,6 +51,24 @@ export class Shovel {
     this.load.visible = false;
     this.model.add(blade, socket, steps, handle, knob, this.load);
     this.model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    // the real shovel (a CC BY model, CREDITS.md) replaces the drawn one once loaded
+    const drawn = [blade, socket, steps, handle, knob];
+    loadModel(type === 'spade' ? 'spade' : 'scoop').then(({ scene }) => {
+      if (this.type !== type) return;
+      const g = new THREE.Group();
+      g.add(scene);
+      // the scoop lies along +Z (blade at +Z, its hollow up): stood up, blade down, the
+      // hollow to the front (+Z); the spade already stands along +Y
+      if (type === 'scoop') scene.rotation.x = Math.PI / 2;
+      const bb = new THREE.Box3().setFromObject(g), sz = bb.getSize(new THREE.Vector3());
+      const k = (L + 0.108) / sz.y;
+      scene.scale.multiplyScalar(k);
+      const b2 = new THREE.Box3().setFromObject(g);
+      scene.position.set(-(b2.min.x + b2.max.x) / 2, -b2.min.y, -(b2.min.z + b2.max.z) / 2);
+      g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      for (const o of drawn) o.visible = false;
+      this.model.add(g);
+    }).catch(() => {});
   }
 
   setPose({ pos, dir, tilt, roll }, snap = false) {

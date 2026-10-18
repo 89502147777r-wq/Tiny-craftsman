@@ -103,6 +103,24 @@ export class ConcreteGear {
       hnd.rotation.x = Math.PI / 2; hnd.position.set(0, 0, -(L - r) / 2);
       this.mallet.add(head2, face, hnd);
       this.malletL = L; this.malletH = hl;
+      // the real mallet (a CC BY model, CREDITS.md): handle along its Z with the head at
+      // -Z, the head's axis along X — turned so the head's axis is upright, the hand end of
+      // the handle at the origin, 330 mm long
+      loadModel('mallet').then(({ scene }) => {
+        const g = new THREE.Group(); g.add(scene);
+        scene.rotation.z = Math.PI / 2;
+        let bb = new THREE.Box3().setFromObject(g), sz = bb.getSize(new THREE.Vector3());
+        const k = 0.33 / MODEL_SCALE / sz.z;
+        scene.scale.multiplyScalar(k);
+        bb = new THREE.Box3().setFromObject(g); sz = bb.getSize(new THREE.Vector3());
+        // the head: the widest part, at the -Z end; its middle on the handle's axis
+        const headR = sz.x / 2;
+        scene.position.set(-(bb.min.x + bb.max.x) / 2, -(bb.min.y + bb.max.y) / 2, -bb.max.z);
+        g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+        for (const o of [head2, face, hnd]) o.visible = false;
+        this.mallet.add(g);
+        this.malletL = sz.z - headR; this.malletH = sz.y;
+      }).catch(() => {});
     }
     // a builder's bucket (galvanised, Ø 300 / 250 × 290 mm, a wire handle; it holds 24 l: the game's own) with
     // concrete: the group's origin is the point of its lip it pours over; pailTilt (rad)
@@ -173,6 +191,21 @@ export class ConcreteGear {
       this.ktLump.scale.set(1, 0.45, 1); this.ktLump.position.set(0, 0, M(35)); this.ktLump.visible = false;
       this.ktBlade.add(neck, hnd, this.ktLump);
       this.ktrowel.add(this.ktBlade);
+      // the real trowel (a CC BY model, CREDITS.md): the blade flat on its y = 0, pointing
+      // to -X, 80 mm wide (Z); its side edge set on the origin, the blade out to +Z
+      loadModel('trowel').then(({ scene }) => {
+        const g = new THREE.Group(); g.add(scene);
+        let bb = new THREE.Box3().setFromObject(g);
+        const k = 1.15 / MODEL_SCALE;   // (the model is in metres: a 280 mm trowel)
+        scene.scale.multiplyScalar(k);
+        bb = new THREE.Box3().setFromObject(g);
+        // the middle of the blade (from the tip to the heel, ~2/3 of the length) on the origin
+        const bladeMid = bb.min.x + (bb.max.x - bb.min.x) * 0.33;
+        scene.position.set(-bladeMid, -bb.min.y, -bb.min.z);
+        g.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+        blade.visible = neck.visible = hnd.visible = false;
+        this.ktBlade.add(g);
+      }).catch(() => {});
     }
     // plate compactor: a detailed model in real sizes (plateCompactor.js)
     this.plate = makePlateCompactor();
