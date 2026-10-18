@@ -572,7 +572,7 @@ export class WallTool {
       if (cage.has) { app.ui.toast('В этих U-блоках каркас уже есть'); return; }
       const bars = cageBars(cage);
       app.journal.act('u-cage', {}, app.clock, () => { for (const b of bars) app.objects.add(b); });
-      app.ui.toast(`Каркас: 4 прутка Ø12, ${((cage.s1 - cage.s0) / S / 1000).toFixed(2).replace('.', ',')} м — теперь заливайте бетон шлангом в лоток`);
+      app.ui.toast(`Каркас: 4 прутка Ø12, ${((cage.s1 - cage.s0) / S / 1000).toFixed(2).replace('.', ',')} м — теперь бетон в лоток: «Бетон → Ведро»`);
       return;
     }
     if (free !== undefined) {
@@ -624,7 +624,7 @@ export class WallTool {
     if (['lintel', 'prop', 'ublock', 'ucage'].includes(this.kind)) return {
       lintel: 'Перемычка: тяните из лотка к проёму — встанет над ним, опора ≥ 250 мм с каждой стороны, длина подберётся (1,0…3,0 м)',
       prop: 'Подпорка: поставьте в проём под монолитную перемычку, на неё — U-блоки',
-      ublock: 'U-блок: кладите на подпорку над проёмом и рядом на кладку, как газоблок; потом каркас и бетон шлангом',
+      ublock: 'U-блок: кладите на подпорку над проёмом и рядом на кладку, как газоблок; потом каркас и бетон из ведра (Бетон → Ведро)',
       ucage: 'Каркас: поднесите к ряду U-блоков — 4 прутка Ø12 лягут в лоток',
     }[this.kind];
     if (this.kind !== 'block' || (c && c.kind !== 'block')) {
@@ -757,8 +757,11 @@ class LayJob {
       // the mallet: three taps, each takes half of what is left to the cord / level
       this.tapT += dt;
       const g = this.app.concreteGear, top = this.target.p.clone(); top.y += this.target.s.y / 2;
-      const swing = Math.max(0, Math.sin(Math.min(1, (this.tapT % 0.22) / 0.22) * Math.PI));
-      g.set('mallet', top.clone().add(new THREE.Vector3(0, MM(40) + swing * MM(90), 0)), 2 * Math.atan2(this.target.q.y, this.target.q.w));
+      // (lifted slowly, brought down fast)
+      const f = (this.tapT % 0.22) / 0.22, swing = f < 0.7 ? Math.sin(f / 0.7 * Math.PI / 2) : Math.cos((f - 0.7) / 0.3 * Math.PI / 2);
+      // the flat face of the head strikes the middle of the top; between taps it is swung up
+      g.malletSwing = swing * 0.75;
+      g.set('mallet', top, 0);
       if (this.tapT > (this.taps + 1) * 0.22) {
         this.taps++;
         this.app.sfx?.stab?.();

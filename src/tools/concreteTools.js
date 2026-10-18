@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PUMP, MODEL_SCALE, CONCRETE } from '../config.js';
-import { uRun } from './lintels.js';
+import { Channel, UDEPTH } from './uPour.js';
 const _ray = new THREE.Raycaster();
 
 // Concrete work, as on a real slab:
@@ -105,7 +105,7 @@ export class HoseTool extends ConcreteTool {
     this.uT = this._uAt(e);
     if (!this.uT && !this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('concrete-pour', { rate: this.app.settings.pump }, p);
-    this.poured = 0; this.uAcc = new Map(); this.uSync = 0;
+    this.poured = 0; this.ch = null; this.brimSaid = false;
     this.warned = false;
     this.app.sfx.scrapeStart();
     this.app.sfx.scrapeLevel(0.25);
@@ -124,36 +124,23 @@ export class HoseTool extends ConcreteTool {
     return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z);
   }
 
-  // concrete into the channel of the U-blocks: the one under the hose, then on along the
-  // run; the channel holds 600 × 150 × 190 mm (17 l) — a full one starts to set
-  _fillU(vol) {
-    const app = this.app, S3 = MODEL_SCALE ** 3, cap = 0.6 * 0.15 * 0.19;
-    const R = uRun(app, new THREE.Vector3(this.uT.p[0], 0, this.uT.p[2]), null, null);
-    const run = (R ? R.run.map((b) => b.u) : [this.uT]).sort((a, b) => Math.hypot(a.p[0] - this.uT.p[0], a.p[2] - this.uT.p[2]) - Math.hypot(b.p[0] - this.uT.p[0], b.p[2] - this.uT.p[2]));
-    let left = vol * S3;
-    for (const u of run) {
-      const f = (this.uAcc.get(u.id) ?? u.fill ?? 0);
-      if (f >= 1) continue;
-      const take = Math.min(left, (1 - f) * cap);
-      this.uAcc.set(u.id, f + take / cap);
-      left -= take;
-      if (left <= 1e-9) break;
-    }
-    this.poured += vol - left / S3;
-    if (left > 1e-9 && !this.warned) { this.warned = true; app.ui?.toast('U-блоки залиты доверху — отпустите'); }
-    // into the records a few times a second (one journal entry for the pour)
-    this.uSync += 1;
-    if (this.uSync % 6 === 0) this._syncU();
-  }
-  finish() { if (this.state !== 'idle' && this.uAcc?.size) this._syncU(); super.finish(); }   // (the last of the fill into the record before it commits)
-
-  _syncU() {
+  // concrete into the channel of the U-blocks (uPour.js): it lands under the hose and
+  // flows along the run; the hose is throttled down to a bucket's pace there (4 l/s)
+  _fillU(dt) {
     const app = this.app;
-    for (const [id, f] of this.uAcc) {
-      const u = app.objects.get(id);
-      if (!u || Math.abs((u.fill || 0) - f) < 1e-4) continue;
-      app.objects.update(id, { fill: +Math.min(1, f).toFixed(4), ...(f >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
-    }
+    if (!this.ch?.has(this.uT)) { if (this.ch) this.ch.write(app); this.ch = new Channel(app, this.uT); }
+    const ch = this.ch, i = ch.at(this.uT.p[0], this.uT.p[2]);
+    if (!ch.full && ch.h[i] < UDEPTH - 2) { ch.pour(i, 4 * dt); this.poured += 0.004 * dt / MODEL_SCALE ** 3; }
+    else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast('Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
+    else if (!this.warned) { this.warned = true; app.ui?.toast('U-блоки залиты доверху — отпустите'); }
+    ch.step(dt);
+    app.wallView.fillLive = ch.byId(); app.wallView.fillDirty = true;
+    return ch.point(i);
+  }
+  abort() { this.ch = null; this.app.wallView.fillLive = null; this.app.wallView.fillDirty = true; return super.abort(); }
+  finish() {
+    if (this.state !== 'idle' && this.ch) { this.ch.settle(); this.ch.write(this.app); this.ch = null; this.app.wallView.fillLive = null; this.app.wallView.fillDirty = true; }
+    super.finish();
   }
 
   work(dt) {
@@ -164,11 +151,9 @@ export class HoseTool extends ConcreteTool {
     // it lands under the spout (which swings a little behind the finger)
     const at = this.gear.pump.ready ? this.gear.pump.spout() : this.p;
     if (this.uT) {
-      this._fillU(vol);
-      const pump = this.gear.pump, sp = pump.spout();
-      pump.setStream(true, this.uT.p[1] + this.uT.s[1] / 2 - 0.004, app.clock);
+      const at = this._fillU(dt);
+      this.gear.pump.setStream(true, at.y, app.clock);
       this.gear.set('hose', this._tip(this.p));
-      void sp;
       return;
     }
     // the stream lands as a splat ~5 cm (real) across; the flow spreads it
@@ -199,6 +184,122 @@ export class HoseTool extends ConcreteTool {
     if (m?.type === 'concrete-pour') m.meta.volume = this.poured;
     const all = app.terrain.concVolume() * MODEL_SCALE ** 3;
     app.ui?.toast(`Бетон: ${(this.poured * MODEL_SCALE ** 3).toFixed(2).replace('.', ',')} м³ · всего ${all.toFixed(2).replace('.', ',')} м³`);
+  }
+}
+
+// A bucket of concrete (12 l) poured by hand into the channel of the U-blocks: hold the
+// finger over the U-blocks — the bucket tips over the channel and the concrete runs out
+// of its lip, heaps up and flows along the run (uPour.js); the more it empties, the more
+// it is tipped. Each press is a fresh bucket from the mixer and one journal entry.
+export const PAIL_L = 12;
+export class PailTool extends ConcreteTool {
+  constructor(app) { super(app, 'pail'); }
+
+  _uAt(e) { return HoseTool.prototype._uAt.call(this, e); }
+
+  down(p, e) {
+    if (this.state !== 'idle') return true;
+    const u = this._uAt(e);
+    if (!u) { this.app.ui?.toast('Ведро — для U-блоков: коснитесь лотка уложенных U-блоков'); return true; }
+    this.uT = u;
+    this.begin('u-pour', {}, p);
+    this.ch = new Channel(this.app, u);
+    this.left = PAIL_L; this.tilt = 0; this.poured = 0; this.warned = false; this.flow = 0; this.brimSaid = false;
+    this.i = this.ch.at(u.p[0], u.p[2]);
+    this._pose(true);
+    return true;
+  }
+
+  move(p, e) {
+    if (this.state !== 'work') return;
+    const u = this._uAt(e);
+    if (!u) return;
+    if (!this.ch.has(u)) { this.ch.write(this.app); this.ch = new Channel(this.app, u); }
+    this.uT = u;
+    // the sample under the finger (the finger's point on the U-block)
+    const hit = this._hitP(e);
+    this.i = hit ? this.ch.at(hit.x, hit.z) : this.ch.at(u.p[0], u.p[2]);
+  }
+
+  _hitP(e) {
+    const app = this.app, v = app.wallView;
+    _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
+    return _ray.intersectObjects([v.ublocks, v.fill], false)[0]?.point || null;
+  }
+
+  // the bucket held with its lip over the sample, tipped towards the wall from the
+  // camera's side
+  _pose(snap = false) {
+    const at = this.ch.point(this.i), u = this.uT, top = u.p[1] + u.s[1] / 2;
+    const lip = new THREE.Vector3(at.x, top + 0.11 / MODEL_SCALE, at.z);
+    const g = this.gear;
+    g.pailTilt = this.tilt; g.pailLeft = this.left / PAIL_L;
+    g.pailStream = this.flow > 0.05 ? at.y : null;
+    g.set('pail', lip, g.yawGoal, snap);
+  }
+
+  work(dt) {
+    const app = this.app, ch = this.ch;
+    // tipping: on until it runs, then further as it empties
+    // (where the channel is full already it is held back: lead it on along the run)
+    const brim = ch.h[this.i] >= UDEPTH - 2;
+    if (brim && !ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast('Здесь лоток полон — ведите ведро дальше вдоль ряда'); }
+    const want = this.left > 0 && !brim ? 1.25 + 0.75 * (1 - this.left / PAIL_L) : 0.6;
+    this.tilt += (want - this.tilt) * (1 - Math.exp(-dt * 4));
+    const run = this.left > 0 && this.tilt > 1.1 ? Math.min(1, (this.tilt - 1.1) / 0.15) : 0;
+    this.flow = run;
+    if (run > 0 && !ch.full) {
+      const l = Math.min(this.left, 3.5 * run * dt);
+      ch.pour(this.i, l); this.left -= l; this.poured += l / 1000 / MODEL_SCALE ** 3;
+      if (this.left <= 0) app.ui?.toast('Ведро пустое — отпустите и наберите ещё');
+    } else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast('U-блоки залиты доверху — отпустите'); }
+    ch.step(dt);
+    if (run > 0 && Math.random() < 0.3) {
+      const p = ch.point(this.i), a = Math.random() * Math.PI * 2;
+      app.particles?.emit(p, new THREE.Vector3(Math.cos(a) * 0.05, 0.12, Math.sin(a) * 0.05), 0, 0.0008, 0, 0, 9);
+    }
+    app.wallView.fillLive = ch.byId(); app.wallView.fillDirty = true;
+    this._pose();
+  }
+
+  up() { if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; } }
+
+  update(dt) {
+    if (this.state === 'work') this.work(dt);
+    else if (this.state === 'settle') {
+      // the bucket is lifted back, the concrete flows on a little
+      this.settleT += dt; this.flow = 0;
+      this.tilt += (0 - this.tilt) * (1 - Math.exp(-dt * 6));
+      const moved = this.ch.step(dt);
+      this.app.wallView.fillLive = this.ch.byId(); this.app.wallView.fillDirty = true;
+      this._pose();
+      if (this.settleT > 0.6 && (moved < 0.02 || this.settleT > 2)) this.finish();
+    }
+  }
+
+  finish() {
+    const app = this.app;
+    if (this.state === 'idle') return;
+    this.ch.settle(); this.ch.write(app);
+    app.wallView.fillLive = null; app.wallView.fillDirty = true;
+    const m = app.journal.pending;
+    if (m) m.meta.litres = +((PAIL_L - this.left)).toFixed(1);
+    app.journal.commit(app.clock);
+    this.state = 'idle'; this.ch = null;
+    this.gear.pailStream = null;
+    app.ui?.refresh();
+    const R = app.objects.all('unit').filter((u) => u.kind === 'ublock');
+    if (R.length && R.every((u) => (u.fill || 0) >= 0.95)) app.ui?.toast('Лотки залиты — бетон набирает прочность, потом можно снять подпорку');
+  }
+
+  abort() {
+    if (this.state === 'idle') return false;
+    this.ch = null; this.app.wallView.fillLive = null; this.app.wallView.fillDirty = true;
+    this.gear.pailStream = null;
+    this.app.journal.cancel();
+    this.state = 'idle';
+    this.app.ui?.refresh();
+    return true;
   }
 }
 
