@@ -42,6 +42,7 @@ export class Channel {
       this.ax = { x: u.p[0], z: u.p[2], ux: Math.cos(yaw), uz: -Math.sin(yaw) };
     }
     this.ids = new Set(this.blocks.map((b) => b.u.id));
+    this.top = u.p[1] + u.s[1] / 2;   // (the rims)
     this.h = [];
     this.sm = [];
     for (const b of this.blocks) {
@@ -52,6 +53,13 @@ export class Channel {
   }
 
   has(u) { return !!u && this.ids.has(u.id); }
+  get cap() { return UDEPTH; }
+  topY() { return this.top; }
+  // the direction along the run from sample a to sample b
+  dir(a, b) { const sg = b >= a ? 1 : -1; return [this.ax.ux * sg, this.ax.uz * sg]; }
+  // the rule drawn from sample a to b (riding on the rims), the float over them
+  rule(a, b) { const sg = b >= a ? 1 : -1; for (let j = a; j !== b + sg; j += sg) this.screed(j, sg); }
+  float(a, b) { this.trowel(Math.min(a, b) - 4, Math.max(a, b) + 4); }
 
   // the sample under a world point
   at(x, z) {
@@ -157,7 +165,7 @@ export class Channel {
       const fill = +(lv.reduce((a, v) => a + v, 0) / UN / UDEPTH).toFixed(4);
       const sm = sms.get(id).map((v) => Math.round(v * 100) / 100);
       if (u.lv && u.lv.every((v, k) => v === lv[k]) && Array.isArray(u.sm) && u.sm.every((v, k) => v === sm[k])) continue;
-      app.objects.update(id, { lv, fill, sm, ...(u.castT == null && fill > 0 ? { castT: +app.clock.toFixed(2) } : {}), ...(fill >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
+      app.objects.update(id, { lv, fill, sm, ...(fill > (u.fill || 0) + 1e-4 ? { wetT: +app.clock.toFixed(2) } : {}), ...(u.castT == null && fill > 0 ? { castT: +app.clock.toFixed(2) } : {}), ...(fill >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
     }
   }
 }

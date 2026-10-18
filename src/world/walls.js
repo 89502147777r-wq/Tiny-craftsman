@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { levels, worked, UN } from '../tools/uPour.js';
+import { plan, boardsOf, toWorld, BELT } from '../tools/belt.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
 import { makeCastConcreteMaterial } from './terrainMaterial.js';
 import { mortarOf } from '../tools/freeBrick.js';
@@ -360,7 +361,7 @@ export class WallView {
     this.cord = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshStandardMaterial({ color: 0xff4a1c, roughness: 0.6 }));
     for (const m of [this.blocks, this.bricks, this.mortar]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
     // pallets beside the walls: the wooden pallet (boards) — the blocks on it are drawn as blocks
-    this.max.wood = 1200;
+    this.max.wood = 4000;   // (pallets, props, the formwork of a ring beam)
     this.wood = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xb9925e, roughness: 0.85 }), this.max.wood);
     // U-blocks (a channel open upwards: the shell of a monolithic lintel) and the concrete in them
     this.ublocks = new THREE.InstancedMesh(uShape(), block, this.max.block);
@@ -390,14 +391,14 @@ export class WallView {
     this.live = null;      // a unit in the hand / being set (wallTool)
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
-    objects.on((id, rec) => { if (['wall', 'unit', 'bed', 'opening'].includes(rec?.type) || this._known?.has(id)) this.dirty = true; });
+    objects.on((id, rec) => { if (['wall', 'unit', 'bed', 'opening', 'belt'].includes(rec?.type) || this._known?.has(id)) this.dirty = true; });
   }
 
   update() {
     if (!this.dirty) { if (this.fillDirty) this._buildFill(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
-    this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening')].map((r) => r.id));
+    this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt')].map((r) => r.id));
     let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, nc = 0;
     const c3 = new THREE.Color();
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [] };
@@ -513,6 +514,25 @@ export class WallView {
       P.set(j.x, j.y, j.z); Q.setFromAxisAngle(_Y, j.yaw); Sv.set(j.l, j.h, j.w);
       this.mortar.setMatrixAt(nm++, m.compose(P, Q, Sv));
     }
+    // the formwork of the ring beams (and the one being set up): boards on edge along the
+    // faces of the top course, studs every 600 mm outside
+    for (const b of [...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])]) {
+      if (b.stripped) continue;
+      const th = BELT.board * S, over = BELT.over * S, h = over + b.H, yc = b.top - over + h / 2, yaw = Math.atan2(-b.u[1], b.u[0]);
+      for (const [s0, t0, s1, t1, ns, nt] of boardsOf(b)) {
+        if (nw >= this.max.wood - 40) break;
+        const along = ns === 0, L = Math.hypot(s1 - s0, t1 - t0) + 2 * th;
+        const cs = (s0 + s1) / 2 + ns * th / 2, ct = (t0 + t1) / 2 + nt * th / 2, [x, z] = toWorld(b, cs, ct);
+        Q.setFromAxisAngle(_Y, along ? yaw : yaw + Math.PI / 2);
+        this.wood.setMatrixAt(nw, m.compose(P.set(x, yc, z), Q, Sv.set(L, h, th))); this.owner.wood[nw++] = b.id ?? null;
+        const n = Math.max(1, Math.round(L / (600 * S)));
+        for (let k = 0; k <= n; k++) {
+          const f = k / n - 0.5, ss = cs + (along ? f * (L - 60 * S) : 0) + ns * (th / 2 + 20 * S), tt = ct + (along ? 0 : f * (L - 60 * S)) + nt * (th / 2 + 20 * S);
+          const [sx, sz] = toWorld(b, ss, tt);
+          this.wood.setMatrixAt(nw, m.compose(P.set(sx, yc + 15 * S, sz), Q, Sv.set(40 * S, h + 30 * S, 40 * S))); this.owner.wood[nw++] = b.id ?? null;
+        }
+      }
+    }
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
     if (this.live) put(this.live, null);
     this.hlMesh.visible = !!this.hl;
@@ -556,7 +576,7 @@ export class WallView {
       const u = a.u;
       P.fromArray(u.p); Q.fromArray(u.q); Sv.fromArray(u.s); m.compose(P, Q, Sv);
       // (the colour comes from the concrete shader, by the time it was poured; set = long ago)
-      const c = [1, 1, 1], tp = u.set ? -1e6 : u.pourT ?? u.castT ?? 1e9;
+      const c = [1, 1, 1], tp = u.set ? -1e6 : Math.max(u.wetT ?? -1e9, u.pourT ?? -1e9, u.castT ?? -1e9) > -1e9 ? Math.max(u.wetT ?? -1e9, u.pourT ?? -1e9, u.castT ?? -1e9) : 1e9;
       const nL = endOf(a, -1), nR = endOf(a, 1);
       // the stations along: the two ends and the cell centres
       const sm = smOf(u);
@@ -583,6 +603,35 @@ export class WallView {
         own.push(u.id, u.id);
       }
       void mh;
+    }
+    // the ring beams: a surface over the cells (the corners: the mean of the cells round
+    // them), its sides down to the masonry where the plan ends (seen once stripped)
+    for (const b of this.objects.all('belt')) {
+      const live = this.beltLive?.get(b.id), lv = live?.lv ?? b.lv, sw = live?.sm ?? b.sm ?? [];
+      if (!lv.some((h) => h > 0.3)) continue;
+      const P = plan(b), { ni, nj, c } = b, tw = Math.max(b.wetT ?? -1e9, b.pourT ?? -1e9, b.castT ?? -1e9), tp = b.set ? -1e6 : tw > -1e9 ? tw : 1e9;
+      const vh = new Map(), vs = new Map();
+      const corner = (i, j) => {
+        const key = j * (ni + 1) + i;
+        if (!vh.has(key)) {
+          let sh = 0, ss = 0, n = 0;
+          for (const [a, d] of [[i, j], [i - 1, j], [i, j - 1], [i - 1, j - 1]]) { if (a < 0 || d < 0 || a >= ni || d >= nj) continue; const k = P.index[d * ni + a]; if (k >= 0) { sh += lv[k]; ss += sw[k] ?? 0.3; n++; } }
+          vh.set(key, n ? sh / n : 0); vs.set(key, n ? ss / n : 0.3);
+        }
+        return key;
+      };
+      const vert = (i, j, hmm) => { const key = corner(i, j), [x, z] = toWorld(b, i * c, j * c); pos.push(x, b.top + (hmm ?? vh.get(key)) * S, z); col.push(1, 1, 1); pt.push(tp); ws.push(vs.get(key)); return pos.length / 3 - 1; };
+      P.cells.forEach(([i, j], k) => {
+        if (lv[k] <= 0.3) return;
+        const a = vert(i, j), b2 = vert(i + 1, j), c2 = vert(i + 1, j + 1), d = vert(i, j + 1);
+        idx.push(a, d, b2, b2, d, c2); own.push(b.id, b.id);
+        // the sides where the ring ends
+        for (const [q, e0, e1] of [[P.nb[k][0], [i + 1, j], [i + 1, j + 1]], [P.nb[k][1], [i, j + 1], [i, j]], [P.nb[k][2], [i + 1, j + 1], [i, j + 1]], [P.nb[k][3], [i, j], [i + 1, j]]]) {
+          if (q >= 0) continue;
+          const t0 = vert(...e0), t1 = vert(...e1), b0 = vert(...e0, 0), b1 = vert(...e1, 0);
+          idx.push(t0, b0, t1, t1, b0, b1); own.push(b.id, b.id);
+        }
+      });
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
