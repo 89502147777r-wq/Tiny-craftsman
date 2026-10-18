@@ -91,7 +91,13 @@ export class Backdrop {
   async _buildPosters() {
     const [crane, board] = await Promise.all([this._photo('assets/backdrops/site-crane.jpg'), this._photo('assets/backdrops/site-billboard.jpg')]);
     for (const t of [crane, board]) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.needsUpdate = true; }
-    const geo = makeWrapSheet(crane.image.width / crane.image.height, board.image.width / board.image.height, sampler(crane.image), sampler(board.image));
+    const s1 = sampler(crane.image), s2 = sampler(board.image);
+    const geo = makeWrapSheet(crane.image.width / crane.image.height, board.image.width / board.image.height, s1, s2);
+    // the colour of the ground in the prints (their lowest strip) against the plot's sand
+    const avg = (f, vs) => { const c = [0, 0, 0]; let n = 0; for (const v of vs) for (let u = 0.05; u < 1; u += 0.1) { const q = f(u, v); c[0] += q[0]; c[1] += q[1]; c[2] += q[2]; n++; } return c.map((x) => x / n); };
+    const pg = avg(s1, [0.07, 0.1, 0.13]).map((x, i) => (x + avg(s2, [0.07, 0.1, 0.13])[i]) / 2);
+    const tint = new THREE.Color(0xcfc2b2), sd = avg(sampler(this.app.tex.top.diff.image), [0.1, 0.3, 0.5, 0.7, 0.9]).map((x, i) => x * [tint.r, tint.g, tint.b][i]);
+    const groundGain = new THREE.Vector3(...sd.map((x, i) => Math.min(1.6, Math.max(0.6, x / Math.max(1e-3, pg[i])))));
     // matte photo paper: diffuse only — no glare on the rounded corner
     const front = new THREE.MeshLambertMaterial({ map: crane, side: THREE.FrontSide });
     front.onBeforeCompile = (sh) => {
@@ -101,15 +107,31 @@ export class Backdrop {
       // each print toned towards the other one near the joint (same brightness and colour
       // across it), and a feather of a few centimetres instead of a hard line
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform sampler2D tB;\nvarying vec2 vUvB;\nvarying float vMix;\nvarying vec3 vG1;\nvarying vec3 vG2;')
-        .replace('#include <map_fragment>', 'vec4 cA = texture2D(map, vMapUv); cA.rgb *= vG1;\nvec4 cB = texture2D(tB, vUvB); cB.rgb *= vG2;\nvec4 sampledDiffuseColor = mix(cA, cB, smoothstep(0.0, 1.0, vMix));\ndiffuseColor *= sampledDiffuseColor;');
+        .replace('#include <map_fragment>', 'vec4 cA = texture2D(map, vMapUv); cA.rgb *= vG1;\nvec4 cB = texture2D(tB, vUvB); cB.rgb *= vG2;\nvec4 sampledDiffuseColor = mix(cA, cB, smoothstep(0.0, 1.0, vMix));\n'
+          // the foot of the prints goes over into the sand of the plot (same texture and tint)
+          + 'vec3 sand = texture2D(tSand, vec2(vBW.x + vBW.z, vBW.y) / ' + SOIL_TILE.toFixed(5) + ').rgb * uSandTint * 1.3;\n'
+          + 'float sf = 1.0 - smoothstep(' + (TRAY.soil + 0.006).toFixed(4) + ', ' + (TRAY.soil + 0.045).toFixed(4) + ', vBW.y);\n'
+          // the ground of the prints toned to the colour of the plot's sand, fading out upwards
+          + 'float gw = 1.0 - smoothstep(' + (TRAY.soil + 0.01).toFixed(4) + ', ' + (TRAY.soil + 0.16).toFixed(4) + ', vBW.y);\n'
+          + 'sampledDiffuseColor.rgb *= mix(vec3(1.0), uGroundGain * 1.12, gw);\n'
+          + 'sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, sand, sf * sf * (3.0 - 2.0 * sf));\ndiffuseColor *= sampledDiffuseColor;');
+      sh.uniforms.uGroundGain = { value: groundGain };
+      sh.uniforms.tSand = { value: this.app.tex.top.diff };
+      sh.uniforms.uSandTint = { value: new THREE.Color(0xcfc2b2) };
+      sh.vertexShader = sh.vertexShader.replace('varying vec2 vUvB;', 'varying vec2 vUvB;\nvarying vec3 vBW;').replace('vUvB = uvB;', 'vUvB = uvB; vBW = (modelMatrix * vec4(position, 1.0)).xyz;');
+      sh.fragmentShader = sh.fragmentShader.replace('uniform sampler2D tB;', 'uniform sampler2D tB;\nuniform sampler2D tSand;\nuniform vec3 uSandTint;\nuniform vec3 uGroundGain;\nvarying vec3 vBW;');
     };
-    front.customProgramCacheKey = () => 'tc-backdrop-wrap-4';
+    front.customProgramCacheKey = () => 'tc-backdrop-wrap-7';
     const back = new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.85, side: THREE.BackSide });
     const g = new THREE.Group();
     g.name = 'posters';
     const m1 = new THREE.Mesh(geo, front), m2 = new THREE.Mesh(geo, back);
-    for (const m of [m1, m2]) { m.receiveShadow = true; m.castShadow = false; }
+    // the print takes no shadows: the walls of the box stand behind it now and would darken its foot
+    for (const m of [m1, m2]) { m.receiveShadow = false; m.castShadow = false; }
     g.add(m1, m2);
+    // a little sand pushed up against the print along its foot (as on a real diorama):
+    // the plot's own sand, so the joint between the plot and the print does not show
+    g.add(makeSandBerm(geo.userData.path, this.ground.material));
     g.visible = false;
     this.app.scene.add(g);
     this.posters = g;
@@ -133,6 +155,32 @@ export class Backdrop {
       this.cache[url] = t; res(t);
     }, undefined, rej));
   }
+}
+
+// a strip of sand along the foot of the backdrop: from the sheet (a little up it) down and
+// out onto the plot, slightly below the soil at its outer edge (it disappears into it)
+function makeSandBerm(path, material) {
+  const prof = [[0, 0.0055], [0.008, 0.0038], [0.02, 0.0018], [0.04, 0.0004], [0.06, -0.0012]];   // (in from the sheet, up from the soil)
+  const n = path.length, pos = [], idx = [];
+  for (let i = 0; i < n; i++) {
+    const a = path[Math.max(0, i - 1)], b = path[Math.min(n - 1, i + 1)];
+    let tx = b[0] - a[0], tz = b[1] - a[1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
+    // inwards: towards the middle of the box
+    let nx = -tz, nz = tx; if (nx * path[i][0] + nz * path[i][1] > 0) { nx = -nx; nz = -nz; }
+    for (const [d, y] of prof) pos.push(path[i][0] + nx * (d + 0.0004), TRAY.soil + y, path[i][1] + nz * (d + 0.0004));
+  }
+  const m = prof.length;
+  for (let i = 0; i < n - 1; i++) for (let j = 0; j < m - 1; j++) { const a = i * m + j, b = a + 1, c = a + m, d = c + 1; idx.push(a, c, b, b, c, d); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  if (g.attributes.normal.getY(0) < 0) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k + 1]; idx[k + 1] = idx[k + 2]; idx[k + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); }
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(n * m * 2), 2));
+  const mesh = new THREE.Mesh(g, material);
+  mesh.receiveShadow = true;
+  mesh.name = 'backdrop-sand';
+  return mesh;
 }
 
 // read a photo's colours (linear-ish 0…1) at a texture coordinate, from a small copy
@@ -197,8 +245,10 @@ function groundColour(t) {
 // Each photo "covers" its part (cropped, ground kept), starting at the rim.
 function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
   const { sx, sz, radius, height: H, first = 'x' } = BACKDROP;
-  const e = 0.0012; // paper on the plywood
-  const ox = TRAY.innerX / 2 + TRAY.wall + e, oz = TRAY.innerZ / 2 + TRAY.wall + e, R = radius + e;
+  // on the inner face of the walls (the white top of the wall is hidden behind it), its
+  // foot down in the sand
+  const e = 0.0012;
+  const ox = TRAY.innerX / 2 - e, oz = TRAY.innerZ / 2 - e, R = radius - TRAY.wall - e;
   const cx = sx * (ox - R), cz = sz * (oz - R);
   const side1 = [], arc = [], side2 = [];
   // side 1 runs from its far end to the corner, side 2 from the corner away
@@ -222,16 +272,18 @@ function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
   // the picture must run to the right of someone looking at side 1 from inside the box
   const d0 = [path[1][0] - path[0][0], path[1][1] - path[0][1]], right = [-n1[1], n1[0]];
   const flip = d0[0] * right[0] + d0[1] * right[1] < 0;
-  const rim = TRAY.height;
+  const rim = TRAY.soil + 0.004;   // where the prints start: just above the sand
   // the two prints are the two halves of one panorama (as on the real diorama): each runs
   // to the joint with its own edge, uncropped, both at one scale and bottom at the rim, so
   // the horizon, the sky and the ground run on across the corner
   const mid = s[side1.length + 23], FE = 0.025, FAR = 0.35;
   const k = Math.max(H, mid / aspect1, (total - mid) / aspect2);
-  const map1 = (si, y) => { const u = 1 - (mid - si) / (aspect1 * k); return [flip ? 1 - u : u, (y - rim) / k]; };
-  const map2 = (si, y) => { const u = (si - mid) / (aspect2 * k); return [flip ? 1 - u : u, (y - rim) / k]; };
-  const ys = [0, rim - 0.004];
-  for (let i = 0; i <= 16; i++) ys.push(rim + (k * i) / 16);   // the sheet as tall as the prints: all their sky
+  // (the lowest strip of the photos is darkened by the lens: it is hidden in the sand)
+  const V0 = 0.05;
+  const map1 = (si, y) => { const u = 1 - (mid - si) / (aspect1 * k); return [flip ? 1 - u : u, V0 + (y - rim) / k]; };
+  const map2 = (si, y) => { const u = (si - mid) / (aspect2 * k); return [flip ? 1 - u : u, V0 + (y - rim) / k]; };
+  const ys = [TRAY.soil - 0.006, rim - 0.002];
+  for (let i = 0; i <= 16; i++) ys.push(rim + (k * (1 - V0) * i) / 16);   // the sheet as tall as the prints: all their sky
   // the colour of each print at the joint, row by row (a strip a few cm wide on its side):
   // both are toned to their mean there, fading back to the true colours FAR away
   const gains = ys.map((y) => {
@@ -267,5 +319,6 @@ function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
   const nrm = g.attributes.normal;
   const inward = -(nrm.getX(0) * path[0][0] + nrm.getZ(0) * path[0][1]) > 0;
   if (!inward) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k + 1]; idx[k + 1] = idx[k + 2]; idx[k + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); }
+  g.userData.path = path;
   return g;
 }
