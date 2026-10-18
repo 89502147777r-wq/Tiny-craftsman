@@ -377,13 +377,14 @@ export function makeCastConcreteMaterial(uniforms) {
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aPour;\nvarying float vPour;\nvarying vec3 vCWPos;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvPour = aPour;\nvCWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      .replace('#include <common>', '#include <common>\nattribute float aPour;\nattribute float aSm;\nvarying float vPour;\nvarying float vSm;\nvarying vec3 vCWPos;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvPour = aPour;\nvSm = aSm;\nvCWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform float uClock;
         uniform float uCure;
         varying float vPour;
+        varying float vSm;
         varying vec3 vCWPos;
         float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         ${CONC_NOISE_GLSL}`)
@@ -392,7 +393,7 @@ export function makeCastConcreteMaterial(uniforms) {
         {
           vec2 cq = vCWPos.xz * ${RESCALE.toFixed(5)};
           float big = tcSNoise(cq * 7.0) * 0.6 + tcSNoise(cq * 19.0 + 3.0) * 0.4;
-          float sm = 0.3;   // (pushed into the channel and patted level with a trowel)
+          float sm = vSm;   // how much it was worked: vibrator, rule, trowel (0.3 as poured from a bucket)
           vec3 st = tcStones(cq * 240.0), st2 = tcStones(cq * 115.0 + 17.0);
           float sink = 0.45 + 0.5 * sm;
           float stone = max(smoothstep(sink, sink + 0.2, st.x) * step(0.45, tcHash(floor(cq * 240.0))),
@@ -407,7 +408,7 @@ export function makeCastConcreteMaterial(uniforms) {
           diffuseColor.rgb *= mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2)) * vColor;
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(mix(0.58, 0.12, 0.3), mix(0.9, 0.72, 0.3), smoothstep(0.1, 0.8, cure));`);
+        roughnessFactor = mix(mix(0.58, 0.12, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));`);
   };
   m.customProgramCacheKey = () => 'tc-cast-concrete';
   return m;

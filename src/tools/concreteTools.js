@@ -44,6 +44,37 @@ class ConcreteTool {
     return len;
   }
 
+  // the concrete in the channel of U-blocks (uPour.js) instead of the ground: when the
+  // finger is on a U-block the vibrator, the rule and the trowel work it there
+  _uAt(e) {
+    const app = this.app, v = app.wallView;
+    if (!e || !v || e.clientX === undefined) return null;
+    _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
+    const hit = _ray.intersectObjects([v.ublocks, v.fill], false)[0];
+    const id = hit && v.ownerOf(hit), u = id && app.objects.get(id);
+    if (!u || u.kind !== 'ublock') return null;
+    this._uHit = hit.point;
+    return u;
+  }
+  _uBegin(e, type) {
+    const u = this._uAt(e);
+    if (!u) return false;
+    if (!(u.fill > 0.05)) { this.app.ui?.toast('В лотке U-блоков ещё нет бетона — сначала залейте (Бетон → Ведро)'); return true; }
+    const t0 = u.pourT ?? u.castT;
+    if (u.set || (t0 != null && this.app.clock - t0 > 0.75 * CONCRETE.cure)) { this.app.ui?.toast('Бетон в лотке уже схватился — его не провибрировать и не загладить'); return true; }
+    this.begin(type, { u: u.id }, new THREE.Vector3(u.p[0], u.p[1], u.p[2]));
+    const ch = new Channel(this.app, u);
+    this.uw = { ch, top: u.p[1] + u.s[1] / 2, i: ch.at(this._uHit.x, this._uHit.z) };
+    this.uw.last = this.uw.i;
+    this.app.sfx.scrapeStart();
+    return true;
+  }
+  // the sample under the finger (on this run), or null
+  _uSample(e) {
+    const u = this._uAt(e);
+    return u && this.uw.ch.has(u) ? this.uw.ch.at(this._uHit.x, this._uHit.z) : null;
+  }
+
   up() { if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; this.app.sfx.scrapeStop(); this.gear.pump.setStream(false); } }
   interrupt() { this.up(); }
 
@@ -61,6 +92,16 @@ class ConcreteTool {
   finish() {
     const app = this.app, t = app.terrain;
     if (this.state === 'idle') return;
+    if (this.uw) {
+      // (the channel: into its records; the ground is not touched)
+      app.sfx.scrapeStop();
+      this.uw.ch.settle(); this.uw.ch.write(app); this.uw = null;
+      app.wallView.fillLive = app.wallView.fillLiveSm = null; app.wallView.fillDirty = true;
+      app.journal.commit(app.clock);
+      this.state = 'idle';
+      app.ui?.refresh();
+      return;
+    }
     app.sfx.scrapeStop();
     this.gear.pump.setStream(false);
     // (the concrete was let to settle frame by frame; whatever creep is left stops here —
@@ -75,6 +116,7 @@ class ConcreteTool {
 
   abort() {
     if (this.state === 'idle') return false;
+    if (this.uw) { this.uw = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = null; this.app.wallView.fillDirty = true; }
     this.app.sfx.scrapeStop();
     this.app.particles.flush();
     this.app.journal.cancel();
@@ -134,12 +176,12 @@ export class HoseTool extends ConcreteTool {
     else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast('Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
     else if (!this.warned) { this.warned = true; app.ui?.toast('U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
-    app.wallView.fillLive = ch.byId(); app.wallView.fillDirty = true;
+    ch.show(app.wallView);
     return ch.point(i);
   }
-  abort() { this.ch = null; this.app.wallView.fillLive = null; this.app.wallView.fillDirty = true; return super.abort(); }
+  abort() { this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = null; this.app.wallView.fillDirty = true; return super.abort(); }
   finish() {
-    if (this.state !== 'idle' && this.ch) { this.ch.settle(); this.ch.write(this.app); this.ch = null; this.app.wallView.fillLive = null; this.app.wallView.fillDirty = true; }
+    if (this.state !== 'idle' && this.ch) { this.ch.settle(); this.ch.write(this.app); this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = null; this.app.wallView.fillDirty = true; }
     super.finish();
   }
 
@@ -258,7 +300,7 @@ export class PailTool extends ConcreteTool {
       const p = ch.point(this.i), a = Math.random() * Math.PI * 2;
       app.particles?.emit(p, new THREE.Vector3(Math.cos(a) * 0.05, 0.12, Math.sin(a) * 0.05), 0, 0.0008, 0, 0, 9);
     }
-    app.wallView.fillLive = ch.byId(); app.wallView.fillDirty = true;
+    ch.show(app.wallView);
     this._pose();
   }
 
@@ -271,7 +313,7 @@ export class PailTool extends ConcreteTool {
       this.settleT += dt; this.flow = 0;
       this.tilt += (0 - this.tilt) * (1 - Math.exp(-dt * 6));
       const moved = this.ch.step(dt);
-      this.app.wallView.fillLive = this.ch.byId(); this.app.wallView.fillDirty = true;
+      this.ch.show(this.app.wallView);
       this._pose();
       if (this.settleT > 0.6 && (moved < 0.02 || this.settleT > 2)) this.finish();
     }
@@ -281,7 +323,7 @@ export class PailTool extends ConcreteTool {
     const app = this.app;
     if (this.state === 'idle') return;
     this.ch.settle(); this.ch.write(app);
-    app.wallView.fillLive = null; app.wallView.fillDirty = true;
+    app.wallView.fillLive = app.wallView.fillLiveSm = null; app.wallView.fillDirty = true;
     const m = app.journal.pending;
     if (m) m.meta.litres = +((PAIL_L - this.left)).toFixed(1);
     app.journal.commit(app.clock);
@@ -294,7 +336,7 @@ export class PailTool extends ConcreteTool {
 
   abort() {
     if (this.state === 'idle') return false;
-    this.ch = null; this.app.wallView.fillLive = null; this.app.wallView.fillDirty = true;
+    this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = null; this.app.wallView.fillDirty = true;
     this.gear.pailStream = null;
     this.app.journal.cancel();
     this.state = 'idle';
@@ -319,8 +361,9 @@ export class ScreedTool extends ConcreteTool {
     return top || t.heightAt(p.x, p.z);
   }
 
-  down(p) {
+  down(p, e) {
     if (this.state !== 'idle') return true;
+    if (this._uBegin(e, 'u-screed')) { if (this.uw) this._uRule(this.uw.i, 1, true); return true; }
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('screed', {}, p);
     this.stroke = { width: 2.0 / MODEL_SCALE, band: this.app.terrain.cell * 2.5, L: this.levelAt(p), moved: 0 };
@@ -329,8 +372,26 @@ export class ScreedTool extends ConcreteTool {
     return true;
   }
 
-  move(p) {
+  // in the channel: the rule lies across it on the two rims and is drawn along it,
+  // pushing what stands above the rims on ahead
+  _uRule(i, sg, snap = false) {
+    const ch = this.uw.ch, at = ch.point(i);
+    this.gear.set('screed', new THREE.Vector3(at.x, this.uw.top, at.z), Math.atan2(ch.ax.ux * sg, ch.ax.uz * sg), snap);
+  }
+
+  move(p, e) {
     if (this.state !== 'work') return;
+    if (this.uw) {
+      const i = this._uSample(e);
+      if (i == null || i === this.uw.last) return;
+      const sg = Math.sign(i - this.uw.last);
+      for (let j = this.uw.last; j !== i + sg; j += sg) this.uw.ch.screed(j, sg);
+      this.uw.last = i;
+      this.uw.ch.show(this.app.wallView);
+      this.app.sfx.scrapeLevel(0.4);
+      this._uRule(i, sg);
+      return;
+    }
     const t = this.app.terrain, len = this.steer(p);
     if (!len) return;
     const n = Math.ceil(len / (t.cell * 0.6)), q = new THREE.Vector3();
@@ -347,7 +408,7 @@ export class ScreedTool extends ConcreteTool {
   }
 
   up() {
-    if (this.state === 'work') this.app.terrain.flushSpill(this.stroke, this.dir.x, this.dir.y);
+    if (this.state === 'work' && !this.uw) this.app.terrain.flushSpill(this.stroke, this.dir.x, this.dir.y);
     super.up();
   }
 }
@@ -355,8 +416,9 @@ export class ScreedTool extends ConcreteTool {
 export class VibratorTool extends ConcreteTool {
   constructor(app) { super(app, 'vibro'); }
 
-  down(p) {
+  down(p, e) {
     if (this.state !== 'idle') return true;
+    if (this._uBegin(e, 'u-vibrate')) { if (this.uw) this.gear.set('vibro', this.uw.ch.point(this.uw.i), 0, true); return true; }
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('vibrate', {}, p);
     this.app.sfx.scrapeStart();
@@ -364,10 +426,24 @@ export class VibratorTool extends ConcreteTool {
     return true;
   }
 
-  move(p) { if (this.state === 'work' && this.app.terrain.inside(p.x, p.z)) this.p.copy(p); }
+  move(p, e) {
+    if (this.state !== 'work') return;
+    if (this.uw) { const i = this._uSample(e); if (i != null) this.uw.i = i; return; }
+    if (this.app.terrain.inside(p.x, p.z)) this.p.copy(p);
+  }
   _at(p) { return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z); }
 
   work(dt) {
+    if (this.uw) {
+      // in the channel: ~0,8 m of it either way runs level, the paste comes up
+      const ch = this.uw.ch;
+      ch.vibrate(this.uw.i, 16, dt);
+      ch.show(this.app.wallView);
+      this.app.sfx.scrapeLevel(0.35 + Math.random() * 0.1);
+      const j = 0.0006;
+      this.gear.set('vibro', ch.point(this.uw.i).add(new THREE.Vector3((Math.random() - 0.5) * j, 0, (Math.random() - 0.5) * j)));
+      return;
+    }
     const t = this.app.terrain;
     t.vibrate(this.p.x, this.p.z, 0.8 / MODEL_SCALE);   // acts ~0.8 m around the poker (a strong one)
     this.app.sfx.scrapeLevel(0.35 + Math.random() * 0.1);
@@ -380,8 +456,12 @@ export class VibratorTool extends ConcreteTool {
 export class TrowelTool extends ConcreteTool {
   constructor(app) { super(app, 'trowel'); }
 
-  down(p) {
+  down(p, e) {
     if (this.state !== 'idle') return true;
+    if (this._uBegin(e, 'u-trowel')) {
+      if (this.uw) { const ch = this.uw.ch; this.gear.set('trowel', ch.point(this.uw.i), Math.atan2(ch.ax.ux, ch.ax.uz) + Math.PI / 2, true); this.touched = true; }
+      return true;
+    }
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('trowel', {}, p);
     this.app.sfx.scrapeStart();
@@ -392,8 +472,19 @@ export class TrowelTool extends ConcreteTool {
 
   _at(p) { return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z); }
 
-  move(p) {
+  move(p, e) {
     if (this.state !== 'work') return;
+    if (this.uw) {
+      // in the channel: the float (450 mm) along it closes and smooths the surface
+      const i = this._uSample(e), ch = this.uw.ch;
+      if (i == null || i === this.uw.last) return;
+      ch.trowel(Math.min(i, this.uw.last) - 4, Math.max(i, this.uw.last) + 4);
+      this.uw.last = i;
+      ch.show(this.app.wallView);
+      this.app.sfx.scrapeLevel(0.2);
+      this.gear.set('trowel', ch.point(i), Math.atan2(ch.ax.ux, ch.ax.uz) + Math.PI / 2);
+      return;
+    }
     const t = this.app.terrain, len = this.steer(p);
     if (!len) return;
     const n = Math.ceil(len / (t.cell * 1.5)), q = new THREE.Vector3();
