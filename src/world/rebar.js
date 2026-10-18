@@ -24,8 +24,8 @@ export class RebarView {
     this.chairs = new THREE.InstancedMesh(makeChairGeometry(), new THREE.MeshStandardMaterial({ color: 0x505457, roughness: 0.55 }), this.max.chairs);
     this.frogs = new THREE.InstancedMesh(makeFrogGeometry(), new THREE.MeshStandardMaterial({ color: 0x5d4a3e, roughness: 0.6, metalness: 0.5 }), this.max.frogs);
     this.ties = new THREE.InstancedMesh(new THREE.TorusGeometry(1, 0.28, 5, 10), new THREE.MeshStandardMaterial({ color: 0x2c2c2e, roughness: 0.45, metalness: 0.7 }), this.max.ties);
-    // plastic wheel spacers («звёздочки») clipped on the bars: grey-white plastic
-    this.stars = new THREE.InstancedMesh(makeStarGeometry(), new THREE.MeshStandardMaterial({ color: 0xd8d6cf, roughness: 0.55 }), this.max.stars);
+    // plastic wheel spacers («звёздочки») clipped on the bars: dark grey plastic
+    this.stars = new THREE.InstancedMesh(makeStarGeometry(), new THREE.MeshStandardMaterial({ color: 0x3b3e42, roughness: 0.5 }), this.max.stars);
     for (const m of [this.rods, this.chairs, this.frogs, this.ties, this.stars]) {
       m.castShadow = m.receiveShadow = true;
       m.frustumCulled = false;
