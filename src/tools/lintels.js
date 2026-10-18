@@ -129,7 +129,7 @@ export function uRun(app, p, screen, finger) {
 // the cage of a run, as on site: 4 bars Ø12 tied into square stirrups Ø6 every ≤ 350 mm
 // (wire at each corner), plastic wheel spacers («звёздочки») on the bars — they hold the
 // cage 30 mm off the floor and the walls of the channel. One `cage` record.
-export function cageRec(R) {
+export function cageRec(R, app) {
   const b = R.pick, M = (v) => v * S, fl = b.bot + M(60);
   const ds = M(6), d = M(12);
   const sx = M(47), yb = fl + M(28), yt = fl + M(157);          // stirrup centre lines
@@ -151,6 +151,25 @@ export function cageRec(R) {
     // floor and the wall; on the top bars — the walls
     if (k % 2 === 0 || k === at.length - 1) for (const [o, y] of [[-bx, ybb], [bx, ybb], [-bx, ybt], [bx, ybt]]) stars.push([...P(s + M(70), o, y), +yaw.toFixed(4), +M(36).toFixed(6)]);
   });
+  // a corner: the run ends against U-blocks running across it (a ring beam in U-blocks) —
+  // Г-shaped bars, 600 mm legs, carry the bars round into the other wall
+  if (app) {
+    const us = app.objects.all('unit').filter((u) => u.kind === 'ublock' && !R.run.some((r) => r.u.id === u.id)).map(boxOf);
+    for (const [end, sg] of [[R.s0, -1], [R.s1, 1]]) {
+      const qx = b.x + b.ux * (end + sg * M(150)), qz = b.z + b.uz * (end + sg * M(150));
+      const near = us.filter((o) => Math.abs(o.bot - b.bot) < M(15) && Math.abs(Math.sin(o.yaw - b.yaw)) > 0.95 && Math.hypot(o.x - qx, o.z - qz) < o.hl + M(200));
+      if (!near.length) continue;
+      // which way the other wall goes from the corner (across this run)
+      const side = Math.sign(near.reduce((a, o) => a + (-(o.x - b.x) * b.uz + (o.z - b.z) * b.ux), 0)) || 1;
+      for (const y of [ybb, ybt]) for (const o of [-bx, bx]) {
+        // (the bend on the line of the other wall's bar: the outer bar round the outside)
+        const bend = end + sg * (M(150) + (o * side < 0 ? bx : -bx));
+        const A = P(end - sg * M(600), o, y), Bp = P(bend, o, y);
+        const C = [Bp[0] - b.uz * side * M(600), y, Bp[2] + b.ux * side * M(600)].map((v) => +v.toFixed(5));
+        bars.push([...A, ...Bp, +d.toFixed(6)], [...Bp, ...C, +d.toFixed(6)]);
+      }
+    }
+  }
   return { type: 'cage', outlineId: null, uRun: R.run.map((x) => x.u.id).sort((x, y) => x - y).join(','), bars, chairs: [], frogs: [], ties, tied: true, stars, d };
 }
 

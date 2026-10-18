@@ -5,6 +5,7 @@ import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt } from './freeBrick.js';
 import { placeLintel, placeProp, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
+import { findBelt, beltContains, beltCage, beltsOverlap } from './belt.js';
 
 // Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
 //   lay    – take a block (brick) from the tray or the pallet and carry it: onto a wall
@@ -467,10 +468,20 @@ export class WallTool {
     if (c.kind === 'lintel') free = placeLintel(app, p, scr, fing);
     else if (c.kind === 'prop') free = placeProp(app, p, scr, fing);
     else if (c.kind === 'ublock') free = placeUnit(app, 'ublock', p, scr, fing, turn, { yaw: ref });
-    else if (c.kind === 'ucage') {
-      // the cage: over a run of U-blocks, shown as the run lit up
+    else if (c.kind === 'belt') {
+      // the formwork of a ring beam: round the whole top course under the finger
+      const B = findBelt(app, p, scr, fing);
+      if (B) B.exists = app.objects.all('belt').some((b) => Math.abs(b.top - B.rec.top) < 0.002 && beltsOverlap(b, B.rec));
+      c.belt = B; c.free = undefined; c.snap = null;
+      v.live = null; v.hl = null; v.liveBed = null;
+      v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
+      app.ui.refresh();
+      return;
+    } else if (c.kind === 'ucage') {
+      // the cage: over a run of U-blocks, shown as the run lit up — or into a ring beam's formwork
       const R = uRun(app, p, scr, fing);
       c.cage = R; c.free = undefined; c.snap = null;
+      c.beltCage = R ? null : app.objects.all('belt').find((b) => beltContains(b, p.x, p.z) && p.y > b.top - 0.003) || null;
       v.live = null;
       if (R) {
         const b = R.pick, mid = (R.s0 + R.s1) / 2, L = R.s1 - R.s0;
@@ -553,7 +564,7 @@ export class WallTool {
     const kind = this.kind;
     this.tray.classList.toggle('brick', kind !== 'block');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { block: 'Газоблок', brick: 'Кирпич', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас' };
+    const NAMES = { block: 'Газоблок', brick: 'Кирпич', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса' };
     if (lab) lab.textContent = this.app.settings.wallHalf && (kind === 'block' || kind === 'brick') ? (kind === 'block' ? '½ блока' : '½ кирпича') : NAMES[kind] || 'Блок';
     const w = this._trayWall(), left = w ? this.palletLeft(w) : 0;
     this.tray.title = w ? `На поддоне: ${left}` : '';
@@ -561,17 +572,32 @@ export class WallTool {
 
   _carryCancel() {
     const v = this.app.wallView;
-    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.dirty = true;
+    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.liveBelt = null; v.dirty = true;
     this.app.ui.refresh();
   }
 
   _carryDrop() {
-    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage;
+    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage, belt = this.carry.belt, bc = this.carry.beltCage;
     this._carryCancel();
+    if (ck === 'belt') {
+      if (!belt) { app.ui.toast('Опалубку пояса — на верх стены: коснитесь верхнего ряда кладки'); return; }
+      if (belt.exists) { app.ui.toast('На этих стенах опалубка пояса уже стоит'); return; }
+      app.journal.act('belt-form', {}, app.clock, () => app.objects.add(belt.rec));
+      app.ui.toast(`Опалубка пояса: доски по обе стороны стен, ${belt.lenM.toFixed(1).replace('.', ',')} м стен, высота пояса 250 мм — теперь каркас («Каркас»), потом бетон`);
+      return;
+    }
+    if (ck === 'ucage' && !cage && bc) {
+      if (app.objects.all('cage').some((r) => r.beltId === bc.id)) { app.ui.toast('В этой опалубке каркас уже есть'); return; }
+      if (bc.fill > 0.05) { app.ui.toast('Пояс уже залит — каркас кладут до бетона'); return; }
+      const rec = beltCage(bc);
+      app.journal.act('belt-cage', {}, app.clock, () => app.objects.add(rec));
+      app.ui.toast(`Каркас пояса: 4 прутка Ø12 вдоль каждой стены, на углах — внахлёст до дальней стороны, хомуты Ø6 через ≤ 350 мм, звёздочки — теперь бетон (ведро или шланг)`);
+      return;
+    }
     if (ck === 'ucage') {
-      if (!cage) { app.ui.toast('Каркас — в лоток U-блоков: поднесите к ряду U-блоков'); return; }
+      if (!cage) { app.ui.toast('Каркас — в лоток U-блоков или в опалубку пояса: поднесите к ним'); return; }
       if (cage.has) { app.ui.toast('В этих U-блоках каркас уже есть'); return; }
-      const rec = cageRec(cage);
+      const rec = cageRec(cage, app);
       app.journal.act('u-cage', {}, app.clock, () => app.objects.add(rec));
       app.ui.toast(`Каркас ${((cage.s1 - cage.s0) / S / 1000).toFixed(2).replace('.', ',')} м: 4 прутка Ø12, хомуты Ø6 через ≤ 350 мм, звёздочки 30 мм — теперь бетон в лоток: «Бетон → Ведро»`);
       return;
@@ -614,7 +640,8 @@ export class WallTool {
   status() {
     const app = this.app, walls = app.objects.all('wall');
     const c = this.carry;
-    if (c?.kind === 'ucage') return c.cage ? (c.cage.has ? 'В этих U-блоках каркас уже есть' : `Каркас в ${c.cage.run.length} U-блок(а) — отпустите`) : 'Поднесите каркас к ряду U-блоков';
+    if (c?.kind === 'belt') return c.belt ? (c.belt.exists ? 'Здесь опалубка пояса уже стоит' : `Опалубка по верху стен: ${c.belt.lenM.toFixed(1).replace('.', ',')} м — отпустите`) : 'Поднесите к верхнему ряду кладки — опалубка встанет по всему его контуру';
+    if (c?.kind === 'ucage') return c.cage ? (c.cage.has ? 'В этих U-блоках каркас уже есть' : `Каркас в ${c.cage.run.length} U-блок(а) — отпустите`) : c.beltCage ? 'Каркас пояса — отпустите' : 'Поднесите каркас к ряду U-блоков или в опалубку пояса';
     if (c && (c.kind === 'lintel' || c.kind === 'prop') && !c.free) return c.kind === 'lintel' ? 'Поднесите перемычку к проёму в кладке' : 'Поднесите подпорку к проёму в кладке';
     if (c?.free && c.kind === 'lintel') return c.free.ok ? `Перемычка ${c.free.lenMm} мм над проёмом ${c.free.gapMm} мм. Отпустите` : 'Красный — ' + lintelWhy(c.free);
     if (c?.free && c.kind === 'prop') return c.free.ok ? `Подпорка в проём ${c.free.gapMm} мм. Отпустите` : 'Красный — сюда подпорку не поставить';
@@ -622,11 +649,12 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt'].includes(this.kind)) return {
+      belt: 'Армопояс в опалубке: поднесите к верхнему ряду стен — доски встанут по всему контуру; потом «Каркас», бетон (ведро / шланг), вибратор, правило; снять опалубку — «Удалить», когда бетон наберёт прочность',
       lintel: 'Перемычка: тяните из лотка к проёму — встанет над ним, опора ≥ 250 мм с каждой стороны, длина подберётся (1,0…3,0 м)',
       prop: 'Подпорка: поставьте в проём под монолитную перемычку, на неё — U-блоки',
       ublock: 'U-блок: кладите на подпорку над проёмом и рядом на кладку, как газоблок; потом каркас и бетон из ведра (Бетон → Ведро)',
-      ucage: 'Каркас: поднесите к ряду U-блоков — в лоток ляжет каркас: 4 прутка Ø12 в хомутах, со звёздочками',
+      ucage: 'Каркас: поднесите к ряду U-блоков (в лоток) или в опалубку пояса — 4 прутка Ø12 в хомутах, со звёздочками',
     }[this.kind];
     if (this.kind !== 'block' || (c && c.kind !== 'block')) {
       if (c) return 'Несите к кирпичу (продолжит ряд, ляжет рядом или повернёт за угол), на кладку или на плиту';
@@ -659,6 +687,21 @@ export class WallTool {
       if (app.objects.all('unit').some((u) => u.wall === o.wall && u.lintel && u.s0 < o.s1 && u.s1 > o.s0)) { app.ui.toast('Над проёмом уже перемычка — сначала снимите её'); return; }
       app.journal.act('opening-remove', {}, app.clock, () => app.objects.remove(id));
       app.ui.toast('Проём убран — ряды будут сплошными');
+      return;
+    }
+    if (id && app.objects.get(id)?.type === 'belt') {
+      // a ring beam: the formwork comes off once the concrete has set; empty — it goes
+      const b = app.objects.get(id);
+      if (!(b.fill > 0.05)) {
+        app.journal.act('belt-remove', {}, app.clock, () => { for (const c of app.objects.all('cage').filter((r) => r.beltId === b.id)) app.objects.remove(c.id); app.objects.remove(b.id); });
+        app.ui.toast('Опалубку пояса разобрали');
+        return;
+      }
+      if (b.stripped) { app.ui.toast('Опалубка уже снята — пояс готов'); return; }
+      const k = uStrength(b, app.clock);
+      if (!(b.fill >= 0.95) || k < 1) { app.ui.toast(!(b.fill >= 0.95) ? 'Пояс залит не доверху — долейте бетон' : `Бетон набирает прочность: ${Math.round(k * 100)} % — опалубку рано снимать`); return; }
+      app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, { stripped: true, set: true }));
+      app.ui.toast('Опалубку сняли — армопояс готов');
       return;
     }
     if (id) {
