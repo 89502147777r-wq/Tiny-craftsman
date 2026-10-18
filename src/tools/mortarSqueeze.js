@@ -22,7 +22,7 @@ export class Squeeze {
     this.seed = Math.random() * 100;
     // the four sides: open, or against another unit (the mortar goes into that joint)
     const others = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.id !== unitId).map(boxOf);
-    const C = this.c, out = MM(6), yM = this.bot - bedT / 2;
+    const C = this.c, out = MM(14);   // (past a head joint)
     const sides = [
       { n: [-uz, ux], a: [ux, uz], half: C.hw, len: 2 * C.hl },    // the two long faces
       { n: [uz, -ux], a: [-ux, -uz], half: C.hw, len: 2 * C.hl },
@@ -32,7 +32,8 @@ export class Squeeze {
     const per = 2 * (sides[0].len + sides[2].len);
     for (const f of sides) {
       const px = C.x + f.n[0] * (f.half + out), pz = C.z + f.n[1] * (f.half + out);
-      f.open = !others.some((b) => yM > b.bot - MM(15) && yM < b.top + MM(15) && Math.abs((px - b.x) * b.ux + (pz - b.z) * b.uz) <= b.hl + MM(2) && Math.abs(-(px - b.x) * b.uz + (pz - b.z) * b.ux) <= b.hw + MM(2));
+      // (a neighbour: a unit standing beside it in its course — not the one under it)
+      f.open = !others.some((b) => b.bot < this.bot + MM(20) && b.top > this.bot + MM(20) && Math.abs((px - b.x) * b.ux + (pz - b.z) * b.uz) <= b.hl + MM(2) && Math.abs(-(px - b.x) * b.uz + (pz - b.z) * b.ux) <= b.hw + MM(2));
       f.share = f.len / per;
       f.cut = 0;   // how far along the trowel has cut it off (0 … 1)
     }
