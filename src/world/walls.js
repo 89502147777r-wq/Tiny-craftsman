@@ -358,7 +358,13 @@ export class WallView {
     this.cord = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshStandardMaterial({ color: 0xff4a1c, roughness: 0.6 }));
     for (const m of [this.blocks, this.bricks, this.mortar]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
     // pallets beside the walls: the wooden pallet (boards) — the blocks on it are drawn as blocks
-    this.wood = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xb9925e, roughness: 0.85 }), 400);
+    this.max.wood = 1200;
+    this.wood = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xb9925e, roughness: 0.85 }), this.max.wood);
+    // U-blocks (a channel open upwards: the shell of a monolithic lintel) and the concrete in them
+    this.ublocks = new THREE.InstancedMesh(uShape(), block, this.max.block);
+    this.fill = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }), this.max.block);
+    this.fill.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.max.block * 3), 3);
+    for (const m of [this.ublocks, this.fill]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
     this.wood.castShadow = this.wood.receiveShadow = true; this.wood.frustumCulled = false; this.wood.count = 0; this.group.add(this.wood);
     this.lintels.castShadow = this.lintels.receiveShadow = true;
     for (const m of [this.lintels, this.frames]) { m.frustumCulled = false; m.count = 0; this.group.add(m); }
@@ -368,7 +374,7 @@ export class WallView {
     this.hlMesh.renderOrder = 5; this.hlMesh.visible = false; this.group.add(this.hlMesh);
     this.hl = null;        // { p, q, s, ok }
     for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
-    this.owner = { blocks: [], bricks: [], lintels: [], frames: [] };
+    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [] };
     this.dirty = true;
     this.live = null;      // a unit in the hand / being set (wallTool)
     this.focus = null;     // wall id whose next course gets the cord
@@ -381,21 +387,43 @@ export class WallView {
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening')].map((r) => r.id));
-    let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0;
+    let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, nc = 0;
     const c3 = new THREE.Color();
-    this.owner = { blocks: [], bricks: [], lintels: [], frames: [] };
+    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [] };
     const P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3();
     const put = (u, id) => {
       P.fromArray(u.p); Q.fromArray(u.q); Sv.fromArray(u.s);
       const h = hash(u.row * 131 + u.i * 17 + (id || 0) * 7 + Math.round(u.off || 0));
       if (u.lintel) {
         if (nl < this.max.lintel) { this.lintels.setMatrixAt(nl, m.compose(P, Q, Sv)); this.owner.lintels[nl++] = id; }
+      } else if (u.kind === 'ublock') {
+        // a U-block: the shell (its channel open upwards) and the concrete in the channel
+        if (nu < this.max.block) { this.ublocks.setMatrixAt(nu, m.compose(P, Q, Sv)); this.owner.ublocks[nu++] = id; }
+        if (u.fill > 0 && nc < this.max.block) {
+          const base = 60 / 250, fh = Math.min(1, u.fill) * (1 - base - 0.02);
+          const up = new THREE.Vector3(0, 1, 0);
+          const C = P.clone().addScaledVector(up, Sv.y * (-0.5 + base + fh / 2));
+          this.fill.setMatrixAt(nc, m.compose(C, Q, new THREE.Vector3(Sv.x * 0.995, Sv.y * fh, Sv.z * 150 / 300)));
+          this.fill.setColorAt(nc, c.setRGB(...(u.set ? [0.62, 0.61, 0.58] : [0.4, 0.39, 0.37])));
+          this.owner.fill[nc++] = id;
+        }
+      } else if (u.kind === 'prop') {
+        // a temporary prop: the board and two posts down to the floor
+        if (nw < this.max.wood - 3) {
+          this.wood.setMatrixAt(nw, m.compose(P, Q, Sv)); this.owner.wood[nw++] = id;
+          const ux = new THREE.Vector3(1, 0, 0).applyQuaternion(Q), ph = u.post || 0, d = 80 * S;
+          for (const sg of [-1, 1]) {
+            const C = P.clone().addScaledVector(ux, sg * (Sv.x / 2 - d)); C.y -= Sv.y / 2 + ph / 2;
+            this.wood.setMatrixAt(nw, m.compose(C, Q, new THREE.Vector3(d, ph, d))); this.owner.wood[nw++] = id;
+          }
+        }
       } else if (u.kind === 'block' && nb < this.max.block) {
         const cut = u.cut ? 0.035 : 0;   // a sawn face is a shade whiter
         this.blocks.setMatrixAt(nb, m.compose(P, Q, Sv));
         this.blocks.setColorAt(nb, c.setRGB(0.84 + h * 0.06 + cut, 0.835 + h * 0.05 + cut, 0.81 + h * 0.05 + cut));
         this.owner.blocks[nb++] = id;
-      } else if (u.kind !== 'block' && nk < this.max.brick) {
+      } else if (u.kind === 'brick' || u.kind === 'brick2' || u.kind === 'brick3' || u.kind === 'brick4' || u.kind === 'brick5' || !u.kind) {
+        if (nk >= this.max.brick) return;
         this.bricks.setMatrixAt(nk, m.compose(P, Q, Sv));
         this.bricks.setColorAt(nk, c.setRGB(0.46 + h * 0.14, 0.17 + h * 0.06, 0.11 + h * 0.04));
         this.owner.bricks[nk++] = id;
@@ -490,8 +518,9 @@ export class WallView {
       this.hlMesh.scale.fromArray(this.hl.s).multiplyScalar(1.03);
       this.hlMesh.material.color.setHex(this.hl.ok ? 0x35d06a : 0xe8402a);
     }
-    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw;
-    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames, this.wood]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu; this.fill.count = nc;
+    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames, this.wood, this.ublocks, this.fill]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this.fill.instanceColor.needsUpdate = true;
     for (const im of [this.blocks, this.bricks]) im.instanceColor.needsUpdate = true;
   }
 
@@ -500,11 +529,29 @@ export class WallView {
     if (hit.object === this.bricks) return this.owner.bricks[hit.instanceId];
     if (hit.object === this.lintels) return this.owner.lintels[hit.instanceId];
     if (hit.object === this.frames) return this.owner.frames[hit.instanceId];
+    if (hit.object === this.ublocks) return this.owner.ublocks[hit.instanceId];
+    if (hit.object === this.fill) return this.owner.fill[hit.instanceId];
+    if (hit.object === this.wood) return this.owner.wood[hit.instanceId] ?? null;
     return null;
   }
 }
 
 const _Y = new THREE.Vector3(0, 1, 0);
+// a U-block in a unit box: the bottom (60 of 250 mm) and two walls (75 of 300 mm each)
+function uShape() {
+  const parts = [[0, -0.5 + 0.12, 0, 1, 0.24, 1], [0, 0.12, -0.375, 1, 0.76, 0.25], [0, 0.12, 0.375, 1, 0.76, 0.25]];
+  const pos = [], nor = [], uv = [], idx = [];
+  for (const [x, y, z, w, h, d] of parts) {
+    const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z);
+    const o = pos.length / 3;
+    pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); uv.push(...g.attributes.uv.array);
+    idx.push(...Array.from(g.index.array, (i) => i + o));
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
 function hash(i) { const s = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
 
 // aerated concrete: white-grey with small round pores, saw marks
