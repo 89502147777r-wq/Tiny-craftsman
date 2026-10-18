@@ -3,7 +3,7 @@ import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt } from './freeBrick.js';
-import { placeLintel, placeProp, uRun, cageBars, uStrength } from './lintels.js';
+import { placeLintel, placeProp, uRun, cageRec, uStrength } from './lintels.js';
 
 // Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
 //   lay    – take a block (brick) from the tray or the pallet and carry it: onto a wall
@@ -570,9 +570,9 @@ export class WallTool {
     if (ck === 'ucage') {
       if (!cage) { app.ui.toast('Каркас — в лоток U-блоков: поднесите к ряду U-блоков'); return; }
       if (cage.has) { app.ui.toast('В этих U-блоках каркас уже есть'); return; }
-      const bars = cageBars(cage);
-      app.journal.act('u-cage', {}, app.clock, () => { for (const b of bars) app.objects.add(b); });
-      app.ui.toast(`Каркас: 4 прутка Ø12, ${((cage.s1 - cage.s0) / S / 1000).toFixed(2).replace('.', ',')} м — теперь бетон в лоток: «Бетон → Ведро»`);
+      const rec = cageRec(cage);
+      app.journal.act('u-cage', {}, app.clock, () => app.objects.add(rec));
+      app.ui.toast(`Каркас ${((cage.s1 - cage.s0) / S / 1000).toFixed(2).replace('.', ',')} м: 4 прутка Ø12, хомуты Ø6 через ≤ 350 мм, звёздочки 30 мм — теперь бетон в лоток: «Бетон → Ведро»`);
       return;
     }
     if (free !== undefined) {

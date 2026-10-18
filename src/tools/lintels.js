@@ -123,19 +123,35 @@ export function uRun(app, p, screen, finger) {
   }
   const s = run.map((b) => (b.x - pick.x) * pick.ux + (b.z - pick.z) * pick.uz);
   const s0 = Math.min(...run.map((b, i) => s[i] - b.hl)), s1 = Math.max(...run.map((b, i) => s[i] + b.hl));
-  return { run, pick, s0, s1, has: app.objects.all('bar').some((r) => r.uRun === run.map((b) => b.u.id).sort((x, y) => x - y).join(',')) };
+  return { run, pick, s0, s1, has: (() => { const k = run.map((b) => b.u.id).sort((x, y) => x - y).join(','); return [...app.objects.all('bar'), ...app.objects.all('cage')].some((r) => r.uRun === k); })() };
 }
 
-// the cage of a run: 4 bars Ø12 in the channel (40 mm from its walls and bottom)
-export function cageBars(R) {
-  const b = R.pick, d = 12 * S, inner = 150 * S, base = 60 * S, c = 30 * S;
-  const out = [];
-  for (const y of [b.bot + base + c, b.bot + base + 150 * S]) for (const o of [-inner / 2 + c, inner / 2 - c]) {
-    const A = [b.x + b.ux * (R.s0 + c) - b.uz * o, y, b.z + b.uz * (R.s0 + c) + b.ux * o];
-    const B = [b.x + b.ux * (R.s1 - c) - b.uz * o, y, b.z + b.uz * (R.s1 - c) + b.ux * o];
-    out.push({ type: 'bar', a: A.map((v) => +v.toFixed(5)), b: B.map((v) => +v.toFixed(5)), d: +d.toFixed(6), uRun: R.run.map((x) => x.u.id).sort((x, y) => x - y).join(',') });
-  }
-  return out;
+// the cage of a run, as on site: 4 bars Ø12 tied into square stirrups Ø6 every ≤ 350 mm
+// (wire at each corner), plastic wheel spacers («звёздочки») on the bars — they hold the
+// cage 30 mm off the floor and the walls of the channel. One `cage` record.
+export function cageRec(R) {
+  const b = R.pick, M = (v) => v * S, fl = b.bot + M(60);
+  const ds = M(6), d = M(12);
+  const sx = M(47), yb = fl + M(28), yt = fl + M(157);          // stirrup centre lines
+  const bx = M(38), ybb = fl + M(37), ybt = fl + M(148);        // bars inside its corners
+  const P = (s, o, y) => [b.x + b.ux * s - b.uz * o, y, b.z + b.uz * s + b.ux * o].map((v) => +v.toFixed(5));
+  const s0 = R.s0 + M(30), s1 = R.s1 - M(30);
+  const bars = [], ties = [], stars = [];
+  for (const y of [ybb, ybt]) for (const o of [-bx, bx]) bars.push([...P(s0, o, y), ...P(s1, o, y), +d.toFixed(6)]);
+  // stirrups: evenly, ≤ 350 mm apart, 50 mm in from the ends
+  const n = Math.max(1, Math.ceil((s1 - s0 - M(100)) / M(350)));
+  const at = [];
+  for (let k = 0; k <= n; k++) at.push(s0 + M(50) + (s1 - s0 - M(100)) * k / n);
+  const yaw = Math.atan2(-b.uz, b.ux);
+  at.forEach((s, k) => {
+    const c = [P(s, -sx, yb), P(s, sx, yb), P(s, sx, yt), P(s, -sx, yt)];
+    for (let i = 0; i < 4; i++) bars.push([...c[i], ...c[(i + 1) % 4], +ds.toFixed(6)]);
+    for (const [o, y] of [[-bx, ybb], [bx, ybb], [bx, ybt], [-bx, ybt]]) ties.push([...P(s + M(8), o, y), +(d * 0.9).toFixed(6), 0.785]);
+    // spacers on the bottom bars at every other stirrup (and the last): they reach the
+    // floor and the wall; on the top bars — the walls
+    if (k % 2 === 0 || k === at.length - 1) for (const [o, y] of [[-bx, ybb], [bx, ybb], [-bx, ybt], [bx, ybt]]) stars.push([...P(s + M(70), o, y), +yaw.toFixed(4), +M(36).toFixed(6)]);
+  });
+  return { type: 'cage', outlineId: null, uRun: R.run.map((x) => x.u.id).sort((x, y) => x - y).join(','), bars, chairs: [], frogs: [], ties, tied: true, stars, d };
 }
 
 // how far the concrete in a U-block has set (0 … 1)

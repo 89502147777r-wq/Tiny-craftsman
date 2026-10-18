@@ -243,6 +243,7 @@ function step(dt, time, render = true) {
   updateFocus();
   app.terrainMat.userData.uniforms.uTime.value = time;
   app.terrainMat.userData.uniforms.uClock.value = app.clock;
+  if (app.wallView) app.wallView.concU.uClock.value = app.clock;
   app.pipeline.focus = app.rig.focus;
   if (render) app.pipeline.render(app.scene, app.camera, time);
   if (render && (shaderCheckT += dt) > 1) { shaderCheckT = 0; checkTerrainShader(); checkGpuMemory(); }

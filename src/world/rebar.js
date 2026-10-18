@@ -16,7 +16,7 @@ export class RebarView {
     this.objects = objects;
     this.group = new THREE.Group();
     this.group.name = 'rebar';
-    this.max = { rods: 6000, chairs: 1500, frogs: 600, ties: 6000 };
+    this.max = { rods: 6000, chairs: 1500, frogs: 600, ties: 6000, stars: 600 };
     const rodGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
     rodGeo.translate(0, 0.5, 0);
     rodGeo.setAttribute('aRib', new THREE.InstancedBufferAttribute(new Float32Array(this.max.rods), 1));
@@ -24,13 +24,15 @@ export class RebarView {
     this.chairs = new THREE.InstancedMesh(makeChairGeometry(), new THREE.MeshStandardMaterial({ color: 0x505457, roughness: 0.55 }), this.max.chairs);
     this.frogs = new THREE.InstancedMesh(makeFrogGeometry(), new THREE.MeshStandardMaterial({ color: 0x5d4a3e, roughness: 0.6, metalness: 0.5 }), this.max.frogs);
     this.ties = new THREE.InstancedMesh(new THREE.TorusGeometry(1, 0.28, 5, 10), new THREE.MeshStandardMaterial({ color: 0x2c2c2e, roughness: 0.45, metalness: 0.7 }), this.max.ties);
-    for (const m of [this.rods, this.chairs, this.frogs, this.ties]) {
+    // plastic wheel spacers («звёздочки») clipped on the bars: dark grey plastic
+    this.stars = new THREE.InstancedMesh(makeStarGeometry(), new THREE.MeshStandardMaterial({ color: 0x3b3e42, roughness: 0.5 }), this.max.stars);
+    for (const m of [this.rods, this.chairs, this.frogs, this.ties, this.stars]) {
       m.castShadow = m.receiveShadow = true;
       m.frustumCulled = false;
       m.count = 0;
       this.group.add(m);
     }
-    this.owner = { rods: [], chairs: [], frogs: [], ties: [] };
+    this.owner = { rods: [], chairs: [], frogs: [], ties: [], stars: [] };
     this.dirty = true;
     this._types = new Set(['bar', 'cage', 'mesh']);
     objects.on((id, rec) => { if (this._types.has(rec?.type) || this._known?.has(id)) this.dirty = true; });
@@ -44,8 +46,8 @@ export class RebarView {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
     const A = new THREE.Vector3(), B = new THREE.Vector3();
     const aRib = this.rods.geometry.attributes.aRib;
-    const o = (this.owner = { rods: [], chairs: [], frogs: [], ties: [] });
-    let nr = 0, nc = 0, nf = 0, nt = 0;
+    const o = (this.owner = { rods: [], chairs: [], frogs: [], ties: [], stars: [] });
+    let nr = 0, nc = 0, nf = 0, nt = 0, ns = 0;
     const rod = (ax, ay, az, bx, by, bz, d, id) => {
       if (nr >= this.max.rods) return;
       A.set(ax, ay, az); B.set(bx, by, bz);
@@ -74,6 +76,13 @@ export class RebarView {
           this.frogs.setMatrixAt(nf, m.compose(p, q, s));
           o.frogs[nf++] = r.id;
         }
+        for (const st of r.stars || []) {
+          // [x, y, z, yaw of the bar, radius]: the wheel stands across the bar
+          if (ns >= this.max.stars) break;
+          p.set(st[0], st[1], st[2]); q.setFromEuler(e.set(0, st[3] + Math.PI / 2, 0)); s.set(st[4], st[4], st[4]);
+          this.stars.setMatrixAt(ns, m.compose(p, q, s));
+          o.stars[ns++] = r.id;
+        }
         if (r.tied) {
           for (const t of r.ties) {
             if (nt >= this.max.ties) break;
@@ -98,13 +107,13 @@ export class RebarView {
         this.frogs.setMatrixAt(nf, m.compose(p, q, s)); o.frogs[nf++] = null;
       }
     }
-    this.rods.count = nr; this.chairs.count = nc; this.frogs.count = nf; this.ties.count = nt;
-    for (const im of [this.rods, this.chairs, this.frogs, this.ties]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this.rods.count = nr; this.chairs.count = nc; this.frogs.count = nf; this.ties.count = nt; this.stars.count = ns;
+    for (const im of [this.rods, this.chairs, this.frogs, this.ties, this.stars]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     aRib.needsUpdate = true;
   }
 
   ownerOf(hit) {
-    for (const k of ['rods', 'chairs', 'frogs', 'ties']) if (hit.object === this[k]) return this.owner[k][hit.instanceId];
+    for (const k of ['rods', 'chairs', 'frogs', 'ties', 'stars']) if (hit.object === this[k]) return this.owner[k][hit.instanceId];
     return null;
   }
 }
@@ -326,4 +335,28 @@ function makeFrogGeometry() {
   path.add(new THREE.LineCurve3(P(0.1, 1), P(0.2, 0)));
   path.add(new THREE.LineCurve3(P(0.2, 0), P(0.6, 0)));
   return new THREE.TubeGeometry(path, 40, 0.045, 5, false);
+}
+
+function makeStarGeometry() {
+  // wheel spacer, unit outer radius, in the XY plane (the bar runs along Z through its
+  // hub): a toothed rim, spokes, a hub with the clip slot; 4 % thick
+  const sh = new THREE.Shape(), teeth = 14;
+  for (let i = 0; i < teeth * 2; i++) {
+    const a = i / (teeth * 2) * Math.PI * 2, r = i % 2 ? 0.86 : 1.0;
+    if (i === 0) sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); else sh.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  sh.closePath();
+  // windows between the spokes, and the hole for the bar
+  const win = 6;
+  for (let i = 0; i < win; i++) {
+    const a0 = (i + 0.12) / win * Math.PI * 2, a1 = (i + 0.88) / win * Math.PI * 2, h = new THREE.Path();
+    h.absarc(0, 0, 0.74, a0, a1, false);
+    h.absarc(0, 0, 0.36, a1, a0, true);
+    h.closePath();
+    sh.holes.push(h);
+  }
+  const hole = new THREE.Path(); hole.absarc(0, 0, 0.19, 0, Math.PI * 2, true); sh.holes.push(hole);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: 0.08, bevelEnabled: false, curveSegments: 6 });
+  g.translate(0, 0, -0.04);
+  return g;
 }
