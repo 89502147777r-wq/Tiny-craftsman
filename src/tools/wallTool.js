@@ -452,11 +452,12 @@ export class WallTool {
     let free = null, snap = null;
     // the direction of the work: the last unit laid of this kind («Повернуть» turns it)
     const ref = app.settings.freeYaw?.[c.kind === 'block' ? 'block' : 'brick'];
-    if (c.kind !== 'block') free = placeUnit(app, 'brick', p, scr, fing, turn, { yaw: ref });
+    const half = !!app.settings.wallHalf;
+    if (c.kind !== 'block') free = placeUnit(app, 'brick', p, scr, fing, turn, { yaw: ref, half });
     else {
       // the next place of a block wall drawn with «Линия», else free: beside / on / on the ground
-      snap = this._snapTo(e, p);
-      if (!snap) free = placeUnit(app, 'block', p, scr, fing, turn, { yaw: ref });
+      snap = half ? null : this._snapTo(e, p);   // (a half: not a place of a drawn wall)
+      if (!snap) free = placeUnit(app, 'block', p, scr, fing, turn, { yaw: ref, half });
     }
     if (c.kind !== 'block' || free) {
       const f = free;
@@ -526,7 +527,7 @@ export class WallTool {
     const kind = this.kind;
     this.tray.classList.toggle('brick', kind !== 'block');
     const lab = document.getElementById('wall-tray-label');
-    if (lab) lab.textContent = kind === 'block' ? 'Газоблок' : 'Кирпич';
+    if (lab) lab.textContent = (this.app.settings.wallHalf ? '½ ' : '') + (kind === 'block' ? (this.app.settings.wallHalf ? 'блока' : 'Газоблок') : (this.app.settings.wallHalf ? 'кирпича' : 'Кирпич'));
     const w = this._trayWall(), left = w ? this.palletLeft(w) : 0;
     this.tray.title = w ? `На поддоне: ${left}` : '';
   }
@@ -542,7 +543,7 @@ export class WallTool {
     this._carryCancel();
     if (free !== undefined) {
       if (!free?.ok) { app.ui.toast(`Сюда ${ck === 'block' ? 'блок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`); return; }
-      const u = { type: 'unit', free: true, kind: free.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)) };
+      const u = { type: 'unit', free: true, kind: free.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)), ...(free.half ? { cut: true } : {}) };
       const pose = { p: free.p, q: free.q, s: free.s, bedY: free.bedY, bedT: free.bedT };
       // the next one goes the same way; «Повернуть» was for this one
       app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [free.kind]: +(2 * Math.atan2(free.q.y, free.q.w)).toFixed(5) };

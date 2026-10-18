@@ -333,8 +333,9 @@ export class UI {
       if (wt.mode === 'line' || wt.mode === 'lay') {
         const brick = (s.wallKind || 'block') !== 'block';
         out.push(C('Газоблок', !brick, () => set({ wallKind: 'block' })), C('Кирпич', brick, () => set({ wallKind: 'brick' })));
-        if (wt.mode === 'lay') out.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
-        if (!brick) out.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
+        if (wt.mode === 'lay') out.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })), C(brick ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
+        // the planned height of a wall laid out with «Линия» (one by one in «Класть»: not needed)
+        if (!brick && wt.mode === 'line') out.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
       }
       if (wt.mode === 'opening') out.push(...[['window', 'Окно'], ['door', 'Дверь']].map(([k, l]) => C(l, (s.openKind || 'window') === k, () => set({ openKind: k }))));
       return out;
