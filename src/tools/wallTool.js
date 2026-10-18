@@ -3,6 +3,7 @@ import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt } from './freeBrick.js';
+import { placeLintel, placeProp, uRun, cageBars, uStrength } from './lintels.js';
 
 // Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
 //   lay    – take a block (brick) from the tray or the pallet and carry it: onto a wall
@@ -98,7 +99,7 @@ export class WallTool {
     const app = this.app, v = app.wallView;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
     // laid masonry only (not the unit in the hand, not the stacks on the pallets)
-    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames], false).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
+    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames, v.ublocks, v.fill, v.wood], false).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
     return hit ? hit.point.clone() : p;
   }
 
@@ -451,9 +452,25 @@ export class WallTool {
     const fing = e && (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : null, scr = (x) => this._screen(x), turn = !!app.settings.wallTurn;
     let free = null, snap = null;
     // the direction of the work: the last unit laid of this kind («Повернуть» turns it)
-    const ref = app.settings.freeYaw?.[c.kind === 'block' ? 'block' : 'brick'];
-    const half = !!app.settings.wallHalf;
-    if (c.kind !== 'block') free = placeUnit(app, 'brick', p, scr, fing, turn, { yaw: ref, half });
+    const grp = c.kind === 'block' || c.kind === 'ublock' ? 'block' : 'brick';
+    const ref = app.settings.freeYaw?.[grp];
+    const half = !!app.settings.wallHalf && (c.kind === 'block' || c.kind === 'brick');
+    c.cage = null;
+    if (c.kind === 'lintel') free = placeLintel(app, p, scr, fing);
+    else if (c.kind === 'prop') free = placeProp(app, p, scr, fing);
+    else if (c.kind === 'ublock') free = placeUnit(app, 'ublock', p, scr, fing, turn, { yaw: ref });
+    else if (c.kind === 'ucage') {
+      // the cage: over a run of U-blocks, shown as the run lit up
+      const R = uRun(app, p, scr, fing);
+      c.cage = R; c.free = undefined; c.snap = null;
+      v.live = null;
+      if (R) {
+        const b = R.pick, mid = (R.s0 + R.s1) / 2, L = R.s1 - R.s0;
+        v.hl = { p: [b.x + b.ux * mid, (b.bot + b.top) / 2, b.z + b.uz * mid], q: b.u.q, s: [L, b.top - b.bot, b.hw * 2], ok: !R.has };
+      } else v.hl = null;
+      v.liveBed = null; v.dirty = true; app.ui.refresh();
+      return;
+    } else if (c.kind !== 'block') free = placeUnit(app, 'brick', p, scr, fing, turn, { yaw: ref, half });
     else {
       // the next place of a block wall drawn with «Линия», else free: beside / on / on the ground
       snap = half ? null : this._snapTo(e, p);   // (a half: not a place of a drawn wall)
@@ -461,10 +478,11 @@ export class WallTool {
     }
     if (c.kind !== 'block' || free) {
       const f = free;
+      if (f && f.post != null) c.post = f.post;
       c.free = f; c.snap = null;
       if (f) {
         const lift = f.p.clone(); lift.y += MM(25);
-        v.live = { type: 'unit', kind: f.kind, row: 0, i: 0, s: f.s.toArray(), p: lift.toArray(), q: f.q.toArray() };
+        v.live = { type: 'unit', kind: f.kind, row: 0, i: 0, s: f.s.toArray(), p: lift.toArray(), q: f.q.toArray(), ...(f.kind === 'lintel' ? { lintel: true } : {}), ...(f.post != null ? { post: f.post } : {}) };
         v.hl = { p: f.p.toArray(), q: f.q.toArray(), s: f.s.toArray(), ok: f.ok };
       } else { v.live = null; v.hl = null; }
       v.liveBed = null; v.dirty = true;
@@ -527,7 +545,8 @@ export class WallTool {
     const kind = this.kind;
     this.tray.classList.toggle('brick', kind !== 'block');
     const lab = document.getElementById('wall-tray-label');
-    if (lab) lab.textContent = (this.app.settings.wallHalf ? '½ ' : '') + (kind === 'block' ? (this.app.settings.wallHalf ? 'блока' : 'Газоблок') : (this.app.settings.wallHalf ? 'кирпича' : 'Кирпич'));
+    const NAMES = { block: 'Газоблок', brick: 'Кирпич', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас' };
+    if (lab) lab.textContent = this.app.settings.wallHalf && (kind === 'block' || kind === 'brick') ? (kind === 'block' ? '½ блока' : '½ кирпича') : NAMES[kind] || 'Блок';
     const w = this._trayWall(), left = w ? this.palletLeft(w) : 0;
     this.tray.title = w ? `На поддоне: ${left}` : '';
   }
@@ -539,14 +558,30 @@ export class WallTool {
   }
 
   _carryDrop() {
-    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind;
+    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage;
     this._carryCancel();
+    if (ck === 'ucage') {
+      if (!cage) { app.ui.toast('Каркас — в лоток U-блоков: поднесите к ряду U-блоков'); return; }
+      if (cage.has) { app.ui.toast('В этих U-блоках каркас уже есть'); return; }
+      const bars = cageBars(cage);
+      app.journal.act('u-cage', {}, app.clock, () => { for (const b of bars) app.objects.add(b); });
+      app.ui.toast(`Каркас: 4 прутка Ø12, ${((cage.s1 - cage.s0) / S / 1000).toFixed(2).replace('.', ',')} м — теперь заливайте бетон шлангом в лоток`);
+      return;
+    }
     if (free !== undefined) {
-      if (!free?.ok) { app.ui.toast(`Сюда ${ck === 'block' ? 'блок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`); return; }
-      const u = { type: 'unit', free: true, kind: free.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)), ...(free.half ? { cut: true } : {}) };
+      if (!free?.ok) {
+        app.ui.toast(ck === 'lintel' ? (free ? `Перемычке нужна опора ≥ 250 мм с каждой стороны (проём ${free.gapMm} мм) и свободное место над рядом` : 'Поднесите перемычку к проёму — промежутку 300…2700 мм между блоками одного ряда')
+          : ck === 'prop' ? 'Подпорку — в проём: между блоками одного ряда, под их верх'
+            : `Сюда ${ck === 'block' || ck === 'ublock' ? 'блок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`);
+        return;
+      }
+      const u = { type: 'unit', free: true, kind: free.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)), ...(free.half ? { cut: true } : {}),
+        ...(free.kind === 'lintel' ? { lintel: true } : {}), ...(free.post != null ? { post: +free.post.toFixed(6) } : {}) };
+      if (free.kind === 'lintel') app.ui.toast(`Перемычка ${free.lenMm} мм над проёмом ${free.gapMm} мм — опора по ${Math.round((free.lenMm - free.gapMm) / 2)} мм`);
+      if (free.kind === 'prop') app.ui.toast('Подпорка стоит — кладите на неё U-блоки (стыкуются с кладкой по бокам)');
       const pose = { p: free.p, q: free.q, s: free.s, bedY: free.bedY, bedT: free.bedT };
       // the next one goes the same way; «Повернуть» was for this one
-      app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [free.kind]: +(2 * Math.atan2(free.q.y, free.q.w)).toFixed(5) };
+      if (free.kind === 'block' || free.kind === 'brick' || free.kind === 'ublock') app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [free.kind === 'brick' ? 'brick' : 'block']: +(2 * Math.atan2(free.q.y, free.q.w)).toFixed(5) };
       if (app.settings.wallTurn) { app.settings.wallTurn = false; app.applySettings(); }
       const go = () => { app.physLoading = false; app.physJob = new LayJob(app, null, u, pose, null, []); };
       if (physicsReady()) go();
@@ -571,10 +606,20 @@ export class WallTool {
   status() {
     const app = this.app, walls = app.objects.all('wall');
     const c = this.carry;
+    if (c?.kind === 'ucage') return c.cage ? (c.cage.has ? 'В этих U-блоках каркас уже есть' : `Каркас в ${c.cage.run.length} U-блок(а) — отпустите`) : 'Поднесите каркас к ряду U-блоков';
+    if (c && (c.kind === 'lintel' || c.kind === 'prop') && !c.free) return c.kind === 'lintel' ? 'Поднесите перемычку к проёму в кладке' : 'Поднесите подпорку к проёму в кладке';
+    if (c?.free && c.kind === 'lintel') return c.free.ok ? `Перемычка ${c.free.lenMm} мм над проёмом ${c.free.gapMm} мм. Отпустите` : 'Красный — опоры меньше 250 мм или место над рядом занято';
+    if (c?.free && c.kind === 'prop') return c.free.ok ? `Подпорка в проём ${c.free.gapMm} мм. Отпустите` : 'Красный — сюда подпорку не поставить';
     if (c?.free) {
-      const nm = c.kind === 'block' ? 'Блок' : 'Кирпич';
+      const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
+    if (['lintel', 'prop', 'ublock', 'ucage'].includes(this.kind)) return {
+      lintel: 'Перемычка: тяните из лотка к проёму — встанет над ним, опора ≥ 250 мм с каждой стороны, длина подберётся (1,0…3,0 м)',
+      prop: 'Подпорка: поставьте в проём под монолитную перемычку, на неё — U-блоки',
+      ublock: 'U-блок: кладите на подпорку над проёмом и рядом на кладку, как газоблок; потом каркас и бетон шлангом',
+      ucage: 'Каркас: поднесите к ряду U-блоков — 4 прутка Ø12 лягут в лоток',
+    }[this.kind];
     if (this.kind !== 'block' || (c && c.kind !== 'block')) {
       if (c) return 'Несите к кирпичу (продолжит ряд, ляжет рядом или повернёт за угол), на кладку или на плиту';
       return 'Кирпич: тяните из лотка — к кирпичу, на кладку или на плиту. Поворот сам; «↻ Повернуть» — для первого кирпича';
@@ -610,8 +655,26 @@ export class WallTool {
     }
     if (id) {
       const u = app.objects.get(id);
-      const rowsUp = u.lintel ? KINDS[u.kind].lintelRows : 1;
+      if (!u || u.type !== 'unit') return;
+      const rowsUp = u.lintel && KINDS[u.kind] ? KINDS[u.kind].lintelRows : 1;
       const w = app.objects.get(u.wall), tier = w && u.row + rowsUp >= rows(w) ? app.objects.all('wall').find((o) => o.on === w.id) : null;
+      // a prop: comes out when the U-blocks on it are filled and the concrete has set
+      if (u.kind === 'prop') {
+        const ax = new THREE.Vector3(1, 0, 0).applyQuaternion(new THREE.Quaternion().fromArray(u.q));
+        const onIt = app.objects.all('unit').filter((o) => {
+          if (o.id === u.id || Math.abs(o.p[1] - o.s[1] / 2 - (u.p[1] + u.s[1] / 2)) > 0.002) return false;
+          const dx = o.p[0] - u.p[0], dz = o.p[2] - u.p[2], al = Math.abs(dx * ax.x + dz * ax.z), ac = Math.abs(-dx * ax.z + dz * ax.x);
+          return al < (u.s[0] + o.s[0]) / 2 && ac < (u.s[2] + o.s[2]) / 2;   // (its footprint over the board)
+        });
+        const weak = onIt.find((o) => o.kind !== 'ublock' || !(o.fill >= 0.95) || uStrength(o, app.clock) < 1);
+        if (weak) {
+          app.ui.toast(weak.kind !== 'ublock' ? 'На подпорке лежит не U-блок — сначала снимите его' : !(weak.fill >= 0.95) ? 'U-блоки на подпорке не залиты бетоном доверху' : `Бетон набирает прочность: ${Math.round(uStrength(weak, app.clock) * 100)} % — подпорку рано снимать`);
+          return;
+        }
+        app.journal.act('prop-remove', {}, app.clock, () => { for (const o of onIt) app.objects.update(o.id, { set: true }); app.objects.remove(id); });
+        app.ui.toast('Подпорку сняли — перемычка держит');
+        return;
+      }
       // anything lying on it (a course, a tier, a free brick on its top)
       const top = u.p[1] + u.s[1] / 2;
       const above = app.objects.all('unit').some((o) => o.id !== u.id && ((!u.free && ((o.wall === u.wall && !o.free && o.row === u.row + rowsUp) || (tier && o.wall === tier.id && o.row === 0)) && o.s0 < u.s1 && o.s1 > u.s0)
@@ -661,7 +724,7 @@ class LayJob {
     const j = (m) => (Math.random() - 0.5) * m;
     const q0 = target.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(j(0.03), j(0.05), j(0.03))));
     const p0 = p.clone().add(new THREE.Vector3(j(MM(8)), MM(20), j(MM(8))));
-    this.body = this.ep.box(s.x / 2, s.y / 2, s.z / 2, p0, q0, { density: unit.lintel ? 2400 : unit.kind === 'block' ? 500 : 1800, friction: 0.9 });
+    this.body = this.ep.box(s.x / 2, s.y / 2, s.z / 2, p0, q0, { density: unit.lintel ? 2400 : unit.kind === 'block' || unit.kind === 'ublock' || unit.kind === 'prop' ? 500 : 1800, friction: 0.9 });
     this.t = 0;
     this.phase = 'drop';
     this.done = false;

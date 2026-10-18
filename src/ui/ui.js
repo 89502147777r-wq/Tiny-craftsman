@@ -332,8 +332,11 @@ export class UI {
       const out = [['lay', 'Класть'], ['opening', 'Проём'], ['line', 'Линия'], ['delete', 'Удалить']].map(([k, l]) => C(l, wt.mode === k, () => wt.setMode(k), k === 'delete' ? 'warn' : ''));
       if (wt.mode === 'line' || wt.mode === 'lay') {
         const brick = (s.wallKind || 'block') !== 'block';
-        out.push(C('Газоблок', !brick, () => set({ wallKind: 'block' })), C('Кирпич', brick, () => set({ wallKind: 'brick' })));
-        if (wt.mode === 'lay') out.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })), C(brick ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
+        const wk = s.wallKind || 'block';
+        if (wt.mode === 'line') out.push(C('Газоблок', wk === 'block', () => set({ wallKind: 'block' })), C('Кирпич', wk !== 'block', () => set({ wallKind: 'brick' })));
+        else out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич'], ['lintel', 'Перемычка'], ['prop', 'Подпорка'], ['ublock', 'U-блок'], ['ucage', 'Каркас']].map(([k, l]) => C(l, wk === k, () => set({ wallKind: k }))));
+        if (wt.mode === 'lay' && (wk === 'block' || wk === 'brick' || wk === 'ublock')) out.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
+        if (wt.mode === 'lay' && (wk === 'block' || wk === 'brick')) out.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
         // the planned height of a wall laid out with «Линия» (one by one in «Класть»: not needed)
         if (!brick && wt.mode === 'line') out.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
       }

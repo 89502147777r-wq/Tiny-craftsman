@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { PUMP, MODEL_SCALE, CONCRETE } from '../config.js';
+import { uRun } from './lintels.js';
+const _ray = new THREE.Raycaster();
 
 // Concrete work, as on a real slab:
 //   hose     – hold a finger: the pump hose pours where the finger is
@@ -88,11 +90,22 @@ export class HoseTool extends ConcreteTool {
   constructor(app) { super(app, 'hose'); }
 
 
-  down(p) {
+  // a U-block under the finger (the hose pours into its channel then, not onto the ground)
+  _uAt(e) {
+    const app = this.app, v = app.wallView;
+    if (!e || !v || e.clientX === undefined) return null;
+    _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
+    const hit = _ray.intersectObjects([v.ublocks, v.fill], false)[0];
+    const id = hit && v.ownerOf(hit), u = id && app.objects.get(id);
+    return u && u.kind === 'ublock' ? u : null;
+  }
+
+  down(p, e) {
     if (this.state !== 'idle') return true;
-    if (!this.app.terrain.inside(p.x, p.z)) return false;
+    this.uT = this._uAt(e);
+    if (!this.uT && !this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('concrete-pour', { rate: this.app.settings.pump }, p);
-    this.poured = 0;
+    this.poured = 0; this.uAcc = new Map(); this.uSync = 0;
     this.warned = false;
     this.app.sfx.scrapeStart();
     this.app.sfx.scrapeLevel(0.25);
@@ -100,9 +113,48 @@ export class HoseTool extends ConcreteTool {
     return true;
   }
 
-  move(p) { if (this.state === 'work' && this.app.terrain.inside(p.x, p.z)) { this.p.copy(p); this.gear.set('hose', this._tip(p)); } }
+  move(p, e) {
+    if (this.state !== 'work') return;
+    this.uT = this._uAt(e);
+    if (this.uT || this.app.terrain.inside(p.x, p.z)) { if (this.uT) p = new THREE.Vector3(this.uT.p[0], 0, this.uT.p[2]); this.p.copy(p); this.gear.set('hose', this._tip(p)); }
+  }
 
-  _tip(p) { return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z); }
+  _tip(p) {
+    if (this.uT) return new THREE.Vector3(this.uT.p[0], this.uT.p[1] + this.uT.s[1] / 2, this.uT.p[2]);   // over the U-block
+    return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z);
+  }
+
+  // concrete into the channel of the U-blocks: the one under the hose, then on along the
+  // run; the channel holds 600 × 150 × 190 mm (17 l) — a full one starts to set
+  _fillU(vol) {
+    const app = this.app, S3 = MODEL_SCALE ** 3, cap = 0.6 * 0.15 * 0.19;
+    const R = uRun(app, new THREE.Vector3(this.uT.p[0], 0, this.uT.p[2]), null, null);
+    const run = (R ? R.run.map((b) => b.u) : [this.uT]).sort((a, b) => Math.hypot(a.p[0] - this.uT.p[0], a.p[2] - this.uT.p[2]) - Math.hypot(b.p[0] - this.uT.p[0], b.p[2] - this.uT.p[2]));
+    let left = vol * S3;
+    for (const u of run) {
+      const f = (this.uAcc.get(u.id) ?? u.fill ?? 0);
+      if (f >= 1) continue;
+      const take = Math.min(left, (1 - f) * cap);
+      this.uAcc.set(u.id, f + take / cap);
+      left -= take;
+      if (left <= 1e-9) break;
+    }
+    this.poured += vol - left / S3;
+    if (left > 1e-9 && !this.warned) { this.warned = true; app.ui?.toast('U-блоки залиты доверху — отпустите'); }
+    // into the records a few times a second (one journal entry for the pour)
+    this.uSync += 1;
+    if (this.uSync % 6 === 0) this._syncU();
+  }
+  finish() { if (this.state !== 'idle' && this.uAcc?.size) this._syncU(); super.finish(); }   // (the last of the fill into the record before it commits)
+
+  _syncU() {
+    const app = this.app;
+    for (const [id, f] of this.uAcc) {
+      const u = app.objects.get(id);
+      if (!u || Math.abs((u.fill || 0) - f) < 1e-4) continue;
+      app.objects.update(id, { fill: +Math.min(1, f).toFixed(4), ...(f >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
+    }
+  }
 
   work(dt) {
     const app = this.app, t = app.terrain;
@@ -111,6 +163,14 @@ export class HoseTool extends ConcreteTool {
     // hose flows out fast (it is pushed by the stream), the rest creeps
     // it lands under the spout (which swings a little behind the finger)
     const at = this.gear.pump.ready ? this.gear.pump.spout() : this.p;
+    if (this.uT) {
+      this._fillU(vol);
+      const pump = this.gear.pump, sp = pump.spout();
+      pump.setStream(true, this.uT.p[1] + this.uT.s[1] / 2 - 0.004, app.clock);
+      this.gear.set('hose', this._tip(this.p));
+      void sp;
+      return;
+    }
     // the stream lands as a splat ~5 cm (real) across; the flow spreads it
     t.depositConc(t.clampX(at.x), t.clampZ(at.z), vol, 0.014);
     // full to the top of the formwork here? say so once per pour

@@ -20,12 +20,13 @@ const S = 1 / 1000 / MODEL_SCALE;
 const _Y = new THREE.Vector3(0, 1, 0);
 
 // sizes of a free unit (model): length, height, width, head joint, bed joint, first bed
+const blockish = (k) => k === 'block' || k === 'ublock';
 export function dims(kind, half = false) {
-  const k = KINDS[kind === 'block' ? 'block' : 'brick'];
+  const k = KINDS[blockish(kind) ? 'block' : 'brick'];
   // half: a half unit (sawn / broken in two: a joint shorter than half)
-  return { L: (half ? (k.L - k.head) / 2 : k.L) * S, Lf: k.L * S, H: k.H * S, W: (k.W || k.T) * S, J: k.head * S, B: k.bed * S, B0: k.bed0 * S, kind: kind === 'block' ? 'block' : 'brick' };
+  return { L: (half ? (k.L - k.head) / 2 : k.L) * S, Lf: k.L * S, H: k.H * S, W: (k.W || k.T) * S, J: k.head * S, B: k.bed * S, B0: k.bed0 * S, kind: kind === 'ublock' ? 'ublock' : blockish(kind) ? 'block' : 'brick', grp: blockish(kind) ? 'block' : 'brick' };
 }
-const group = (u) => (u.kind === 'block' ? 'block' : 'brick');
+const group = (u) => (u.kind === 'prop' ? 'prop' : blockish(u.kind) ? 'block' : 'brick');
 
 function yawOf(q) { const v = new THREE.Vector3(1, 0, 0).applyQuaternion(new THREE.Quaternion().fromArray(q)); return Math.atan2(-v.z, v.x); }
 
@@ -68,7 +69,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   };
   // beside one of its kind: continue the course, the next leaf, a corner
   for (const n of boxes) {
-    if (n.kind !== D.kind || !near(n, 240)) continue;
+    if ((n.kind !== D.grp && !(n.kind === 'lintel' && D.grp === 'block')) || !near(n, 240)) continue;
     const nx = -n.uz, nz = n.ux, bed = bedOf(n.u, D);   // the same course: the same bed under it
     for (const sg of [-1, 1]) {
       const a = n.hl + J + L / 2;
@@ -116,7 +117,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     if (c.how === 'beside') continue;
     let best = null;
     for (const n of boxes) {
-      if (n.kind !== D.kind || Math.abs(n.bot - c.bot) > 0.0006) continue;
+      if ((n.kind !== D.grp && n.kind !== 'lintel') || Math.abs(n.bot - c.bot) > 0.0006) continue;
       const dx = c.x - n.x, dz = c.z - n.z, along = dx * n.ux + dz * n.uz, side = -dx * n.uz + dz * n.ux;
       const par = Math.abs(Math.sin(c.yaw - n.yaw)) < 0.05, perp = Math.abs(Math.cos(c.yaw - n.yaw)) < 0.05;
       const spots = [];
@@ -203,7 +204,7 @@ function edgeNear(t, p) {
 // the mortar of free masonry, drawn: the bed under each unit (a little inside its faces)
 // and a head joint only where a neighbour of the course is there — nothing at free ends
 export function mortarOf(units) {
-  const out = [], list = units.filter((u) => u.free && u.p && u.s && u.q).map(boxOf);
+  const out = [], list = units.filter((u) => u.free && u.p && u.s && u.q && u.kind !== 'prop').map(boxOf);
   const cell = 0.03, grid = new Map(), key = (x, z) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
   list.forEach((b, i) => { const k = key(b.x, b.z); (grid.get(k) || grid.set(k, []).get(k)).push(i); });
   for (const [i, b] of list.entries()) {
