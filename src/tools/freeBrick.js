@@ -20,9 +20,10 @@ const S = 1 / 1000 / MODEL_SCALE;
 const _Y = new THREE.Vector3(0, 1, 0);
 
 // sizes of a free unit (model): length, height, width, head joint, bed joint, first bed
-export function dims(kind) {
+export function dims(kind, half = false) {
   const k = KINDS[kind === 'block' ? 'block' : 'brick'];
-  return { L: k.L * S, H: k.H * S, W: (k.W || k.T) * S, J: k.head * S, B: k.bed * S, B0: k.bed0 * S, kind: kind === 'block' ? 'block' : 'brick' };
+  // half: a half unit (sawn / broken in two: a joint shorter than half)
+  return { L: (half ? (k.L - k.head) / 2 : k.L) * S, Lf: k.L * S, H: k.H * S, W: (k.W || k.T) * S, J: k.head * S, B: k.bed * S, B0: k.bed0 * S, kind: kind === 'block' ? 'block' : 'brick' };
 }
 const group = (u) => (u.kind === 'block' ? 'block' : 'brick');
 
@@ -54,7 +55,7 @@ function bedOf(u, D) { return u.bedT ?? (u.row === 0 && !u.free ? D.B0 : D.B); }
 
 // opts.ground = false: only places by / on masonry (none on the bare ground)
 export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
-  const t = app.terrain, D = dims(kind), { L, H, W, J, B, B0 } = D;
+  const t = app.terrain, D = dims(kind, opts.half), { L, H, W, J, B, B0 } = D;
   const cand = (x, z, yaw, bot, bed, how) => ({ x, z, yaw, ux: Math.cos(yaw), uz: -Math.sin(yaw), hl: L / 2, hw: W / 2, bot, top: bot + H, bed, how });
   const boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf);
   const cands = [];
@@ -84,7 +85,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   // or turned across it
   for (const b of boxes) {
     if (!(inside(b, p.x, p.z, 0.006) || near(b, 170))) continue;
-    const bx = -b.uz, bz = b.ux, q = (L + J) / 4, n = Math.floor((b.hl + L / 2) / q), onFace = inside(b, p.x, p.z, 0.002) && Math.abs(p.y - b.top) < 0.002;   // the finger on its top face
+    const bx = -b.uz, bz = b.ux, q = (D.Lf + J) / 4, n = Math.floor((b.hl + L / 2) / q), onFace = inside(b, p.x, p.z, 0.002) && Math.abs(p.y - b.top) < 0.002;   // the finger on its top face
     for (let k = -n; k <= n; k++) for (const [yaw, half] of [[b.yaw, W / 2], [b.yaw + Math.PI / 2, L / 2]]) {
       const offs = new Set([0, +(b.hw - half).toFixed(7), -(b.hw - half).toFixed(7)]);
       for (const o of offs) { const c = cand(b.x + b.ux * k * q + bx * o, b.z + b.uz * k * q + bz * o, yaw, b.top + B, B, 'top'); c.across = yaw !== b.yaw; c.onFace = onFace; cands.push(c); }
@@ -170,7 +171,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   const c = best || bestBad;
   if (!c) return null;
   const q = new THREE.Quaternion().setFromAxisAngle(_Y, c.yaw);
-  return { ok: !!best, how: c.how, kind: D.kind, bedMm: Math.round((c.bed ?? B) / S), p: new THREE.Vector3(c.x, c.bot + H / 2, c.z), q, s: new THREE.Vector3(L, H, W), bedY: c.bot - (c.bed ?? B) / 2, bedT: c.bed ?? B };
+  return { ok: !!best, how: c.how, kind: D.kind, half: !!opts.half, bedMm: Math.round((c.bed ?? B) / S), p: new THREE.Vector3(c.x, c.bot + H / 2, c.z), q, s: new THREE.Vector3(L, H, W), bedY: c.bot - (c.bed ?? B) / 2, bedT: c.bed ?? B };
 }
 
 // it stands: its centre over something (it does not tip over) and at least a third of it
