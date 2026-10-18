@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levels, UN } from '../tools/uPour.js';
-import { MODEL_SCALE } from '../config.js';
+import { MODEL_SCALE, CONCRETE } from '../config.js';
+import { makeCastConcreteMaterial } from './terrainMaterial.js';
 import { mortarOf } from '../tools/freeBrick.js';
 
 // Masonry walls, laid the way they are on site.
@@ -364,7 +365,8 @@ export class WallView {
     // U-blocks (a channel open upwards: the shell of a monolithic lintel) and the concrete in them
     this.ublocks = new THREE.InstancedMesh(uShape(), block, this.max.block);
     // the concrete in the channels: one surface along each run (its levels: uPour.js)
-    this.fill = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, side: THREE.DoubleSide }));
+    this.concU = { uClock: { value: 0 }, uCure: { value: CONCRETE.cure } };   // (the clock: main.js)
+    this.fill = new THREE.Mesh(new THREE.BufferGeometry(), makeCastConcreteMaterial(this.concU));
     this.fillLive = null;   // levels by U-block id while it is being poured (the tool)
     this.fillDirty = false;
     for (const m of [this.ublocks, this.fill]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; this.group.add(m); }
@@ -527,7 +529,7 @@ export class WallView {
     this.fillDirty = false;
     const us = this.objects.all('unit').filter((u) => u.kind === 'ublock');
     const lvOf = (u) => this.fillLive?.get(u.id) ?? levels(u);
-    const pos = [], col = [], idx = [], own = [];
+    const pos = [], col = [], idx = [], own = [], pt = [];
     const m = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3(), v = new THREE.Vector3();
     const info = us.map((u) => { const yaw = 2 * Math.atan2(u.q[1], u.q[3]); return { u, lv: lvOf(u), ux: Math.cos(yaw), uz: -Math.sin(yaw) }; });
     // the neighbour's level at the shared end (or null)
@@ -548,7 +550,8 @@ export class WallView {
       if (!lv.some((h) => h > 0.3)) continue;
       const u = a.u;
       P.fromArray(u.p); Q.fromArray(u.q); Sv.fromArray(u.s); m.compose(P, Q, Sv);
-      const c = u.set ? [0.64, 0.63, 0.6] : [0.4, 0.39, 0.37];
+      // (the colour comes from the concrete shader, by the time it was poured; set = long ago)
+      const c = [1, 1, 1], tp = u.set ? -1e6 : u.pourT ?? u.castT ?? 1e9;
       const nL = endOf(a, -1), nR = endOf(a, 1);
       // the stations along: the two ends and the cell centres
       const st = [[-0.5, nL != null ? (lv[0] + nL) / 2 : lv[0]]];
@@ -557,7 +560,7 @@ export class WallView {
       const o = pos.length / 3, mh = Sv.y;
       for (const [x, h] of st) for (let k = 0; k < zs.length; k++) {
         v.set(x, hy(h + (h > 0.3 ? lift[k] : 0)), zs[k]).applyMatrix4(m);
-        pos.push(v.x, v.y, v.z); col.push(...c);
+        pos.push(v.x, v.y, v.z); col.push(...c); pt.push(tp);
       }
       const W = zs.length;
       for (let i = 0; i + 1 < st.length; i++) for (let k = 0; k + 1 < W; k++) {
@@ -568,7 +571,7 @@ export class WallView {
       for (const [x, h, open, flip] of [[-0.5, st[0][1], nL == null, true], [0.5, st.at(-1)[1], nR == null, false]]) {
         if (!open || h < 0.3) continue;
         const b = pos.length / 3;
-        for (const [y, z] of [[hy(0), -0.25], [hy(0), 0.25], [hy(h), -0.25], [hy(h), 0.25]]) { v.set(x, y, z).applyMatrix4(m); pos.push(v.x, v.y, v.z); col.push(...c.map((q) => q * 0.85)); }
+        for (const [y, z] of [[hy(0), -0.25], [hy(0), 0.25], [hy(h), -0.25], [hy(h), 0.25]]) { v.set(x, y, z).applyMatrix4(m); pos.push(v.x, v.y, v.z); col.push(...c.map((q) => q * 0.85)); pt.push(tp); }
         if (flip) idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); else idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
         own.push(u.id, u.id);
       }
@@ -577,6 +580,7 @@ export class WallView {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setAttribute('aPour', new THREE.Float32BufferAttribute(pt, 1));
     g.setIndex(idx);
     g.computeVertexNormals();
     this.fill.geometry.dispose();

@@ -17,7 +17,8 @@ import { innerCorner } from './plotShape.js';
 // "light" (plain texture lookups, for devices whose GPU cannot build the full one).
 
 // shared GLSL: layer colour for a depth below the original surface
-const STRATA_GLSL = /* glsl */ `
+// the stones of the aggregate and a smooth noise (shared with the concrete in the U-blocks)
+export const CONC_NOISE_GLSL = /* glsl */ `
   // the stones of the concrete aggregate: rounded grains (Voronoi cells with a dome),
   // x = height of the stone here (0 = cement paste between stones), yz = its slope
   vec3 tcStones(vec2 p) {
@@ -45,6 +46,8 @@ const STRATA_GLSL = /* glsl */ `
     float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7))) * 43758.5453);
     return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
   }
+`;
+const STRATA_GLSL = CONC_NOISE_GLSL + /* glsl */ `
   vec3 tcStrata(float below, vec2 xz, float y) {
     float wob = (tcSNoise(xz * 55.0 + y * 30.0) - 0.5) * 0.35; // wavy layer boundaries
     float n = below / uLayer + wob;
@@ -363,4 +366,49 @@ export function makeLightTerrainMaterial(tex) {
 // Last resort: no custom shader at all.
 export function makeFallbackTerrainMaterial(tex) {
   return new THREE.MeshStandardMaterial({ map: tex.top.diff, normalMap: tex.top.nor, roughnessMap: tex.top.arm, roughness: 1, metalness: 0 });
+}
+
+// Concrete cast in place outside the terrain (the channels of the U-blocks): the same
+// colour and texture as the concrete of the foundation — fresh: dark wet paste with the
+// stones of the aggregate showing; set: matt light grey, cloudy, fine pores; wet sheen
+// while fresh. Per vertex: aPour — when it was poured (clock), uClock / uCure shared.
+export function makeCastConcreteMaterial(uniforms) {
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, side: THREE.DoubleSide, vertexColors: true });
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float aPour;\nvarying float vPour;\nvarying vec3 vCWPos;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvPour = aPour;\nvCWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform float uClock;
+        uniform float uCure;
+        varying float vPour;
+        varying vec3 vCWPos;
+        float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        ${CONC_NOISE_GLSL}`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        float cure = clamp((uClock - vPour) / uCure, 0.0, 1.0);
+        {
+          vec2 cq = vCWPos.xz * ${RESCALE.toFixed(5)};
+          float big = tcSNoise(cq * 7.0) * 0.6 + tcSNoise(cq * 19.0 + 3.0) * 0.4;
+          float sm = 0.3;   // (pushed into the channel and patted level with a trowel)
+          vec3 st = tcStones(cq * 240.0), st2 = tcStones(cq * 115.0 + 17.0);
+          float sink = 0.45 + 0.5 * sm;
+          float stone = max(smoothstep(sink, sink + 0.2, st.x) * step(0.45, tcHash(floor(cq * 240.0))),
+                            smoothstep(sink + 0.05, sink + 0.25, st2.x) * step(0.55, tcHash(floor(cq * 115.0 + 17.0))));
+          float shade = fract(sin(dot(floor(cq * 240.0), vec2(41.3, 289.1))) * 9631.7);
+          vec3 paste = vec3(0.062, 0.062, 0.06) * mix(0.92, 1.05, big) * mix(1.0, 0.82, smoothstep(0.2, 1.0, sm));
+          vec3 rock = vec3(0.092, 0.09, 0.086) * mix(0.8, 1.25, shade);
+          vec3 fresh = mix(paste, rock, stone * 0.8);
+          vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.88, 1.05, mix(big, 0.6, sm * 0.6));
+          float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * sm);
+          setC *= 1.0 - pore * 0.35;
+          diffuseColor.rgb *= mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2)) * vColor;
+        }`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = mix(mix(0.58, 0.12, 0.3), mix(0.9, 0.72, 0.3), smoothstep(0.1, 0.8, cure));`);
+  };
+  m.customProgramCacheKey = () => 'tc-cast-concrete';
+  return m;
 }

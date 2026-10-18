@@ -111,7 +111,7 @@ export class Channel {
       const lv = l.map((v) => Math.round(Math.max(0, Math.min(UDEPTH, v)) * 2) / 2);
       const fill = +(lv.reduce((a, v) => a + v, 0) / UN / UDEPTH).toFixed(4);
       if (u.lv && u.lv.every((v, k) => v === lv[k])) continue;
-      app.objects.update(id, { lv, fill, ...(fill >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
+      app.objects.update(id, { lv, fill, ...(u.castT == null && fill > 0 ? { castT: +app.clock.toFixed(2) } : {}), ...(fill >= 0.95 && u.pourT == null ? { pourT: +app.clock.toFixed(2) } : {}) });
     }
   }
 }
