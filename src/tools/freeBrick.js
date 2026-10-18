@@ -107,28 +107,48 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     cands.push(c);
   }
   // score: on the screen (the top centre of it), else in the plot
-  // a magnet: a place on the top or on the ground next to a unit of the same course, with
-  // a gap, is pulled up to it (one joint) — the course stays tight
+  // a magnet: a place on the top or on the ground near a unit of the same course is set
+  // exactly against it — in line with it and one joint away (parallel), or into the
+  // corner at its end, flush with one of its faces (turned) — the course stays true
   for (const c of cands) {
     if (c.how === 'beside') continue;
-    let pull = null;
+    let best = null;
     for (const n of boxes) {
-      if (n.kind !== D.kind || Math.abs(n.bot - c.bot) > 0.0006 || Math.abs(Math.sin(n.yaw - c.yaw)) > 0.05) continue;
+      if (n.kind !== D.kind || Math.abs(n.bot - c.bot) > 0.0006) continue;
       const dx = c.x - n.x, dz = c.z - n.z, along = dx * n.ux + dz * n.uz, side = -dx * n.uz + dz * n.ux;
-      if (Math.abs(side) > Math.max(n.hw, c.hw) * 0.6) continue;
-      const gap = Math.abs(along) - n.hl - c.hl - J;
-      if (gap > 1e-5 && gap < L * 0.6 && (!pull || gap < pull.gap)) pull = { gap, dx: -Math.sign(along) * n.ux * gap, dz: -Math.sign(along) * n.uz * gap, side, n };
+      const par = Math.abs(Math.sin(c.yaw - n.yaw)) < 0.05, perp = Math.abs(Math.cos(c.yaw - n.yaw)) < 0.05;
+      const spots = [];
+      if (par) {
+        if (Math.abs(side) > n.hw + c.hw) continue;
+        spots.push([Math.sign(along || 1) * (n.hl + J + c.hl), 0]);
+      } else if (perp) {
+        // turned: across the end of n, flush with one of its faces …
+        spots.push([Math.sign(along || 1) * (n.hl + J + c.hw), Math.sign(side || 1) * (c.hl - n.hw)]);
+        // … or its end butting into the long face of n, flush with n's end (n runs past the corner)
+        for (const e of [-1, 1]) spots.push([e * (n.hl - c.hw), Math.sign(side || 1) * (n.hw + J + c.hl)]);
+        // … or just butting into it where it is (over what is under it)
+        if (Math.abs(along) <= n.hl + c.hw) spots.push([along, Math.sign(side || 1) * (n.hw + J + c.hl)]);
+      } else continue;
+      for (const [ta, ts] of spots) {
+        const d = Math.hypot(along - ta, side - ts);
+        if (d < L * 0.45 && (!best || d < best.d)) best = { d, x: n.x + n.ux * ta - n.uz * ts, z: n.z + n.uz * ta + n.ux * ts };
+      }
     }
-    if (pull) { c.x += pull.dx; c.z += pull.dz; }
+    if (best) { c.x = best.x; c.z = best.z; }
   }
   const bias = { beside: 0, top: finger ? 22 : 20, ground: finger ? 45 : 60 };
   let best = null, bd = Infinity, bestBad = null, bb = Infinity;
+  // places by / on the masonry first: when one of them fits, the bare ground (often the
+  // ground far behind a wall, under a finger held over it) is a worse guess
+  cands.sort((a, b) => (a.how === 'ground') - (b.how === 'ground'));
   for (const c of cands) {
-    const top = new THREE.Vector3(c.x, (c.bot + c.top) / 2, c.z);   // its middle: where the finger holds it
+    if (c.how === 'ground' && best) c.late = true;
+    const top = new THREE.Vector3(c.x, c.bot, c.z);   // the middle of its bed: the finger is on the surface it goes on
     let d;
     if (finger) { const sp = screen(top); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 110) continue; }
     else { d = top.distanceTo(p) * 4000; }
     d += c.how === 'top' && c.onFace ? 0 : bias[c.how];
+    if (c.late) d += finger ? 50 : 100;
     if (c.leaf && !inside(c, p.x, p.z)) d += finger ? 25 : 60;   // the next leaf: only where the finger really is
     if (c.across !== undefined && c.across !== !!turn) d += finger ? 30 : 120;   // along (across / a corner with «Повернуть»)
     const ok = !boxes.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b)) && supported(t, boxes, c);
