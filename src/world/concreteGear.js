@@ -110,7 +110,7 @@ export class ConcreteGear {
     this.pailTilt = 0; this.pailStream = null; this.pailLeft = 1;
     {
       const zinc = new THREE.MeshStandardMaterial({ color: 0xb8bcc0, roughness: 0.45, metalness: 0.7, side: THREE.DoubleSide });
-      const wet = new THREE.MeshStandardMaterial({ color: 0x6b6863, roughness: 0.35 });
+      const wet = new THREE.MeshStandardMaterial({ color: 0x4f4c48, roughness: 0.3 });
       const rt = 0.15 / MODEL_SCALE, rb = 0.125 / MODEL_SCALE, h = 0.29 / MODEL_SCALE;
       this.pailBody = new THREE.Group();
       const shell = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, 28, 1, true), zinc);
