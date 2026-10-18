@@ -17,27 +17,32 @@ const BEAR = 250;
 
 // the opening nearest the finger: a gap 300 … 2700 mm between two units of one course,
 // in one line — { ux, uz, nx, nz, yaw, c0, c1 (gap ends along), o (line point), top,
-// width, gap }
+// width, gap }. Hand-laid jambs are rarely exact: the two sides may differ in height by
+// up to a third of a course (an uneven footing) and stand off the line by up to a quarter
+// of the wall's thickness
+const tolY = (a, b) => 0.34 * Math.min(a.top - a.bot, b.top - b.bot);
 export function findOpening(app, p, screen, finger) {
   const boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q && !u.lintel && u.kind !== 'prop').map(boxOf);
   let best = null, bd = Infinity;
   for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
-    const a = boxes[i], b = boxes[j];
-    if (Math.abs(a.top - b.top) > 0.0006 || Math.abs(Math.sin(a.yaw - b.yaw)) > 0.05) continue;
+    const a = boxes[i], b = boxes[j], ty = tolY(a, b);
+    if (Math.abs(a.top - b.top) > ty || Math.abs(Math.sin(a.yaw - b.yaw)) > 0.05) continue;
     const dx = b.x - a.x, dz = b.z - a.z, along = dx * a.ux + dz * a.uz, side = -dx * a.uz + dz * a.ux;
-    if (Math.abs(side) > 0.0008) continue;
+    if (Math.abs(side) > Math.min(a.hw, b.hw) / 2) continue;
     const gap = (Math.abs(along) - a.hl - b.hl) / S;
     if (gap < 300 || gap > 2700) continue;
     // nothing of that course in between
     const sg = Math.sign(along), e0 = a.hl, e1 = Math.abs(along) - b.hl;
-    if (boxes.some((u, k) => k !== i && k !== j && Math.abs(u.top - a.top) < 0.0006 && (() => { const ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux; return Math.abs(sd) < a.hw && s + u.hl > e0 + 0.0001 && s - u.hl < e1 - 0.0001; })())) continue;
-    const ux = a.ux * sg, uz = a.uz * sg;
-    const mid = (e0 + e1) / 2, cx = a.x + ux * mid, cz = a.z + uz * mid;
+    if (boxes.some((u, k) => k !== i && k !== j && Math.abs(u.top - a.top) < ty && (() => { const ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux; return Math.abs(sd - side / 2) < a.hw && s + u.hl > e0 + 0.0001 && s - u.hl < e1 - 0.0001; })())) continue;
+    const ux = a.ux * sg, uz = a.uz * sg, top = Math.max(a.top, b.top);
+    // the line: halfway between the two sides
+    const ox = a.x - a.uz * side / 2, oz = a.z + a.ux * side / 2;
+    const mid = (e0 + e1) / 2, cx = ox + ux * mid, cz = oz + uz * mid;
     let d;
-    if (finger) { const sp = screen(new THREE.Vector3(cx, a.top, cz)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 160) continue; }
-    else { const dp = Math.hypot(cx - p.x, cz - p.z); if (dp > (e1 - e0) / 2 + 0.05) continue; d = Math.hypot(dp, a.top - p.y); }
-    d -= a.top * 1e-3;   // (stacked courses with the same gap: the top one — where a lintel goes)
-    if (d < bd) bd = d, best = { ux, uz, nx: -uz, nz: ux, yaw: Math.atan2(-uz, ux), o: [a.x, a.z], c0: e0, c1: e1, top: a.top, width: a.hw * 2, gap, kind: a.kind, a, b };
+    if (finger) { const sp = screen(new THREE.Vector3(cx, top, cz)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 160) continue; }
+    else { const dp = Math.hypot(cx - p.x, cz - p.z); if (dp > (e1 - e0) / 2 + 0.05) continue; d = Math.hypot(dp, top - p.y); }
+    d -= top * 1e-3;   // (stacked courses with the same gap: the top one — where a lintel goes)
+    if (d < bd) bd = d, best = { ux, uz, nx: -uz, nz: ux, yaw: Math.atan2(-uz, ux), o: [ox, oz], c0: e0, c1: e1, top, ty, width: Math.min(a.hw, b.hw) * 2, side: Math.abs(side), gap, kind: a.kind, a, b };
   }
   return best;
 }
@@ -48,9 +53,9 @@ function bears(app, op, len) {
   const covered = (s0, s1) => {
     const iv = [];
     for (const b of boxes) {
-      if (Math.abs(b.top - op.top) > 0.0006) continue;
+      if (Math.abs(b.top - op.top) > op.ty) continue;
       const dx = b.x - op.o[0], dz = b.z - op.o[1], s = dx * op.ux + dz * op.uz, sd = -dx * op.uz + dz * op.ux;
-      if (Math.abs(sd) > op.width / 2) continue;
+      if (Math.abs(sd) > op.width / 2 + op.side) continue;
       iv.push([s - b.hl - 0.0012, s + b.hl + 0.0012]);
     }
     iv.sort((x, y) => x[0] - y[0]);
@@ -71,12 +76,14 @@ export function placeLintel(app, p, screen, finger) {
   const mid = (op.c0 + op.c1) / 2;
   const x = op.o[0] + op.ux * mid, z = op.o[1] + op.uz * mid;
   const L = (len || 3000) * S;
-  const ok = !!len && bears(app, op, ((len - op.gap) / 2) * S - 0.0001);
+  const bear = !!len && bears(app, op, ((len - op.gap) / 2) * S - 0.0001);
   const bot = op.top + bed, q = new THREE.Quaternion().setFromAxisAngle(_Y, op.yaw);
   // nothing in its way above the course
   const me = { x, z, yaw: op.yaw, ux: op.ux, uz: op.uz, hl: L / 2, hw: op.width / 2, bot, top: bot + H };
   const clash = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf).some((b) => me.bot < b.top - 1e-5 && me.top > b.bot + 1e-5 && overlap(me, b));
-  return { ok: ok && !clash, how: 'lintel', kind: 'lintel', lenMm: len || 0, gapMm: Math.round(op.gap), p: new THREE.Vector3(x, bot + H / 2, z), q, s: new THREE.Vector3(L, H, op.width), bedY: op.top + bed / 2, bedT: bed };
+  // why it can't go: too wide / short of bearing / something above the course (a jamb a course higher)
+  const why = !len ? 'long' : !bear ? 'bear' : clash ? 'clash' : null;
+  return { ok: !why, why, how: 'lintel', kind: 'lintel', lenMm: len || 0, gapMm: Math.round(op.gap), p: new THREE.Vector3(x, bot + H / 2, z), q, s: new THREE.Vector3(L, H, op.width), bedY: op.top + bed / 2, bedT: bed };
 }
 
 // a temporary prop under the opening: a board flush with the top of the course

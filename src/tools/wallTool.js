@@ -25,6 +25,13 @@ import { placeLintel, placeProp, uRun, cageBars, uStrength } from './lintels.js'
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 const _ray = new THREE.Raycaster();
 
+// why a precast lintel can't go over an opening
+function lintelWhy(f) {
+  return f.why === 'long' ? `проём ${f.gapMm} мм — шире, чем перекроет перемычка 3,0 м`
+    : f.why === 'clash' ? `над рядом что-то мешает: по бокам проёма кладка разной высоты? Перемычка ложится на ряд, общий для обеих сторон — доложите ряд на низкой стороне`
+    : `опоры меньше 250 мм: по бокам проёма (${f.gapMm} мм) нужно по ${Math.round((f.lenMm - f.gapMm) / 2)} мм кладки в том же ряду`;
+}
+
 export class WallTool {
   constructor(app) {
     this.app = app;
@@ -570,7 +577,7 @@ export class WallTool {
     }
     if (free !== undefined) {
       if (!free?.ok) {
-        app.ui.toast(ck === 'lintel' ? (free ? `Перемычке нужна опора ≥ 250 мм с каждой стороны (проём ${free.gapMm} мм) и свободное место над рядом` : 'Поднесите перемычку к проёму — промежутку 300…2700 мм между блоками одного ряда')
+        app.ui.toast(ck === 'lintel' ? (free ? lintelWhy(free) : 'Поднесите перемычку к проёму — промежутку 300…2700 мм между блоками одного ряда')
           : ck === 'prop' ? 'Подпорку — в проём: между блоками одного ряда, под их верх'
             : `Сюда ${ck === 'block' || ck === 'ublock' ? 'блок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`);
         return;
@@ -608,7 +615,7 @@ export class WallTool {
     const c = this.carry;
     if (c?.kind === 'ucage') return c.cage ? (c.cage.has ? 'В этих U-блоках каркас уже есть' : `Каркас в ${c.cage.run.length} U-блок(а) — отпустите`) : 'Поднесите каркас к ряду U-блоков';
     if (c && (c.kind === 'lintel' || c.kind === 'prop') && !c.free) return c.kind === 'lintel' ? 'Поднесите перемычку к проёму в кладке' : 'Поднесите подпорку к проёму в кладке';
-    if (c?.free && c.kind === 'lintel') return c.free.ok ? `Перемычка ${c.free.lenMm} мм над проёмом ${c.free.gapMm} мм. Отпустите` : 'Красный — опоры меньше 250 мм или место над рядом занято';
+    if (c?.free && c.kind === 'lintel') return c.free.ok ? `Перемычка ${c.free.lenMm} мм над проёмом ${c.free.gapMm} мм. Отпустите` : 'Красный — ' + lintelWhy(c.free);
     if (c?.free && c.kind === 'prop') return c.free.ok ? `Подпорка в проём ${c.free.gapMm} мм. Отпустите` : 'Красный — сюда подпорку не поставить';
     if (c?.free) {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : 'Кирпич';
