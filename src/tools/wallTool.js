@@ -6,6 +6,7 @@ import { placeUnit, freeTops, topAt, beltTopAt } from './freeBrick.js';
 import { placeLintel, placeProp, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap } from './belt.js';
+import { findSlab, slabCage, isSlab, cantText, SLAB } from './slab.js';
 
 // Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
 //   lay    – take a block (brick) from the tray or the pallet and carry it: onto a wall
@@ -108,7 +109,7 @@ export class WallTool {
     const app = this.app, v = app.wallView;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
     // laid masonry only (not the unit in the hand, not the stacks on the pallets)
-    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames, v.ublocks, ...v.ucut.children, v.fill, v.wood], false).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
+    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames, v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children], false).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
     return hit ? hit.point.clone() : p;
   }
 
@@ -478,6 +479,14 @@ export class WallTool {
       v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
       app.ui.refresh();
       return;
+    } else if (c.kind === 'slab') {
+      // the formwork of a floor slab: over the whole house under the finger
+      const B = findSlab(app, p, scr, fing, app.settings.slabCant || 0);
+      c.belt = B; c.free = undefined; c.snap = null;
+      v.live = null; v.hl = null; v.liveBed = null;
+      v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
+      app.ui.refresh();
+      return;
     } else if (c.kind === 'ucage') {
       // the cage: over a run of U-blocks, shown as the run lit up — or into a ring beam's formwork
       // (a ring beam's formwork under the finger first: the U-blocks of a lintel courses
@@ -567,7 +576,7 @@ export class WallTool {
     const kind = this.kind;
     this.tray.classList.toggle('brick', kind !== 'block');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { block: 'Газоблок', brick: 'Кирпич', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса' };
+    const NAMES = { block: 'Газоблок', brick: 'Кирпич', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие' };
     if (lab) lab.textContent = this.app.settings.wallHalf && (kind === 'block' || kind === 'brick') ? (kind === 'block' ? '½ блока' : '½ кирпича') : NAMES[kind] || 'Блок';
     const w = this._trayWall(), left = w ? this.palletLeft(w) : 0;
     this.tray.title = w ? `На поддоне: ${left}` : '';
@@ -589,9 +598,23 @@ export class WallTool {
       app.ui.toast(`Опалубка пояса: доски по обе стороны стен, ${belt.lenM.toFixed(1).replace('.', ',')} м стен, высота пояса 250 мм — теперь каркас («Каркас»), потом бетон`);
       return;
     }
+    if (ck === 'slab') {
+      if (!belt) { app.ui.toast('Перекрытие — на верх стен (или на армопояс): коснитесь верха стены'); return; }
+      if (belt.exists) { app.ui.toast('Здесь опалубка перекрытия уже стоит'); return; }
+      app.journal.act('slab-form', {}, app.clock, () => app.objects.add(belt.rec));
+      app.ui.toast(`Опалубка перекрытия: ${belt.area.toFixed(1).replace('.', ',')} м², ${cantText(belt.rec)}; фанера на балках и стойках, по краю доски, толщина плиты 200 мм — теперь каркас («Каркас»), потом бетон шлангом`);
+      return;
+    }
     if (ck === 'ucage' && !cage && bc) {
+      const sl = isSlab(bc);
       if (app.objects.all('cage').some((r) => r.beltId === bc.id)) { app.ui.toast('В этой опалубке каркас уже есть'); return; }
-      if (bc.fill > 0.05) { app.ui.toast('Пояс уже залит — каркас кладут до бетона'); return; }
+      if (bc.fill > 0.05) { app.ui.toast(sl ? 'Перекрытие уже залито — арматуру кладут до бетона' : 'Пояс уже залит — каркас кладут до бетона'); return; }
+      if (sl) {
+        const rec = slabCage(bc);
+        app.journal.act('slab-cage', {}, app.clock, () => app.objects.add(rec));
+        app.ui.toast(`Арматура перекрытия: две сетки Ø${SLAB.bar} с шагом ${SLAB.step} мм в обе стороны, нижняя на стульчиках (защитный слой ${SLAB.cover} мм), верхняя на «лягушках»${bc.cant ? `; над консолью — дополнительные верхние прутки Ø${SLAB.cantBar}: консоль работает на растяжение по верху` : ''} — теперь бетон (шланг)`);
+        return;
+      }
       const rec = beltCage(bc);
       app.journal.act('belt-cage', {}, app.clock, () => app.objects.add(rec));
       app.ui.toast(`Каркас пояса: 4 прутка Ø12 вдоль каждой стены, на углах — внахлёст до дальней стороны, хомуты Ø6 через ≤ 350 мм, звёздочки — теперь бетон (ведро или шланг)`);
@@ -644,7 +667,8 @@ export class WallTool {
     const app = this.app, walls = app.objects.all('wall');
     const c = this.carry;
     if (c?.kind === 'belt') return c.belt ? (c.belt.exists ? 'Здесь опалубка пояса уже стоит' : `Опалубка по верху стен: ${c.belt.lenM.toFixed(1).replace('.', ',')} м — отпустите`) : 'Поднесите к верхнему ряду кладки — опалубка встанет по всему его контуру';
-    if (c?.kind === 'ucage') return c.cage ? (c.cage.has ? 'В этих U-блоках каркас уже есть' : `Каркас в ${c.cage.run.length} U-блок(а) — отпустите`) : c.beltCage ? 'Каркас пояса — отпустите' : 'Поднесите каркас к ряду U-блоков или в опалубку пояса';
+    if (c?.kind === 'slab') return c.belt ? (c.belt.exists ? 'Здесь опалубка перекрытия уже стоит' : `Перекрытие ${c.belt.area.toFixed(1).replace('.', ',')} м², ${cantText(c.belt.rec)} — отпустите`) : 'Поднесите к верху стен (или армопояса) — перекрытие встанет на весь дом' + ((this.app.settings.slabCant || 0) ? ', консоль — с той стороны, где коснулись' : '');
+    if (c?.kind === 'ucage') return c.cage ? (c.cage.has ? 'В этих U-блоках каркас уже есть' : `Каркас в ${c.cage.run.length} U-блок(а) — отпустите`) : c.beltCage ? (isSlab(c.beltCage) ? 'Арматура перекрытия — отпустите' : 'Каркас пояса — отпустите') : 'Поднесите каркас к ряду U-блоков, в опалубку пояса или перекрытия';
     if (c && (c.kind === 'lintel' || c.kind === 'prop') && !c.free) return c.kind === 'lintel' ? 'Поднесите перемычку к проёму в кладке' : 'Поднесите подпорку к проёму в кладке';
     if (c?.free && c.kind === 'lintel') return c.free.ok ? `Перемычка ${c.free.lenMm} мм над проёмом ${c.free.gapMm} мм. Отпустите` : 'Красный — ' + lintelWhy(c.free);
     if (c?.free && c.kind === 'prop') return c.free.ok ? `Подпорка в проём ${c.free.gapMm} мм. Отпустите` : 'Красный — сюда подпорку не поставить';
@@ -652,7 +676,8 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab'].includes(this.kind)) return {
+      slab: 'Перекрытие: поднесите к верху стен или армопояса — фанера на балках и стойках по всему дому, доски по краю (консоль — с той стороны, где коснулись); потом «Каркас», бетон шлангом, вибратор, правило; стойки и опалубку снимают («Удалить»), когда бетон наберёт прочность',
       belt: 'Армопояс в опалубке: поднесите к верхнему ряду стен — доски встанут по всему контуру; потом «Каркас», бетон (ведро / шланг), вибратор, правило; снять опалубку — «Удалить», когда бетон наберёт прочность',
       lintel: 'Перемычка: тяните из лотка к проёму — встанет над ним, опора ≥ 250 мм с каждой стороны, длина подберётся (1,0…3,0 м)',
       prop: 'Подпорка: поставьте в проём под монолитную перемычку, на неё — U-блоки',
@@ -693,18 +718,18 @@ export class WallTool {
       return;
     }
     if (id && app.objects.get(id)?.type === 'belt') {
-      // a ring beam: the formwork comes off once the concrete has set; empty — it goes
-      const b = app.objects.get(id);
+      // a ring beam / a slab: the formwork comes off once the concrete has set; empty — it goes
+      const b = app.objects.get(id), sl = isSlab(b);
       if (!(b.fill > 0.05)) {
         app.journal.act('belt-remove', {}, app.clock, () => { for (const c of app.objects.all('cage').filter((r) => r.beltId === b.id)) app.objects.remove(c.id); app.objects.remove(b.id); });
-        app.ui.toast('Опалубку пояса разобрали');
+        app.ui.toast(sl ? 'Опалубку перекрытия разобрали' : 'Опалубку пояса разобрали');
         return;
       }
-      if (b.stripped) { app.ui.toast('Опалубка уже снята — пояс готов'); return; }
+      if (b.stripped) { app.ui.toast(sl ? 'Стойки и опалубка уже сняты — перекрытие готово' : 'Опалубка уже снята — пояс готов'); return; }
       const k = uStrength(b, app.clock);
-      if (!(b.fill >= 0.95) || k < 1) { app.ui.toast(!(b.fill >= 0.95) ? 'Пояс залит не доверху — долейте бетон' : `Бетон набирает прочность: ${Math.round(k * 100)} % — опалубку рано снимать`); return; }
+      if (!(b.fill >= 0.95) || k < 1) { app.ui.toast(!(b.fill >= 0.95) ? (sl ? 'Перекрытие залито не доверху — долейте бетон' : 'Пояс залит не доверху — долейте бетон') : `Бетон набирает прочность: ${Math.round(k * 100)} % — ${sl ? (b.cant ? 'стойки рано убирать: консоль без них просядет' : 'стойки рано убирать: плита прогнётся') : 'опалубку рано снимать'}`); return; }
       app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, { stripped: true, set: true }));
-      app.ui.toast('Опалубку сняли — армопояс готов');
+      app.ui.toast(sl ? 'Стойки, балки и фанеру сняли — перекрытие готово' + (b.cant ? ', консоль держится сама' : '') : 'Опалубку сняли — армопояс готов');
       return;
     }
     if (id) {
