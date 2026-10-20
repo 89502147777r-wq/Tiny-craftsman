@@ -5,8 +5,8 @@ import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt, beltTopAt } from './freeBrick.js';
 import { placeLintel, placeProp, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
-import { findBelt, beltContains, beltCage, beltsOverlap } from './belt.js';
-import { findSlab, slabCage, isSlab, cantText, SLAB } from './slab.js';
+import { findBelt, beltContains, beltCage, beltsOverlap, toWorld } from './belt.js';
+import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
 
 // Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
 //   lay    – take a block (brick) from the tray or the pallet and carry it: onto a wall
@@ -122,8 +122,15 @@ export class WallTool {
       return true;
     }
     if (this.mode === 'opening') {
+      // on the deck of a slab's formwork: an opening in the slab (a stair well)
+      const sl = app.objects.all('belt').find((b) => isSlab(b) && !b.stripped && beltContains(b, p.x, p.z) && Math.abs(p.y - b.top) < MM(40));
+      if (sl) {
+        if (sl.fill > 0.05) { app.ui.toast('Перекрытие уже залито — проём закладывают в опалубке до бетона'); return true; }
+        this.drag = { slab: sl.id, a: [p.x, p.z], b: [p.x, p.z] };
+        return true;
+      }
       const n = this.nearest(p);
-      if (!n) { app.ui.toast('Ведите вдоль стены — от одного края проёма до другого'); return true; }
+      if (!n) { app.ui.toast('Ведите вдоль стены — от одного края проёма до другого (или по фанере опалубки перекрытия — проём в плите)'); return true; }
       this.drag = { w: n.w, s0: n.s, s1: n.s, a: n.s };
       this.lastWall = n.w.id;
       return true;
@@ -154,6 +161,24 @@ export class WallTool {
       const L = Math.hypot(this.drag.b[0] - this.drag.a[0], this.drag.b[1] - this.drag.a[1]) * MODEL_SCALE;
       app.ui.showMeasure(`${L.toFixed(2)} м`);
       this._preview();
+    } else if (this.mode === 'opening' && this.drag.slab) {
+      const d = this.drag, b = app.objects.get(d.slab);
+      if (!b) return;
+      // the finger on the plane of the deck
+      if (e && e.clientX !== undefined) {
+        _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
+        const q = _ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -b.top), new THREE.Vector3());
+        if (q) d.b = [q.x, q.z];
+      } else d.b = [p.x, p.z];
+      const H = slabHole(b, d.a[0], d.a[1], d.b[0], d.b[1]);
+      d.H = H;
+      const v = app.wallView;
+      if (H.rect) {
+        const [a0, b0, a1, b1] = H.rect, [cx, cz] = toWorld(b, (a0 + a1) / 2 * b.c, (b0 + b1) / 2 * b.c);
+        v.hl = { p: [cx, b.top + b.H / 2, cz], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-b.u[1], b.u[0])).toArray(), s: [(a1 - a0) * b.c, b.H, (b1 - b0) * b.c], ok: true };
+        app.ui.showMeasure(`Проём ${(H.w / 1000).toFixed(1)} × ${(H.l / 1000).toFixed(1)} м`.replace(/\./g, ','));
+      } else { v.hl = null; app.ui.showMeasure('Проём: протяните шире'); }
+      v.dirty = true;
     } else if (this.mode === 'opening') {
       const d = this.drag, ax = axis(d.w);
       const s = ((p.x - d.w.a[0]) * ax.ux + (p.z - d.w.a[1]) * ax.uz) / S;
@@ -181,6 +206,18 @@ export class WallTool {
       this.lastWall = added?.id; this._focus(added);
       app.ui.toast(`${KINDS[rec.kind].name}: стена ${(L * MODEL_SCALE).toFixed(2).replace('.', ',')} м, ${rows(rec)} рядов. Рядом поддон — «Класть»: берите блок и несите к стене`);
       void w;
+    } else if (this.mode === 'opening' && d.slab) {
+      app.wallView.hl = null; app.wallView.dirty = true;
+      const b = app.objects.get(d.slab), H = d.H;
+      if (!b || !H) return;
+      if (!H.patch) { app.ui.toast(H.why); return; }
+      const cage = app.objects.all('cage').find((r) => r.beltId === b.id);
+      app.journal.act('slab-hole', {}, app.clock, () => {
+        app.objects.update(b.id, H.patch);
+        // the bars laid already: laid again round the opening
+        if (cage) { app.objects.remove(cage.id); app.objects.add(slabCage(app.objects.get(b.id))); }
+      });
+      app.ui.toast(`Проём в перекрытии ${(H.w / 1000).toFixed(1)} × ${(H.l / 1000).toFixed(1)} м: коробка из досок, фанера и стойки там убраны; арматура обойдёт его, по краям — по 2 прутка Ø${SLAB.bar} в каждой сетке, на углах — диагональные`.replace(/(\d)\.(\d)/g, '$1,$2'));
     } else if (this.mode === 'opening') {
       this._showOpening(true);
       this._addOpening(d);
