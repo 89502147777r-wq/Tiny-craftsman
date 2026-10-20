@@ -16,7 +16,7 @@ import { boxOf } from './freeBrick.js';
 //          segs: [[s0,t0,s1,t1,w]…] (the walls, for the cage) }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const BELT = { cell: 50, H: 250, over: 100, board: 25, cover: 40 };
-const YIELD = 1.2, K = 7;
+const YIELD = 1.2, K = 12;   // (it runs along the beam quicker than in a narrow channel)
 
 // ---- the plan ------------------------------------------------------------------------------
 function rle(mask) {

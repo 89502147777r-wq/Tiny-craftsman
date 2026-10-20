@@ -377,8 +377,8 @@ export function makeCastConcreteMaterial(uniforms) {
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aPour;\nattribute float aSm;\nvarying float vPour;\nvarying float vSm;\nvarying vec3 vCWPos;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvPour = aPour;\nvSm = aSm;\nvCWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      .replace('#include <common>', '#include <common>\nattribute float aPour;\nattribute float aSm;\nvarying float vPour;\nvarying float vSm;\nvarying vec3 vCWPos;\nvarying vec3 vCWNrm;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvPour = aPour;\nvSm = aSm;\nvCWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvCWNrm = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform float uClock;
@@ -386,6 +386,7 @@ export function makeCastConcreteMaterial(uniforms) {
         varying float vPour;
         varying float vSm;
         varying vec3 vCWPos;
+        varying vec3 vCWNrm;
         float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         ${CONC_NOISE_GLSL}`)
       .replace('#include <map_fragment>', `#include <map_fragment>
@@ -405,7 +406,41 @@ export function makeCastConcreteMaterial(uniforms) {
           vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.88, 1.05, mix(big, 0.6, sm * 0.6));
           float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * sm);
           setC *= 1.0 - pore * 0.35;
-          diffuseColor.rgb *= mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2)) * vColor;
+          vec3 cc = mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2));
+          // a side cast against the boards (seen once the formwork is off): smooth, the joints
+          // and the grain of the 150 mm boards printed in it, a few blowholes — as the foundation
+          float cside = 1.0 - smoothstep(0.35, 0.7, abs(normalize(vCWNrm).y));
+          if (cside > 0.001) {
+            vec3 wn = normalize(vCWNrm);
+            float along = (abs(wn.x) > abs(wn.z) ? vCWPos.z : vCWPos.x) * ${RESCALE.toFixed(5)}, wy = vCWPos.y * ${RESCALE.toFixed(5)};
+            float by = fract(vCWPos.y / ${(0.15 / MODEL_SCALE).toFixed(6)});
+            float joint = 1.0 - smoothstep(0.0, 0.035, min(by, 1.0 - by));
+            float grain = tcSNoise(vec2(along * 40.0, wy * 1400.0)) * 0.6 + tcSNoise(vec2(along * 9.0, wy * 300.0)) * 0.4;
+            float hole = step(0.985, tcHash(floor(vec2(along, wy) * 900.0)));
+            vec3 face = mix(vec3(0.07, 0.07, 0.067), vec3(0.17, 0.168, 0.161), smoothstep(0.05, 1.0, cure)) * (0.93 + 0.12 * grain) * (1.0 - 0.28 * joint) * (1.0 - 0.45 * hole);
+            cc = mix(cc, face, cside);
+          }
+          diffuseColor.rgb *= cc * vColor;
+        }`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {
+          // the top as poured: lumps and the stones of the aggregate standing out of the paste;
+          // worked (vibrator, rule, trowel) — finer, then almost flat (as the foundation)
+          float up = smoothstep(0.35, 0.7, normalize(vCWNrm).y);
+          if (up > 0.001) {
+            float rough = pow(1.0 - vSm, 1.5);
+            vec2 cq = vCWPos.xz * (55.0 * ${RESCALE.toFixed(5)});
+            float e = 0.3;
+            #define TCFB(p) (tcSNoise(p) * 0.5 + tcSNoise((p) * 2.13 + 5.0) * 0.3 + tcSNoise((p) * 4.7 + 9.0) * 0.2)
+            float f0 = TCFB(cq), fx = TCFB(cq + vec2(e, 0.0)), fz = TCFB(cq + vec2(0.0, e));
+            vec2 sq = vCWPos.xz * ${RESCALE.toFixed(5)};
+            vec3 st = tcStones(sq * 240.0), st2 = tcStones(sq * 115.0 + 17.0);
+            float sink = 0.45 + 0.5 * vSm;
+            float w1 = smoothstep(sink - 0.1, sink + 0.25, st.x) * step(0.45, tcHash(floor(sq * 240.0)));
+            float w2 = smoothstep(sink - 0.05, sink + 0.3, st2.x) * step(0.55, tcHash(floor(sq * 115.0 + 17.0)));
+            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 1.6 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06;
+            normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz * up);
+          }
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(mix(0.58, 0.12, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));`);
