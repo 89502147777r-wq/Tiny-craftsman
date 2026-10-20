@@ -27,13 +27,13 @@ export class Backdrop {
     const g = new THREE.ShapeGeometry(ring, 64);
     g.rotateX(-Math.PI / 2);
     const tex = app.tex.top;
-    const mat = new THREE.MeshStandardMaterial({ map: tex.diff, normalMap: tex.nor, roughness: 1, color: 0xcfc2b2 });
+    const mat = new THREE.MeshStandardMaterial({ map: tex.diff, normalMap: tex.nor, roughness: 1, color: 0xf4e8d6 });   // (the shade of the plot's own soil)
     mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;')
         .replace('#include <uv_vertex>', '#include <uv_vertex>\nvec4 gw = modelMatrix * vec4(position, 1.0); vGW = gw.xyz; vMapUv = gw.xz / ' + SOIL_TILE.toFixed(5) + '; vNormalMapUv = vMapUv;');
       // (plain texture lookups: the stochastic tiling showed as a honeycomb on this wide plane)
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;\nuniform vec3 uFade;\n' + STOCHASTIC_GLSL)
-        .replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb *= mix(0.82, 1.1, tcFbm(vGW.xz * 2.6));\n float fd = smoothstep(0.6, 9.0, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd);')
+        .replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb *= mix(0.82, 1.1, tcFbm(vGW.xz * 2.6));\n float fd = smoothstep(1.1, 10.0, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd);')
         .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n normal = normalize(mix(normal, normalize(vNormal), smoothstep(0.6, 4.0, length(vGW.xz))));   // (no grain far off: it would ripple)');
       sh.uniforms.uFade = this.fadeU;
     };
