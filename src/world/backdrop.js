@@ -9,6 +9,24 @@ import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 //              no table, the plot continues into surrounding ground
 //   posters  – miniature-photography trick: a photo sheet glued round two sides
 //              of the box (crane on side 1, billboard on side 2), daylight
+// The 360° backgrounds (Poly Haven HDRIs, CC0): R — how far off the panorama stands
+// (its sphere round the plot, so it gets smaller with the plot as the camera draws back:
+// the buildings, the trees keep their size next to the house); ground — the ground round
+// the plot (null: the plot's own soil); water — the low parts of the horizon that are
+// water (the sea, a lake) become water beyond the shore.
+export const PANOS = {
+  site: { name: 'Стройплощадка 360°', file: 'construction_yard_2k.hdr', R: 45, ground: null },
+  beach: { name: 'У моря', file: 'spiaggia_di_mondello_2k.hdr', R: 120, ground: 'coast_sand_01', tile: 2.5, shore: 28, water: true },
+  lake: { name: 'У озера', file: 'lakeside_2k.hdr', R: 90, ground: 'coast_sand_01', tile: 2.5, shore: 22, water: true },
+  forest: { name: 'В лесу', file: 'forest_slope_2k.hdr', R: 35, ground: 'forest_leaves_04', tile: 2 },
+  meadow: { name: 'Луг', file: 'meadow_2_2k.hdr', R: 45, ground: 'leafy_grass', tile: 2 },
+  alps: { name: 'Горы', file: 'alps_field_2k.hdr', R: 90, ground: 'leafy_grass', tile: 2 },
+};
+export const isPano = (m) => !!PANOS[m];
+const EYE = 1.7;   // the panoramas were shot about this high (m)
+// how far above the panorama's camera ours is (0 … 1): from up high its near ground smears
+const HIGH_GLSL = `smoothstep(${(3 * EYE / MODEL_SCALE).toFixed(4)}, ${(14 * EYE / MODEL_SCALE).toFixed(4)}, vUp)`;
+
 export class Backdrop {
   constructor(app) {
     this.app = app;
@@ -18,60 +36,124 @@ export class Backdrop {
     this.pmrem = pmrem;
     this.workshopEnv = app.scene.environment;
     this.workshopBg = app.scene.background;
-    // ground that continues the plot in "site" mode
-    // a big disc with a hole exactly where the plot is
+    // the ground round the plot in the 360° modes: a disc with a hole where the plot is;
+    // near the plot its own soil, further out the ground of the place (sand, grass, forest
+    // floor), then the haze of the distance; water beyond the shore where the panorama's
+    // horizon is water
     const ring = new THREE.Shape();
-    ring.absarc(0, 0, 30, 0, Math.PI * 2, false);   // (out to the haze of the distance)
+    ring.absarc(0, 0, 1, 0, Math.PI * 2, false);
     const hx = TRAY.innerX / 2 - 0.0005, hz = TRAY.innerZ / 2 - 0.0005;
-    ring.holes.push(new THREE.Path([new THREE.Vector2(-hx, -hz), new THREE.Vector2(hx, -hz), new THREE.Vector2(hx, hz), new THREE.Vector2(-hx, hz)]));
-    const g = new THREE.ShapeGeometry(ring, 64);
-    g.rotateX(-Math.PI / 2);
+    this.groundHole = [hx, hz];
     const tex = app.tex.top;
+    this.gU = {
+      uFade: { value: new THREE.Color(0.55, 0.5, 0.44) }, tTheme: { value: tex.diff }, tThemeN: { value: tex.nor }, uThemeTile: { value: 1 / SOIL_TILE },
+      uTheme: { value: 0 }, uR: { value: 10 }, uShore: { value: 1e9 }, tWater: { value: null }, uWater: { value: 0 },
+      tPano: { value: null }, uPano: { value: 0 }, uEye: { value: EYE / MODEL_SCALE }, uHole: { value: new THREE.Vector2(hx, hz) },
+    };
     const mat = new THREE.MeshStandardMaterial({ map: tex.diff, normalMap: tex.nor, roughness: 1, color: 0xf4e8d6 });   // (the shade of the plot's own soil)
     mat.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, this.gU);
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;')
         .replace('#include <uv_vertex>', '#include <uv_vertex>\nvec4 gw = modelMatrix * vec4(position, 1.0); vGW = gw.xyz; vMapUv = gw.xz / ' + SOIL_TILE.toFixed(5) + '; vNormalMapUv = vMapUv;');
       // (plain texture lookups: the stochastic tiling showed as a honeycomb on this wide plane)
-      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;\nuniform vec3 uFade;\n' + STOCHASTIC_GLSL)
-        .replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb *= mix(0.82, 1.1, tcFbm(vGW.xz * 2.6));\n float fd = smoothstep(1.1, 10.0, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd);')
-        .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n normal = normalize(mix(normal, normalize(vNormal), smoothstep(0.6, 4.0, length(vGW.xz))));   // (no grain far off: it would ripple)');
-      sh.uniforms.uFade = this.fadeU;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+        varying vec3 vGW;
+        uniform vec3 uFade; uniform sampler2D tTheme; uniform sampler2D tThemeN; uniform float uThemeTile; uniform float uTheme;
+        uniform float uR; uniform float uShore; uniform sampler2D tWater; uniform float uWater;
+        uniform sampler2D tPano; uniform float uPano; uniform float uEye; uniform vec2 uHole;
+        float gWater; float gFd;
+        ` + STOCHASTIC_GLSL)
+        .replace('#include <map_fragment>', `#include <map_fragment>
+        float gr = length(vGW.xz);
+        // the place's own ground beyond the plot (the soil of the plot fades into it)
+        float th = uTheme * smoothstep(0.0, 0.45, max(abs(vGW.x) - uHole.x, abs(vGW.z) - uHole.y));
+        diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(tTheme, vGW.xz * uThemeTile).rgb, th);
+        diffuseColor.rgb *= mix(0.82, 1.1, tcFbm(vGW.xz * 2.6));
+        // water beyond the shore, where the horizon is water: wet sand, then the water
+        float az = atan(vGW.z, vGW.x) * 0.15915494 + 0.5;
+        gWater = uWater * texture2D(tWater, vec2(az, 0.5)).r * smoothstep(uShore, uShore + 0.12, gr + (tcFbm(vGW.xz * 3.0) - 0.5) * 0.25);
+        float wet = uWater * texture2D(tWater, vec2(az, 0.5)).r * smoothstep(uShore - 0.25, uShore, gr);
+        diffuseColor.rgb *= 1.0 - 0.35 * wet;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.11, 0.13), gWater);
+        gFd = uPano * smoothstep(max(uR * 0.3, 1.7), uR * 0.75, gr);`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = mix(roughnessFactor, 0.06, gWater);`)
+        // further off, the ground of the panorama itself, laid onto the plane from where it was
+        // shot (as it is drawn, unlit): at its edge it meets the panorama's flattened floor without a seam
+        .replace('#include <opaque_fragment>', `if (uPano > 0.0) { vec3 pd = normalize(vec3(vGW.x, -uEye, vGW.z)); vec3 pc = texture2D(tPano, vec2(atan(pd.z, pd.x) * 0.15915494 + 0.5, asin(pd.y) * 0.31830989 + 0.5)).rgb;\n float vUp = cameraPosition.y - vGW.y - uEye, hi = ${HIGH_GLSL};\n outgoingLight = mix(mix(outgoingLight, pc, gFd * (1.0 - hi)), uFade, hi * uPano * smoothstep(uR * 0.35, uR * 0.8, gr)); }\n#include <opaque_fragment>`)
+        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        normal = normalize(mix(normal, normalize(vNormal), max(smoothstep(0.6, 4.0, length(vGW.xz)), gWater * 0.85)));   // (no grain far off: it would ripple; water: small waves)
+        if (gWater > 0.01) { vec2 wq = vGW.xz * 9.0; float w0 = tcFbm(wq), wx = tcFbm(wq + vec2(0.2, 0.0)), wz = tcFbm(wq + vec2(0.0, 0.2)); normal = normalize(normal + (viewMatrix * vec4((w0 - wx) * 0.6, 0.0, (w0 - wz) * 0.6, 0.0)).xyz * gWater); }`);
     };
-    this.fadeU = { value: new THREE.Color(0.55, 0.5, 0.44) };
-    this.ground = new THREE.Mesh(g, mat);
+    this.fadeU = this.gU.uFade;
+    this.ground = new THREE.Mesh(new THREE.BufferGeometry(), mat);
     this.ground.position.y = TRAY.soil - 0.0012;
     this.ground.receiveShadow = true;
     this.ground.visible = false;
     app.scene.add(this.ground);
+    this.panos = {};
+  }
+
+  // the ground disc out to radius r (model)
+  _groundTo(r) {
+    if (this._gR === r) return;
+    this._gR = r;
+    const ring = new THREE.Shape(), [hx, hz] = this.groundHole;
+    ring.absarc(0, 0, r, 0, Math.PI * 2, false);
+    ring.holes.push(new THREE.Path([new THREE.Vector2(-hx, -hz), new THREE.Vector2(hx, -hz), new THREE.Vector2(hx, hz), new THREE.Vector2(-hx, hz)]));
+    const g = new THREE.ShapeGeometry(ring, 96);
+    g.rotateX(-Math.PI / 2);
+    this.ground.geometry.dispose();
+    this.ground.geometry = g;
   }
 
   async set(mode) {
     if (mode === 'photo1' || mode === 'photo2') mode = 'posters'; // older projects
-    const app = this.app, ws = app.workshop;
+    if (!isPano(mode) && mode !== 'posters') mode = 'workshop';
+    const app = this.app, ws = app.workshop, pano = isPano(mode);
     this.mode = mode;
     const day = mode !== 'workshop';
-    if (day) await this._loadDay();
+    // (the photo sheet is lit by the construction-site daylight)
+    const P = day ? await this._loadPano(pano ? mode : 'site') : null;
     if (this.mode !== mode) return; // changed while loading
-    ws.table.visible = mode !== 'site';
-    ws.group.children.forEach((o) => { if (o.userData.prop) o.visible = mode !== 'site'; });
-    if (app.stacks) app.stacks.visible = mode !== 'site';
-    ws.tray.traverse((o) => { if (o.isMesh) o.visible = mode !== 'site'; });
-    this.ground.visible = mode === 'site';
-    if (this.sky) this.sky.visible = mode === 'site';
+    ws.table.visible = !pano;
+    ws.group.children.forEach((o) => { if (o.userData.prop) o.visible = !pano; });
+    if (app.stacks) app.stacks.visible = !pano;
+    ws.tray.traverse((o) => { if (o.isMesh) o.visible = !pano; });
+    this.ground.visible = pano;
+    for (const p of Object.values(this.panos)) if (p.sky) p.sky.visible = pano && p === P;
+    // the camera stays inside the panorama (and a real camera's depth of field — no
+    // miniature blur)
+    const lim = app.rig?.limits;
+    if (lim) {
+      const Rm = pano ? PANOS[mode].R / MODEL_SCALE : Infinity;
+      lim.maxDist = Math.min(4, Rm * 0.6); lim.boxX = Math.min(1.5, Rm * 0.25); lim.boxZ = Math.min(1.2, Rm * 0.25);
+      app.rig.goal.dist = Math.min(app.rig.goal.dist, lim.maxDist); app.rig.clampTarget();
+    }
+    if (pano) {
+      const cfg = PANOS[mode], Rm = cfg.R / MODEL_SCALE;
+      this._groundTo(Rm * 0.8);
+      const g = this.gU;
+      g.uR.value = Rm; g.uFade.value.copy(P.haze); g.tPano.value = P.tex; g.uPano.value = 1;
+      g.uTheme.value = cfg.ground ? 1 : 0;
+      if (cfg.ground) { const t = await this._groundTex(cfg.ground); g.tTheme.value = t.diff; g.uThemeTile.value = MODEL_SCALE / (cfg.tile || 2); }
+      g.uWater.value = cfg.water ? 1 : 0; g.tWater.value = P.water; g.uShore.value = (cfg.shore || 1e6) / MODEL_SCALE;
+    }
+    else { const g = this.gU; g.uTheme.value = 0; g.uWater.value = 0; g.uPano.value = 0; g.uR.value = 10; }   // (the berm of the photo sheet shares this material)
     // the photo sheet glued round the box
     if (mode === 'posters' && !this.posters) await this._buildPosters();
     if (this.mode !== mode) return;
     if (this.posters) this.posters.visible = mode === 'posters';
     const s = app.scene;
     if (day) {
-      s.environment = this.dayEnv;
+      s.environment = P.env;
       s.environmentIntensity = 0.9;
-      s.background = mode === 'site' ? null : this.workshopBg;   // (in 'site' the hazy sky sphere is the background)
-      s.backgroundBlurriness = mode === 'site' ? 0.02 : 0.12;
-      s.backgroundIntensity = mode === 'site' ? 1.0 : 0.6;
+      s.background = pano ? null : this.workshopBg;   // (in a 360° mode the panorama sphere is the background)
+      s.backgroundBlurriness = 0.12;
+      s.backgroundIntensity = 0.6;
       s.backgroundRotation.set(0, 0, 0); s.environmentRotation.set(0, 0, 0);
       ws.sun.color.set(0xfff0dc); ws.sun.intensity = 3.4;
-      ws.sun.userData.dir.copy(this.sunDir);
+      ws.sun.userData.dir.copy(P.sun);
     } else {
       s.environment = this.workshopEnv; s.environmentIntensity = 0.8;
       s.background = this.workshopBg; s.backgroundBlurriness = 0.12; s.backgroundIntensity = 0.75;
@@ -138,23 +220,30 @@ export class Backdrop {
     this.posters = g;
   }
 
-  async _loadDay() {
-    if (this.dayTex) return;
-    const t = await new Promise((res, rej) => new HDRLoader().load('assets/hdri/construction_yard_2k.hdr', res, undefined, rej));
+  // a panorama: its texture, the light from it, where its sun is, the haze colour along
+  // its horizon, which way its horizon is water; its sphere round the plot
+  async _loadPano(key) {
+    if (this.panos[key]) return this.panos[key];
+    const cfg = PANOS[key];
+    const t = await new Promise((res, rej) => new HDRLoader().load('assets/hdri/' + cfg.file, res, undefined, rej));
     t.mapping = THREE.EquirectangularReflectionMapping;
-    this.dayTex = t;
-    this.dayEnv = this.pmrem.fromEquirectangular(t).texture;
-    this.sunDir = findSun(t);
-    // the sky: the panorama round the camera at infinity, as before — but below its horizon
-    // it fades into the haze of distant ground (the colour along the panorama's horizon),
-    // where our own ground runs out to: the plot stands on ground that reaches the horizon,
-    // the buildings of the panorama stand behind it (not its near ground seen from 1.7 m
-    // under a plot hanging in the air)
-    this.hazeU = { value: horizonColour(t) };
-    this.fadeU.value.copy(this.hazeU.value);
-    this.sky = hazySky(t, this.hazeU);
-    this.sky.visible = false;
-    this.app.scene.add(this.sky);
+    const P = { tex: t, env: this.pmrem.fromEquirectangular(t).texture, sun: findSun(t), haze: horizonColour(t), water: waterMask(t) };
+    P.sky = panoSphere(t, P.haze, cfg.R / MODEL_SCALE);
+    P.sky.position.set(0, TRAY.soil + EYE / MODEL_SCALE, 0);
+    P.sky.visible = false;
+    this.app.scene.add(P.sky);
+    this.panos[key] = P;
+    return P;
+  }
+
+  _groundTex(name) {
+    this._gt = this._gt || {};
+    if (!this._gt[name]) this._gt[name] = Promise.all(['diff', 'nor_gl'].map((m) => this._photo(`assets/textures/${name}/${m}.jpg`))).then(([diff, nor]) => {
+      for (const t of [diff, nor]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; }
+      nor.colorSpace = THREE.NoColorSpace;
+      return { diff, nor };
+    });
+    return this._gt[name];
   }
 
   _photo(url) {
@@ -332,29 +421,65 @@ function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
   return g;
 }
 
-// The panorama on a sphere that moves with the camera (it is at infinity), drawn behind
-// everything; below the horizon it turns into the haze colour.
-function hazySky(map, hazeU) {
+// The panorama on a sphere of radius R round the plot (centred where its camera stood):
+// each point shows the panorama in its direction from the centre — from the centre it is
+// the photo; from elsewhere what is in it stands about R away (so it keeps its size next to
+// what is on the plot). Drawn behind everything; below its horizon it turns into the haze.
+function panoSphere(map, haze, R) {
   const m = new THREE.ShaderMaterial({
-    uniforms: { tMap: { value: map }, uHaze: hazeU },
-    vertexShader: `varying vec3 vDir;
-      void main() { vDir = position; vec4 p = projectionMatrix * viewMatrix * vec4(position + cameraPosition, 1.0); gl_Position = p.xyww; }`,
-    fragmentShader: `uniform sampler2D tMap; uniform vec3 uHaze; varying vec3 vDir;
+    uniforms: { tMap: { value: map }, uHaze: { value: haze } },
+    vertexShader: `varying vec3 vDir; varying float vLow; varying float vUp;
+      void main() {
+        vDir = position;
+        vLow = clamp(-position.y / ${(EYE / MODEL_SCALE).toFixed(5)}, 0.0, 1.0);
+        vUp = cameraPosition.y - modelMatrix[3].y;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `uniform sampler2D tMap; uniform vec3 uHaze; varying vec3 vDir; varying float vLow; varying float vUp;
       void main() {
         vec3 d = normalize(vDir);
         vec2 uv = vec2(atan(d.z, d.x) * 0.15915494 + 0.5, asin(clamp(d.y, -1.0, 1.0)) * 0.31830989 + 0.5);
         vec3 c = texture2D(tMap, uv).rgb;
-        // a thin haze right over the horizon, haze below it
-        c = mix(c, uHaze, smoothstep(0.03, -0.004, d.y));
+        // seen from high up, what stood near the camera is smeared over the ground: haze there
+        // (and round the plot the ground of the place instead of the photo's)
+        c = mix(c, uHaze, smoothstep(0.0, 0.2, vLow) * ${HIGH_GLSL});
         gl_FragColor = vec4(c, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
     side: THREE.BackSide, depthWrite: false, depthTest: false, toneMapped: true,
   });
-  const s = new THREE.Mesh(new THREE.SphereGeometry(10, 64, 32), m);
+  // its bottom flattened onto the ground (the photo's own ground laid out round the plot, out
+  // to about R), curving up into the sphere towards its horizon
+  const g = new THREE.SphereGeometry(R, 96, 64), pos = g.attributes.position, v = new THREE.Vector3(), h = EYE / MODEL_SCALE, y1 = -1.15 * h;
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    if (v.y < 0) { v.multiplyScalar(v.y < y1 ? -h / v.y : 1 - (1 + h / y1) * (v.y / y1) ** 2); pos.setXYZ(i, v.x, v.y, v.z); }
+  }
+  const s = new THREE.Mesh(g, m);
   s.renderOrder = -100; s.frustumCulled = false;
   return s;
+}
+
+// which way (256 steps round) the panorama's horizon is water: the band just under it is
+// bluish (a 1 × 256 texture, softened)
+function waterMask(t) {
+  const { width: W, height: H } = t.image, N = 256, raw = new Float32Array(N);
+  for (let k = 0; k < N; k++) {
+    let r = 0, g = 0, b = 0, n = 0;
+    const x0 = Math.floor(k / N * W), x1 = Math.floor((k + 1) / N * W);
+    for (let y = Math.floor(H * 0.505); y < H * 0.53; y++) for (let x = x0; x < x1; x++) { const i = (y * W + x) * 4; r += px(t, i); g += px(t, i + 1); b += px(t, i + 2); n++; }
+    raw[k] = b > r * 1.12 && b > g * 0.98 ? 1 : 0;
+  }
+  const d = new Uint8Array(N * 4);
+  for (let k = 0; k < N; k++) {
+    let a = 0; for (let j = -4; j <= 4; j++) a += raw[(k + j + N) % N];
+    const v = Math.round(255 * Math.min(1, Math.max(0, (a / 9 - 0.3) / 0.4)));
+    d.set([v, v, v, 255], k * 4);
+  }
+  const tx = new THREE.DataTexture(d, N, 1);
+  tx.wrapS = THREE.RepeatWrapping; tx.magFilter = tx.minFilter = THREE.LinearFilter; tx.needsUpdate = true;
+  return tx;
 }
 
 // the colour of the panorama just under its horizon (the distant ground and haze)

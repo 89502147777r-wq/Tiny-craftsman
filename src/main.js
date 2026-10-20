@@ -12,7 +12,7 @@ import { FormworkView } from './world/formwork.js';
 import { RebarView } from './world/rebar.js';
 import { WallView } from './world/walls.js';
 import { buildStacks } from './world/stacks.js';
-import { Backdrop } from './world/backdrop.js';
+import { Backdrop, PANOS, isPano } from './world/backdrop.js';
 import { Shovel } from './world/shovel.js';
 import { Rake } from './world/rake.js';
 import { makeDust } from './world/dust.js';
@@ -397,7 +397,7 @@ app.pickObject = (cx, cy, kind) => {
 
 app.setBackdrop = async (mode) => {
   app.settings.backdrop = mode;
-  app.ui?.toast(mode === 'site' ? 'Загружаю панораму стройплощадки…' : '');
+  app.ui?.toast(isPano(mode) ? `Загружаю панораму «${PANOS[mode].name}»…` : '');
   await app.backdrop.set(mode);
   applySettings();
 };
@@ -412,7 +412,7 @@ function applySettings() {
   if (app.shovel.type !== s.shovel && !app.shovelTool.busy) app.shovel.setType(s.shovel);
   app.terrainMat.userData.uniforms.uLevel.value = s.level ? 1 : 0;
   app.terrainMat.userData.uniforms.uLayer.value = SOIL.layer = Math.max(0.004, s.bite / 1000);
-  app.pipeline.dofAmount = s.dof;
+  app.pipeline.dofAmount = s.dof * (isPano(s.backdrop) ? 0.2 : 1);   // (a real place round it: no miniature blur)
   if (app.pipeline.quality !== s.quality || !app.pipeline.target) app.pipeline.setQuality(s.quality);
   const sm = s.quality === 'low' ? 1024 : s.quality === 'medium' ? 2048 : 3072;
   if (app.workshop.sun.shadow.mapSize.x !== sm) {
