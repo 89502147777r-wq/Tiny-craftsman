@@ -154,12 +154,30 @@ async function main() {
   let last = performance.now();
   let fpsAcc = 0, fpsN = 0;
   app.fps = 0;
+  // Drawn only as often as the picture changes (the phone stays cool): every frame while a
+  // finger is on the screen or was a moment ago, 30 a second while a tool, a machine, the
+  // soil or the camera is still moving by itself, else 2 a second (the clock, curing)
+  let lastDraw = 0;
+  app.lastInput = performance.now();
+  app.poke = () => { app.lastInput = performance.now(); };
+  for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown']) window.addEventListener(ev, app.poke, { passive: true, capture: true });
+  const moving = () => {
+    const r = app.rig, g = r.goal;
+    return app.settings.orbit || !!app.physJob || app.terrain.active || app.particles.busy || app.shovelTool.busy || app.rakeTool.busy || app.wallTool.busy
+      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy()
+      || Math.abs(r.dist - g.dist) > 1e-4 || r.target.distanceToSquared(g.target) > 1e-9 || Math.abs(r.yaw - g.yaw) > 1e-4 || Math.abs(r.pitch - g.pitch) > 1e-4 || Math.abs(r.focus - r.focusGoal) > 1e-3;
+  };
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    fpsAcc += dt; fpsN++;
-    if (fpsAcc > 1) { app.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
-    step(dt, now / 1000);
+    const due = now - app.lastInput < 1500 || (now - lastDraw > (moving() ? 30 : 480));
+    if (due) {
+      const fd = (now - lastDraw) / 1000;
+      lastDraw = now;
+      fpsAcc += fd; fpsN++;
+      if (fpsAcc > 1) { app.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
+    }
+    step(dt, now / 1000, due);
     requestAnimationFrame(frame);
   }
   document.getElementById('loading').classList.add('done');
@@ -412,7 +430,7 @@ function applySettings() {
   if (app.shovel.type !== s.shovel && !app.shovelTool.busy) app.shovel.setType(s.shovel);
   app.terrainMat.userData.uniforms.uLevel.value = s.level ? 1 : 0;
   app.terrainMat.userData.uniforms.uLayer.value = SOIL.layer = Math.max(0.004, s.bite / 1000);
-  app.pipeline.dofAmount = s.dof * (isPano(s.backdrop) ? 0.2 : 1);   // (a real place round it: no miniature blur)
+  app.pipeline.dofAmount = isPano(s.backdrop) ? 0 : s.dof;   // (a real place round it: no miniature blur)
   if (app.pipeline.quality !== s.quality || !app.pipeline.target) app.pipeline.setQuality(s.quality);
   const sm = s.quality === 'low' ? 1024 : s.quality === 'medium' ? 2048 : 3072;
   if (app.workshop.sun.shadow.mapSize.x !== sm) {

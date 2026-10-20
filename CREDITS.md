@@ -23,12 +23,12 @@
 | Файл | Ассет | Автор | Лицензия | Источник |
 |---|---|---|---|---|
 | `assets/hdri/carpentry_shop_02_1k.hdr` | Carpentry Shop 02 | Greg Zaal | CC0 | https://polyhaven.com/a/carpentry_shop_02 |
-| `assets/hdri/construction_yard_2k.hdr` — панорама стройплощадки 360° | Construction Yard | Sergej Majboroda | CC0 | https://polyhaven.com/a/construction_yard |
-| `assets/hdri/spiaggia_di_mondello_2k.hdr` — фон «У моря» 360° | Spiaggia di Mondello | Andreas Mischok | CC0 | https://polyhaven.com/a/spiaggia_di_mondello |
-| `assets/hdri/lakeside_2k.hdr` — фон «У озера» 360° | Lakeside | Greg Zaal | CC0 | https://polyhaven.com/a/lakeside |
-| `assets/hdri/forest_slope_2k.hdr` — фон «В лесу» 360° | Forest Slope | Andreas Mischok | CC0 | https://polyhaven.com/a/forest_slope |
-| `assets/hdri/meadow_2_2k.hdr` — фон «Луг» 360° | Meadow 2 | Sergej Majboroda | CC0 | https://polyhaven.com/a/meadow_2 |
-| `assets/hdri/alps_field_2k.hdr` — фон «Горы» 360° | Alps Field | Andreas Mischok | CC0 | https://polyhaven.com/a/alps_field |
+| `assets/hdri/construction_yard_1k.hdr` (свет) и `assets/backdrops/360/construction_yard_4k.jpg` (тонмапированный JPG Poly Haven, уменьшен до 4096×2048) — панорама стройплощадки 360° | Construction Yard | Sergej Majboroda | CC0 | https://polyhaven.com/a/construction_yard |
+| `assets/hdri/spiaggia_di_mondello_1k.hdr` (свет) и `assets/backdrops/360/spiaggia_di_mondello_4k.jpg` (тонмапированный JPG Poly Haven, уменьшен до 4096×2048) — фон «У моря» 360° | Spiaggia di Mondello | Andreas Mischok | CC0 | https://polyhaven.com/a/spiaggia_di_mondello |
+| `assets/hdri/lakeside_1k.hdr` (свет) и `assets/backdrops/360/lakeside_4k.jpg` (тонмапированный JPG Poly Haven, уменьшен до 4096×2048) — фон «У озера» 360° | Lakeside | Greg Zaal | CC0 | https://polyhaven.com/a/lakeside |
+| `assets/hdri/forest_slope_1k.hdr` (свет) и `assets/backdrops/360/forest_slope_4k.jpg` (тонмапированный JPG Poly Haven, уменьшен до 4096×2048) — фон «В лесу» 360° | Forest Slope | Andreas Mischok | CC0 | https://polyhaven.com/a/forest_slope |
+| `assets/hdri/meadow_2_1k.hdr` (свет) и `assets/backdrops/360/meadow_2_4k.jpg` (тонмапированный JPG Poly Haven, уменьшен до 4096×2048) — фон «Луг» 360° | Meadow 2 | Sergej Majboroda | CC0 | https://polyhaven.com/a/meadow_2 |
+| `assets/hdri/alps_field_1k.hdr` (свет) и `assets/backdrops/360/alps_field_4k.jpg` (тонмапированный JPG Poly Haven, уменьшен до 4096×2048) — фон «Горы» 360° | Alps Field | Andreas Mischok | CC0 | https://polyhaven.com/a/alps_field |
 
 ## 3D-модели техники (Sketchfab, CC BY 4.0)
 
