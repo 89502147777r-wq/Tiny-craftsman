@@ -355,9 +355,17 @@ function setTool(t) {
   app.tool = t;
   app.outlineView.setHandles(t === 'mark', app.markTool.selected);
   if (t !== 'shovel' && app.shovelTool.state === 'idle') {
-    // lean the shovel against the tray corner when it is not in use
+    // lean the shovel against the tray corner when it is not in use (no tray round a 360°
+    // place: put away)
     const x = -app.terrain.halfX + 0.012 * KT, z = app.terrain.halfZ - 0.012 * KT;
     app.shovel.setPose({ pos: new THREE.Vector3(x, app.terrain.heightAt(x, z) - 0.006 * KT, z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.22, roll: 0 });
+    app.shovel.root.visible = !isPano(app.settings.backdrop);
+  }
+  if (t === 'shovel' && app.shovelTool.state === 'idle') {
+    // taken up: it stands in the soil in the middle of the screen
+    const g = app.rig.target, x = THREE.MathUtils.clamp(g.x, -app.terrain.halfX + 0.03, app.terrain.halfX - 0.03), z = THREE.MathUtils.clamp(g.z, -app.terrain.halfZ + 0.03, app.terrain.halfZ - 0.03);
+    app.shovel.setPose({ pos: new THREE.Vector3(x, app.terrain.heightAt(x, z), z), dir: new THREE.Vector2(0.7, -0.7), tilt: 0.25, roll: 0 }, true);
+    app.shovel.root.visible = true;
   }
   if (t !== 'rake' && !app.rakeTool.busy) {
     // the rake is put down along the front edge: tines in the soil, handle on the ground
@@ -430,7 +438,8 @@ function applySettings() {
   if (app.shovel.type !== s.shovel && !app.shovelTool.busy) app.shovel.setType(s.shovel);
   app.terrainMat.userData.uniforms.uLevel.value = s.level ? 1 : 0;
   app.terrainMat.userData.uniforms.uLayer.value = SOIL.layer = Math.max(0.004, s.bite / 1000);
-  app.pipeline.dofAmount = isPano(s.backdrop) ? 0 : s.dof;   // (a real place round it: no miniature blur)
+  app.pipeline.dofAmount = isPano(s.backdrop) ? 0 : s.dof;
+  app.shovel.root.visible = app.tool === 'shovel' || app.shovelTool.state !== 'idle' || !isPano(s.backdrop);   // (put away round a 360° place)   // (a real place round it: no miniature blur)
   if (app.pipeline.quality !== s.quality || !app.pipeline.target) app.pipeline.setQuality(s.quality);
   const sm = s.quality === 'low' ? 1024 : s.quality === 'medium' ? 2048 : 3072;
   if (app.workshop.sun.shadow.mapSize.x !== sm) {

@@ -250,7 +250,7 @@ const ROUGH_TAIL = `
         {
           // fresh concrete has a wet sheen (glossy when trowelled), set concrete is matt
           float cw = smoothstep(0.00008, 0.0006, vConc.x), cu = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
-          float wetR = mix(0.58, 0.12, vConc.z), dryR = mix(0.9, 0.72, vConc.z);   // moist and matt as poured, the worked paste glistens
+          float wetR = mix(0.8, 0.32, vConc.z), dryR = mix(0.9, 0.72, vConc.z);   // moist and matt as poured, the worked paste glistens
           roughnessFactor = mix(roughnessFactor, mix(wetR, dryR, smoothstep(0.1, 0.8, cu)), cw);
           // bitumen on a face shines
           roughnessFactor = mix(roughnessFactor, 0.28, smoothstep(0.0, 0.6, vExtra.x) * cw);
@@ -443,7 +443,7 @@ export function makeCastConcreteMaterial(uniforms) {
           }
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(mix(0.58, 0.12, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));`);
+        roughnessFactor = mix(mix(0.8, 0.32, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));   // (as the foundation)`);
   };
   m.customProgramCacheKey = () => 'tc-cast-concrete';
   return m;
