@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-import { TRAY, SOIL_TILE, BACKDROP } from '../config.js';
+import { TRAY, SOIL_TILE, BACKDROP, MODEL_SCALE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 
 // Background / lighting modes:
@@ -21,19 +21,19 @@ export class Backdrop {
     // ground that continues the plot in "site" mode
     // a big disc with a hole exactly where the plot is
     const ring = new THREE.Shape();
-    ring.absarc(0, 0, 14, 0, Math.PI * 2, false);
+    ring.absarc(0, 0, 2.4, 0, Math.PI * 2, false);   // (it fades out into the panorama's own ground)
     const hx = TRAY.innerX / 2 - 0.0005, hz = TRAY.innerZ / 2 - 0.0005;
     ring.holes.push(new THREE.Path([new THREE.Vector2(-hx, -hz), new THREE.Vector2(hx, -hz), new THREE.Vector2(hx, hz), new THREE.Vector2(-hx, hz)]));
     const g = new THREE.ShapeGeometry(ring, 64);
     g.rotateX(-Math.PI / 2);
     const tex = app.tex.top;
-    const mat = new THREE.MeshStandardMaterial({ map: tex.diff, normalMap: tex.nor, roughness: 1, color: 0xcfc2b2 });
+    const mat = new THREE.MeshStandardMaterial({ map: tex.diff, normalMap: tex.nor, roughness: 1, color: 0xcfc2b2, transparent: true });
     mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;')
         .replace('#include <uv_vertex>', '#include <uv_vertex>\nvec4 gw = modelMatrix * vec4(position, 1.0); vGW = gw.xyz; vMapUv = gw.xz / ' + SOIL_TILE.toFixed(5) + '; vNormalMapUv = vMapUv;');
       const ch = stochasticChunks();
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGW;\nuniform vec3 uFade;\n' + STOCHASTIC_GLSL)
-        .replace('#include <map_fragment>', 'tcStochSetup(vMapUv);\n' + ch.map + '\n diffuseColor.rgb *= mix(0.82, 1.1, tcFbm(vGW.xz * 2.6));\n float fd = smoothstep(2.5, 13.0, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd);')
+        .replace('#include <map_fragment>', 'tcStochSetup(vMapUv);\n' + ch.map + '\n diffuseColor.rgb *= mix(0.82, 1.1, tcFbm(vGW.xz * 2.6));\n float fd = smoothstep(0.75, 2.2, length(vGW.xz)); diffuseColor.rgb = mix(diffuseColor.rgb, uFade, fd * 0.5); diffuseColor.a *= 1.0 - fd;')
         .replace('#include <normal_fragment_maps>', ch.normal);
       sh.uniforms.uFade = this.fadeU;
     };
@@ -57,6 +57,7 @@ export class Backdrop {
     if (app.stacks) app.stacks.visible = mode !== 'site';
     ws.tray.traverse((o) => { if (o.isMesh) o.visible = mode !== 'site'; });
     this.ground.visible = mode === 'site';
+    if (this.sky) this.sky.visible = mode === 'site';
     // the photo sheet glued round the box
     if (mode === 'posters' && !this.posters) await this._buildPosters();
     if (this.mode !== mode) return;
@@ -144,6 +145,13 @@ export class Backdrop {
     this.dayTex = t;
     this.dayEnv = this.pmrem.fromEquirectangular(t).texture;
     this.sunDir = findSun(t);
+    // the panorama projected onto the ground at the level of the plot (as three.js'
+    // GroundedSkybox): its ground lies round the plot, the buildings stand on it — not a
+    // picture at infinity with the plot hanging over it. The panorama was shot ~1.7 m up.
+    this.sky = groundedSky(t, 1.7 / MODEL_SCALE, 160 / MODEL_SCALE);
+    this.sky.position.y = TRAY.soil + 1.7 / MODEL_SCALE - 0.0025;
+    this.sky.visible = false;
+    this.app.scene.add(this.sky);
     // average ground colour of the panorama for the distance fade
     this.fadeU.value.copy(groundColour(t));
   }
@@ -321,4 +329,21 @@ function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
   if (!inward) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k + 1]; idx[k + 1] = idx[k + 2]; idx[k + 2] = t; } g.setIndex(idx); g.computeVertexNormals(); }
   g.userData.path = path;
   return g;
+}
+
+// A sphere with the panorama on it whose lower half is pressed flat onto a ground plane
+// `height` below its centre (after three.js' GroundedSkybox, MIT): seen from anywhere near
+// the centre, the ground of the photo lies on the plane.
+function groundedSky(map, height, radius, res = 128) {
+  const g = new THREE.SphereGeometry(radius, 2 * res, res);
+  g.scale(1, 1, -1);
+  const pos = g.getAttribute('position'), v = new THREE.Vector3(), y1 = -height * 3 / 2;
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    if (v.y < 0) { v.multiplyScalar(v.y < y1 ? -height / v.y : 1 - (v.y * v.y) / (3 * y1 * y1)); v.toArray(pos.array, 3 * i); }
+  }
+  pos.needsUpdate = true;
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map, depthWrite: false }));
+  m.renderOrder = -10; m.frustumCulled = false;
+  return m;
 }
