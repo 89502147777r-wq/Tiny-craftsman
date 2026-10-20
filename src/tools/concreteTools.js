@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PUMP, MODEL_SCALE, CONCRETE } from '../config.js';
 import { Channel } from './uPour.js';
 import { BeltChannel, beltContains } from './belt.js';
+import { isSlab } from './slab.js';
 
 // the concrete cast in place on the walls: a run of U-blocks or a ring beam
 const makeChannel = (app, t) => (t.type === 'belt' ? new BeltChannel(app, t) : new Channel(app, t));
@@ -55,7 +56,7 @@ class ConcreteTool {
     const app = this.app, v = app.wallView;
     if (!e || !v || e.clientX === undefined) return null;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
-    const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.blocks, v.bricks, v.lintels], false)[0];
+    const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.blocks, v.bricks, v.lintels], false)[0];
     if (!hit) return null;
     this._uHit = hit.point;
     const id = v.ownerOf(hit), r = id && app.objects.get(id);
@@ -173,10 +174,10 @@ export class HoseTool extends ConcreteTool {
     const ch = this.ch, i = ch.at(this.p.x, this.p.z);
     // (a ring beam takes the hose near its pump rate: 37 … 60 l/s; the narrow channel of the
     // U-blocks 8 l/s)
-    const lps = this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;
+    const lps = isSlab(this.uT) ? (app.settings.pump || PUMP[1]) * 1000 : this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;   // (a slab: the pump's whole rate)
     if (!ch.full && ch.h[i] < ch.cap - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
-    else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
-    else if (!this.warned) { this.warned = true; app.ui?.toast(this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
+    else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(isSlab(this.uT) ? 'Здесь уже 200 мм — ведите шланг дальше по перекрытию' : this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
+    else if (!this.warned) { this.warned = true; app.ui?.toast(isSlab(this.uT) ? 'Перекрытие залито — отпустите; потом вибратор и правило по доскам' : this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
     ch.show(app.wallView);
     return ch.point(i);

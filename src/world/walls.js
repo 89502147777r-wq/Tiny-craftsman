@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { levels, worked, uLinks, UN } from '../tools/uPour.js';
 import { plan, boardsOf, toWorld, BELT } from '../tools/belt.js';
+import { SlabFormView, floorUnder } from './slabForm.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -381,6 +382,8 @@ export class WallView {
     this.beltBoards.geometry.setAttribute('aBoard', new THREE.InstancedBufferAttribute(new Float32Array(this.max.beltBoards * 3), 3));
     if (tex) this.wood.material = new THREE.MeshStandardMaterial({ map: variant(tex.plank.diff, 0.12, 0.6), normalMap: variant(tex.plank.nor, 0.12, 0.6), roughness: 0.85, color: 0xd8c0a0 });
     this.beltBoards.castShadow = this.beltBoards.receiveShadow = true; this.beltBoards.frustumCulled = false; this.beltBoards.count = 0; this.group.add(this.beltBoards);
+    // the formwork under a floor slab: deck, beams, props (slabForm.js)
+    this.slabForm = new SlabFormView(this.group, tex);
     // corner U-blocks: the side wall cut where the channel across comes in (one mesh each)
     this.ucut = new THREE.Group(); this.group.add(this.ucut);
     this._uGeo = new Map();
@@ -565,6 +568,7 @@ export class WallView {
         }
       }
     }
+    if (this.terrain) this.slabForm.build([...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])], floorUnder(this.terrain, O.all('belt')));
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
     if (this.live) put(this.live, null);
     this.hlMesh.visible = !!this.hl;
@@ -708,7 +712,7 @@ export class WallView {
     if (hit.object === this.fill) return this.owner.fill[Math.floor(hit.faceIndex)] ?? null;
     if (hit.object === this.wood) return this.owner.wood[hit.instanceId] ?? null;
     if (hit.object === this.beltBoards) return this.owner.beltBoards[hit.instanceId] ?? null;
-    return null;
+    return this.slabForm.ownerOf(hit);
   }
 }
 

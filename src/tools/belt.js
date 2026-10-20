@@ -19,14 +19,14 @@ export const BELT = { cell: 50, H: 250, over: 100, board: 25, cover: 40 };
 const YIELD = 1.2, K = 30;   // (it runs along the beam quicker than in a narrow channel)
 
 // ---- the plan ------------------------------------------------------------------------------
-function rle(mask) {
+export function rle(mask) {
   const out = [];
   let v = 0, n = 0;
   for (const m of mask) { if (m === v) n++; else { out.push(n); v = m; n = 1; } }
   out.push(n);
   return out;
 }
-function unrle(runs, size) {
+export function unrle(runs, size) {
   const m = new Uint8Array(size);
   let k = 0, v = 0;
   for (const n of runs) { if (v) m.fill(1, k, k + n); k += n; v ^= 1; }
@@ -214,9 +214,9 @@ export class BeltChannel {
   }
   topY() { return this.b.top + this.b.H; }
   pour(k, l) {
-    const per = 1e-3 / (BELT.cell * BELT.cell * 1e-6) * 1000;   // mm per litre on one cell (400)
-    // (it lands across the whole width of the beam at once: a splat ~550 mm round)
-    const ks = [...this._near(k, 5)], w = 1 / ks.length;
+    const cm = this.b.c / S / 1000, per = 1e-3 / (cm * cm) * 1000;   // mm per litre on one cell (400 on 50 mm, 100 on a slab's 100 mm)
+    // (it lands across the whole width of the beam at once: a splat ~550 mm round; on a slab ~600)
+    const ks = [...this._near(k, Math.max(2, Math.round(MM(250) / this.b.c)))], w = 1 / ks.length;
     for (const q of ks) this.h[q] += l * w * per;
   }
   _flow(d, yieldMm, kk, only) {
