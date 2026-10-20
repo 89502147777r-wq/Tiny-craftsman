@@ -16,7 +16,7 @@ import { boxOf } from './freeBrick.js';
 //          segs: [[s0,t0,s1,t1,w]…] (the walls, for the cage) }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const BELT = { cell: 50, H: 250, over: 100, board: 25, cover: 40 };
-const YIELD = 1.2, K = 7;
+const YIELD = 1.2, K = 30;   // (it runs along the beam quicker than in a narrow channel)
 
 // ---- the plan ------------------------------------------------------------------------------
 function rle(mask) {
@@ -215,8 +215,8 @@ export class BeltChannel {
   topY() { return this.b.top + this.b.H; }
   pour(k, l) {
     const per = 1e-3 / (BELT.cell * BELT.cell * 1e-6) * 1000;   // mm per litre on one cell (400)
-    // (it lands across the whole width of the beam at once: a splat ~350 mm round)
-    const ks = [...this._near(k, 3)], w = 1 / ks.length;
+    // (it lands across the whole width of the beam at once: a splat ~550 mm round)
+    const ks = [...this._near(k, 5)], w = 1 / ks.length;
     for (const q of ks) this.h[q] += l * w * per;
   }
   _flow(d, yieldMm, kk, only) {
@@ -239,7 +239,7 @@ export class BeltChannel {
     const subs = Math.max(1, Math.ceil(dt * K / 0.2)), d = dt / subs;
     for (let s = 0; s < subs; s++) {
       moved += this._flow(d, YIELD, K);
-      for (let k = 0; k < this.h.length; k++) if (this.h[k] > this.cap + 6) { const o = (this.h[k] - this.cap - 6) * Math.min(1, 8 * d); this.h[k] -= o; this.spilt += o; }
+      for (let k = 0; k < this.h.length; k++) if (this.h[k] > this.cap + 40) { const o = (this.h[k] - this.cap - 40) * Math.min(1, 8 * d); this.h[k] -= o; this.spilt += o; }   // (a heap up to 40 mm over the boards stands; more falls over)
     }
     return moved;
   }

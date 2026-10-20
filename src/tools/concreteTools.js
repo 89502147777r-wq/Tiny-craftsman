@@ -166,15 +166,17 @@ export class HoseTool extends ConcreteTool {
   }
 
   // concrete into the channel of the U-blocks (uPour.js): it lands under the hose and
-  // flows along the run; the hose is throttled down to a bucket's pace there (4 l/s)
+  // flows along the run (or round the ring beam)
   _fillU(dt) {
     const app = this.app;
     if (!this.ch?.has(this.uT)) { if (this.ch) this.ch.write(app); this.ch = makeChannel(app, this.uT); }
     const ch = this.ch, i = ch.at(this.p.x, this.p.z);
-    const lps = this.uT.type === 'belt' ? 12 : 4;   // (a ring beam takes the hose at 12 l/s)
+    // (a ring beam takes the hose near its pump rate: 37 … 60 l/s; the narrow channel of the
+    // U-blocks 8 l/s)
+    const lps = this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;
     if (!ch.full && ch.h[i] < ch.cap - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
-    else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast('Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
-    else if (!this.warned) { this.warned = true; app.ui?.toast('U-блоки залиты доверху — отпустите'); }
+    else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
+    else if (!this.warned) { this.warned = true; app.ui?.toast(this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
     ch.show(app.wallView);
     return ch.point(i);
