@@ -98,7 +98,7 @@ async function main() {
   app.outlineView = new OutlineView(terrain, app.objects); scene.add(app.outlineView.group);
   app.formView = new FormworkView(tex, app.objects, terrain); scene.add(app.formView.group);
   app.rebarView = new RebarView(app.objects); scene.add(app.rebarView.group);
-  app.wallView = new WallView(app.objects); scene.add(app.wallView.group);
+  app.wallView = new WallView(app.objects, tex); scene.add(app.wallView.group);
   app.wallView.terrainY = (x, z) => terrain.heightAt(x, z);
   const u = app.terrainMat.userData.uniforms;
   u.tMask.value = app.outlineView.mask;
