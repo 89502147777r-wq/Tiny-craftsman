@@ -381,7 +381,6 @@ export class WallView {
     this.beltBoards.geometry.setAttribute('aBoard', new THREE.InstancedBufferAttribute(new Float32Array(this.max.beltBoards * 3), 3));
     if (tex) this.wood.material = new THREE.MeshStandardMaterial({ map: variant(tex.plank.diff, 0.12, 0.6), normalMap: variant(tex.plank.nor, 0.12, 0.6), roughness: 0.85, color: 0xd8c0a0 });
     this.beltBoards.castShadow = this.beltBoards.receiveShadow = true; this.beltBoards.frustumCulled = false; this.beltBoards.count = 0; this.group.add(this.beltBoards);
-    this.owner.beltBoards = [];
     // corner U-blocks: the side wall cut where the channel across comes in (one mesh each)
     this.ucut = new THREE.Group(); this.group.add(this.ucut);
     this._uGeo = new Map();
@@ -399,7 +398,7 @@ export class WallView {
     this.hlMesh.renderOrder = 5; this.hlMesh.visible = false; this.group.add(this.hlMesh);
     this.hl = null;        // { p, q, s, ok }
     for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
-    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [] };
+    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
     this.dirty = true;
     this.live = null;      // a unit in the hand / being set (wallTool)
     this.focus = null;     // wall id whose next course gets the cord
