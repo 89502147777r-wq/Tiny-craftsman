@@ -231,11 +231,17 @@ export function makeBoardMaterial(tex) {
   });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec3 aBoard;')
+      .replace('#include <common>', '#include <common>\nattribute vec3 aBoard;\nvarying float vBy;\nvarying float vTint;')
       .replace('#include <uv_vertex>', `#include <uv_vertex>
         // a 150 mm tall strip of the plank photo, length-matched to the board
         vec2 bu = vec2(uv.x * aBoard.z + aBoard.x, aBoard.y + uv.y * 0.11);
-        vMapUv = bu; vNormalMapUv = bu; vRoughnessMapUv = bu;`);
+        vMapUv = bu; vNormalMapUv = bu; vRoughnessMapUv = bu;
+        vBy = uv.y; vTint = fract(sin(aBoard.x * 91.7 + aBoard.y * 13.1) * 437.5);`);
+    // every board its own shade (sawn from different logs), the seams between the boards dark
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vBy;\nvarying float vTint;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        diffuseColor.rgb *= mix(0.84, 1.1, vTint) * (1.0 - 0.45 * (1.0 - smoothstep(0.0, 0.05, vBy)) - 0.45 * smoothstep(0.95, 1.0, vBy));`);
   };
   m.customProgramCacheKey = () => 'tc-board';
   return m;

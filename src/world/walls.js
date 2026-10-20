@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { levels, worked, uLinks, UN } from '../tools/uPour.js';
 import { plan, boardsOf, toWorld, BELT } from '../tools/belt.js';
+import { makeBoardMaterial } from './formwork.js';
+import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
 import { makeCastConcreteMaterial } from './terrainMaterial.js';
 import { mortarOf } from '../tools/freeBrick.js';
@@ -344,7 +346,7 @@ export function wallState(w, objects, extra = []) {
 
 // ---- view ------------------------------------------------------------------------------
 export class WallView {
-  constructor(objects) {
+  constructor(objects, tex) {
     this.objects = objects;
     this.group = new THREE.Group();
     this.group.name = 'walls';
@@ -372,6 +374,13 @@ export class WallView {
     this.fillLiveSm = null;   // and how much it is worked
     this.fillDirty = false;
     for (const m of [this.ublocks, this.fill]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; this.group.add(m); }
+    // the formwork of the ring beams: boards 150 mm tall (the photo of sawn planks, as the
+    // foundation's), studs
+    this.max.beltBoards = 3000;
+    this.beltBoards = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), tex ? makeBoardMaterial(tex) : this.wood.material, this.max.beltBoards);
+    this.beltBoards.geometry.setAttribute('aBoard', new THREE.InstancedBufferAttribute(new Float32Array(this.max.beltBoards * 3), 3));
+    if (tex) this.wood.material = new THREE.MeshStandardMaterial({ map: variant(tex.plank.diff, 0.12, 0.6), normalMap: variant(tex.plank.nor, 0.12, 0.6), roughness: 0.85, color: 0xd8c0a0 });
+    this.beltBoards.castShadow = this.beltBoards.receiveShadow = true; this.beltBoards.frustumCulled = false; this.beltBoards.count = 0; this.group.add(this.beltBoards);
     // corner U-blocks: the side wall cut where the channel across comes in (one mesh each)
     this.ucut = new THREE.Group(); this.group.add(this.ucut);
     this._uGeo = new Map();
@@ -389,7 +398,7 @@ export class WallView {
     this.hlMesh.renderOrder = 5; this.hlMesh.visible = false; this.group.add(this.hlMesh);
     this.hl = null;        // { p, q, s, ok }
     for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
-    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [] };
+    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
     this.dirty = true;
     this.live = null;      // a unit in the hand / being set (wallTool)
     this.focus = null;     // wall id whose next course gets the cord
@@ -402,9 +411,9 @@ export class WallView {
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt')].map((r) => r.id));
-    let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, nc = 0;
+    let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, nc = 0, nbb = 0;
     const c3 = new THREE.Color();
-    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [] };
+    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
     const P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3();
     // the corner U-blocks (their cuts) — drawn on their own
     const cuts = uLinks(O.all('unit')).cuts;
@@ -533,12 +542,21 @@ export class WallView {
     for (const b of [...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])]) {
       if (b.stripped) continue;
       const th = BELT.board * S, over = BELT.over * S, h = over + b.H, yc = b.top - over + h / 2, yaw = Math.atan2(-b.u[1], b.u[0]);
+      let seed = (b.id || 7) * 9301;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
       for (const [s0, t0, s1, t1, ns, nt] of boardsOf(b)) {
-        if (nw >= this.max.wood - 40) break;
+        if (nw >= this.max.wood - 40 || nbb >= this.max.beltBoards - 4) break;
         const along = ns === 0, L = Math.hypot(s1 - s0, t1 - t0) + 2 * th;
         const cs = (s0 + s1) / 2 + ns * th / 2, ct = (t0 + t1) / 2 + nt * th / 2, [x, z] = toWorld(b, cs, ct);
         Q.setFromAxisAngle(_Y, along ? yaw : yaw + Math.PI / 2);
-        this.wood.setMatrixAt(nw, m.compose(P.set(x, yc, z), Q, Sv.set(L, h, th))); this.owner.wood[nw++] = b.id ?? null;
+        // boards 150 mm tall from the bottom up, the top one ripped to what is left
+        const bh = 150 * S, aB = this.beltBoards.geometry.attributes.aBoard;
+        for (let y0 = b.top - over; y0 < b.top + b.H - 1e-5; y0 += bh + 0.4 * S) {
+          const hh = Math.min(bh, b.top + b.H - y0);
+          this.beltBoards.setMatrixAt(nbb, m.compose(P.set(x, y0 + hh / 2, z), Q, Sv.set(L, hh, th)));
+          aB.setXYZ(nbb, rnd(), Math.floor(rnd() * 8) / 8, (L * MODEL_SCALE) / 1.87);
+          this.owner.beltBoards[nbb++] = b.id ?? null;
+        }
         const n = Math.max(1, Math.round(L / (600 * S)));
         for (let k = 0; k <= n; k++) {
           const f = k / n - 0.5, ss = cs + (along ? f * (L - 60 * S) : 0) + ns * (th / 2 + 20 * S), tt = ct + (along ? 0 : f * (L - 60 * S)) + nt * (th / 2 + 20 * S);
@@ -555,8 +573,8 @@ export class WallView {
       this.hlMesh.scale.fromArray(this.hl.s).multiplyScalar(1.03);
       this.hlMesh.material.color.setHex(this.hl.ok ? 0x35d06a : 0xe8402a);
     }
-    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu;
-    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames, this.wood, this.ublocks]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu; this.beltBoards.count = nbb; this.beltBoards.geometry.attributes.aBoard.needsUpdate = true;
+    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames, this.wood, this.ublocks, this.beltBoards]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     this._buildFill();
     for (const im of [this.blocks, this.bricks]) im.instanceColor.needsUpdate = true;
   }
@@ -573,7 +591,7 @@ export class WallView {
     const info = us.map((u) => { const yaw = 2 * Math.atan2(u.q[1], u.q[3]); return { u, lv: lvOf(u), ux: Math.cos(yaw), uz: -Math.sin(yaw) }; });
     // the neighbour's level at the shared end (or null)
     // the ends of the channels: joined end to end, or into a corner block's side
-    const LK = uLinks(us), byId = new Map(info.map((a) => [a.u.id, a])), ends = new Map();
+    const LK = uLinks(us), byId = new Map(info.map((a) => [a.u.id, a])), ends = new Map(), cutsOf = LK.cuts;
     for (const [i, fa, j, fb] of LK.links) {
       const A = LK.boxes[i].u, B = LK.boxes[j].u, corner = LK.cuts.get(A.id)?.length && Math.abs(Math.cos(LK.boxes[i].yaw - LK.boxes[j].yaw)) < 0.05;
       if (corner) ends.set(`${B.id}:${fb === 0 ? -1 : 1}`, { id: A.id, f: fa, corner: true });
@@ -606,6 +624,13 @@ export class WallView {
       const st = [[-0.5, nL != null ? (lv[0] + nL) / 2 : lv[0], sm[0]]];
       for (let i = 0; i < UN; i++) st.push([-0.5 + (i + 0.5) / UN, lv[i], sm[i]]);
       st.push([0.5, nR != null ? (lv[UN - 1] + nR) / 2 : lv[UN - 1], sm[UN - 1]]);
+      // a corner block: the concrete stops at its closed end
+      const cutHere = cutsOf.get(u.id);
+      if (cutHere) for (const e of new Set(cutHere.map((c) => Math.sign(c.at) || 1))) {
+        const lim = 0.5 - 0.125, keep = st.filter(([x]) => x * e < lim - 1e-6), last = e > 0 ? keep.at(-1) : keep[0];
+        const cap = [e * lim, last[1], last[2]];
+        st.length = 0; st.push(...(e > 0 ? [...keep, cap] : [cap, ...keep]));
+      }
       // into a corner block: on through its cut side wall into its channel
       const cL = ends.get(`${u.id}:-1`)?.corner, cR = ends.get(`${u.id}:1`)?.corner;
       if (cL) st.unshift([-0.5 - 140 / (Sv.x / S), st[0][1], st[0][2]]);
@@ -682,6 +707,7 @@ export class WallView {
     if (hit.object.userData?.uOwner != null) return hit.object.userData.uOwner;
     if (hit.object === this.fill) return this.owner.fill[Math.floor(hit.faceIndex)] ?? null;
     if (hit.object === this.wood) return this.owner.wood[hit.instanceId] ?? null;
+    if (hit.object === this.beltBoards) return this.owner.beltBoards[hit.instanceId] ?? null;
     return null;
   }
 }
@@ -699,6 +725,8 @@ function uShape(cuts = []) {
     }
     for (const [x0, x1] of segs) parts.push([(x0 + x1) / 2, 0.12, side * 0.375, x1 - x0, 0.76, 0.25]);
   }
+  // a corner block: its outer end closed (an end wall 75 mm thick across the channel)
+  for (const e of new Set(cuts.map((c) => Math.sign(c.at) || 1))) parts.push([e * (0.5 - 0.0625), 0.12, 0, 0.125, 0.76, 0.5]);
   const pos = [], nor = [], uv = [], idx = [];
   for (const [x, y, z, w, h, d] of parts) {
     const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z);
