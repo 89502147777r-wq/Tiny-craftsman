@@ -528,7 +528,7 @@ export class WallTool {
       // the cage: over a run of U-blocks, shown as the run lit up — or into a ring beam's formwork
       // (a ring beam's formwork under the finger first: the U-blocks of a lintel courses
       // below may be near it on the screen)
-      c.beltCage = app.objects.all('belt').find((b) => beltContains(b, p.x, p.z) && p.y > b.top - 0.003) || null;
+      c.beltCage = app.objects.all('belt').find((b) => !b.stripped && beltContains(b, p.x, p.z) && p.y > b.top - 0.003 && p.y < b.top + b.H + MM(60)) || null;   // (in its formwork — not the walls standing on a slab)
       const R = c.beltCage ? null : uRun(app, p, scr, fing);
       c.cage = R; c.free = undefined; c.snap = null;
       v.live = null;
