@@ -1,5 +1,6 @@
 import { BUILD, MODEL_SCALE, MACHINES_ENABLED, MATERIALS, DELIVERY, PUMP, CONCRETE } from '../config.js';
 import { bbox, contains } from '../world/outlines.js';
+import { PANOS } from '../world/backdrop.js';
 
 const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
@@ -294,7 +295,7 @@ export class UI {
       return [
         C(app.settings.orbit ? '■ Стоп облёт' : '▶ Облёт', app.settings.orbit, () => { app.settings.orbit = !app.settings.orbit; app.applySettings(); }),
         C('Мастерская', b === 'workshop', () => app.setBackdrop('workshop')),
-        C('Стройплощадка 360°', b === 'site', () => app.setBackdrop('site')),
+        ...Object.entries(PANOS).map(([k, v]) => C(v.name, b === k, () => app.setBackdrop(k))),
         C('Фото-фон', b === 'posters', () => app.setBackdrop('posters')),
       ];
     }

@@ -14,6 +14,9 @@
 | `assets/textures/forest_ground_06/` (1k) — пятна тёмного суглинка на участке | Forest Ground 06 | Charlotte Baglioni | CC0 | https://polyhaven.com/a/forest_ground_06 |
 | `assets/textures/dense_sand/` (diff, nor_gl 1k) — песок (материал) | Dense Sand | Dimitrios Savva | CC0 | https://polyhaven.com/a/dense_sand |
 | `assets/textures/gravel_floor_02/` (diff, nor_gl 1k) — щебень 5–20 и 20–40 (одно фото в двух масштабах, затемнено до серого гранита) | Gravel Floor 02 | Dimitrios Savva (фото), Jenelle van Heerden (обработка) | CC0 | https://polyhaven.com/a/gravel_floor_02 |
+| `assets/textures/coast_sand_01/` (diff, nor_gl 1k) — песок вокруг участка на фонах «У моря», «У озера» | Coast Sand 01 | Rob Tuytel | CC0 | https://polyhaven.com/a/coast_sand_01 |
+| `assets/textures/leafy_grass/` (diff, nor_gl 1k) — трава вокруг участка на фонах «Луг», «Горы» | Leafy Grass | Charlotte Baglioni | CC0 | https://polyhaven.com/a/leafy_grass |
+| `assets/textures/forest_leaves_04/` (diff, nor_gl 1k) — лесная подстилка вокруг участка на фоне «В лесу» | Forest Leaves 04 | Rob Tuytel | CC0 | https://polyhaven.com/a/forest_leaves_04 |
 
 ## HDRI (Poly Haven, CC0 1.0)
 
@@ -21,6 +24,11 @@
 |---|---|---|---|---|
 | `assets/hdri/carpentry_shop_02_1k.hdr` | Carpentry Shop 02 | Greg Zaal | CC0 | https://polyhaven.com/a/carpentry_shop_02 |
 | `assets/hdri/construction_yard_2k.hdr` — панорама стройплощадки 360° | Construction Yard | Sergej Majboroda | CC0 | https://polyhaven.com/a/construction_yard |
+| `assets/hdri/spiaggia_di_mondello_2k.hdr` — фон «У моря» 360° | Spiaggia di Mondello | Andreas Mischok | CC0 | https://polyhaven.com/a/spiaggia_di_mondello |
+| `assets/hdri/lakeside_2k.hdr` — фон «У озера» 360° | Lakeside | Greg Zaal | CC0 | https://polyhaven.com/a/lakeside |
+| `assets/hdri/forest_slope_2k.hdr` — фон «В лесу» 360° | Forest Slope | Andreas Mischok | CC0 | https://polyhaven.com/a/forest_slope |
+| `assets/hdri/meadow_2_2k.hdr` — фон «Луг» 360° | Meadow 2 | Sergej Majboroda | CC0 | https://polyhaven.com/a/meadow_2 |
+| `assets/hdri/alps_field_2k.hdr` — фон «Горы» 360° | Alps Field | Andreas Mischok | CC0 | https://polyhaven.com/a/alps_field |
 
 ## 3D-модели техники (Sketchfab, CC BY 4.0)
 
