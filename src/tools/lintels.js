@@ -103,11 +103,15 @@ export function placeProp(app, p, screen, finger) {
 // the run of U-blocks under the finger (one course, in line, touching): for the cage
 export function uRun(app, p, screen, finger) {
   const us = app.objects.all('unit').filter((u) => u.kind === 'ublock').map(boxOf);
-  let pick = null, bd = Infinity;
-  for (const b of us) {
+  // the U-blocks with a cage already (a run done: the finger means another one)
+  const caged = new Set([...app.objects.all('bar'), ...app.objects.all('cage')].flatMap((r) => (r.uRun ? String(r.uRun).split(',').map(Number) : [])));
+  // the U-block the finger is on (the point under it on its top or in its channel) first
+  let pick = us.find((b) => p.y > b.bot - 0.0005 && p.y < b.top + 0.002 && Math.abs((p.x - b.x) * b.ux + (p.z - b.z) * b.uz) <= b.hl + 0.001 && Math.abs(-(p.x - b.x) * b.uz + (p.z - b.z) * b.ux) <= b.hw + 0.001) || null, bd = Infinity;
+  if (!pick) for (const b of us) {
     let d;
     if (finger) { const sp = screen(new THREE.Vector3(b.x, b.top, b.z)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 120) continue; d += Math.abs(b.top - p.y) * 3000; }   // (the one at the height the finger is on)
-    else { d = Math.hypot(b.x - p.x, b.z - p.z); if (d > b.hl + 0.02) continue; }
+    else { d = Math.hypot(b.x - p.x, b.z - p.z); if (d > b.hl + 0.02) continue; d += Math.abs(b.top - p.y) * 3; }
+    if (caged.has(b.u.id)) d += finger ? 400 : 1;   // (one without a cage before one with)
     if (d < bd) bd = d, pick = b;
   }
   if (!pick) return null;
