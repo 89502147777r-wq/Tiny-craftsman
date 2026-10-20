@@ -16,7 +16,7 @@ export function loadModel(name) {
         if (o.isMesh) {
           o.castShadow = true; o.receiveShadow = true;
           const ms = Array.isArray(o.material) ? o.material : [o.material];
-          for (const m of ms) { if (m.map) m.map.anisotropy = 4; if (m.transparent && m.opacity > 0.9) m.transparent = false; }
+          for (const m of ms) { if (m.map) m.map.anisotropy = 4; if (m.transparent && m.opacity > 0.9) { m.transparent = false; m.depthWrite = true; } }   // (an opaque part marked BLEND: the loader turned its depth writes off — what is drawn after it would cover it)
         }
       });
       res(g);
