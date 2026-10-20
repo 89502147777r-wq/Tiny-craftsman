@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { KINDS } from '../world/walls.js';
+import { cellAt, plan } from './belt.js';
 
 // Free masonry: bricks (and blocks next to other blocks) are laid one by one, anywhere —
 // no wall records, no planned courses. Where a carried unit goes is worked out from what
@@ -54,9 +55,39 @@ function inside(b, x, z, m = 0) {
 // first one on mortar, the others on glue / mortar
 function bedOf(u, D) { return u.bedT ?? (u.row === 0 && !u.free ? D.B0 : D.B); }
 
+// The concrete of a ring beam (армопояс) over (x, z): its top, or -Infinity. The next
+// course goes on it (on mortar, like the first course on a slab), never into it.
+export function beltTopAt(app, x, z) {
+  let h = -Infinity;
+  for (const b of app.objects.all('belt')) {
+    if (!(b.fill > 0)) continue;
+    const k = cellAt(b, x, z), i = k < 0 ? -1 : plan(b).index[k];
+    if (i >= 0) h = Math.max(h, b.top + (b.lv[i] || 0) * S);
+  }
+  return h;
+}
+// the surface free masonry goes on: the ground / a slab, and a ring beam's concrete on the walls
+function surface(app) {
+  const t = app.terrain;
+  if (!app.objects.all('belt').some((b) => b.fill > 0)) return t;
+  return {
+    inside: (x, z) => t.inside(x, z) || beltTopAt(app, x, z) > -Infinity, index: (x, z) => t.index(x, z), conc: t.conc, cell: t.cell,
+    heightAt: (x, z) => Math.max(t.heightAt(x, z), beltTopAt(app, x, z)),
+    belt: (x, z) => beltTopAt(app, x, z),
+  };
+}
+// a place cuts into a ring beam's concrete (its bottom under the top of the concrete there)
+function inBelt(t, c) {
+  if (!t.belt) return false;
+  for (const a of [-0.9, 0, 0.9]) for (const b of [-0.9, 0, 0.9]) {
+    if (t.belt(c.x + c.ux * c.hl * a - c.uz * c.hw * b, c.z + c.uz * c.hl * a + c.ux * c.hw * b) > c.bot + 1e-5) return true;
+  }
+  return false;
+}
+
 // opts.ground = false: only places by / on masonry (none on the bare ground)
 export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
-  const t = app.terrain, D = dims(kind, opts.half), { L, H, W, J, B, B0 } = D;
+  const t = surface(app), D = dims(kind, opts.half), { L, H, W, J, B, B0 } = D;
   const cand = (x, z, yaw, bot, bed, how) => ({ x, z, yaw, ux: Math.cos(yaw), uz: -Math.sin(yaw), hl: L / 2, hw: W / 2, bot, top: bot + H, bed, how });
   const boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf);
   const cands = [];
@@ -198,7 +229,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     if (c.late) d += finger ? 50 : 100;
     if (c.leaf && !inside(c, p.x, p.z)) d += finger ? 25 : 60;   // the next leaf: only where the finger really is
     if (c.snap) d -= c.snap === 2 ? (finger ? 45 : 60) : (finger ? 6 : 10);   // set true against a neighbour (into a corner flush wins)
-    const ok = !boxes.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b)) && supported(t, boxes, c, c.snap === 2);
+    const ok = !boxes.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b)) && !inBelt(t, c) && supported(t, boxes, c, c.snap === 2);
     if (ok && d < bd) { bd = d; best = c; }
     if (!ok && d < bb) { bb = d; bestBad = c; }
   }
@@ -237,7 +268,7 @@ function alignToBelow(t, boxes, c, D) {
     if (best) { c.x += ax * best; c.z += az * best; }
   }
   const clash = boxes.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b));
-  if (clash || !supported(t, boxes, c)) Object.assign(c, was);
+  if (clash || inBelt(t, c) || !supported(t, boxes, c)) Object.assign(c, was);
 }
 
 // the highest ground under a place (its middle and near its corners)

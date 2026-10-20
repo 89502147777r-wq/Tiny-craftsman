@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
-import { placeUnit, freeTops, topAt } from './freeBrick.js';
+import { placeUnit, freeTops, topAt, beltTopAt } from './freeBrick.js';
 import { placeLintel, placeProp, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap } from './belt.js';
@@ -209,7 +209,7 @@ export class WallTool {
     let m = -Infinity;
     for (let s = 0; s <= ax.L; s += 20) for (const o of [-half, 0, half]) {
       const x = w.a[0] + ax.ux * s * S + ax.nx * o, z = w.a[1] + ax.uz * s * S + ax.nz * o;
-      if (t.inside(x, z)) m = Math.max(m, t.heightAt(x, z), topAt(fb, x, z));   // the ground, a slab, the top of free brickwork
+      if (t.inside(x, z)) m = Math.max(m, t.heightAt(x, z), topAt(fb, x, z), beltTopAt(this.app, x, z));   // the ground, a slab, the top of free brickwork, a ring beam
     }
     return Number.isFinite(m) ? m : 0.1;
   }
@@ -321,6 +321,7 @@ export class WallTool {
       const k = KINDS[w.kind];
       for (const { r, sl } of layable(w, st)) {
         const pose = slotPose(w, r, sl), top = pose.p.clone(); top.y = rowY(w, r) + k.H * S;
+        if (beltTopAt(app, pose.p.x, pose.p.z) > rowY(w, r) + 1e-5) continue;   // (a ring beam is cast there: the course goes on it, free)
         let d;
         if (e && (e.clientX || e.clientY)) { const sp = this._screen(top); if (!sp.front) continue; d = Math.hypot(sp.x - e.clientX, sp.y - e.clientY); if (d > 90) continue; }
         else { d = Math.hypot(p.x - top.x, p.z - top.z) * 3500; if (d > 400) continue; }
