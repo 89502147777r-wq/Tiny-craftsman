@@ -189,6 +189,21 @@ export function slabCage(b) {
     const [fx, , fz] = W(s, t + st / 2, y0);
     frogs.push([fx, +(yb2 + d / 2).toFixed(5), fz, ((p + q) % 2) * Math.PI / 2, +(yt1 - yb2 - d).toFixed(6)]);
   }
+  // round an opening: two bars along each side in both mats (400 mm on past the corners),
+  // a diagonal bar at each corner (the cracks start there)
+  for (const [a0, b0, a1, b1] of b.holes || []) {
+    const S0 = a0 * c, S1 = a1 * c, T0 = b0 * c, T1 = b1 * c, ext = MM(400);
+    const seg = (fixed, from, to, alongS, y) => { for (const [a, e] of runs(fixed, alongS)) { const f = Math.max(a, from), t = Math.min(e, to); if (t - f > MM(200)) bars.push(alongS ? [...W(f, fixed, y), ...W(t, fixed, y), +d.toFixed(6)] : [...W(fixed, f, y), ...W(fixed, t, y), +d.toFixed(6)]); } };
+    for (const [ys, yt] of [[yb1, yb2], [yt1, yt2]]) for (const o of [MM(60), MM(110)]) {
+      seg(T0 - o, S0 - ext, S1 + ext, true, ys); seg(T1 + o, S0 - ext, S1 + ext, true, ys);
+      seg(S0 - o, T0 - ext, T1 + ext, false, yt); seg(S1 + o, T0 - ext, T1 + ext, false, yt);
+    }
+    for (const [cs, ct, gs, gt] of [[S0, T0, -1, -1], [S1, T0, 1, -1], [S1, T1, 1, 1], [S0, T1, -1, 1]]) {
+      // across the corner, 150 mm out from it, 800 mm long
+      const ms = cs + gs * MM(150) / Math.SQRT2, mt = ct + gt * MM(150) / Math.SQRT2, h = MM(400) / Math.SQRT2;
+      for (const y of [yb2 + d, yt1 - d]) bars.push([...W(ms - gt * h, mt + gs * h, y), ...W(ms + gt * h, mt - gs * h, y), +d.toFixed(6)]);
+    }
+  }
   // the cantilever: the bars that carry it — on top, between the top mat's
   if (b.cant) {
     const [ds, dt, mm] = b.cant, dc = MM(SLAB.cantBar), back = MM(mm) * 1.5 + MM(mm), y = ds ? yt1 : yt2;   // (beside the top mat's bars that run the same way)
@@ -201,6 +216,31 @@ export function slabCage(b) {
     }
   }
   return { type: 'cage', outlineId: null, beltId: b.id, bars, chairs, frogs, ties, tied: true, stars: [], d };
+}
+
+// An opening (a stair well) set out in the formwork before the concrete, as on site: a box
+// of boards on the deck — the plywood and the props go there, the bars stop short of it
+// and it gets its own bars round it. Only the cells over the open go (over a wall the
+// slab stays). (x0, z0)–(x1, z1): two corners. → { patch, rect: [i0, j0, i1, j1], w, l (mm) }
+// or { why }
+export function slabHole(b, x0, z0, x1, z1) {
+  const [sa, ta] = toFrame(b, x0, z0), [sb, tb] = toFrame(b, x1, z1), c = b.c;
+  const i0 = Math.max(0, Math.round(Math.min(sa, sb) / c)), i1 = Math.min(b.ni, Math.round(Math.max(sa, sb) / c));
+  const j0 = Math.max(0, Math.round(Math.min(ta, tb) / c)), j1 = Math.min(b.nj, Math.round(Math.max(ta, tb) / c));
+  const P = plan(b), D = deckOf(b), mask = P.mask.slice(), deck = D.slice();
+  let gone = 0, a0 = Infinity, a1 = -1, b0 = Infinity, b1 = -1;
+  for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) {
+    const k = j * b.ni + i;
+    if (!mask[k] || !deck[k]) continue;
+    mask[k] = 0; deck[k] = 0; gone++;
+    a0 = Math.min(a0, i); a1 = Math.max(a1, i + 1); b0 = Math.min(b0, j); b1 = Math.max(b1, j + 1);
+  }
+  const w = (a1 - a0) * SLAB.cell, l = (b1 - b0) * SLAB.cell;
+  if (!gone || Math.min(w, l) < 600) return { why: 'Проём меньше 600 мм — протяните шире' };
+  const lv = [], sm = [];
+  P.cells.forEach(([i, j], k) => { if (mask[j * b.ni + i]) { lv.push(b.lv[k]); sm.push(b.sm[k]); } });
+  const rect = [a0, b0, a1, b1];
+  return { patch: { mask: rle(mask), deck: rle(deck), lv, sm, holes: [...(b.holes || []), rect] }, rect, w, l };
 }
 
 // the cantilever as words: «консоль 1,5 м»
