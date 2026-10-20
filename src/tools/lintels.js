@@ -106,7 +106,7 @@ export function uRun(app, p, screen, finger) {
   let pick = null, bd = Infinity;
   for (const b of us) {
     let d;
-    if (finger) { const sp = screen(new THREE.Vector3(b.x, b.top, b.z)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 120) continue; }
+    if (finger) { const sp = screen(new THREE.Vector3(b.x, b.top, b.z)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 120) continue; d += Math.abs(b.top - p.y) * 3000; }   // (the one at the height the finger is on)
     else { d = Math.hypot(b.x - p.x, b.z - p.z); if (d > b.hl + 0.02) continue; }
     if (d < bd) bd = d, pick = b;
   }

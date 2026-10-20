@@ -55,7 +55,7 @@ class ConcreteTool {
     const app = this.app, v = app.wallView;
     if (!e || !v || e.clientX === undefined) return null;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
-    const hit = _ray.intersectObjects([v.ublocks, v.fill, v.wood, v.blocks, v.bricks, v.lintels], false)[0];
+    const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.blocks, v.bricks, v.lintels], false)[0];
     if (!hit) return null;
     this._uHit = hit.point;
     const id = v.ownerOf(hit), r = id && app.objects.get(id);
@@ -264,7 +264,7 @@ export class PailTool extends ConcreteTool {
   _hitP(e) {
     const app = this.app, v = app.wallView;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
-    return _ray.intersectObjects([v.ublocks, v.fill], false)[0]?.point || null;
+    return _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill], false)[0]?.point || null;
   }
 
   // the bucket held with its lip over the sample, tipped towards the wall from the

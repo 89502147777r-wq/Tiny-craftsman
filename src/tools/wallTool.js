@@ -108,7 +108,7 @@ export class WallTool {
     const app = this.app, v = app.wallView;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
     // laid masonry only (not the unit in the hand, not the stacks on the pallets)
-    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames, v.ublocks, v.fill, v.wood], false).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
+    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames, v.ublocks, ...v.ucut.children, v.fill, v.wood], false).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
     return hit ? hit.point.clone() : p;
   }
 
@@ -479,9 +479,11 @@ export class WallTool {
       return;
     } else if (c.kind === 'ucage') {
       // the cage: over a run of U-blocks, shown as the run lit up — or into a ring beam's formwork
-      const R = uRun(app, p, scr, fing);
+      // (a ring beam's formwork under the finger first: the U-blocks of a lintel courses
+      // below may be near it on the screen)
+      c.beltCage = app.objects.all('belt').find((b) => beltContains(b, p.x, p.z) && p.y > b.top - 0.003) || null;
+      const R = c.beltCage ? null : uRun(app, p, scr, fing);
       c.cage = R; c.free = undefined; c.snap = null;
-      c.beltCage = R ? null : app.objects.all('belt').find((b) => beltContains(b, p.x, p.z) && p.y > b.top - 0.003) || null;
       v.live = null;
       if (R) {
         const b = R.pick, mid = (R.s0 + R.s1) / 2, L = R.s1 - R.s0;
