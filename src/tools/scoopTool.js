@@ -46,7 +46,7 @@ export class ScoopTool {
     app.camera.getWorldDirection(camDir);
     this.dir.copy(imp.initialDir(p, new THREE.Vector2(camDir.x, camDir.z).normalize()));
     app.journal.begin('scoop', { tool: imp.name, bite: imp.bite }, app.clock);
-    app.terrain.resetTake();   // remember which layer the blade cuts (colour of the load)
+    app.terrain.resetTake(); this._loadShown = null;   // remember which layer the blade cuts (colour of the load)
     this.snap = app.journal.pending.snap;
     this.load = 0;
     this.path = [];
@@ -126,6 +126,9 @@ export class ScoopTool {
     const got = t.carve(p.x, p.z, this.dir.x, this.dir.y, this.spec, cutY, this.capacity - this.load, t.take.c > 0);
     if (got > 0) {
       this.load += got;
+      // the heap on the blade is what it cut (sand / stone / soil) from the first bite
+      const m = t.takenMaterials(), k = t.takenConcrete() > 0 ? 9 : m.indexOf(Math.max(...m));
+      if (k !== this._loadShown && this.imp.setLoad) { this._loadShown = k; this.imp.setLoad(k, t.takenDepth()); }
       if (this.path.length === 0 || Math.hypot(p.x - this.path[this.path.length - 1][0], p.z - this.path[this.path.length - 1][1]) > 0.002) {
         this.path.push([+p.x.toFixed(5), +p.z.toFixed(5), +cutY.toFixed(5)]);
       }
@@ -168,7 +171,8 @@ export class ScoopTool {
     const soil = this.share.slice(0, CONC);
     this.soilMat = soil.indexOf(Math.max(...soil));
     this.concOut = 0;
-    if (this.imp.loadMat) materialTint(this.mat, this.depth, this.imp.loadMat.color);
+    if (this.imp.setLoad) this.imp.setLoad(this.mat, this.depth); else if (this.imp.loadMat) materialTint(this.mat, this.depth, this.imp.loadMat.color);
+    this._loadShown = null;
     this.lastP.copy(this.last);
     this.aim(this.last);
     app.onShovelState?.();
