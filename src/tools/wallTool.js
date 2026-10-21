@@ -286,7 +286,7 @@ export class WallTool {
     const id = e?.clientX !== undefined ? app.pickObject(e.clientX, e.clientY, 'wall') : null, u = id && app.objects.get(id);
     const ref = u?.type === 'unit' && u.p && u.s && u.q && !u.lintel && u.kind !== 'ublock' && (boxOf(u).kind === 'brick' || boxOf(u).kind === 'block') ? boxOf(u) : null;
     const y = ref ? ref.top : null;
-    this.rowDrag = { ref, y, pts: [ref ? new THREE.Vector3(ref.x, ref.top, ref.z) : p.clone()] };
+    this.rowDrag = { ref, y, touch: p.clone(), pts: [ref ? new THREE.Vector3(ref.x, ref.top, ref.z) : p.clone()] };
     if (!ref) app.ui.toast(`Ряд начнётся здесь — или коснитесь ${grp === 'block' ? 'блока' : 'кирпича'}-ориентира, ряд пойдёт от него`);
     this._rowShow();
   }
@@ -305,7 +305,8 @@ export class WallTool {
   }
   // the places of the course along the line (no checks yet): from the guide, square to it
   _rowPlan(d, kind, half) {
-    const D = dims(kind, half), { L, W, J } = D, out = [], pts = d.pts;
+    const D = dims(kind, half), { L, W, J } = D, out = [];
+    let pts = d.pts, corner = false;
     if (pts.length < 2) return out;
     let cx, cz, bot, mode, dir, hl, hw;
     // the first stretch, snapped to an axis of the guide (or as drawn)
@@ -314,8 +315,17 @@ export class WallTool {
     const r = d.ref;
     if (r) {
       const cu = r.ux * dx + r.uz * dz, cv = -r.uz * dx + r.ux * dz;
+      // across the guide: a header course goes on in headers (a unit of it lies side by side
+      // with the guide), else the course turns the corner at the guide's near end
+      const header = Math.abs(cv) > Math.abs(cu) && this.app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf).some((b) => b !== r && Math.abs(b.bot - r.bot) < D.H * 0.3 && Math.abs(Math.sin(b.yaw - r.yaw)) < 0.1 && Math.abs((b.x - r.x) * r.ux + (b.z - r.z) * r.uz) < r.hl * 0.5 && Math.abs(Math.abs(-(b.x - r.x) * r.uz + (b.z - r.z) * r.ux) - (r.hw + b.hw + J)) < J * 3 + MM(15));
       if (Math.abs(cu) >= Math.abs(cv)) { mode = 'along'; dir = [r.ux * Math.sign(cu), r.uz * Math.sign(cu)]; }
-      else { mode = 'across'; dir = [-r.uz * Math.sign(cv), r.ux * Math.sign(cv)]; }
+      else if (header) { mode = 'across'; dir = [-r.uz * Math.sign(cv), r.ux * Math.sign(cv)]; }
+      else {
+        // (the end: the one the finger touched nearer, or the way the line leans)
+        const t = d.touch, s = Math.abs(cu) > 0.15 ? Math.sign(cu) : t ? Math.sign((t.x - r.x) * r.ux + (t.z - r.z) * r.uz) || 1 : 1;
+        mode = 'along'; dir = [r.ux * s, r.uz * s]; corner = true;
+        pts = [pts[0], new THREE.Vector3(r.x + r.ux * s * r.hl, pts[0].y, r.z + r.uz * s * r.hl), ...pts.slice(1)];
+      }
       cx = r.x; cz = r.z; bot = r.bot; hl = mode === 'along' ? r.hl : r.hw; hw = mode === 'along' ? r.hw : r.hl;
     } else {
       mode = 'along'; dir = [dx, dz]; bot = null; hl = 0; hw = W / 2;
@@ -324,7 +334,8 @@ export class WallTool {
     const nl = mode === 'along' ? L / 2 : W / 2, nw = mode === 'along' ? W / 2 : L / 2;   // (the new ones: half along / across the course)
     // along the line the course is laid already: the next course goes on top of it, the
     // joints staggered by half a unit (the bond) — from over the middle of the guide
-    if (r) {
+    if (corner) d.up = false;
+    if (r && !corner) {
       const fx = cx + dir[0] * (hl + J + nl), fz = cz + dir[1] * (hl + J + nl);
       const taken = this.app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf).some((b) => Math.abs(b.bot - r.bot) < D.H * 0.4 && Math.abs((fx - b.x) * b.ux + (fz - b.z) * b.uz) < b.hl - J && Math.abs(-(fx - b.x) * b.uz + (fz - b.z) * b.ux) < b.hw - J);
       if (taken) {
