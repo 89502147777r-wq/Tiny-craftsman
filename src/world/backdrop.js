@@ -160,6 +160,7 @@ export class Backdrop {
   }
 
   update() {}
+  get current() { return isPano(this.mode) ? this.panos[this.mode] : null; }
 
   // The photo backdrop, the way miniature photographers do it: one sheet of
   // photo paper glued tight to the outside of the box along two sides that
@@ -441,7 +442,8 @@ function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
 // tone mapping of the picture is undone for it, so it comes out on the screen as it is.
 function panoSphere(map, haze, R, exposure) {
   const m = new THREE.ShaderMaterial({
-    uniforms: { tMap: { value: map }, uHaze: { value: haze } },
+    // the time of day and the weather (sky.js): the light on the place, dusk, night, rain
+    uniforms: { tMap: { value: map }, uHaze: { value: haze }, uDim: { value: new THREE.Color(1, 1, 1) }, uNight: { value: 0 }, uDusk: { value: 0 }, uOver: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) } },
     vertexShader: `varying vec3 vDir; varying float vUp;
       void main() {
         vDir = position;
@@ -449,6 +451,7 @@ function panoSphere(map, haze, R, exposure) {
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }`,
     fragmentShader: `uniform sampler2D tMap; uniform vec3 uHaze; varying vec3 vDir; varying float vUp;
+      uniform vec3 uDim; uniform float uNight; uniform float uDusk; uniform float uOver; uniform vec3 uSunDir;
       // the inverse of three's ACES filmic (the final pass tone-maps everything)
       vec3 unACES(vec3 y) {
         const mat3 IN = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
@@ -467,6 +470,24 @@ function panoSphere(map, haze, R, exposure) {
         vec3 c = unACES(textureGrad(tMap, uv, gx, gy).rgb);
         // seen from high up the photo's ground below its horizon is a bowl: haze there
         c = mix(c, uHaze, smoothstep(0.0, -0.12, d.y) * ${HIGH_GLSL});
+        // the sky in the photo: bright, up, bluish or white (not the trees, the buildings)
+        float lum = dot(c, vec3(0.3, 0.59, 0.11));
+        float sky = smoothstep(0.0, 0.1, d.y) * smoothstep(0.18, 0.45, lum / max(0.25, ${(0.6).toFixed(2)})) * smoothstep(-0.12, 0.04, c.b - c.r);
+        // rain: grey low cloud, everything duller
+        c = mix(c, mix(vec3(lum), vec3(0.42, 0.44, 0.47) * (0.7 + 0.3 * smoothstep(0.0, 0.5, d.y)), sky), uOver * 0.85);
+        c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))), uOver * 0.35);
+        // dusk / dawn: the sky goes orange low down and towards the sun, the rest warmer
+        float toSun = max(dot(d, normalize(uSunDir)), 0.0);
+        vec3 duskSky = mix(vec3(1.0, 0.46, 0.2), vec3(0.42, 0.36, 0.62), smoothstep(0.02, 0.45, d.y)) * (0.55 + 1.1 * pow(toSun, 6.0));
+        c = mix(c, duskSky * (0.5 + lum), uDusk * sky * (1.0 - uOver * 0.7));
+        // the light on the place (the ground, the trees, the buildings)
+        c *= uDim;
+        // night: a deep blue sky with stars
+        vec3 ns = mix(vec3(0.012, 0.018, 0.042), vec3(0.002, 0.004, 0.014), smoothstep(0.0, 0.7, d.y));
+        vec3 sc = floor(d * 520.0);
+        float st = fract(sin(dot(sc, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        ns += vec3(0.85, 0.9, 1.0) * step(0.9972, st) * smoothstep(0.04, 0.25, d.y) * (0.4 + 0.6 * fract(st * 91.7)) * (1.0 - uOver);
+        c = mix(c, ns, uNight * sky);
         gl_FragColor = vec4(c, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

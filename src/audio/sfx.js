@@ -51,6 +51,22 @@ export class Sfx {
     this.scrape = null;
   }
 
+  // the rain: a soft wide hiss and the patter of drops, as loud as it rains
+  rain(v) {
+    if (!this.ctx) return;
+    v = this.enabled ? v : 0;
+    if (!this._rain && v > 0.01) {
+      const s = this._src(0.6), lo = this.ctx.createBiquadFilter(), hi = this.ctx.createBiquadFilter(), g = this.ctx.createGain();
+      lo.type = 'lowpass'; lo.frequency.value = 5200; hi.type = 'highpass'; hi.frequency.value = 400; g.gain.value = 0;
+      s.connect(hi).connect(lo).connect(g).connect(this.master); s.start();
+      this._rain = { s, g };
+    }
+    if (!this._rain) return;
+    this._rain.g.gain.setTargetAtTime(0.16 * v, this.ctx.currentTime, 0.5);
+    if (v > 0.2 && Math.random() < 0.15 * v) this._burst(0.03, 3000 + Math.random() * 3000, 3, 0.05 * v);
+    if (v <= 0.01 && this._rain.g.gain.value < 0.002) { this._rain.s.stop(); this._rain = null; }
+  }
+
   stab() { this._burst(0.09, 2200, 1.6, 0.6); }
 
   pour(amount = 1) {

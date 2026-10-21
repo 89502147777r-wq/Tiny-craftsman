@@ -12,6 +12,7 @@ import { FormworkView } from './world/formwork.js';
 import { RebarView } from './world/rebar.js';
 import { WallView } from './world/walls.js';
 import { buildStacks } from './world/stacks.js';
+import { Sky } from './world/sky.js';
 import { Backdrop, PANOS, isPano } from './world/backdrop.js';
 import { slabCage, isSlab, slabClip } from './tools/slab.js';
 import { Shovel } from './world/shovel.js';
@@ -123,6 +124,7 @@ async function main() {
   app.wallTool = new WallTool(app);
   app.machineTool = new MachineTool(app);
   app.backdrop = new Backdrop(app);
+  app.sky = new Sky(app);   // the time of day and the weather (sky.js)
   app.journal.onBeforeCommit = () => app.machineTool.sync();
   app.clock = 0;
   app.tool = 'shovel';
@@ -166,7 +168,7 @@ async function main() {
   const moving = () => {
     const r = app.rig, g = r.goal;
     return app.settings.orbit || !!app.physJob || app.terrain.active || app.particles.busy || app.shovelTool.busy || app.rakeTool.busy || app.wallTool.busy
-      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy()
+      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy() || app.sky?.busy
       || Math.abs(r.dist - g.dist) > 1e-4 || r.target.distanceToSquared(g.target) > 1e-9 || Math.abs(r.yaw - g.yaw) > 1e-4 || Math.abs(r.pitch - g.pitch) > 1e-4 || Math.abs(r.focus - r.focusGoal) > 1e-3;
   };
   function frame(now) {
@@ -260,6 +262,7 @@ function step(dt, time, render = true) {
   app.rig.update(dt);
   app.workshop.followShadow(app.workshop.sun, app.rig.target, app.rig.dist, app.rig.yaw);
   app.backdrop.update();
+  app.sky.update(dt);
   updateFocus();
   app.terrainMat.userData.uniforms.uTime.value = time;
   app.terrainMat.userData.uniforms.uClock.value = app.clock;
