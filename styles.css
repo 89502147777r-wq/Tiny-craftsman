@@ -60,8 +60,16 @@ button { font: inherit; color: inherit; }
 .icon:disabled { opacity: .35; }
 svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
+.stats-btn {
+  position: absolute; left: calc(var(--safe-l) + 12px); top: calc(var(--safe-t) + 56px); width: 30px; height: 30px; padding: 0;
+  border-radius: 50%; border: 1px solid var(--line); background: var(--glass); color: inherit; display: grid; place-items: center;
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); pointer-events: auto; z-index: 2;
+}
+.stats-btn svg { width: 16px; height: 16px; }
+.stats-btn.off { opacity: .75; }
+#stats.collapsed { display: none; }
 .chip {
-  position: absolute; left: calc(var(--safe-l) + 12px); top: calc(var(--safe-t) + 56px);
+  position: absolute; left: calc(var(--safe-l) + 12px); top: calc(var(--safe-t) + 92px);
   background: var(--glass); border: 1px solid var(--line); border-radius: 14px; padding: 7px 10px; display: grid; gap: 3px;
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-size: 12px; pointer-events: none !important;
 }
@@ -188,7 +196,7 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .tool[hidden] { display: none; }
 
 /* ---- quiet mode: one round button, tools fan out of it ---------------------------------- */
-#ui.quiet .top, #ui.quiet #stats, #ui.quiet .hint, #ui.quiet .measure, #ui.quiet .subbar, #ui.quiet .params, #ui.quiet .tools { display: none !important; }
+#ui.quiet .top, #ui.quiet #stats, #ui.quiet .stats-btn, #ui.quiet .hint, #ui.quiet .measure, #ui.quiet .subbar, #ui.quiet .params, #ui.quiet .tools { display: none !important; }
 .fan { position: absolute; right: calc(var(--safe-r) + 18px); bottom: calc(var(--safe-b) + 18px); width: 50px; height: 50px; z-index: 22; }
 .fan[hidden], .fan-shade[hidden] { display: none; }
 .fab {

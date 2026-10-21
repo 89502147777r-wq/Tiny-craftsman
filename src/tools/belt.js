@@ -92,6 +92,26 @@ export function findBelt(app, p, screen, finger) {
     const j0 = Math.ceil((f.t - f.ht - e - t0) / c - 0.5), j1 = Math.floor((f.t + f.ht + e - t0) / c - 0.5);
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) m[j * ni + i] = 1;
   }
+  // an opening left up to the top course (a door, a window under the ring beam) is bridged:
+  // along a row / a column, a gap ≤ 3,2 m between two runs of the walls longer than a
+  // wall is thick (across the house the runs are only the walls' thickness: not bridged)
+  {
+    const longRun = Math.ceil(MM(360) / c), maxGap = Math.round(MM(3200) / c), add = [];
+    const scan = (n, m, at) => {
+      for (let a = 0; a < m; a++) {
+        const runs = []; let st = -1;
+        for (let b = 0; b <= n; b++) { const on = b < n && m_(at(a, b)); if (on && st < 0) st = b; if (!on && st >= 0) { runs.push([st, b]); st = -1; } }
+        for (let k = 1; k < runs.length; k++) {
+          const [p0, p1] = runs[k - 1], [q0, q1] = runs[k];
+          if (q0 - p1 <= maxGap && p1 - p0 >= longRun && q1 - q0 >= longRun) for (let b = p1; b < q0; b++) add.push(at(a, b));
+        }
+      }
+    };
+    const m_ = (k) => m[k];
+    scan(ni, nj, (j, i) => j * ni + i);
+    scan(nj, ni, (i, j) => j * ni + i);
+    for (const k of add) m[k] = 1;
+  }
   // the piece under the finger
   const pf = fr(pick), si = Math.floor((pf.s - s0) / c), sj = Math.floor((pf.t - t0) / c);
   if (!m[sj * ni + si]) return null;
@@ -118,7 +138,7 @@ export function findBelt(app, p, screen, finger) {
       const iv = g.map((f) => (par ? [f.s - f.hs, f.s + f.hs, f.t, f.ht] : [f.t - f.ht, f.t + f.ht, f.s, f.hs])).sort((a, b) => a[0] - b[0]);
       let cur = null;
       for (const v of iv) {
-        if (cur && v[0] <= cur[1] + MM(30)) cur[1] = Math.max(cur[1], v[1]);
+        if (cur && v[0] <= cur[1] + MM(3200)) cur[1] = Math.max(cur[1], v[1]);   // (on over an opening it bridges)
         else { if (cur) segs.push(cur); cur = [...v, par]; }
       }
       if (cur) segs.push(cur);
