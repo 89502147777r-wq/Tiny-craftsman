@@ -13,6 +13,7 @@ import { RebarView } from './world/rebar.js';
 import { WallView } from './world/walls.js';
 import { buildStacks } from './world/stacks.js';
 import { Backdrop, PANOS, isPano } from './world/backdrop.js';
+import { slabCage, isSlab } from './tools/slab.js';
 import { Shovel } from './world/shovel.js';
 import { Rake } from './world/rake.js';
 import { makeDust } from './world/dust.js';
@@ -533,6 +534,12 @@ function applyProject(p) {
     const items = (p.objects?.items || []).filter(keep);
     app.objects.load({ nextId: p.objects?.nextId || 1, items });
   } else app.objects.load(p.objects);
+  // the cages of floor slabs are laid out again by the current rules (BUILD 79: round an
+  // opening, not across it; nothing sticking out of the edge)
+  for (const c of app.objects.all('cage')) {
+    const b = c.beltId != null && app.objects.get(c.beltId);
+    if (isSlab(b)) Object.assign(c, (({ bars, chairs, frogs, ties, stars }) => ({ bars, chairs, frogs, ties, stars }))(slabCage(b)));
+  }
   if (rescaled) {
     if (p.settings) Object.assign(app.settings, p.settings, { bite: DEFAULT_SETTINGS.bite, trenchWidth: DEFAULT_SETTINGS.trenchWidth, trenchDepth: DEFAULT_SETTINGS.trenchDepth, backdrop: p.settings.backdrop });
     app.rig.setState(p.camera);
