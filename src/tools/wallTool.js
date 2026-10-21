@@ -312,6 +312,18 @@ export class WallTool {
       cx = a.x - dx * (J + L / 2); cz = a.z - dz * (J + L / 2); hl = L / 2;
     }
     const nl = mode === 'along' ? L / 2 : W / 2, nw = mode === 'along' ? W / 2 : L / 2;   // (the new ones: half along / across the course)
+    // along the line the course is laid already: the next course goes on top of it, the
+    // joints staggered by half a unit (the bond) — from over the middle of the guide
+    if (r) {
+      const fx = cx + dir[0] * (hl + J + nl), fz = cz + dir[1] * (hl + J + nl);
+      const taken = this.app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf).some((b) => Math.abs(b.bot - r.bot) < D.H * 0.4 && Math.abs((fx - b.x) * b.ux + (fz - b.z) * b.uz) < b.hl - J && Math.abs(-(fx - b.x) * b.uz + (fz - b.z) * b.ux) < b.hw - J);
+      if (taken) {
+        bot = r.top + D.B;
+        const sx = cx + dir[0] * (nl + J / 2), sz = cz + dir[1] * (nl + J / 2);   // (the first one: over the guide's joint with the next)
+        cx = sx - dir[0] * (nl + J + nl); cz = sz - dir[1] * (nl + J + nl); hl = nl; hw = nw;
+        d.up = true;
+      } else d.up = false;
+    }
     let ox = a.x, oz = a.z;
     for (let k = 1; k < pts.length && out.length < 200; k++) {
       const P = pts[k], Q = pts[k - 1];
@@ -340,7 +352,7 @@ export class WallTool {
   }
   // the line and the places on it (the ghosts), while drawing and while laying
   _rowShow(plan) {
-    const app = this.app, d = this.rowDrag || this.rowJob;
+    const app = this.app, d = this.rowDrag;   // (only while drawing: gone once the finger is up)
     if (!this._rowG) {
       this._rowG = new THREE.Group(); this._rowG.renderOrder = 10; app.scene.add(this._rowG);
       this._rowMat = new THREE.MeshBasicMaterial({ color: 0xf0a53a, depthTest: false, transparent: true, opacity: 0.95 });
@@ -382,8 +394,8 @@ export class WallTool {
     if (!plan.length) { this._rowStop(d.ref ? 'Тяните линию от кирпича-ориентира вдоль будущего ряда' : 'Проведите линию длиннее — вдоль будущего ряда'); return; }
     this.rowJob = { kind, half, plan, n: 0, ref: d.ref, y: d.y, pts: d.pts };
     loadPhysics().catch(() => {});
-    this._rowShow();
-    app.ui.toast(`Кладу ряд: ${plan.length} шт. — коснитесь, чтобы остановить`);
+    this._rowShow(); app.ui.hideMeasure();
+    app.ui.toast(`Кладу ${d.up ? 'следующий ряд сверху' : 'ряд'}: ${plan.length} шт. — коснитесь, чтобы остановить`);
   }
   _rowStep() {
     const app = this.app, J = this.rowJob;
@@ -404,7 +416,6 @@ export class WallTool {
     for (let k = J.n + 1; k < J.plan.length; k++) { J.plan[k].x += dx; J.plan[k].z += dz; if (J.plan[k].bot == null) J.plan[k].bot = bot; }
     J.n++;
     app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [J.kind === 'brick' ? 'brick' : 'block']: +q.yaw.toFixed(5) };
-    this._rowShow();
   }
 
 
