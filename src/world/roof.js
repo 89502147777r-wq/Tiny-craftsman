@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { plan, toWorld, toFrame } from '../tools/belt.js';
 import { boxOf } from '../tools/freeBrick.js';
+import { mats as winMats } from './windows.js';
 
 // A flat roof (плоская кровля) on a floor slab, laid piece by piece as on site:
 //   vap  – the vapour barrier: rolls 1,5 m wide rolled out by hand, 100 mm overlaps,
@@ -203,6 +204,7 @@ export function buildRoof(b, units, rec, live) {
     g.computeVertexNormals();
     return g;
   };
+  const isHole = (i, j) => (b.holes || []).some(([a0, b0, a1, b1]) => i >= a0 && i < a1 && j >= b0 && j < b1);
   const add = (geo, mat, shadow = true) => { if (!geo) return; const m = new THREE.Mesh(geo, mat); m.castShadow = shadow; m.receiveShadow = true; group.add(m); };
   const mmS = (v) => v / S / 1000;   // model → metres (for texture coordinates)
   // the vapour barrier: the strips, each a hair above the last (they overlap)
@@ -262,7 +264,7 @@ export function buildRoof(b, units, rec, live) {
     for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
       if (!area.on(i, j)) continue;
       for (const [q, e0, e1] of [[[i + 1, j], [i + 1, j], [i + 1, j + 1]], [[i - 1, j], [i, j + 1], [i, j]], [[i, j + 1], [i + 1, j + 1], [i, j + 1]], [[i, j - 1], [i, j], [i + 1, j]]]) {
-        if (area.on(...q)) continue;
+        if (area.on(...q) || isHole(...q)) continue;   // (at an opening: its curb, below)
         const up = area.blocked[q[1] * ni + q[0]] ? ROOF.upstand : 0;
         const [s0, t0] = [e0[0] * c, e0[1] * c], [s1, t1] = [e1[0] * c, e1[1] * c];
         const h0 = top(s0, t0) + ROOF.mem, h1 = top(s1, t1) + ROOF.mem;
@@ -271,6 +273,34 @@ export function buildRoof(b, units, rec, live) {
       }
     }
     if (pos.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); add(g, new THREE.MeshStandardMaterial({ color: mc[1], roughness: 0.5, side: THREE.DoubleSide })); }
+    // an opening in the slab (the stair well): a curb round it 300 mm over the roof, the
+    // membrane turned up it and over its top, the coping on it, a skylight on the curb
+    // (aluminium frame, double glazing) — as a roof hatch / lantern over a stair
+    const yaw = Math.atan2(-b.u[1], b.u[0]), cw = MM(120), memMat = new THREE.MeshStandardMaterial({ ...memTex(mc[1]), roughness: 0.5 });
+    const cc = COP_COLOURS[r.cop] || COP_COLOURS.zinc, copMat = new THREE.MeshStandardMaterial({ color: cc[1], roughness: 0.32, metalness: cc[2], normalMap: metalNormal() });
+    const alu = new THREE.MeshStandardMaterial({ color: 0x2a2c2f, roughness: 0.4, metalness: 0.6 });
+    const bx = (s0, t0, s1, t1, y0, y1, mat, list) => {
+      const [x, z] = toWorld(b, (s0 + s1) / 2, (t0 + t1) / 2), g = new THREE.BoxGeometry(s1 - s0, y1 - y0, t1 - t0);
+      g.rotateY(yaw); g.translate(x, (y0 + y1) / 2, z); g.deleteAttribute('uv'); (list || []).push(g.toNonIndexed()); return g;
+    };
+    for (const [a0, b0, a1, b1] of b.holes || []) {
+      const S0 = a0 * c, T0 = b0 * c, S1 = a1 * c, T1 = b1 * c;
+      const hTop = Math.max(...[[S0, T0], [S1, T0], [S1, T1], [S0, T1]].map(([s2, t2]) => top(s2 - cw, t2 - cw))) + ROOF.mem;
+      const y0 = top0, yC = top0 + MM(hTop + ROOF.upstand), curb = [], cap = [], frame = [], glass = [];
+      // the curb (four sides, on the roof round the opening), the membrane over it
+      for (const [p0, q0, p1, q1] of [[S0 - cw, T0 - cw, S1 + cw, T0], [S0 - cw, T1, S1 + cw, T1 + cw], [S0 - cw, T0, S0, T1], [S1, T0, S1 + cw, T1]]) {
+        bx(p0, q0, p1, q1, y0, yC, null, curb);
+        bx(p0 - MM(25), q0 - MM(25), p1 + MM(25), q1 + MM(25), yC, yC + MM(3), null, cap);
+      }
+      // the skylight: its frame on the curb, the glass a little higher in the middle (it sheds water)
+      const fy = yC + MM(3), fh = MM(70);
+      for (const [p0, q0, p1, q1] of [[S0 - cw, T0 - cw, S1 + cw, T0 - cw + MM(60)], [S0 - cw, T1 + cw - MM(60), S1 + cw, T1 + cw], [S0 - cw, T0 - cw, S0 - cw + MM(60), T1 + cw], [S1 + cw - MM(60), T0 - cw, S1 + cw, T1 + cw]]) bx(p0, q0, p1, q1, fy, fy + fh, null, frame);
+      bx(S0 - cw + MM(40), T0 - cw + MM(40), S1 + cw - MM(40), T1 + cw - MM(40), fy + fh - MM(10), fy + fh + MM(14), null, glass);
+      if (curb.length) add(mergeGeometries(curb, false), memMat);
+      if (cap.length) add(mergeGeometries(cap, false), copMat);
+      if (frame.length) add(mergeGeometries(frame, false), alu);
+      if (glass.length) { const gm = new THREE.Mesh(mergeGeometries(glass, false), winMats().glass); gm.renderOrder = 2; group.add(gm); }
+    }
     // the drain: a collar welded to the membrane, the strainer dome with its ribs
     const [ds, dt] = r.drain, P0 = W(ds, dt, top(ds, dt) + ROOF.mem);
     const dm = new THREE.MeshStandardMaterial({ color: 0x2a2c2f, roughness: 0.55 }), dark = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.6 });

@@ -143,16 +143,20 @@ export class RoofWork {
     // cut to the roof: the run of whole columns / rows round the finger
     const ci = Math.min(Math.max(Math.floor(s / c), Math.ceil(rc[0] / c - 1e-6)), Math.floor(rc[2] / c - 1e-6)), cj = Math.min(Math.max(Math.floor(t / c), Math.ceil(rc[1] / c - 1e-6)), Math.floor(rc[3] / c - 1e-6));
     const I0 = Math.round(rc[0] / c), I1 = Math.round(rc[2] / c), J0 = Math.round(rc[1] / c), J1 = Math.round(rc[3] / c);
-    const colOk = (i, a, z) => { for (let j = a; j < z; j++) if (!R.area.on(i, j)) return false; return true; };
-    const rowOk = (j, a, z) => { for (let i = a; i < z; i++) if (!R.area.on(i, j)) return false; return true; };
-    let a = ci, z = ci + 1; if (!colOk(ci, J0, J1)) { a = I0; z = I0; }
-    while (a > I0 && colOk(a - 1, J0, J1)) a--; while (z < I1 && colOk(z, J0, J1)) z++;
-    let u = cj, w = cj + 1;
-    if (a === z) { // (the finger's column is cut short: the rows first)
-      u = cj; w = cj + 1; while (u > J0 && rowOk(u - 1, ci, ci + 1)) u--; while (w < J1 && rowOk(w, ci, ci + 1)) w++;
-      a = ci; z = ci + 1; while (a > I0 && colOk(a - 1, u, w)) a--; while (z < I1 && colOk(z, u, w)) z++;
-    } else { u = J0; w = J1; }
-    if (z <= a || w <= u || !rowOk(u, a, z)) { this._live(R, null); return { ok: false, why: 'Здесь места под лист нет' }; }
+    // free: on the roof and not laid yet in this layer (a gap left round an opening is filled by a piece cut to it)
+    const mineM = coverage(b, R.rec[L]), free = (i, j) => R.area.on(i, j) && !mineM[j * b.ni + i];
+    const colOk = (i, p0, p1) => { for (let j = p0; j < p1; j++) if (!free(i, j)) return false; return true; };
+    const rowOk = (j, p0, p1) => { for (let i = p0; i < p1; i++) if (!free(i, j)) return false; return true; };
+    if (!free(ci, cj)) { this._live(R, null); return { ok: false, why: R.area.on(ci, cj) ? 'Это место уже закрыто' : 'Здесь места под лист нет' }; }
+    // grown from the finger's cell as far as the board and the free space go (the longer way first)
+    let a = ci, z = ci + 1, u = cj, w = cj + 1, grown = true;
+    while (grown) {
+      grown = false;
+      if (a > I0 && colOk(a - 1, u, w)) { a--; grown = true; }
+      if (z < I1 && colOk(z, u, w)) { z++; grown = true; }
+      if (u > J0 && rowOk(u - 1, a, z)) { u--; grown = true; }
+      if (w < J1 && rowOk(w, a, z)) { w++; grown = true; }
+    }
     rc = [a * c, u * c, z * c, w * c].map(r6);
     const cut = Math.abs((rc[2] - rc[0]) - MM(BL)) > MM(5) || Math.abs((rc[3] - rc[1]) - MM(BW)) > MM(5);
     const cells = cellsOf(b, rc), mine = coverage(b, R.rec[L]), under = coverage(b, R.rec[UNDER[L]]);
