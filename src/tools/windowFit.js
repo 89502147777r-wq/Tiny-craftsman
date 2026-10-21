@@ -73,7 +73,7 @@ export function findOpenings(app) {
       // the outside: away from the middle of the masonry
       const nx = -L.uz, nz = L.ux, outSign = (x - cx) * nx + (z - cz) * nz >= 0 ? 1 : -1;
       const yaw = Math.atan2(-L.uz, L.ux) + (outSign > 0 ? 0 : Math.PI);
-      out.push({ x, z, y0, y1, w: Math.round(w), h: Math.round(h), t: Math.round((L.hw * 2) / S), yaw, ok: !why, why, line: L });
+      out.push({ x, z, y0, y1, w: Math.round(w), h: Math.round(h), t: Math.round((L.hw * 2) / S), yaw, ok: !why, why, floor: k === 0, line: L });
     });
   }
   return out;
