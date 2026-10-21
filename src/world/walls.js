@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { levels, worked, uLinks, UN } from '../tools/uPour.js';
 import { plan, boardsOf, toWorld, BELT } from '../tools/belt.js';
 import { SlabFormView, floorUnder } from './slabForm.js';
+import { buildWindow } from './windows.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -400,20 +401,25 @@ export class WallView {
     this.hlMesh = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x35d06a, transparent: true, opacity: 0.45, depthWrite: false }));
     this.hlMesh.renderOrder = 5; this.hlMesh.visible = false; this.group.add(this.hlMesh);
     this.hl = null;        // { p, q, s, ok }
+    // the windows set in the openings (windows.js), and the one in the hand
+    this.windows = new THREE.Group(); this.group.add(this.windows);
+    this._win = new Map();   // id → { key, group }
+    this.liveWin = null;     // { key, w, h, t, x, y, z, yaw }
     for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
     this.dirty = true;
     this.live = null;      // a unit in the hand / being set (wallTool)
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
-    objects.on((id, rec) => { if (['wall', 'unit', 'bed', 'opening', 'belt'].includes(rec?.type) || this._known?.has(id)) this.dirty = true; });
+    objects.on((id, rec) => { if (['wall', 'unit', 'bed', 'opening', 'belt', 'window'].includes(rec?.type) || this._known?.has(id)) this.dirty = true; });
   }
 
   update() {
     if (!this.dirty) { if (this.fillDirty) this._buildFill(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
-    this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt')].map((r) => r.id));
+    this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt'), ...O.all('window')].map((r) => r.id));
+    this._buildWindows();
     let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, nc = 0, nbb = 0;
     const c3 = new THREE.Color();
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
@@ -700,6 +706,25 @@ export class WallView {
     this.fill.geometry = g;
     this.fill.visible = idx.length > 0;
     this.owner.fill = own;
+  }
+
+  // the windows: built once for their opening (rebuilt when it changes)
+  _buildWindows() {
+    const recs = [...this.objects.all('window'), ...(this.liveWin ? [{ id: 'live', ...this.liveWin }] : [])], seen = new Set();
+    for (const r of recs) {
+      const key = `${r.key}:${r.w}:${r.h}:${r.t}`;
+      let e = this._win.get(r.id);
+      if (!e || e.key !== key) {
+        if (e) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); }
+        const g = buildWindow(r.key, r.w, r.h, r.t);
+        g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id === 'live' ? null : r.id; });
+        this.windows.add(g);
+        this._win.set(r.id, (e = { key, group: g }));
+      }
+      e.group.position.set(r.x, r.y, r.z); e.group.rotation.set(0, r.yaw, 0);
+      seen.add(r.id);
+    }
+    for (const [id, e] of [...this._win]) if (!seen.has(id)) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); this._win.delete(id); }
   }
 
   ownerOf(hit) {
