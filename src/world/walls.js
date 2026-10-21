@@ -25,6 +25,7 @@ import { mortarOf } from '../tools/freeBrick.js';
 // Sizes in real millimetres, converted with MODEL_SCALE.
 export const KINDS = {
   block: { name: 'Газоблок', L: 600, H: 250, T: 300, bed0: 20, bed: 3, head: 3, min: 100, lintelRows: 1 },     // aerated concrete on glue (first course on mortar)
+  cinder: { name: 'Шлакоблок', L: 390, H: 188, T: 190, W: 190, bed0: 12, bed: 10, head: 10, min: 90, lintelRows: 1 },   // hollow cinder block on mortar (free masonry only)
   // brick walls by thickness in half-bricks (nb): ½ = 120, 1 = 250, 1½ = 380, 2 = 510, 2½ = 640 mm,
   // chain bond (stretcher and header courses alternate)
   brick: brickKind('Кирпич ½', 1),
@@ -357,17 +358,23 @@ export class WallView {
     this.group = new THREE.Group();
     this.group.name = 'walls';
     const box = new THREE.BoxGeometry(1, 1, 1);
-    const block = new THREE.MeshStandardMaterial({ map: aeratedTexture(), roughness: 0.92, color: 0xffffff });
+    const at = aeratedTexture();
+    const block = new THREE.MeshStandardMaterial({ map: at, bumpMap: at, bumpScale: 1.5, roughness: 0.92, color: 0xffffff });   // (the pores in relief)
     const brick = new THREE.MeshStandardMaterial({ map: brickTexture(), roughness: 0.85, color: 0xffffff });
-    this.max = { block: 4000, brick: 20000, mortar: 24000, lintel: 200, frame: 800 };
+    scanBrick(brick);
+    this.max = { block: 4000, brick: 20000, cinder: 4000, mortar: 24000, lintel: 200, frame: 800 };
     this.blocks = new THREE.InstancedMesh(box, block, this.max.block);
-    this.bricks = new THREE.InstancedMesh(box, brick, this.max.brick);
+    this.bricks = new THREE.InstancedMesh(atlasBox(), brick, this.max.brick);
+    this.bricks.geometry.setAttribute('aSkin', new THREE.InstancedBufferAttribute(new Float32Array(this.max.brick), 1));
+    // cinder blocks: the scanned hollow block (CC BY, CREDITS.md) — a box until it loads
+    this.cinders = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x8d8a84, roughness: 0.95 }), this.max.cinder);
+    loadCinder(this.cinders);
     this.mortar = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x8a857b, roughness: 0.95 }), this.max.mortar);   // cement-sand mortar: light grey
     // precast concrete lintels; the marked frame of a planned opening (orange, like the cord)
     this.lintels = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9c9a94, roughness: 0.9 }), this.max.lintel);
     this.frames = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xff6a1c, roughness: 0.6, emissive: 0x401000 }), this.max.frame);
     this.cord = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshStandardMaterial({ color: 0xff4a1c, roughness: 0.6 }));
-    for (const m of [this.blocks, this.bricks, this.mortar]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
+    for (const m of [this.blocks, this.bricks, this.cinders, this.mortar]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
     // pallets beside the walls: the wooden pallet (boards) — the blocks on it are drawn as blocks
     this.max.wood = 4000;   // (pallets, props, the formwork of a ring beam)
     this.wood = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xb9925e, roughness: 0.85 }), this.max.wood);
@@ -417,8 +424,8 @@ export class WallView {
     // the pitched roof (pitched.js)
     this.proofs = new THREE.Group(); this.group.add(this.proofs);
     this.liveProof = null; this.proofDirty = true;
-    for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
-    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
+    for (const m of [this.blocks, this.bricks, this.cinders]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3), 3);
+    this.owner = { blocks: [], bricks: [], cinders: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
     this.dirty = true;
     this.live = null;      // a unit in the hand / being set (wallTool)
     this.focus = null;     // wall id whose next course gets the cord
@@ -439,9 +446,9 @@ export class WallView {
     this._buildRoofs();
     this._buildFacades();
     if (this.proofDirty) this._buildProofs();
-    let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, nc = 0, nbb = 0;
+    let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, ncb = 0, nbb = 0;
     const c3 = new THREE.Color();
-    this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
+    this.owner = { blocks: [], bricks: [], cinders: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
     const P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3();
     // the corner U-blocks (their cuts) — drawn on their own
     const cuts = uLinks(O.all('unit')).cuts;
@@ -472,6 +479,13 @@ export class WallView {
             this.wood.setMatrixAt(nw, m.compose(C, Q, new THREE.Vector3(d, ph, d))); this.owner.wood[nw++] = id;
           }
         }
+      } else if (u.kind === 'cinder') {
+        if (ncb < this.max.cinder) {
+          if (h > 0.5) Q.multiply(TURN);
+          this.cinders.setMatrixAt(ncb, m.compose(P, Q, Sv));
+          this.cinders.setColorAt(ncb, c.setRGB(0.9 + h * 0.12, 0.9 + h * 0.11, 0.9 + h * 0.1));
+          this.owner.cinders[ncb++] = id;
+        }
       } else if (u.kind === 'block' && nb < this.max.block) {
         const cut = u.cut ? 0.035 : 0;   // a sawn face is a shade whiter
         this.blocks.setMatrixAt(nb, m.compose(P, Q, Sv));
@@ -479,8 +493,12 @@ export class WallView {
         this.owner.blocks[nb++] = id;
       } else if (u.kind === 'brick' || u.kind === 'brick2' || u.kind === 'brick3' || u.kind === 'brick4' || u.kind === 'brick5' || !u.kind) {
         if (nk >= this.max.brick) return;
+        const f4 = Math.floor(h * 997) % 4;   // turned end for end / upside down: four bricks from one scan
+        if (f4 & 1) Q.multiply(TURN);
+        if (f4 & 2) Q.multiply(FLIP);
+        this.bricks.geometry.attributes.aSkin.array[nk] = Math.floor(h * 7919) % 2 || 0;
         this.bricks.setMatrixAt(nk, m.compose(P, Q, Sv));
-        this.bricks.setColorAt(nk, c.setRGB(0.46 + h * 0.14, 0.17 + h * 0.06, 0.11 + h * 0.04));
+        this.bricks.setColorAt(nk, brickTint(c, h));
         this.owner.bricks[nk++] = id;
       }
     };
@@ -525,7 +543,7 @@ export class WallView {
           const a = (ia - (na - 1) / 2) * (L + 4), c = (ic - (nc - 1) / 2) * (Tt + 4), y = 122 + lay * (Hh + 2) + Hh / 2;
           at(a, y, c, L, Hh, Tt);
           if (bl && nb < this.max.block) { this.blocks.setMatrixAt(nb, m.compose(P, pq, Sv)); this.blocks.setColorAt(nb, c3.setRGB(0.86, 0.855, 0.83)); this.owner.blocks[nb++] = null; }
-          else if (!bl && nk < this.max.brick) { const h = hash(i * 7 + w.id); this.bricks.setMatrixAt(nk, m.compose(P, pq, Sv)); this.bricks.setColorAt(nk, c3.setRGB(0.46 + h * 0.14, 0.17 + h * 0.06, 0.11 + h * 0.04)); this.owner.bricks[nk++] = null; }
+          else if (!bl && nk < this.max.brick) { const h = hash(i * 7 + w.id); this.bricks.setMatrixAt(nk, m.compose(P, pq, Sv)); this.bricks.setColorAt(nk, brickTint(c3, h)); this.owner.bricks[nk++] = null; }
         }
       }
       // planned openings: an orange frame on both faces until the masonry is round them
@@ -602,10 +620,11 @@ export class WallView {
       this.hlMesh.scale.fromArray(this.hl.s).multiplyScalar(1.03);
       this.hlMesh.material.color.setHex(this.hl.ok ? 0x35d06a : 0xe8402a);
     }
-    this.blocks.count = nb; this.bricks.count = nk; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu; this.beltBoards.count = nbb; this.beltBoards.geometry.attributes.aBoard.needsUpdate = true;
-    for (const im of [this.blocks, this.bricks, this.mortar, this.lintels, this.frames, this.wood, this.ublocks, this.beltBoards]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this.blocks.count = nb; this.bricks.count = nk; this.cinders.count = ncb; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu; this.beltBoards.count = nbb; this.beltBoards.geometry.attributes.aBoard.needsUpdate = true;
+    for (const im of [this.blocks, this.bricks, this.cinders, this.mortar, this.lintels, this.frames, this.wood, this.ublocks, this.beltBoards]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     this._buildFill();
-    for (const im of [this.blocks, this.bricks]) im.instanceColor.needsUpdate = true;
+    for (const im of [this.blocks, this.bricks, this.cinders]) im.instanceColor.needsUpdate = true;
+    this.bricks.geometry.attributes.aSkin.needsUpdate = true;
   }
 
   // the concrete in the U-block channels: a surface over the levels of each block (UN
@@ -815,6 +834,7 @@ export class WallView {
   ownerOf(hit) {
     if (hit.object === this.blocks) return this.owner.blocks[hit.instanceId];
     if (hit.object === this.bricks) return this.owner.bricks[hit.instanceId];
+    if (hit.object === this.cinders) return this.owner.cinders[hit.instanceId];
     if (hit.object === this.lintels) return this.owner.lintels[hit.instanceId];
     if (hit.object === this.frames) return this.owner.frames[hit.instanceId];
     if (hit.object === this.ublocks) return this.owner.ublocks[hit.instanceId];
@@ -873,7 +893,52 @@ export function aeratedTexture() {
   return t;
 }
 
-// a fired clay brick: speckles, darker flecks, slightly scorched edges
+// the brick: a photo-scanned one (CC BY, CREDITS.md) baked onto a box — six faces in a 3 × 2
+// atlas (px nx py ny pz nz, as BoxGeometry orders them) with a normal map of its chips; two
+// skins side by side (the second has the beds for faces), picked per brick (aSkin)
+const TURN = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), FLIP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+function brickTint(c, h) { return c.setRGB(0.88 + h * 0.16, 0.7 + h * 0.12, 0.64 + h * 0.1); }
+function atlasBox() {
+  const g = new THREE.BoxGeometry(1, 1, 1), uv = g.attributes.uv, e = 0.006;
+  for (let f = 0; f < 6; f++) for (let i = f * 4; i < f * 4 + 4; i++) {
+    const u = e + uv.getX(i) * (1 - 2 * e), v = e + uv.getY(i) * (1 - 2 * e), cx = f % 3, cy = Math.floor(f / 3);
+    uv.setXY(i, (cx + u) / 6, (1 - cy + v) / 2);
+  }
+  return g;
+}
+function scanBrick(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aSkin;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_MAP\nvMapUv.x += aSkin * 0.5;\n#endif\n#ifdef USE_NORMALMAP\nvNormalMapUv.x += aSkin * 0.5;\n#endif');
+  };
+  const L = new THREE.TextureLoader(), base = 'assets/textures/brick_scan/';
+  mat.color.set(0xa04a34);
+  L.load(base + 'col.jpg', (t) => {
+    mat.color.set(0xffffff);
+    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    mat.map = t; mat.needsUpdate = true;
+    L.load(base + 'nor.jpg', (n) => { n.anisotropy = 4; mat.normalMap = n; mat.normalScale.set(1.4, 1.4); mat.needsUpdate = true; });
+  });
+}
+
+function loadCinder(mesh) {
+  const base = 'assets/models/cinder/';
+  fetch(base + 'cinder.json').then((r) => r.json()).then((d) => {
+    // the scan is 4 × 2 × 2 (x long, y up — the hollows — z across): to a unit box
+    const g = new THREE.BufferGeometry(), p = d.pos.map((v, i) => v / (i % 3 === 0 ? 4 : 2));
+    g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(d.nor, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(d.uv, 2));
+    g.setIndex(d.idx); g.computeBoundingSphere();
+    const L = new THREE.TextureLoader(), map = L.load(base + 'col.jpg'), nor = L.load(base + 'nor.jpg');
+    map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = nor.anisotropy = 4;
+    for (const t of [map, nor]) t.wrapS = t.wrapT = THREE.RepeatWrapping;   // (box-projected uv: the concrete tiles round it)
+    mesh.material = new THREE.MeshStandardMaterial({ map, normalMap: nor, normalScale: new THREE.Vector2(1.6, 1.6), color: 0xb4b1ab, roughness: 0.95, side: THREE.DoubleSide });
+    mesh.geometry = g;
+  }).catch(() => {});
+}
+
+// a fired clay brick (the stand-in while the scan loads): speckles, darker flecks, slightly scorched edges
 function brickTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 128;
   const g = c.getContext('2d');

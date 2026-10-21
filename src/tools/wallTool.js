@@ -129,7 +129,7 @@ export class WallTool {
     const app = this.app, v = app.wallView;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
     // laid masonry only (not the unit in the hand, not the stacks on the pallets)
-    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames, v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.roofs], true).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
+    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.cinders, v.lintels, v.mortar, v.frames, v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.roofs], true).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
     return hit ? hit.point.clone() : p;
   }
 
@@ -155,7 +155,7 @@ export class WallTool {
       this.lastWall = n.w.id;
       return true;
     }
-    if (this.mode === 'lay' && this.rowMode && (this.kind === 'block' || this.kind === 'brick')) {
+    if (this.mode === 'lay' && this.rowMode && (this.kind === 'block' || this.kind === 'brick' || this.kind === 'cinder')) {
       if (this.rowJob) { this._rowStop('Ряд остановлен'); return true; }
       this._rowDown(p, e); return true;
     }
@@ -282,12 +282,12 @@ export class WallTool {
   // the finger on a brick / a block: that one is the guide — the course goes on from it,
   // laid the way it lies (a header goes on in headers, a stretcher in stretchers)
   _rowDown(p, e) {
-    const app = this.app, grp = this.kind === 'block' ? 'block' : 'brick';
+    const app = this.app, grp = this.kind === 'block' ? 'block' : this.kind === 'cinder' ? 'cinder' : 'brick';
     const id = e?.clientX !== undefined ? app.pickObject(e.clientX, e.clientY, 'wall') : null, u = id && app.objects.get(id);
-    const ref = u?.type === 'unit' && u.p && u.s && u.q && !u.lintel && u.kind !== 'ublock' && (boxOf(u).kind === 'brick' || boxOf(u).kind === 'block') ? boxOf(u) : null;
+    const ref = u?.type === 'unit' && u.p && u.s && u.q && !u.lintel && u.kind !== 'ublock' && (boxOf(u).kind === 'brick' || boxOf(u).kind === 'block' || boxOf(u).kind === 'cinder') ? boxOf(u) : null;
     const y = ref ? ref.top : null;
     this.rowDrag = { ref, y, touch: p.clone(), pts: [ref ? new THREE.Vector3(ref.x, ref.top, ref.z) : p.clone()] };
-    if (!ref) app.ui.toast(`Ряд начнётся здесь — или коснитесь ${grp === 'block' ? 'блока' : 'кирпича'}-ориентира, ряд пойдёт от него`);
+    if (!ref) app.ui.toast(`Ряд начнётся здесь — или коснитесь ${grp === 'block' ? 'блока' : grp === 'cinder' ? 'шлакоблока' : 'кирпича'}-ориентира, ряд пойдёт от него`);
     this._rowShow();
   }
   _rowMove(p, e) {
@@ -436,7 +436,7 @@ export class WallTool {
     const dx = r.p.x - q.x, dz = r.p.z - q.z, bot = r.p.y - r.s.y / 2;
     for (let k = J.n + 1; k < J.plan.length; k++) { J.plan[k].x += dx; J.plan[k].z += dz; if (J.plan[k].bot == null) J.plan[k].bot = bot; }
     J.n++;
-    app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [J.kind === 'brick' ? 'brick' : 'block']: +q.yaw.toFixed(5) };
+    app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [J.kind === 'brick' || J.kind === 'cinder' ? J.kind : 'block']: +q.yaw.toFixed(5) };
   }
 
 
@@ -712,9 +712,9 @@ export class WallTool {
     const fing = e && (e.clientX || e.clientY) ? { x: e.clientX, y: e.clientY } : null, scr = (x) => this._screen(x), turn = !!app.settings.wallTurn;
     let free = null, snap = null;
     // the direction of the work: the last unit laid of this kind («Повернуть» turns it)
-    const grp = c.kind === 'block' || c.kind === 'ublock' ? 'block' : 'brick';
+    const grp = c.kind === 'block' || c.kind === 'ublock' ? 'block' : c.kind === 'cinder' ? 'cinder' : 'brick';
     const ref = app.settings.freeYaw?.[grp];
-    const half = !!app.settings.wallHalf && (c.kind === 'block' || c.kind === 'brick');
+    const half = !!app.settings.wallHalf && (c.kind === 'block' || c.kind === 'brick' || c.kind === 'cinder');
     c.cage = null;
     if (c.kind === 'lintel') free = placeLintel(app, p, scr, fing);
     else if (c.kind === 'prop') free = placeProp(app, p, scr, fing);
@@ -770,7 +770,7 @@ export class WallTool {
       } else v.hl = null;
       v.liveBed = null; v.dirty = true; app.ui.refresh();
       return;
-    } else if (c.kind !== 'block') free = placeUnit(app, 'brick', p, scr, fing, turn, { yaw: ref, half });
+    } else if (c.kind !== 'block') free = placeUnit(app, c.kind === 'cinder' ? 'cinder' : 'brick', p, scr, fing, turn, { yaw: ref, half });
     else {
       // the next place of a block wall drawn with «Линия», else free: beside / on / on the ground
       snap = half ? null : this._snapTo(e, p);   // (a half: not a place of a drawn wall)
@@ -842,16 +842,17 @@ export class WallTool {
     const on = this.app.tool === 'wall' && this.mode === 'lay';
     if (this.delBtn) { this.delBtn.hidden = !(this.app.tool === 'wall' && (this.mode === 'lay' || this.mode === 'delete')); this.delBtn.classList.toggle('active', this.mode === 'delete'); }
     this.tray.hidden = !on;
-    if (this.rowBtn) { this.rowBtn.hidden = !(on && (this.kind === 'block' || this.kind === 'brick')); this.rowBtn.classList.toggle('active', !!this.rowMode); }
+    if (this.rowBtn) { this.rowBtn.hidden = !(on && (this.kind === 'block' || this.kind === 'brick' || this.kind === 'cinder')); this.rowBtn.classList.toggle('active', !!this.rowMode); }
     if (!on) return;
     const kind = this.kind;
-    this.tray.classList.toggle('brick', kind !== 'block');
+    this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');
+    this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { block: 'Газоблок', brick: 'Кирпич', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
+    const NAMES = { block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
     if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель' }[this.app.settings.facLayer || 'eps']; return; }
     if (lab && kind === 'roof') { lab.textContent = { vap: 'Рулон пароизоляции', xps: 'Лист XPS', wedge: 'Клиновидная плита', mem: 'Рулон мембраны', cop: 'Отлив 2 м', grav: 'Гравий' }[this.app.settings.roofLayer || 'vap']; return; }
-    if (lab) lab.textContent = this.app.settings.wallHalf && (kind === 'block' || kind === 'brick') ? (kind === 'block' ? '½ блока' : '½ кирпича') : NAMES[kind] || 'Блок';
+    if (lab) lab.textContent = this.app.settings.wallHalf && (kind === 'block' || kind === 'brick' || kind === 'cinder') ? (kind === 'block' ? '½ блока' : kind === 'cinder' ? '½ шлакоблока' : '½ кирпича') : NAMES[kind] || 'Блок';
     const w = this._trayWall(), left = w ? this.palletLeft(w) : 0;
     this.tray.title = w ? `На поддоне: ${left}` : '';
   }
@@ -918,7 +919,7 @@ export class WallTool {
       if (!free?.ok) {
         app.ui.toast(ck === 'lintel' ? (free ? lintelWhy(free) : 'Поднесите перемычку к проёму — промежутку 300…2700 мм между блоками одного ряда')
           : ck === 'prop' ? 'Подпорку — в проём: между блоками одного ряда, под их верх'
-            : `Сюда ${ck === 'block' || ck === 'ublock' ? 'блок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`);
+            : `Сюда ${ck === 'block' || ck === 'ublock' ? 'блок' : ck === 'cinder' ? 'шлакоблок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`);
         return;
       }
       const u = { type: 'unit', free: true, kind: free.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)), ...(free.half ? { cut: true } : {}),
@@ -927,7 +928,7 @@ export class WallTool {
       if (free.kind === 'prop') app.ui.toast('Подпорка стоит — кладите на неё U-блоки (стыкуются с кладкой по бокам)');
       const pose = { p: free.p, q: free.q, s: free.s, bedY: free.bedY, bedT: free.bedT };
       // the next one goes the same way; «Повернуть» was for this one
-      if (free.kind === 'block' || free.kind === 'brick' || free.kind === 'ublock') app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [free.kind === 'brick' ? 'brick' : 'block']: +(2 * Math.atan2(free.q.y, free.q.w)).toFixed(5) };
+      if (free.kind === 'block' || free.kind === 'brick' || free.kind === 'ublock' || free.kind === 'cinder') app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [free.kind === 'brick' || free.kind === 'cinder' ? free.kind : 'block']: +(2 * Math.atan2(free.q.y, free.q.w)).toFixed(5) };
       if (app.settings.wallTurn) { app.settings.wallTurn = false; app.applySettings(); }
       const go = () => { app.physLoading = false; app.physJob = new LayJob(app, null, u, pose, null, []); };
       if (physicsReady()) go();
@@ -964,7 +965,7 @@ export class WallTool {
     if (c?.free && c.kind === 'lintel') return c.free.ok ? `Перемычка ${c.free.lenMm} мм над проёмом ${c.free.gapMm} мм. Отпустите` : 'Красный — ' + lintelWhy(c.free);
     if (c?.free && c.kind === 'prop') return c.free.ok ? `Подпорка в проём ${c.free.gapMm} мм. Отпустите` : 'Красный — сюда подпорку не поставить';
     if (c?.free) {
-      const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : 'Кирпич';
+      const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : c.kind === 'cinder' ? 'Шлакоблок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
     if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin'].includes(this.kind)) return {
@@ -1115,7 +1116,7 @@ class LayJob {
     const j = (m) => (Math.random() - 0.5) * m;
     const q0 = target.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(j(0.03), j(0.05), j(0.03))));
     const p0 = p.clone().add(new THREE.Vector3(j(MM(8)), MM(20), j(MM(8))));
-    this.body = this.ep.box(s.x / 2, s.y / 2, s.z / 2, p0, q0, { density: unit.lintel ? 2400 : unit.kind === 'block' || unit.kind === 'ublock' || unit.kind === 'prop' ? 500 : 1800, friction: 0.9 });
+    this.body = this.ep.box(s.x / 2, s.y / 2, s.z / 2, p0, q0, { density: unit.lintel ? 2400 : unit.kind === 'block' || unit.kind === 'ublock' || unit.kind === 'prop' ? 500 : unit.kind === 'cinder' ? 1300 : 1800, friction: 0.9 });
     this.t = 0;
     this.phase = 'drop';
     this.done = false;

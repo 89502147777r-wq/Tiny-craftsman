@@ -56,7 +56,7 @@ class ConcreteTool {
     const app = this.app, v = app.wallView;
     if (!e || !v || e.clientX === undefined) return null;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
-    const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.blocks, v.bricks, v.lintels], false)[0];
+    const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.blocks, v.bricks, v.cinders, v.lintels], false)[0];
     if (!hit) return null;
     this._uHit = hit.point;
     const id = v.ownerOf(hit), r = id && app.objects.get(id);

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { boxOf } from './freeBrick.js';
-import { wingShape, roofTop, planeAt, STAGES, FINGER, PITCHED, PITCHES, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN } from '../world/pitched.js';
+import { wingShape, roofTop, planeAt, STAGES, FINGER, PITCHED, PITCHES, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
 //   plate – carried from the tray onto the top of the walls: the house is found (its plan
@@ -111,7 +111,8 @@ export class PitchedWork {
     const p0 = w?.pitch || (r ? r.pitch : s.proofPitch) || s.proofPitch;
     const pitch = PITCHES[type].includes(p0) ? p0 : PITCHES[type][type === 'mono' ? 1 : 2];
     const col = COVER_COLOURS[kind][s.proofCol] ? s.proofCol : Object.keys(COVER_COLOURS[kind])[0];
-    return { style: type, pitch, cover: { kind, col }, md: w?.md || 0 };
+    const gk = GUTTERS[s.proofGut] ? s.proofGut : 'round', gc = GUTTER_COLOURS[s.proofGutCol] ? s.proofGutCol : 'graphite';
+    return { style: type, pitch, cover: { kind, col }, gut: { kind: gk, col: gc }, md: w?.md || 0 };
   }
   _ends(wings) { return wings; }
   _live(live) { const v = this.app.wallView; v.liveProof = live; v.proofDirty = true; }
@@ -142,6 +143,7 @@ export class PitchedWork {
         else if (o.style && !o.pitch) patch.wings[k].pitch = PITCHES[o.style][o.style === 'mono' ? 1 : 2];
       }
     }
+    if (o.gut) patch.gut = this.opts().gut;   // (the gutters can be changed any time: taken down, others hung)
     if (o.cover) { if (r.done?.cover) this.app.ui.toast('Покрытие уже уложено — цвет не меняется'); else patch.cover = this.opts().cover; }
     if (Object.keys(patch).length) this._save(patch, 'proof-opts');
   }
@@ -274,7 +276,7 @@ export class PitchedWork {
       return;
     }
     const r = this.rec;
-    if (P.gutter) { this._save({ done: { ...r.done, gutter: true } }, 'proof-gutter'); app.ui.toast('Водосток: желоба на крюках под карнизами, трубы по углам до земли — в дождь из них течёт вода'); return; }
+    if (P.gutter) { this._save({ done: { ...r.done, gutter: true }, gut: this.opts().gut }, 'proof-gutter'); app.ui.toast('Водосток: желоба на крюках под карнизами, трубы по углам до земли — в дождь из них течёт вода'); return; }
     this._save({ done: { ...r.done, trim: true } }, 'proof-trim');
     app.ui.toast('Конёк, рёбра, лобовая доска, ветровые планки и софиты — дальше водосток');
   }
