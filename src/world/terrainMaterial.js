@@ -438,7 +438,11 @@ export function makeCastConcreteMaterial(uniforms) {
             float sink = 0.45 + 0.5 * vSm;
             float w1 = smoothstep(sink - 0.1, sink + 0.25, st.x) * step(0.45, tcHash(floor(sq * 240.0)));
             float w2 = smoothstep(sink - 0.05, sink + 0.3, st2.x) * step(0.55, tcHash(floor(sq * 115.0 + 17.0)));
-            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 1.6 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06;
+            // and the fine grit of the surface (the paste, the sand in it) — gone only under the trowel, as on the foundation
+            vec2 rq = vCWPos.xz * (700.0 * ${RESCALE.toFixed(5)});
+            float r0 = tcSNoise(rq), rx = tcSNoise(rq + vec2(0.4, 0.0)), rz = tcSNoise(rq + vec2(0.0, 0.4));
+            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 1.6 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06
+                   + vec3(r0 - rx, 0.0, r0 - rz) * (1.0 - 0.85 * vSm) * 0.25;
             normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz * up);
           }
         }`)

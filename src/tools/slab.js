@@ -201,7 +201,9 @@ export function slabCage(b) {
     for (const [cs, ct, gs, gt] of [[S0, T0, -1, -1], [S1, T0, 1, -1], [S1, T1, 1, 1], [S0, T1, -1, 1]]) {
       // across the corner, 150 mm out from it, 800 mm long
       const ms = cs + gs * MM(150) / Math.SQRT2, mt = ct + gt * MM(150) / Math.SQRT2, h = MM(400) / Math.SQRT2;
-      for (const y of [yb2 + d, yt1 - d]) bars.push([...W(ms - gt * h, mt + gs * h, y), ...W(ms + gt * h, mt - gs * h, y), +d.toFixed(6)]);
+      const e0 = [ms - gt * h, mt + gs * h], e1 = [ms + gt * h, mt - gs * h], inn = ([a, b]) => [[0, 0], [cov, 0], [-cov, 0], [0, cov], [0, -cov]].every(([u, v]) => inside(a + u, b + v));
+      if (!inn(e0) || !inn(e1)) continue;   // (by an edge of the slab: it would stick out)
+      for (const y of [yb2 + d, yt1 - d]) bars.push([...W(...e0, y), ...W(...e1, y), +d.toFixed(6)]);
     }
   }
   // the cantilever: the bars that carry it — on top, between the top mat's
@@ -209,10 +211,12 @@ export function slabCage(b) {
     const [ds, dt, mm] = b.cant, dc = MM(SLAB.cantBar), back = MM(mm) * 1.5 + MM(mm), y = ds ? yt1 : yt2;   // (beside the top mat's bars that run the same way)
     if (ds) {
       const iEdge = ds > 0 ? ni * c - cov : cov, iIn = iEdge - ds * back;
-      for (const t of tL.slice(0, -1).map((v) => v + st / 2)) if (inside(iEdge - ds * MM(50), t)) bars.push([...W(Math.max(cov, Math.min(ni * c - cov, iIn)), t, y), ...W(iEdge, t, y), +dc.toFixed(6)]);
+      const lo = Math.min(iIn, iEdge), hi = Math.max(iIn, iEdge);
+      for (const t of tL.slice(0, -1).map((v) => v + st / 2)) if (inside(iEdge - ds * MM(50), t)) for (const [a, e] of runs(t, true)) { const f = Math.max(a, lo), g = Math.min(e, hi); if (g - f > MM(300)) bars.push([...W(f, t, y), ...W(g, t, y), +dc.toFixed(6)]); }
     } else {
       const jEdge = dt > 0 ? nj * c - cov : cov, jIn = jEdge - dt * back;
-      for (const s of sL.slice(0, -1).map((v) => v + st / 2)) if (inside(s, jEdge - dt * MM(50))) bars.push([...W(s, Math.max(cov, Math.min(nj * c - cov, jIn)), y), ...W(s, jEdge, y), +dc.toFixed(6)]);
+      const lo = Math.min(jIn, jEdge), hi = Math.max(jIn, jEdge);
+      for (const s of sL.slice(0, -1).map((v) => v + st / 2)) if (inside(s, jEdge - dt * MM(50))) for (const [a, e] of runs(s, false)) { const f = Math.max(a, lo), g = Math.min(e, hi); if (g - f > MM(300)) bars.push([...W(s, f, y), ...W(s, g, y), +dc.toFixed(6)]); }
     }
   }
   return { type: 'cage', outlineId: null, beltId: b.id, bars, chairs, frogs, ties, tied: true, stars: [], d };
