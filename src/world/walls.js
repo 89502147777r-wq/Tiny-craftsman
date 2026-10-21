@@ -6,6 +6,7 @@ import { buildWindow } from './windows.js';
 import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
+import { buildPitched } from './pitched.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -413,6 +414,9 @@ export class WallView {
     // the facade on the outside of the walls (facade.js): one group per face
     this.facades = new THREE.Group(); this.group.add(this.facades);
     this.liveFacade = null; this.facadeDirty = true; this._faces = null; this._facKnown = new Set();
+    // the pitched roof (pitched.js)
+    this.proofs = new THREE.Group(); this.group.add(this.proofs);
+    this.liveProof = null; this.proofDirty = true;
     for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
     this.dirty = true;
@@ -420,19 +424,21 @@ export class WallView {
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
     objects.on((id, rec) => {
+      if (rec?.type === 'proof' || this._proofIds?.has(id)) { this.proofDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
     });
   }
 
   update() {
-    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); return; }
+    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); if (this.proofDirty) this._buildProofs(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt'), ...O.all('window'), ...O.all('roof')].map((r) => r.id));
     this._buildWindows();
     this._buildRoofs();
     this._buildFacades();
+    if (this.proofDirty) this._buildProofs();
     let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, nc = 0, nbb = 0;
     const c3 = new THREE.Color();
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
@@ -758,6 +764,23 @@ export class WallView {
     }
   }
 
+  _buildProofs() {
+    this.proofDirty = false;
+    const key = JSON.stringify([this.objects.all('proof'), this.liveProof]);
+    if (key === this._proofKey) return;
+    this._proofKey = key;
+    for (const g of [...this.proofs.children]) { this.proofs.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); }); }
+    const recs = this.objects.all('proof'), live = this.liveProof;
+    this._proofIds = new Set(recs.map((r) => r.id));
+    const list = recs.map((r) => [r, live && !live.ghost ? live : null]);
+    if (live?.ghost) list.push([live.ghost, null]);
+    for (const [r, lv] of list) {
+      const g = buildPitched(r, lv);
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
+      this.proofs.add(g);
+    }
+  }
+
   // the faces of the walls (cached until the masonry changes)
   facadeFaces() { return this._faces || (this._faces = facadeFaces(this.objects)); }
   _buildFacades() {
@@ -819,7 +842,7 @@ function uShape(cuts = []) {
 function hash(i) { const s = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
 
 // aerated concrete: white-grey with small round pores, saw marks
-function aeratedTexture() {
+export function aeratedTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const g = c.getContext('2d');
   g.fillStyle = '#e9e7e1'; g.fillRect(0, 0, 256, 256);
