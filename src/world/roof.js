@@ -31,10 +31,10 @@ export const COP_COLOURS = {
 // ---- textures: drawn on a canvas, a normal map from the same height --------------------------
 const TEX = {};
 let seed = 1; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-function canvas(n, m = n) { const cv = document.createElement('canvas'); cv.width = n; cv.height = m; return cv; }
-function asTex(cv, srgb = true) { const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
+export function canvas(n, m = n) { const cv = document.createElement('canvas'); cv.width = n; cv.height = m; return cv; }
+export function asTex(cv, srgb = true) { const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
 // a normal map from a height canvas (its red channel)
-function normalOf(hc, k = 2) {
+export function normalOf(hc, k = 2) {
   const n = hc.width, m = hc.height, src = hc.getContext('2d').getImageData(0, 0, n, m).data, out = canvas(n, m), g = out.getContext('2d'), img = g.createImageData(n, m);
   const h = (x, y) => src[(((y + m) % m) * n + ((x + n) % n)) * 4] / 255;
   for (let y = 0; y < m; y++) for (let x = 0; x < n; x++) {
