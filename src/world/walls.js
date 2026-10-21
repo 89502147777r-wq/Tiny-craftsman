@@ -819,7 +819,7 @@ function uShape(cuts = []) {
 function hash(i) { const s = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
 
 // aerated concrete: white-grey with small round pores, saw marks
-function aeratedTexture() {
+export function aeratedTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const g = c.getContext('2d');
   g.fillStyle = '#e9e7e1'; g.fillRect(0, 0, 256, 256);
