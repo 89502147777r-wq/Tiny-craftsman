@@ -103,7 +103,19 @@ export class BuildTool {
   run(a, b, n, y1, extra = {}) {
     const t = this.app.terrain, T = MAT.board.t;
     const ix = -n[0] * 0.002 * K, iz = -n[1] * 0.002 * K;
-    const y0 = t.minAlong(a[0] + ix, a[1] + iz, b[0] + ix, b[1] + iz);
+    // the boards stand on the ground along the run, down to its lowest point on a slope —
+    // but a pit / a trench crossing under the run (ground higher on both sides of it) is
+    // spanned: the boards go over it on their stakes, they do not sink into it
+    const N = 48, hs = [];
+    for (let k = 0; k <= N; k++) { const f = k / N, x = a[0] + (b[0] - a[0]) * f + ix, z = a[1] + (b[1] - a[1]) * f + iz; if (t.inside(x, z)) hs.push(t.heightAt(x, z)); }
+    let y0 = t.minAlong(a[0] + ix, a[1] + iz, b[0] + ix, b[1] + iz);
+    if (hs.length > 2) {
+      const lm = [], rm = [];
+      hs.forEach((h, k) => (lm[k] = Math.max(h, k ? lm[k - 1] : -Infinity)));
+      for (let k = hs.length - 1; k >= 0; k--) rm[k] = Math.max(hs[k], k < hs.length - 1 ? rm[k + 1] : -Infinity);
+      const ok = hs.filter((h, k) => Math.min(lm[k], rm[k]) - h <= MAT.board.h * 0.5);
+      if (ok.length) y0 = Math.max(y0, Math.min(...ok) - 0.001 * K);
+    }
     let out = 0, cnt = 0;
     for (let k = 0; k <= 8; k++) {
       const f = 0.1 + 0.8 * k / 8, x = a[0] + (b[0] - a[0]) * f + n[0] * T * 1.5, z = a[1] + (b[1] - a[1]) * f + n[1] * T * 1.5;

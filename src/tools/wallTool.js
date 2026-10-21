@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
-import { placeUnit, freeTops, topAt, beltTopAt } from './freeBrick.js';
+import { placeUnit, freeTops, topAt, beltTopAt, boxOf, dims } from './freeBrick.js';
 import { placeLintel, placeProp, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld } from './belt.js';
@@ -51,6 +51,9 @@ export class WallTool {
     // the tray of blocks in the corner of the screen: drag a block out of it onto a wall
     // (the pallet by the wall may be out of the picture)
     this.tray = typeof document !== 'undefined' ? document.getElementById('wall-tray') : null;
+    // under the tray: a course along a line
+    this.rowBtn = typeof document !== 'undefined' ? document.getElementById('wall-row') : null;
+    this.rowBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.toggleRow(); });
     if (this.tray) {
       // the point under the finger: on the masonry when it is over it (else the ground behind it)
       const g = (e) => this._pt(app.gestures.ground(e.clientX, e.clientY) || this._lastP || new THREE.Vector3(), e);
@@ -72,7 +75,7 @@ export class WallTool {
     }
   }
 
-  get busy() { return !!this.drag || !!this.carry; }
+  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob; }
   // one finger works on the wall in every mode (the camera: two fingers)
   blocksOrbit() { return true; }
 
@@ -145,6 +148,10 @@ export class WallTool {
       this.lastWall = n.w.id;
       return true;
     }
+    if (this.mode === 'lay' && this.rowMode && (this.kind === 'block' || this.kind === 'brick')) {
+      if (this.rowJob) { this._rowStop('Ряд остановлен'); return true; }
+      this.rowDrag = [p.clone()]; this._rowLine(); return true;
+    }
     if (this.mode === 'lay' && this.kind === 'roof') return this.roof.down(p, e);
     if (this.mode === 'lay' && this.kind === 'facade') return this.facade.down(p, e);
     if (this.mode === 'lay') {
@@ -167,6 +174,7 @@ export class WallTool {
     const app = this.app;
     p = this._pt(p, e);
     if (this.carry) { this._carryMove(p, e); return; }
+    if (this.rowDrag) { if (p.distanceTo(this.rowDrag.at(-1)) > MM(60)) { this.rowDrag.push(p.clone()); this._rowLine(); } return; }
     if (this.roof.drag) { this.roof.move(p, e); return; }
     if (this.facade.drag) { this.facade.move(p, e); return; }
     if (!this.drag) return;
@@ -205,6 +213,7 @@ export class WallTool {
   up() {
     const app = this.app, d = this.drag;
     if (this.carry) { this._carryDrop(); return; }
+    if (this.rowDrag) { const path = this.rowDrag; this.rowDrag = null; this._rowStart(path); return; }
     if (this.roof.drag) { this.roof.up(); return; }
     if (this.facade.drag) { this.facade.up(); return; }
     this.drag = null;
@@ -242,7 +251,104 @@ export class WallTool {
 
   interrupt() { this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
 
-  update() {}
+  update() { if (this.rowJob) this._rowStep(); }
+
+  // ---- a course along a line: the «Ряд» button under the tray, then a finger drawn along
+  // where the course goes — the units go down one after another (each set as by hand:
+  // lowered onto the mortar, three taps of the mallet), continuing the course begun there
+  toggleRow() {
+    const app = this.app;
+    if (this.rowJob) { this._rowStop('Ряд остановлен'); }
+    this.rowMode = !this.rowMode;
+    this.syncTray();
+    if (this.rowMode) { loadPhysics().catch(() => {}); app.ui.toast(`Ряд по линии: проведите пальцем, где пойдёт ряд — ${this.kind === 'block' ? 'блоки' : 'кирпичи'} лягут один за другим, продолжая начатый ряд`); }
+  }
+  _rowLine() {
+    const app = this.app, pts = this.rowDrag || [];
+    if (!this._rowMesh) {
+      this._rowMesh = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf0a53a, depthTest: false, transparent: true }));
+      this._rowMesh.renderOrder = 10; this._rowMesh.frustumCulled = false; app.scene.add(this._rowMesh);
+    }
+    this._rowMesh.geometry.setFromPoints(pts.map((q) => q.clone().setY(q.y + MM(30))));
+    this._rowMesh.visible = pts.length > 1;
+    if (pts.length > 1) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z); app.ui.showMeasure(`Ряд: ${(L * MODEL_SCALE).toFixed(2).replace('.', ',')} м`); }
+  }
+  _rowStop(msg) {
+    const J = this.rowJob;
+    this.rowJob = null; this.rowDrag = null;
+    if (this._rowMesh) this._rowMesh.visible = false;
+    this.app.ui.hideMeasure();
+    if (msg) this.app.ui.toast(J ? `${msg} — уложено ${J.n}` : msg);
+    this.app.ui.refresh();
+  }
+  _rowStart(path) {
+    const app = this.app, kind = this.kind;
+    // the line: its corners (where it turns) only
+    const xz = path.map((q) => [q.x, q.z]), rdp = (a, b) => {
+      let k = -1, dm = MM(250);
+      const [x0, z0] = xz[a], [x1, z1] = xz[b], L = Math.hypot(x1 - x0, z1 - z0) || 1;
+      for (let i = a + 1; i < b; i++) { const d = Math.abs((xz[i][0] - x0) * (z1 - z0) - (xz[i][1] - z0) * (x1 - x0)) / L; if (d > dm) { dm = d; k = i; } }
+      return k < 0 ? [a, b] : [...rdp(a, k).slice(0, -1), ...rdp(k, b)];
+    };
+    const idx = rdp(0, xz.length - 1), pts = idx.map((i) => path[i]);
+    let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+    const D = dims(kind, !!app.settings.wallHalf);
+    if (len < D.L * 0.8) { this._rowStop('Проведите линию длиннее — вдоль будущего ряда'); return; }
+    // the course to go on: the end of a unit of this kind nearest the start of the line
+    const grp = kind === 'block' ? 'block' : 'brick', a = pts[0];
+    let last = null, bd = MM(1200);
+    for (const b of app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf)) {
+      if (b.kind !== grp) continue;
+      for (const sg of [-1, 1]) {
+        const ex = b.x + b.ux * b.hl * sg, ez = b.z + b.uz * b.hl * sg, d = Math.hypot(ex - a.x, ez - a.z) + Math.abs(b.top - a.y) * 1.5;
+        if (d < bd) { bd = d; last = b; }
+      }
+    }
+    this.rowJob = { kind, half: !!app.settings.wallHalf, pts, seg: 0, n: 0, last, y: last ? last.bot : a.y, prevDir: null, fails: 0 };
+    if (this._rowMesh) { this._rowMesh.geometry.setFromPoints(pts.map((q) => q.clone().setY(q.y + MM(30)))); this._rowMesh.visible = true; }
+    loadPhysics().catch(() => {});
+    app.ui.toast(last ? `Продолжаю ряд: ${len * MODEL_SCALE > 0 ? (len * MODEL_SCALE).toFixed(1).replace('.', ',') : ''} м — коснитесь, чтобы остановить` : 'Кладу ряд по линии — коснитесь, чтобы остановить');
+  }
+  _rowStep() {
+    const app = this.app, J = this.rowJob;
+    if (app.physJob || app.physLoading || !physicsReady()) return;
+    if (app.tool !== 'wall' || this.mode !== 'lay') { this._rowStop(); return; }
+    const D = dims(J.kind, J.half), { L, W, J: jt } = D;
+    for (let guard = 0; guard < 4; guard++) {
+      const A = J.pts[J.seg], B = J.pts[J.seg + 1];
+      if (!B) { this._rowStop(`Ряд уложен по линии`); return; }
+      const sl = Math.hypot(B.x - A.x, B.z - A.z), dx = (B.x - A.x) / sl, dz = (B.z - A.z) / sl;
+      let gx, gz;
+      const b = J.last;
+      if (!b) { gx = A.x + dx * L / 2; gz = A.z + dz * L / 2; }
+      else {
+        const c = b.ux * dx + b.uz * dz;
+        if (Math.abs(c) > 0.7) { const sg = Math.sign(c); gx = b.x + b.ux * sg * (b.hl + jt + L / 2); gz = b.z + b.uz * sg * (b.hl + jt + L / 2); }
+        else {
+          // round the corner: across the end of the last one, flush with its outer face
+          const pd = J.prevDir || [b.ux, b.uz], ps = Math.sign(b.ux * pd[0] + b.uz * pd[1]) || 1;
+          gx = b.x + b.ux * ps * (b.hl - W / 2) + dx * (b.hw + jt + L / 2); gz = b.z + b.uz * ps * (b.hl - W / 2) + dz * (b.hw + jt + L / 2);
+        }
+      }
+      // past the end of this stretch of the line: round the corner, or done
+      const t = (gx - A.x) * dx + (gz - A.z) * dz;
+      if (t > sl + L * 0.25) { J.seg++; J.prevDir = [dx, dz]; continue; }
+      const yaw = Math.atan2(-dz, dx);
+      const r = placeUnit(app, J.kind, new THREE.Vector3(gx, J.y, gz), null, null, false, { yaw, half: J.half });
+      const corner = b && Math.abs(b.ux * dx + b.uz * dz) <= 0.7;   // (round a corner: across the end of the last one, or flush along it)
+      if (!r || !r.ok || Math.hypot(r.p.x - gx, r.p.z - gz) > L * (corner ? 0.9 : 0.5)) {
+        this._rowStop(J.n ? 'Дальше по линии ряд не встаёт (мешает кладка, проём или нет опоры)' : 'Здесь ряд не начать: ведите линию от конца уложенного ряда, по верху кладки или по плите');
+        return;
+      }
+      const u = { type: 'unit', free: true, kind: r.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +r.bedT.toFixed(6), s: r.s.toArray().map((x) => +x.toFixed(6)), ...(r.half ? { cut: true } : {}) };
+      app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, []);
+      const ux = Math.cos(yaw), uz = -Math.sin(yaw);
+      J.last = { x: r.p.x, z: r.p.z, ux, uz, hl: r.s.x / 2, hw: r.s.z / 2, bot: r.p.y - r.s.y / 2, top: r.p.y + r.s.y / 2 };
+      J.y = J.last.bot; J.n++;
+      app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [J.kind === 'brick' ? 'brick' : 'block']: +yaw.toFixed(5) };
+      return;
+    }
+  }
 
   // ---- line ----------------------------------------------------------------------------
   _snap(q, from) {
@@ -645,6 +751,7 @@ export class WallTool {
     if (!this.tray) return;
     const on = this.app.tool === 'wall' && this.mode === 'lay';
     this.tray.hidden = !on;
+    if (this.rowBtn) { this.rowBtn.hidden = !(on && (this.kind === 'block' || this.kind === 'brick')); this.rowBtn.classList.toggle('active', !!this.rowMode); }
     if (!on) return;
     const kind = this.kind;
     this.tray.classList.toggle('brick', kind !== 'block');

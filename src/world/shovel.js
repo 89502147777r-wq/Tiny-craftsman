@@ -3,6 +3,7 @@ import { SHOVELS, KT as K } from '../config.js';
 import { makeNoise2 } from '../core/rand.js';
 import { variant } from './assets.js';
 import { loadModel } from './machines/models.js';
+import { materialTint } from './soilColor.js';
 
 // A scale shovel. Local frame: blade tip at the origin, handle along +Y,
 // working (front) face of the blade towards +Z. The parts are drawn at the
@@ -19,6 +20,7 @@ export class Shovel {
       roughness: 0.62, metalness: 0, color: 0xc9a27a,
     });
     this.loadMat = new THREE.MeshStandardMaterial({ map: variant(tex.wall.diff, 0.12, 0.12), roughness: 1, color: 0x9c8c7c });
+    this._soilMap = this.loadMat.map; this._loadMaps = {};
     this.model = new THREE.Group();
     this.root.add(this.model);
     this.pos = new THREE.Vector3(-0.118, 0.05, 0.118);
@@ -69,6 +71,24 @@ export class Shovel {
       for (const o of drawn) o.visible = false;
       this.model.add(g);
     }).catch(() => {});
+  }
+
+  // what is on the blade: soil (its tint by depth), sand / crushed stone (their photo), concrete
+  setLoad(mat, depth) {
+    const m = this.loadMat;
+    materialTint(mat, depth, m.color);
+    if (mat >= 1 && mat <= 3) {
+      const key = mat === 1 ? 'dense_sand' : 'gravel_floor_02';
+      if (!this._loadMaps[key]) {
+        const t = new THREE.TextureLoader().load(`assets/textures/${key}/diff.jpg`, () => { m.needsUpdate = true; });
+        t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(mat === 3 ? 0.06 : 0.1, mat === 3 ? 0.06 : 0.1);
+        this._loadMaps[key] = t;
+      }
+      m.map = this._loadMaps[key];
+      m.color.set(mat === 3 ? 0xb8b6b0 : 0xffffff);   // (the photo has its colour)
+    } else m.map = this._soilMap;
+    m.needsUpdate = true;
   }
 
   setPose({ pos, dir, tilt, roll }, snap = false) {

@@ -266,6 +266,17 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
   touch-action: none; user-select: none; -webkit-user-select: none; z-index: 22;
 }
 .wall-tray[hidden] { display: none; }
+/* under the tray: a course along a line drawn by the finger */
+.wall-row {
+  position: absolute; right: 12px; bottom: calc(var(--safe-b) + 116px); width: 88px; height: 62px; border-radius: 16px;
+  border: 1px solid var(--line); background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: var(--ink);
+  touch-action: none; user-select: none; -webkit-user-select: none; z-index: 22;
+}
+.wall-row[hidden] { display: none; }
+.wall-row b { font-size: 12px; font-weight: 600; } .wall-row small { font-size: 9.5px; opacity: 0.7; }
+.wall-row svg rect { fill: #a9533d; } .wall-row svg path { stroke: currentColor; }
+.wall-row.active { outline: 2px solid var(--accent, #f0a53a); background: rgba(240,165,58,.28); }
 .wall-tray b { font-size: 12px; font-weight: 600; }
 .wall-tray small { font-size: 9.5px; opacity: 0.7; }
 .wall-tray .tray-stack { position: relative; width: 52px; height: 34px; }
