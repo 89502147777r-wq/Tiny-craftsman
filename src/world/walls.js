@@ -4,6 +4,7 @@ import { plan, boardsOf, toWorld, BELT } from '../tools/belt.js';
 import { SlabFormView, floorUnder } from './slabForm.js';
 import { buildWindow } from './windows.js';
 import { buildDoor, isDoor } from './doors.js';
+import { buildRoof } from './roof.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -406,21 +407,24 @@ export class WallView {
     this.windows = new THREE.Group(); this.group.add(this.windows);
     this._win = new Map();   // id → { key, group }
     this.liveWin = null;     // { key, w, h, t, x, y, z, yaw }
+    // the flat roofs on the slabs (roof.js)
+    this.roofs = new THREE.Group(); this.group.add(this.roofs);
     for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
     this.dirty = true;
     this.live = null;      // a unit in the hand / being set (wallTool)
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
-    objects.on((id, rec) => { if (['wall', 'unit', 'bed', 'opening', 'belt', 'window'].includes(rec?.type) || this._known?.has(id)) this.dirty = true; });
+    objects.on((id, rec) => { if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) this.dirty = true; });
   }
 
   update() {
     if (!this.dirty) { if (this.fillDirty) this._buildFill(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
-    this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt'), ...O.all('window')].map((r) => r.id));
+    this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt'), ...O.all('window'), ...O.all('roof')].map((r) => r.id));
     this._buildWindows();
+    this._buildRoofs();
     let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, nc = 0, nbb = 0;
     const c3 = new THREE.Color();
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
@@ -728,6 +732,20 @@ export class WallView {
       seen.add(r.id);
     }
     for (const [id, e] of [...this._win]) if (!seen.has(id)) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); this._win.delete(id); }
+  }
+
+  // the roofs: rebuilt with the masonry (the parapet may change)
+  _buildRoofs() {
+    for (const g of [...this.roofs.children]) { this.roofs.remove(g); g.traverse((o) => { o.geometry?.dispose(); }); }
+    const units = this.objects.all('unit');
+    for (const r of this.objects.all('roof')) {
+      const b = this.objects.get(r.slab);
+      if (!b) continue;
+      const g = buildRoof(b, units, r.stage, r.look);
+      if (!g) continue;
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; });
+      this.roofs.add(g);
+    }
   }
 
   ownerOf(hit) {

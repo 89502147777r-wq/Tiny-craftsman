@@ -10,6 +10,7 @@ import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js'
 import { findOpenings, openingAt } from './windowFit.js';
 import { WINDOWS, windowFits } from '../world/windows.js';
 import { DOORS, doorFits } from '../world/doors.js';
+import { ROOF_STAGES } from '../world/roof.js';
 const winName = (k) => (WINDOWS[k] || DOORS[k]).name;
 
 // Walls (aerated concrete blocks or bricks of ½ … 2½ bricks), as on site:
@@ -113,7 +114,7 @@ export class WallTool {
     const app = this.app, v = app.wallView;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
     // laid masonry only (not the unit in the hand, not the stacks on the pallets)
-    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames, v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children], false).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
+    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.lintels, v.mortar, v.frames, v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.roofs], true).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
     return hit ? hit.point.clone() : p;
   }
 
@@ -520,6 +521,12 @@ export class WallTool {
       v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
       app.ui.refresh();
       return;
+    } else if (c.kind === 'roof') {
+      // the roof: onto a cast slab (the top one under the finger)
+      const sl = app.objects.all('belt').filter((b) => isSlab(b) && b.fill > 0.9 && beltContains(b, p.x, p.z) && p.y > b.top + b.H - MM(60)).sort((a, b) => b.top - a.top)[0] || null;
+      c.roofSlab = sl; c.free = undefined; c.snap = null; v.live = null; v.hl = null; v.liveBed = null;
+      v.dirty = true; app.ui.refresh();
+      return;
     } else if (c.kind === 'window' || c.kind === 'door') {
       // a window / a door: into the opening under the finger, made to its size
       if (!c.openings) c.openings = findOpenings(app);
@@ -632,7 +639,7 @@ export class WallTool {
     const kind = this.kind;
     this.tray.classList.toggle('brick', kind !== 'block');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { block: 'Газоблок', brick: 'Кирпич', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь' };
+    const NAMES = { block: 'Газоблок', brick: 'Кирпич', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля' };
     if (lab) lab.textContent = this.app.settings.wallHalf && (kind === 'block' || kind === 'brick') ? (kind === 'block' ? '½ блока' : '½ кирпича') : NAMES[kind] || 'Блок';
     const w = this._trayWall(), left = w ? this.palletLeft(w) : 0;
     this.tray.title = w ? `На поддоне: ${left}` : '';
@@ -645,6 +652,7 @@ export class WallTool {
   }
 
   _carryDrop() {
+    this._roofSlab = this.carry.roofSlab || null;
     const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage, belt = this.carry.belt, bc = this.carry.beltCage, win = this.carry.win;
     this._carryCancel();
     if (ck === 'belt') {
@@ -652,6 +660,17 @@ export class WallTool {
       if (belt.exists) { app.ui.toast('На этих стенах опалубка пояса уже стоит'); return; }
       app.journal.act('belt-form', {}, app.clock, () => app.objects.add(belt.rec));
       app.ui.toast(`Опалубка пояса: доски по обе стороны стен, ${belt.lenM.toFixed(1).replace('.', ',')} м стен, высота пояса 250 мм — теперь каркас («Каркас»), потом бетон`);
+      return;
+    }
+    if (ck === 'roof') {
+      const sl = this._roofSlab, look = app.settings.roofLook || 'grey';
+      if (!sl) { app.ui.toast('Кровля — на залитое перекрытие: коснитесь его верха (внутри парапета)'); return; }
+      const r = app.objects.all('roof').find((x) => x.slab === sl.id);
+      if (r && r.stage >= 5) { app.ui.toast('Кровля готова — все слои уложены'); return; }
+      const stage = (r?.stage || 0) + 1;
+      app.journal.act('roof', {}, app.clock, () => { if (r) app.objects.update(r.id, { stage, look }); else app.objects.add({ type: 'roof', slab: sl.id, stage, look }); });
+      const why = ['пароизоляционная плёнка по плите', 'плиты XPS 150 мм вразбежку', 'клиновидные плиты: уклон 2 % к воронке', 'ПВХ-мембрана полосами, швы сварены, на парапет 300 мм, воронка', 'отлив на парапет'][stage - 1];
+      app.ui.toast(`Кровля, слой ${stage} из 5 — ${ROOF_STAGES[stage - 1]}: ${why}${stage < 5 ? '. Следующий слой — ещё раз' : ''}`);
       return;
     }
     if (ck === 'window' || ck === 'door') {
@@ -731,6 +750,7 @@ export class WallTool {
     const app = this.app, walls = app.objects.all('wall');
     const c = this.carry;
     if (c?.kind === 'belt') return c.belt ? (c.belt.exists ? 'Здесь опалубка пояса уже стоит' : `Опалубка по верху стен: ${c.belt.lenM.toFixed(1).replace('.', ',')} м — отпустите`) : 'Поднесите к верхнему ряду кладки — опалубка встанет по всему его контуру';
+    if (c?.kind === 'roof') { if (!c.roofSlab) return 'Поднесите к залитому перекрытию — кровля ляжет внутри парапета'; const r = this.app.objects.all('roof').find((x) => x.slab === c.roofSlab.id), st = (r?.stage || 0) + 1; return st > 5 ? 'Кровля готова' : `Кровля: слой ${st} из 5 — ${ROOF_STAGES[st - 1]}. Отпустите`; }
     if (c?.kind === 'window' || c?.kind === 'door') { const door = c.kind === 'door', key = door ? this.app.settings.doorKey || 'door1' : this.app.settings.windowKey || 'pvc2'; return c.win ? (c.win.why2 ? 'Красный — ' + c.win.why2 : `${winName(key)}: ${c.win.w} × ${c.win.h} мм — отпустите`) : door ? 'Поднесите дверь к проёму до пола — она встанет по его размеру' : 'Поднесите окно к проёму в кладке — оно встанет по его размеру'; }
     if (c?.kind === 'slab') return c.belt ? (c.belt.exists ? 'Здесь опалубка перекрытия уже стоит' : `Перекрытие ${c.belt.area.toFixed(1).replace('.', ',')} м², ${cantText(c.belt.rec)} — отпустите`) : 'Поднесите к верху стен (или армопояса) — перекрытие встанет на весь дом' + ((this.app.settings.slabCant || 0) ? ', консоль — с той стороны, где коснулись' : '');
     if (c?.kind === 'ucage') return c.cage ? (c.cage.has ? 'В этих U-блоках каркас уже есть' : `Каркас в ${c.cage.run.length} U-блок(а) — отпустите`) : c.beltCage ? (isSlab(c.beltCage) ? 'Арматура перекрытия — отпустите' : 'Каркас пояса — отпустите') : 'Поднесите каркас к ряду U-блоков, в опалубку пояса или перекрытия';
@@ -741,7 +761,8 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof'].includes(this.kind)) return {
+      roof: 'Плоская кровля: выложите парапет блоками по краю перекрытия, выберите вид и тяните из лотка на перекрытие — каждый раз ложится следующий слой (пароизоляция, утеплитель, уклон, мембрана с воронкой, отлив); «Удалить» снимает верхний слой',
       door: 'Дверь: выберите вид и тяните из лотка к проёму до пола, оставленному в кладке (сверху перемычка, U-блоки или перекрытие) — дверь подгонится по его размеру; снять — «Удалить»',
       window: 'Окно: выберите вид и тяните из лотка к проёму, оставленному в кладке (сверху перемычка, U-блоки или перекрытие) — окно подгонится по его размеру; снять — «Удалить»',
       slab: 'Перекрытие: поднесите к верху стен или армопояса — фанера на балках и стойках по всему дому, доски по краю (консоль — с той стороны, где коснулись); потом «Каркас», бетон шлангом, вибратор, правило; стойки и опалубку снимают («Удалить»), когда бетон наберёт прочность',
@@ -782,6 +803,12 @@ export class WallTool {
       if (app.objects.all('unit').some((u) => u.wall === o.wall && u.lintel && u.s0 < o.s1 && u.s1 > o.s0)) { app.ui.toast('Над проёмом уже перемычка — сначала снимите её'); return; }
       app.journal.act('opening-remove', {}, app.clock, () => app.objects.remove(id));
       app.ui.toast('Проём убран — ряды будут сплошными');
+      return;
+    }
+    if (id && app.objects.get(id)?.type === 'roof') {
+      const r = app.objects.get(id);
+      app.journal.act('roof-remove', {}, app.clock, () => { if (r.stage > 1) app.objects.update(id, { stage: r.stage - 1 }); else app.objects.remove(id); });
+      app.ui.toast(r.stage > 1 ? `Сняли слой: ${ROOF_STAGES[r.stage - 1]}` : 'Кровлю сняли');
       return;
     }
     if (id && app.objects.get(id)?.type === 'window') {
