@@ -49,7 +49,7 @@ const PROF = {
 };
 
 const MATS = {};
-function mats() {
+export function mats() {
   if (MATS.pvc) return MATS;
   const std = (o) => new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, ...o });
   MATS.pvc = std({ color: 0xf1f1ec, roughness: 0.32 });
@@ -68,7 +68,7 @@ function mats() {
 }
 
 // a rectangle of profile swept round [x0, x1] × [y0, y1] at depth z (mitred corners)
-function sweep(out, x0, y0, x1, y1, prof, z = 0, sides = [1, 1, 1, 1]) {
+export function sweep(out, x0, y0, x1, y1, prof, z = 0, sides = [1, 1, 1, 1]) {
   const pos = [];
   const at = (side, a) => [
     [[x0 + a, y0 + a], [x1 - a, y0 + a]],   // bottom
@@ -89,7 +89,7 @@ function sweep(out, x0, y0, x1, y1, prof, z = 0, sides = [1, 1, 1, 1]) {
   g.computeVertexNormals();
   out.push(g);
 }
-function box(out, cx, cy, cz, sx, sy, sz, rx = 0) {
+export function box(out, cx, cy, cz, sx, sy, sz, rx = 0) {
   const g = new THREE.BoxGeometry(sx, sy, sz);
   if (rx) g.rotateX(rx);
   g.translate(cx, cy, cz);
@@ -97,7 +97,7 @@ function box(out, cx, cy, cz, sx, sy, sz, rx = 0) {
   out.push(g.toNonIndexed());
 }
 // a glazing unit: two panes, the spacer along the edges between them, the seals over it
-function glazing(G, x0, y0, x1, y1, z, gap = 16) {
+export function glazing(G, x0, y0, x1, y1, z, gap = 16) {
   const w = x1 - x0, h = y1 - y0, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   for (const dz of [-gap / 2 - 2, gap / 2 + 2]) box(G.glass, cx, cy, z + dz, w, h, 4);
   sweep(G.spacer, x0 + 2, y0 + 2, x1 - 2, y1 - 2, [[0, -gap / 2], [0, gap / 2], [9, gap / 2], [9, -gap / 2]], z);
