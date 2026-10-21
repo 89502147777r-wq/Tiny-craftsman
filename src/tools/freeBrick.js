@@ -316,29 +316,37 @@ function edgeNear(t, p) {
 // and a head joint only where a neighbour of the course is there — nothing at free ends
 export function mortarOf(units) {
   const out = [], list = units.filter((u) => u.free && u.p && u.s && u.q && u.kind !== 'prop').map(boxOf);
-  const cell = 0.03, grid = new Map(), key = (x, z) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
+  const cell = 0.07, grid = new Map(), key = (x, z) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;   // (a cell longer than a block: the neighbours are in the 3 × 3 round it)
   list.forEach((b, i) => { const k = key(b.x, b.z); (grid.get(k) || grid.set(k, []).get(k)).push(i); });
+  // the half size of a box along a direction
+  const half = (b, ax, az) => Math.abs(b.hl * (b.ux * ax + b.uz * az)) + Math.abs(b.hw * (-b.uz * ax + b.ux * az));
   for (const [i, b] of list.entries()) {
     const D = dims(b.kind), inset = 1 * S, bed = bedOf(b.u, D);   // (struck flush with the faces: the joint shows)
     // the bed
     out.push({ x: b.x, y: b.bot - bed / 2, z: b.z, yaw: b.yaw, l: b.hl * 2 - 2 * inset, h: bed, w: b.hw * 2 - 2 * inset });
-    // head joints to the neighbours along it (each pair once)
+    // the vertical joints to the neighbours of the course (each pair once): end to end, the
+    // two leaves side by side, a header against a stretcher, a corner — wherever two faces
+    // of the course face each other a joint apart, over the length they share
     const cx = Math.floor(b.x / cell), cz = Math.floor(b.z / cell);
     for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gz = cz - 1; gz <= cz + 1; gz++) for (const j of grid.get(`${gx},${gz}`) || []) {
       if (j <= i) continue;
       const o = list[j];
-      if (o.kind !== b.kind || Math.abs(o.bot - b.bot) > 0.0003) continue;
-      const dx = o.x - b.x, dz = o.z - b.z, along = dx * b.ux + dz * b.uz, across = -dx * b.uz + dz * b.ux;
-      const par = Math.abs(Math.sin(o.yaw - b.yaw)) < 0.05;
-      let gap, mx, mz, len, wid;
-      if (par && Math.abs(across) < 0.0008) {           // end to end
-        gap = Math.abs(along) - b.hl - o.hl; if (gap < 0 || gap > D.J * 1.8) continue;
-        const s = Math.sign(along) * (b.hl + gap / 2); mx = b.x + b.ux * s; mz = b.z + b.uz * s; len = gap; wid = b.hw * 2 - 2 * inset;
-        out.push({ x: mx, y: (b.bot + b.top) / 2 - 0.5 * S, z: mz, yaw: b.yaw, l: len, h: b.top - b.bot - 1 * S, w: wid });
-      } else if (par && Math.abs(along) < 0.0008 + Math.abs(b.hl - o.hl)) {   // side by side (two leaves)
-        gap = Math.abs(across) - b.hw - o.hw; if (gap < 0 || gap > D.J * 1.8) continue;
-        const s = Math.sign(across) * (b.hw + gap / 2); mx = b.x - b.uz * s; mz = b.z + b.ux * s;
-        out.push({ x: mx, y: (b.bot + b.top) / 2 - 0.5 * S, z: mz, yaw: b.yaw, l: b.hl * 2 - 2 * inset, h: b.top - b.bot - 1 * S, w: gap });
+      if (Math.abs(o.bot - b.bot) > 0.0004 || Math.abs(o.top - b.top) > 0.0006) continue;
+      const c = Math.abs(Math.cos(o.yaw - b.yaw)), sn = Math.abs(Math.sin(o.yaw - b.yaw));
+      if (!(c > 0.998 || sn > 0.998)) continue;   // (square to each other only)
+      const Jmax = Math.max(dims(b.kind).J, dims(o.kind).J) * 1.8 + 1.5 * S;
+      for (const [nx, nz, mx, mz, yaw] of [[b.ux, b.uz, -b.uz, b.ux, b.yaw + Math.PI / 2], [-b.uz, b.ux, b.ux, b.uz, b.yaw]]) {
+        const pb = b.x * nx + b.z * nz, po = o.x * nx + o.z * nz, rb = half(b, nx, nz), ro = half(o, nx, nz);
+        const gap = Math.abs(po - pb) - rb - ro;
+        if (gap < -0.3 * S || gap > Jmax) continue;
+        // the length they share along the face
+        const qb = b.x * mx + b.z * mz, qo = o.x * mx + o.z * mz, sb = half(b, mx, mz), so = half(o, mx, mz);
+        const m0 = Math.max(qb - sb, qo - so) + inset, m1 = Math.min(qb + sb, qo + so) - inset;
+        if (m1 - m0 < 20 * S) continue;
+        const g = Math.max(gap, 0.5 * S), n0 = pb + Math.sign(po - pb) * (rb + g / 2), mm = (m0 + m1) / 2;
+        // (a box: l along its yaw = the length shared, w across = the joint)
+        out.push({ x: nx * n0 + mx * mm, y: (b.bot - bed + b.top - 1 * S) / 2, z: nz * n0 + mz * mm, yaw: Math.atan2(-mz, mx), l: m1 - m0, h: b.top - 1 * S - (b.bot - bed), w: g });   // (down through the bed: no hole under it)
+        break;
       }
     }
   }
