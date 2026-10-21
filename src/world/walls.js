@@ -5,6 +5,7 @@ import { SlabFormView, floorUnder } from './slabForm.js';
 import { buildWindow } from './windows.js';
 import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
+import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -409,22 +410,29 @@ export class WallView {
     this.liveWin = null;     // { key, w, h, t, x, y, z, yaw }
     // the flat roofs on the slabs (roof.js)
     this.roofs = new THREE.Group(); this.group.add(this.roofs);
+    // the facade on the outside of the walls (facade.js): one group per face
+    this.facades = new THREE.Group(); this.group.add(this.facades);
+    this.liveFacade = null; this.facadeDirty = true; this._faces = null; this._facKnown = new Set();
     for (const m of [this.blocks, this.bricks]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m === this.blocks ? this.max.block * 3 : this.max.brick * 3), 3);
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
     this.dirty = true;
     this.live = null;      // a unit in the hand / being set (wallTool)
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
-    objects.on((id, rec) => { if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) this.dirty = true; });
+    objects.on((id, rec) => {
+      if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
+      if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
+    });
   }
 
   update() {
-    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); return; }
+    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt'), ...O.all('window'), ...O.all('roof')].map((r) => r.id));
     this._buildWindows();
     this._buildRoofs();
+    this._buildFacades();
     let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, nc = 0, nbb = 0;
     const c3 = new THREE.Color();
     this.owner = { blocks: [], bricks: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
@@ -747,6 +755,23 @@ export class WallView {
       if (!g) continue;
       g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
       this.roofs.add(g);
+    }
+  }
+
+  // the faces of the walls (cached until the masonry changes)
+  facadeFaces() { return this._faces || (this._faces = facadeFaces(this.objects)); }
+  _buildFacades() {
+    this.facadeDirty = false;
+    for (const g of [...this.facades.children]) { this.facades.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); }); }
+    const recs = this.objects.all('facade'), live = this.liveFacade;
+    for (const r of recs) this._facKnown.add(r.id);
+    if (!recs.length && !live) return;
+    for (const F of this.facadeFaces()) {
+      const r = recOf(recs, F), lv = live && live.key === F.key ? live : null;
+      if (!r && !lv) continue;
+      const g = buildFacade(F, r || {}, lv);
+      g.traverse((o) => { if (o.isMesh && !o.userData.noPick) o.userData.uOwner = r?.id ?? null; });
+      this.facades.add(g);
     }
   }
 
