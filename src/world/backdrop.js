@@ -474,8 +474,9 @@ function panoSphere(map, haze, R, exposure) {
         float lum = dot(c, vec3(0.3, 0.59, 0.11));
         float sky = smoothstep(0.0, 0.1, d.y) * smoothstep(0.18, 0.45, lum / max(0.25, ${(0.6).toFixed(2)})) * smoothstep(-0.12, 0.04, c.b - c.r);
         // rain: grey low cloud, everything duller
-        c = mix(c, mix(vec3(lum), vec3(0.42, 0.44, 0.47) * (0.7 + 0.3 * smoothstep(0.0, 0.5, d.y)), sky), uOver * 0.85);
-        c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))), uOver * 0.35);
+        // (only the sky goes grey; the place keeps its colours, a little duller under the cloud)
+        c = mix(c, vec3(0.5, 0.52, 0.55) * (0.75 + 0.35 * smoothstep(0.0, 0.5, d.y)), uOver * 0.85 * sky);
+        c = mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))), uOver * 0.12);
         // dusk / dawn: the sky goes orange low down and towards the sun, the rest warmer
         float toSun = max(dot(d, normalize(uSunDir)), 0.0);
         vec3 duskSky = mix(vec3(1.0, 0.46, 0.2), vec3(0.42, 0.36, 0.62), smoothstep(0.02, 0.45, d.y)) * (0.55 + 1.1 * pow(toSun, 6.0));

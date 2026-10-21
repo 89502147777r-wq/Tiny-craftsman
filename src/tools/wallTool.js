@@ -54,6 +54,9 @@ export class WallTool {
     // under the tray: a course along a line
     this.rowBtn = typeof document !== 'undefined' ? document.getElementById('wall-row') : null;
     this.rowBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.toggleRow(); });
+    // and the delete: straight from laying and back (no going back through the menu)
+    this.delBtn = typeof document !== 'undefined' ? document.getElementById('wall-del') : null;
+    this.delBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (this.rowJob) this._rowStop(); this.setMode(this.mode === 'delete' ? 'lay' : 'delete'); app.ui.toast(this.mode === 'delete' ? 'Удаление: коснитесь того, что снять. Ещё раз «Удалить» — снова кладка' : 'Снова кладка'); });
     if (this.tray) {
       // the point under the finger: on the masonry when it is over it (else the ground behind it)
       const g = (e) => this._pt(app.gestures.ground(e.clientX, e.clientY) || this._lastP || new THREE.Vector3(), e);
@@ -819,6 +822,7 @@ export class WallTool {
   syncTray() {
     if (!this.tray) return;
     const on = this.app.tool === 'wall' && this.mode === 'lay';
+    if (this.delBtn) { this.delBtn.hidden = !(this.app.tool === 'wall' && (this.mode === 'lay' || this.mode === 'delete')); this.delBtn.classList.toggle('active', this.mode === 'delete'); }
     this.tray.hidden = !on;
     if (this.rowBtn) { this.rowBtn.hidden = !(on && (this.kind === 'block' || this.kind === 'brick')); this.rowBtn.classList.toggle('active', !!this.rowMode); }
     if (!on) return;
