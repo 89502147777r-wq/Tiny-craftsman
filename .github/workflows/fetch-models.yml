@@ -1,0 +1,36 @@
+# One-off (removed after use): downloads the chosen CC BY models from Sketchfab with the
+# repository secret SKETCHFAB_TOKEN and commits them to this branch, in incoming/.
+name: Fetch Sketchfab models
+on:
+  push:
+    branches: [fetch-models2]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download
+        env:
+          TOKEN: ${{ secrets.SKETCHFAB_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "SKETCHFAB_TOKEN is not set"; exit 1; fi
+          mkdir -p incoming
+          for pair in brick:60e8f501a6dc421e9eae3adf7d08789e cinder:2358b37cb7d142dca00aff66c678f5cd gutterset:2f7abd06f0c34484a7570e6cb23810a1 gutterpack:4185ff2f593444939401884235529532 blockset:dfc6c8f51ce24919a1170b36b9001cce brickpallet:aeab2b4fd7fb424cb7e68c692048e4f9; do
+            name=${pair%%:*}; uid=${pair##*:}
+            curl -sS -H "Authorization: Token $TOKEN" "https://api.sketchfab.com/v3/models/$uid/download" -o dl.json
+            url=$(python3 -c "import json;d=json.load(open('dl.json'));print((d.get('glb') or d.get('gltf') or {}).get('url','') if isinstance(d,dict) else '')")
+            kind=$(python3 -c "import json;d=json.load(open('dl.json'));print('glb' if isinstance(d,dict) and d.get('glb') else 'zip')")
+            if [ -z "$url" ]; then echo "no download for $name: $(head -c 200 dl.json)"; continue; fi
+            curl -sSL "$url" -o "incoming/$name.$kind"
+            ls -la "incoming/$name.$kind"
+          done
+          rm -f dl.json
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add incoming
+          git commit -m "Downloaded Sketchfab models (CC BY)" || echo "nothing downloaded"
+          git push
