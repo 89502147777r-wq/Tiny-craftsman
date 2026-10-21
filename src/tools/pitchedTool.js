@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { boxOf } from './freeBrick.js';
-import { wingShape, roofTop, STAGES, FINGER, PITCHED, PITCHES, ROOF_TYPES, COVERS, COVER_COLOURS } from '../world/pitched.js';
+import { wingShape, roofTop, planeAt, STAGES, FINGER, PITCHED, PITCHES, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
 //   plate – carried from the tray onto the top of the walls: the house is found (its plan
@@ -16,7 +16,7 @@ const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 const _ray = new THREE.Raycaster();
 const NAME = Object.fromEntries(STAGES);
 const STEP = { frame: PITCHED.step, memb: 1000, battens: PITCHED.step };
-const PREV = { frame: 'plate', memb: 'frame', battens: 'memb', cover: 'battens', trim: 'cover' };
+const PREV = { frame: 'plate', memb: 'frame', battens: 'memb', cover: 'battens', trim: 'cover', gutter: 'trim' };
 
 // the house under the roof: the plan of the masonry in a grid along its walls, filled in,
 // cut into rectangles → the wings; the top of the walls (or of the ring beam on them)
@@ -94,7 +94,8 @@ export function findHouse(app) {
   let y0 = Math.max(...units.map((b) => b.top));
   for (const b of app.objects.all('belt')) if (b.fill > 0.5 && b.top + b.H > y0 - MM(50) && b.top + b.H < y0 + MM(400)) y0 = Math.max(y0, b.top + b.H);
   const T = [...units.map((b) => 2 * Math.min(b.hw, b.hl))].sort((p, q) => p - q)[Math.floor(units.length / 2)];
-  return { y0: +y0.toFixed(6), T: +T.toFixed(6), wings: wings.map((w) => ({ cx: +w.cx.toFixed(6), cz: +w.cz.toFixed(6), ux: +w.ux.toFixed(6), uz: +w.uz.toFixed(6), A: +w.A.toFixed(6), B: +w.B.toFixed(6), e: w.e, x: w.x.map((v) => +v.toFixed(6)) })) };
+  const g = Math.min(...units.map((b) => b.bot)) - MM(20);
+  return { y0: +y0.toFixed(6), T: +T.toFixed(6), g: +g.toFixed(6), wings: wings.map((w) => ({ cx: +w.cx.toFixed(6), cz: +w.cz.toFixed(6), ux: +w.ux.toFixed(6), uz: +w.uz.toFixed(6), A: +w.A.toFixed(6), B: +w.B.toFixed(6), e: w.e, x: w.x.map((v) => +v.toFixed(6)) })) };
 }
 
 export class PitchedWork {
@@ -102,28 +103,50 @@ export class PitchedWork {
   get stage() { return this.app.settings.proofStage || 'plate'; }
   get isCarry() { return !FINGER.has(this.stage); }
   get rec() { return this.app.objects.all('proof')[0] || null; }
+  // the wing the type / the pitch / the slope go to (−1: all of them)
+  get wing() { const r = this.rec, k = this.app.settings.proofWing ?? -1; return r && k >= 0 && k < r.wings.length ? k : -1; }
   opts() {
-    const s = this.app.settings, type = s.proofType || 'gable', kind = s.proofCover || 'metal';
-    const pitch = PITCHES[type].includes(s.proofPitch) ? s.proofPitch : PITCHES[type][type === 'mono' ? 1 : 2];
+    const s = this.app.settings, r = this.rec, w = this.wing >= 0 ? r.wings[this.wing] : null;
+    const type = w?.style || (r ? r.style : s.proofType) || s.proofType || 'gable', kind = s.proofCover || 'metal';
+    const p0 = w?.pitch || (r ? r.pitch : s.proofPitch) || s.proofPitch;
+    const pitch = PITCHES[type].includes(p0) ? p0 : PITCHES[type][type === 'mono' ? 1 : 2];
     const col = COVER_COLOURS[kind][s.proofCol] ? s.proofCol : Object.keys(COVER_COLOURS[kind])[0];
-    return { style: type, pitch, cover: { kind, col } };
+    return { style: type, pitch, cover: { kind, col }, md: w?.md || 0 };
   }
-  // the ends of the wings as the type says (a join stays a join)
-  _ends(wings, type) { return wings.map((w) => ({ ...w, e: w.e.map((e) => (e === 'join' ? 'join' : type === 'hip' ? 'hip' : 'gable')) })); }
+  _ends(wings) { return wings; }
   _live(live) { const v = this.app.wallView; v.liveProof = live; v.proofDirty = true; }
   _save(patch, label) {
     const app = this.app, r = this.rec;
     app.journal.act(label, {}, app.clock, () => { if (r) app.objects.update(r.id, { ...patch }); else app.objects.add({ type: 'proof', ...patch }); });
   }
-  // the settings changed: the roof follows them while it can (the type and the pitch — till the
-  // rafters are up; the covering — till it is laid)
-  applyOpts() {
+  // the settings changed (o: what changed): the roof follows while it can — the type, the pitch,
+  // the slope of a wing till its rafters are up; the covering till it is laid
+  applyOpts(o = {}) {
     const r = this.rec; if (!r) return;
-    const o = this.opts(), patch = {};
-    if (!r.done?.frame && (r.style !== o.style || r.pitch !== o.pitch)) { patch.style = o.style; patch.pitch = o.pitch; patch.wings = this._ends(r.wings, o.style); }
-    if (!r.done?.cover && (r.cover?.kind !== o.cover.kind || r.cover?.col !== o.cover.col)) patch.cover = o.cover;
-    if (Object.keys(patch).length) this.app.objects.update(r.id, patch);
+    const k = this.wing, framed = (wi) => r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === wi);
+    const patch = {};
+    if (o.style || o.pitch || o.md != null) {
+      const list = k >= 0 ? [k] : r.wings.map((_, i) => i), blocked = list.filter(framed);
+      if (blocked.length) { this.app.ui.toast('На этом крыле уже стоят стропила — тип и уклон не меняются (снимите стропила «Удалить»)'); }
+      else {
+        const wings = r.wings.map((w, i) => {
+          if (!list.includes(i)) return w;
+          const nw = { ...w };
+          if (o.style) { if (k >= 0) nw.style = o.style; else delete nw.style; delete nw.pitch; }
+          if (o.pitch) { if (k >= 0) nw.pitch = o.pitch; else delete nw.pitch; }
+          if (o.md != null) nw.md = o.md;
+          return nw;
+        });
+        patch.wings = wings;
+        if (k < 0) { if (o.style) patch.style = o.style; if (o.pitch) patch.pitch = o.pitch; if (o.style && !o.pitch) patch.pitch = PITCHES[o.style][o.style === 'mono' ? 1 : 2]; }
+        else if (o.style && !o.pitch) patch.wings[k].pitch = PITCHES[o.style][o.style === 'mono' ? 1 : 2];
+      }
+    }
+    if (o.cover) { if (r.done?.cover) this.app.ui.toast('Покрытие уже уложено — цвет не меняется'); else patch.cover = this.opts().cover; }
+    if (Object.keys(patch).length) this._save(patch, 'proof-opts');
   }
+  // the slope of a mono-pitch wing: which way it rises (round the four sides)
+  turnSlope() { const r = this.rec; if (!r) return; const k = this.wing, w = r.wings[k >= 0 ? k : 0]; this.applyOpts({ md: ((w.md || 0) + 1) % 4 }); }
 
   // ---- the finger on the roof: the point of its surface (the top of the rafters) under it ----
   _hit(e) {
@@ -139,8 +162,8 @@ export class PitchedWork {
     let wi = -1, best = -Infinity;
     shapes.forEach((f, i) => { const [a, dd] = f.L(x, z); if (f.inside(a, dd) && f.top(a, dd) > best) { best = f.top(a, dd); wi = i; } });
     if (wi < 0) return null;
-    const [a] = shapes[wi].L(x, z);
-    return { wi, a, f: shapes[wi] };
+    const [a, dd] = shapes[wi].L(x, z);
+    return { wi, a, d: dd, f: shapes[wi] };
   }
   down(p, e) {
     const app = this.app, L = this.stage, r = this.rec;
@@ -229,6 +252,11 @@ export class PitchedWork {
       this._live({ ghost: rec });
       return { ok: true };
     }
+    if (L === 'gutter') {
+      if (!r?.done?.trim) { this._live(null); return { ok: false, why: 'Водосток — когда стоят лобовые доски (этап «Конёк и планки»)' }; }
+      if (r.done.gutter) return { ok: false, why: 'Водосток уже висит' };
+      this.place = { gutter: true }; this._live({ stage: 'gutter', all: true }); return { ok: true };
+    }
     if (!r || !r.done?.cover) { this._live(null); return { ok: false, why: 'Конёк и планки — когда уложено покрытие' }; }
     if (r.done.trim) return { ok: false, why: 'Конёк и планки уже стоят' };
     this.place = { trim: true };
@@ -246,12 +274,13 @@ export class PitchedWork {
       return;
     }
     const r = this.rec;
+    if (P.gutter) { this._save({ done: { ...r.done, gutter: true } }, 'proof-gutter'); app.ui.toast('Водосток: желоба на крюках под карнизами, трубы по углам до земли — в дождь из них течёт вода'); return; }
     this._save({ done: { ...r.done, trim: true } }, 'proof-trim');
-    app.ui.toast('Конёк, рёбра, лобовая доска, ветровые планки и софиты — крыша готова');
+    app.ui.toast('Конёк, рёбра, лобовая доска, ветровые планки и софиты — дальше водосток');
   }
   status(carry) {
     const L = this.stage, r = this.rec;
-    if (carry) return this.place ? 'Отпустите' : (L === 'plate' ? 'Поднесите мауэрлат к верху стен' : 'Поднесите конёк к крыше');
+    if (carry) return this.place ? 'Отпустите' : (L === 'plate' ? 'Поднесите мауэрлат к верху стен' : L === 'gutter' ? 'Поднесите водосток к крыше' : 'Поднесите конёк к крыше');
     const left = r ? this.left(r, L) : 1;
     return {
       plate: r ? 'Мауэрлат лежит — дальше «Стропила»' : 'Скатная крыша: выберите тип, уклон и покрытие, потом тяните мауэрлат из лотка на верх стен — крыша встанет по дому (Г-, Т-образный — крыльями с ендовами)',
@@ -260,6 +289,7 @@ export class PitchedWork {
       battens: 'Обрешётка: ведите пальцем — контробрешётка по стропилам и рейки поперёк (под мягкую черепицу — OSB)',
       cover: `${COVERS[r?.cover?.kind || 'metal']}: ведите пальцем вдоль ската — листы ложатся один за другим, на вальмах и у ендов подрезаются`,
       trim: 'Конёк и планки: тяните из лотка на крышу',
+      gutter: 'Водосток: тяните из лотка на крышу — желоба по карнизам, трубы по углам',
     }[L];
   }
   // «Удалить» on the roof: the last stage's last stretch comes off
@@ -274,4 +304,63 @@ export class PitchedWork {
       return;
     }
   }
+}
+
+// The windows in the roof: carried from the tray onto a slope of the pitched roof (between the
+// rafters, the covering cut round them) or onto a flat roof (on a kerb)
+export class RoofWindowWork {
+  constructor(app) { this.app = app; this.place = null; }
+  get key() { return this.app.settings.rwinKey || 's2'; }
+  get col() { return this.app.settings.rwinCol || 'graphite'; }
+  carryMove(p, e) {
+    const app = this.app, pw = app.wallTool.proof, r = pw.rec, [, Wm, Hm] = RWIN[this.key], W = MM(Wm), H = MM(Hm);
+    this.place = null;
+    // a slope of the pitched roof under the finger
+    const h = r && pw._hit(e);
+    if (h) {
+      const w = r.wings[h.wi], f = h.f, a = h.a, d = h.d;
+      const pa = planeAt(r, w, f, a, d);
+      if (!pa) { this._live(null); return { ok: false, why: 'Окно — на скат' }; }
+      const P = pa.P;
+      // between the rafters (in the middle of a bay), the height where the finger is
+      const x0 = P.end || P.xd ? P.xa(0) : f.lo, step = MM(PITCHED.step);
+      let x = x0 + MM(PITCHED.rafterW) + (Math.floor((pa.x - x0) / step) + 0.5) * step;
+      let t = Math.max(H / 2 + MM(300), Math.min(P.L - H / 2 - MM(300), pa.t));
+      const corners = [[-W / 2, -H / 2], [W / 2, -H / 2], [-W / 2, H / 2], [W / 2, H / 2]];
+      let why = null;
+      if (!(r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === h.wi))) why = 'Окно в скат — когда стоят стропила';
+      else if (corners.some(([dx, dt]) => x + dx < P.xa(t + dt) + MM(150) || x + dx > P.xb(t + dt) - MM(150))) why = 'Здесь окно не помещается — ближе к середине ската';
+      else if (app.objects.all('rwin').some((q) => q.host === r.id && q.wi === h.wi && q.plane === P.key && Math.abs(q.x - x) < W && Math.abs(q.t - t) < H + MM(200))) why = 'Здесь уже окно';
+      this.place = { host: r.id, wi: h.wi, plane: P.key, x: +x.toFixed(6), t: +t.toFixed(6), why };
+      this._live({ wi: h.wi, plane: P.key, x, t, key: this.key, col: this.col });
+      return { ok: !why, why };
+    }
+    // a flat roof (its covering) under the finger
+    const roofs = app.wallView.roofs;
+    if (e && e.clientX !== undefined && roofs.children.length) {
+      _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
+      const hit = _ray.intersectObject(roofs, true)[0];
+      if (hit && hit.face && hit.face.normal.y > 0.8) {
+        const id = hit.object.userData.uOwner, rf = id != null ? app.objects.get(id) : null;
+        const why = !rf || !(rf.memS?.length || rf.memS === 'all') ? 'Окно в плоскую крышу — на готовую мембрану' : null;
+        const b = rf && app.objects.get(rf.slab), yaw = b ? Math.atan2(-b.u[1], b.u[0]) : 0;
+        this.place = { flat: true, host: id, x: +hit.point.x.toFixed(6), y: +hit.point.y.toFixed(6), z: +hit.point.z.toFixed(6), yaw: +yaw.toFixed(5), why };
+        this._live({ flat: true, x: hit.point.x, y: hit.point.y, z: hit.point.z, yaw, key: this.key, col: this.col });
+        return { ok: !why, why };
+      }
+    }
+    this._live(null);
+    return { ok: false, why: 'Окно — на скат крыши (между стропилами) или на плоскую кровлю' };
+  }
+  _live(l) { const v = this.app.wallView; v.liveRwin = l; v.proofDirty = true; }
+  carryDrop() {
+    const app = this.app, P = this.place;
+    this.place = null; this._live(null);
+    if (!P) { app.ui.toast('Окно — на скат крыши или на плоскую кровлю'); return; }
+    if (P.why) { app.ui.toast(P.why); return; }
+    const { why, ...rec } = P; void why;
+    app.journal.act('rwin', {}, app.clock, () => app.objects.add({ type: 'rwin', key: this.key, col: this.col, ...rec }));
+    app.ui.toast(P.flat ? `Окно ${RWIN[this.key][0]} на плоскую кровлю: стакан 150 мм, мембрана заведена на него, рама и стеклопакет` : `Мансардное окно ${RWIN[this.key][0]}: между стропилами, сверху и снизу ригели, вокруг — оклад, кровля подрезана`);
+  }
+  status() { return this.place ? (this.place.why ? 'Красный — ' + this.place.why : 'Отпустите') : 'Окно в крышу: тяните из лотка на скат (встанет между стропилами) или на плоскую кровлю'; }
 }

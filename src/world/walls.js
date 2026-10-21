@@ -6,7 +6,7 @@ import { buildWindow } from './windows.js';
 import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
-import { buildPitched } from './pitched.js';
+import { buildPitched, flatWindow, wingShape } from './pitched.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -424,7 +424,7 @@ export class WallView {
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
     objects.on((id, rec) => {
-      if (rec?.type === 'proof' || this._proofIds?.has(id)) { this.proofDirty = true; return; }
+      if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
     });
@@ -766,17 +766,31 @@ export class WallView {
 
   _buildProofs() {
     this.proofDirty = false;
-    const key = JSON.stringify([this.objects.all('proof'), this.liveProof]);
+    const sel = this.app?.settings?.wallKind === 'proof' ? (this.app.settings.proofWing ?? -1) : -1;
+    const key = JSON.stringify([this.objects.all('proof'), this.objects.all('rwin'), this.liveProof, this.liveRwin, sel]);
     if (key === this._proofKey) return;
     this._proofKey = key;
     for (const g of [...this.proofs.children]) { this.proofs.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); }); }
-    const recs = this.objects.all('proof'), live = this.liveProof;
-    this._proofIds = new Set(recs.map((r) => r.id));
+    const recs = this.objects.all('proof'), live = this.liveProof, lw = this.liveRwin, wins = this.objects.all('rwin');
+    this._proofIds = new Set([...recs, ...wins].map((r) => r.id));
     const list = recs.map((r) => [r, live && !live.ghost ? live : null]);
     if (live?.ghost) list.push([live.ghost, null]);
     for (const [r, lv] of list) {
-      const g = buildPitched(r, lv);
+      const ws = wins.filter((q) => q.host === r.id && !q.flat);
+      if (lw && !lw.flat && r.id != null) ws.push(lw);
+      const g = buildPitched(r, lv, ws);
       g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
+      // the wing chosen for its own type: its outline over the walls
+      if (sel >= 0 && r.wings?.[sel]) {
+        const w = r.wings[sel], f = wingShape(r, w), pts = [[-w.A, -w.B], [w.A, -w.B], [w.A, w.B], [-w.A, w.B], [-w.A, -w.B]].map(([a, d]) => new THREE.Vector3(...f.W(a, d, r.y0 + 0.002)));
+        const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xf0a53a, depthTest: false })); ln.renderOrder = 12; g.add(ln);
+      }
+      this.proofs.add(g);
+    }
+    // the windows in the flat roofs
+    for (const q of [...wins.filter((q2) => q2.flat), ...(lw?.flat ? [lw] : [])]) {
+      const g = flatWindow(q);
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = q.id ?? null; });
       this.proofs.add(g);
     }
   }

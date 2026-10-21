@@ -5,7 +5,7 @@ import { DAY_LENGTHS, WEATHER } from '../world/sky.js';
 import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANELS } from '../world/facade.js';
-import { ROOF_TYPES, PITCHES, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES } from '../world/pitched.js';
+import { ROOF_TYPES, PITCHES, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS } from '../world/pitched.js';
 
 const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
@@ -424,12 +424,22 @@ export class UI {
         return c;
       });
       // the pitched roof: its type, pitch, covering (and colour), then the stages
-      const po = wt.proof.opts(), pset = (o) => { lay({ wallKind: 'proof', ...o }); wt.proof.applyOpts(); };
+      const po = wt.proof.opts(), pr = wt.proof.rec, wsel = wt.proof.wing;
+      const pset = (o, ch) => { lay({ wallKind: 'proof', ...o }); wt.proof.applyOpts(ch); };
+      const wingName = (w, i) => `Крыло ${i + 1} · ${(2 * w.A / (1 / 1000 / (9000 / 860)) / 1000).toFixed(1).replace('.', ',')}×${(2 * w.B / (1 / 1000 / (9000 / 860)) / 1000).toFixed(1).replace('.', ',')} м`;
       const proof = [
-        G('ptype', `Тип: ${ROOF_TYPES[po.style]}`, Object.entries(ROOF_TYPES).map(([k, l]) => C(l, po.style === k, () => pset({ proofType: k }))), 'Тип'),
-        G('ppitch', `Уклон ${po.pitch}°`, PITCHES[po.style].map((v) => C(`${v}°`, po.pitch === v, () => pset({ proofPitch: v }))), 'Уклон'),
-        G('pcover', COVERS[po.cover.kind], Object.entries(COVERS).map(([k, l]) => G('pc' + k, l, Object.entries(COVER_COLOURS[k]).map(([q, [n]]) => C('◼ ' + n, po.cover.kind === k && po.cover.col === q, () => pset({ proofCover: k, proofCol: q }))), null, C('', po.cover.kind === k, () => pset({ proofCover: k })))), 'Покрытие'),
+        // (a house of several wings: each its own type — the wing first)
+        ...(pr && pr.wings.length > 1 ? [G('pwing', wsel >= 0 ? `Крыло ${wsel + 1}` : 'Все крылья', [C('Все крылья', wsel < 0, () => set({ wallKind: 'proof', proofWing: -1 })), ...pr.wings.map((w, i) => C(wingName(w, i), wsel === i, () => set({ wallKind: 'proof', proofWing: i })))], 'Крыло')] : []),
+        G('ptype', `Тип: ${ROOF_TYPES[po.style]}`, Object.entries(ROOF_TYPES).map(([k, l]) => C(l, po.style === k, () => pset({ proofType: k }, { style: k }))), 'Тип'),
+        G('ppitch', `Уклон ${po.pitch}°`, PITCHES[po.style].map((v) => C(`${v}°`, po.pitch === v, () => pset({ proofPitch: v }, { pitch: v }))), 'Уклон'),
+        ...(po.style === 'mono' && pr ? [C('↻ Скат', false, () => { lay({ wallKind: 'proof' }); wt.proof.turnSlope(); })] : []),
+        G('pcover', COVERS[po.cover.kind], Object.entries(COVERS).map(([k, l]) => G('pc' + k, l, Object.entries(COVER_COLOURS[k]).map(([q, [n]]) => C('◼ ' + n, po.cover.kind === k && po.cover.col === q, () => pset({ proofCover: k, proofCol: q }, { cover: true }))), null, C('', po.cover.kind === k, () => pset({ proofCover: k }, { cover: true })))), 'Покрытие'),
         ...PROOF_STAGES.map(([k, l], i) => C(`${i + 1} · ${l}`, has('proof') && (s.proofStage || 'plate') === k, () => lay({ wallKind: 'proof', proofStage: k }))),
+      ];
+      // the windows in the roof (a slope or a flat roof): the size, the colour of the frame
+      const rwin = [
+        ...Object.entries(RWIN).map(([k, [l]]) => C(l, has('rwin') && (s.rwinKey || 's2') === k, () => lay({ wallKind: 'rwin', rwinKey: k }))),
+        ...Object.entries(RWIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.rwinCol || 'graphite') === k, () => lay({ wallKind: 'rwin', rwinCol: k }))),
       ];
       const pick = (list, key, kind, def) => list.map(([k, l]) => C(l, has(kind) && (s[key] || def) === k, () => lay({ wallKind: kind, [key]: k })));
       const mats = [
@@ -440,6 +450,7 @@ export class UI {
         G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'))),
         G('roof', 'Плоская кровля', roof, 'Кровля', C('', has('roof'), () => lay({ wallKind: 'roof' }))),
         G('proof', 'Скатная крыша', proof, null, C('', has('proof'), () => lay({ wallKind: 'proof' }))),
+        G('rwin', 'Окна в крышу', rwin, null, C('', has('rwin'), () => lay({ wallKind: 'rwin' }))),
         G('facade', 'Фасад', facade, null, C('', has('facade'), () => lay({ wallKind: 'facade' }))),
       ];
       const lineKids = [C('Газоблок', wk === 'block', () => set({ wallKind: 'block' })), C('Кирпич', wk !== 'block', () => set({ wallKind: 'brick' }))];
