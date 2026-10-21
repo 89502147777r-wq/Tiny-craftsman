@@ -36,7 +36,7 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
     // a ring beam already on these walls: the slab goes on it, not under it
     if (belts.some((b) => !isSlab(b) && Math.abs(b.top - T) < MM(20) && beltContains(b, p.x, p.z))) return null;
   }
-  const c = MM(SLAB.cell), pad = Math.ceil(MM(cantMm) / c) + 1;
+  const c = MM(SLAB.cell), R = Math.round(MM(1600) / c), pad = Math.ceil(MM(cantMm) / c) + 1;   // (R: openings up to 3,2 m in the top course are bridged)
   const W = Math.ceil(base.ni * base.c / c), Hh = Math.ceil(base.nj * base.c / c), ni = W + 2 * pad, nj = Hh + 2 * pad;
   const at = (i, j) => toWorld(base, (i - pad + 0.5) * c, (j - pad + 0.5) * c);
   // the supports: the cells over the walls (the ring under them)
@@ -44,13 +44,28 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
   let i0 = Infinity, i1 = -1, j0 = Infinity, j1 = -1;
   for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) if (beltContains(base, ...at(i, j))) { sup[j * ni + i] = 1; i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); }
   if (i1 < 0) return null;
-  // inside: all that the walls close round (what is not reached from outside)
+  // inside: all that the walls close round (what is not reached from outside). An opening
+  // in the top course (a window up to the slab, a door) does not let the outside in: gaps
+  // up to 2R between the walls along a row / a column of cells are closed for this
+  const blk = sup.slice();
+  const bridge = (n, m, at) => {
+    for (let a = 0; a < m; a++) {
+      let last = -1;
+      for (let b = 0; b < n; b++) {
+        if (!sup[at(a, b)]) continue;
+        if (last >= 0 && b - last > 1 && b - last - 1 <= 2 * R) for (let q = last + 1; q < b; q++) blk[at(a, q)] = 1;
+        last = b;
+      }
+    }
+  };
+  bridge(ni, nj, (j, i) => j * ni + i);
+  bridge(nj, ni, (i, j) => j * ni + i);
   const out = new Uint8Array(ni * nj), st = [];
-  for (let i = 0; i < ni; i++) for (const j of [0, nj - 1]) if (!sup[j * ni + i]) { out[j * ni + i] = 1; st.push(j * ni + i); }
-  for (let j = 0; j < nj; j++) for (const i of [0, ni - 1]) if (!sup[j * ni + i] && !out[j * ni + i]) { out[j * ni + i] = 1; st.push(j * ni + i); }
+  for (let i = 0; i < ni; i++) for (const j of [0, nj - 1]) if (!blk[j * ni + i] && !out[j * ni + i]) { out[j * ni + i] = 1; st.push(j * ni + i); }
+  for (let j = 0; j < nj; j++) for (const i of [0, ni - 1]) if (!blk[j * ni + i] && !out[j * ni + i]) { out[j * ni + i] = 1; st.push(j * ni + i); }
   while (st.length) {
     const k = st.pop(), i = k % ni, j = (k / ni) | 0;
-    for (const [a, d] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) { if (a < 0 || d < 0 || a >= ni || d >= nj) continue; const q = d * ni + a; if (!sup[q] && !out[q]) { out[q] = 1; st.push(q); } }
+    for (const [a, d] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) { if (a < 0 || d < 0 || a >= ni || d >= nj) continue; const q = d * ni + a; if (!blk[q] && !out[q]) { out[q] = 1; st.push(q); } }
   }
   const m = new Uint8Array(ni * nj);
   for (let k = 0; k < m.length; k++) m[k] = out[k] ? 0 : 1;

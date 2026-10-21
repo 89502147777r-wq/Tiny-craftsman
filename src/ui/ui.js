@@ -336,7 +336,8 @@ export class UI {
         const brick = (s.wallKind || 'block') !== 'block';
         const wk = s.wallKind || 'block';
         if (wt.mode === 'line') out.push(C('Газоблок', wk === 'block', () => set({ wallKind: 'block' })), C('Кирпич', wk !== 'block', () => set({ wallKind: 'brick' })));
-        else out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич'], ['lintel', 'Перемычка'], ['prop', 'Подпорка'], ['ublock', 'U-блок'], ['ucage', 'Каркас'], ['belt', 'Опалубка пояса'], ['slab', 'Перекрытие']].map(([k, l]) => C(l, wk === k, () => set({ wallKind: k }))));
+        else out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич'], ['lintel', 'Перемычка'], ['prop', 'Подпорка'], ['ublock', 'U-блок'], ['ucage', 'Каркас'], ['belt', 'Опалубка пояса'], ['slab', 'Перекрытие'], ['window', 'Окно']].map(([k, l]) => C(l, wk === k, () => set({ wallKind: k }))));
+        if (wt.mode === 'lay' && wk === 'window') out.push(...[['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · Антрацит 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']].map(([k, l]) => C(l, (s.windowKey || 'pvc2') === k, () => set({ windowKey: k }))));
         if (wt.mode === 'lay' && wk === 'slab') out.push(...[[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, (s.slabCant || 0) === v, () => set({ slabCant: v }))));
         if (wt.mode === 'lay' && (wk === 'block' || wk === 'brick' || wk === 'ublock')) out.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
         if (wt.mode === 'lay' && (wk === 'block' || wk === 'brick')) out.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));

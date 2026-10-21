@@ -20,6 +20,17 @@ export const WINDOWS = {
   portal: { name: 'Раздвижной портал', mat: 'alu', slide: true },
 };
 
+// what a window can be made to: → null, or why not
+const SIZES = { pvc1: [400, 1300, 400, 2400], pvc2: [900, 2100, 400, 2400], pvc3: [1500, 3200, 400, 2400], pano: [500, 7000, 600, 4000], portal: [1800, 7000, 1800, 3200] };
+export function windowFits(key, w, h) {
+  const [w0, w1, h0, h1] = SIZES[key], n = WINDOWS[key].name;
+  if (w < w0) return `Проём ${w} мм узок для «${n}» (от ${w0} мм) — выберите другое окно`;
+  if (w > w1) return `Проём ${w} мм широк для «${n}» (до ${w1} мм) — выберите другое окно`;
+  if (h < h0) return `Проём ${h} мм по высоте мал для «${n}» (от ${h0} мм)`;
+  if (h > h1) return `Проём ${h} мм по высоте велик для «${n}» (до ${h1} мм)`;
+  return null;
+}
+
 // cross-sections [a (in from the outer edge of the piece), d (across, + outside)], mm
 const PROF = {
   // PVC frame 70 deep, 63 seen: a rebate for the sash inside
