@@ -419,7 +419,7 @@ export class WallView {
   }
 
   update() {
-    if (!this.dirty) { if (this.fillDirty) this._buildFill(); return; }
+    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt'), ...O.all('window'), ...O.all('roof')].map((r) => r.id));
@@ -736,14 +736,16 @@ export class WallView {
 
   // the roofs: rebuilt with the masonry (the parapet may change)
   _buildRoofs() {
+    this.roofDirty = false;
     for (const g of [...this.roofs.children]) { this.roofs.remove(g); g.traverse((o) => { o.geometry?.dispose(); }); }
-    const units = this.objects.all('unit');
-    for (const r of this.objects.all('roof')) {
+    const units = this.objects.all('unit'), live = this.liveRoof, recs = [...this.objects.all('roof')];
+    if (live && !recs.some((r) => r.slab === live.slab)) recs.push({ slab: live.slab, vap: [], xps: [], wedge: [], memS: [], copS: [], grav: [] });
+    for (const r of recs) {
       const b = this.objects.get(r.slab);
       if (!b) continue;
-      const g = buildRoof(b, units, r.stage, r.look);
+      const g = buildRoof(b, units, r, live && live.slab === r.slab ? live : null);
       if (!g) continue;
-      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; });
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
       this.roofs.add(g);
     }
   }
