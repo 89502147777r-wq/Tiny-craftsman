@@ -21,7 +21,7 @@ export const WINDOWS = {
 };
 
 // what a window can be made to: → null, or why not
-const SIZES = { pvc1: [400, 1300, 400, 2400], pvc2: [900, 2100, 400, 2400], pvc3: [1500, 3200, 400, 2400], pano: [500, 7000, 600, 4000], portal: [1800, 7000, 1800, 3200] };
+const SIZES = { pvc1: [300, 9000, 300, 9000], pvc2: [500, 9000, 300, 9000], pvc3: [700, 9000, 300, 9000], pano: [300, 9000, 300, 9000], portal: [900, 9000, 900, 9000] };   // (made to any opening; only too small for the frames and sashes to fit)
 export function windowFits(key, w, h) {
   const [w0, w1, h0, h1] = SIZES[key], n = WINDOWS[key].name;
   if (w < w0) return `Проём ${w} мм узок для «${n}» (от ${w0} мм) — выберите другое окно`;

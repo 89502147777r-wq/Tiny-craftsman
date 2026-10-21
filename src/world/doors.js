@@ -20,7 +20,7 @@ export const DOORS = {
 };
 export const isDoor = (key) => key in DOORS;
 
-const SIZES = { door1: [500, 1400, 1700, 2900], door2: [500, 1400, 1700, 2900], door3: [500, 1400, 1700, 2900], door4: [500, 1400, 1700, 2900], door5: [1000, 2400, 1700, 2900] };   // (made to the opening: the leaf, its panels and glass shrink or grow with it)
+const SIZES = { door1: [400, 9000, 900, 9000], door2: [400, 9000, 900, 9000], door3: [400, 9000, 900, 9000], door4: [400, 9000, 900, 9000], door5: [800, 9000, 900, 9000] };   // (made to any opening: the leaf, its panels, glass and handles follow it)
 export function doorFits(key, w, h) {
   const [w0, w1, h0, h1] = SIZES[key], n = DOORS[key].name;
   if (w < w0) return `Проём ${w} мм узок для двери «${n}» (от ${w0} мм)`;
@@ -172,11 +172,11 @@ export function buildDoor(key, w, h, t = 300) {
     for (const f of ent ? [0.1, 0.5, 0.88] : [0.12, 0.85]) box(G.chrome, hingeX, ly0 + lh * f, zi - 2, 14, 110, 14);
     // the handle and the lock (on one leaf of two)
     if (!P.double || li === 1) {
-      const hy = ly0 + 1000;
+      const hy = ly0 + Math.min(1000, lh * 0.48);
       if (P.pull) {
         // a long pull bar outside, a lever inside
-        box(G.chrome, handleX - hand * 20, hy, zo + 50, 30, 1200, 30);
-        for (const s of [-1, 1]) box(G.chrome, handleX - hand * 20, hy + s * 520, zo + 25, 22, 22, 50);
+        const pl = Math.min(1200, lh * 0.55); box(G.chrome, handleX - hand * 20, hy, zo + 50, 30, pl, 30);
+        for (const s of [-1, 1]) box(G.chrome, handleX - hand * 20, hy + s * (pl / 2 - 80), zo + 25, 22, 22, 50);
         box(G.chrome, handleX, hy, zi - 10, 50, 50, 20); box(G.chrome, handleX - hand * 55, hy, zi - 30, 120, 20, 20);
       } else for (const sgn of [1, -1]) {
         const zf = sgn > 0 ? zo : zi;
