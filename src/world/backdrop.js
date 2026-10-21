@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { TRAY, SOIL_TILE, BACKDROP, MODEL_SCALE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
+import { innerCorner } from './plotShape.js';
 
 // Background / lighting modes:
 //   workshop – the diorama on the bench in the carpentry shop (HDRI + lamp)
@@ -84,7 +85,18 @@ export class Backdrop {
     this._gR = r;
     const ring = new THREE.Shape(), [hx, hz] = this.groundHole;
     ring.absarc(0, 0, r, 0, Math.PI * 2, false);
-    ring.holes.push(new THREE.Path([new THREE.Vector2(-hx, -hz), new THREE.Vector2(hx, -hz), new THREE.Vector2(hx, hz), new THREE.Vector2(-hx, hz)]));
+    // the hole: the plot's outline — with its rounded corner (else a gap shows there)
+    const ic0 = innerCorner(), ic = { ...ic0, cz: -ic0.cz, sz: -ic0.sz }, pts = [], cs = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]];   // (the shape's y is the plot's -z: it is turned down onto the ground)
+    cs.forEach(([x, z], k) => {
+      if (Math.sign(x) !== ic.sx || Math.sign(z) !== ic.sz) { pts.push(new THREE.Vector2(x, z)); return; }
+      const [px, pz] = cs[(k + 3) % 4], [nx, nz] = cs[(k + 1) % 4];
+      const e0 = [x + Math.sign(px - x) * (Math.abs(px - x) > 1e-9 ? ic.r : 0), z + Math.sign(pz - z) * (Math.abs(pz - z) > 1e-9 ? ic.r : 0)];
+      const e1 = [x + Math.sign(nx - x) * (Math.abs(nx - x) > 1e-9 ? ic.r : 0), z + Math.sign(nz - z) * (Math.abs(nz - z) > 1e-9 ? ic.r : 0)];
+      let t0 = Math.atan2(e0[1] - ic.cz, e0[0] - ic.cx), t1 = Math.atan2(e1[1] - ic.cz, e1[0] - ic.cx);
+      if (t1 - t0 > Math.PI) t1 -= 2 * Math.PI; if (t0 - t1 > Math.PI) t1 += 2 * Math.PI;
+      for (let q = 0; q <= 24; q++) { const t = t0 + (t1 - t0) * q / 24; pts.push(new THREE.Vector2(ic.cx + Math.cos(t) * ic.r, ic.cz + Math.sin(t) * ic.r)); }
+    });
+    ring.holes.push(new THREE.Path(pts));
     const g = new THREE.ShapeGeometry(ring, 96);
     g.rotateX(-Math.PI / 2);
     this.ground.geometry.dispose();

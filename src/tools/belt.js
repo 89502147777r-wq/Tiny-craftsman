@@ -48,6 +48,14 @@ export function plan(b) {
 }
 // frame ⇄ plot
 export const toWorld = (b, s, t) => [b.o[0] + b.u[0] * s - b.u[1] * t, b.o[1] + b.u[1] * s + b.u[0] * t];
+// a slab's true outline (its clip: the outer faces of the walls under it, in its frame):
+// the grid lines within 0,8 cell of it are moved onto it (the cells are 100 mm, the walls
+// are not on that grid — the concrete, the boards, the bars end at the faces)
+export function snapS(b, s, t) {
+  if (!b.clip) return [s, t];
+  const [s0, t0, s1, t1] = b.clip, m = b.c * 0.8;
+  return [Math.abs(s - s0) < m ? s0 : Math.abs(s - s1) < m ? s1 : s, Math.abs(t - t0) < m ? t0 : Math.abs(t - t1) < m ? t1 : t];
+}
 export const toFrame = (b, x, z) => { const dx = x - b.o[0], dz = z - b.o[1]; return [dx * b.u[0] + dz * b.u[1], -dx * b.u[1] + dz * b.u[0]]; };
 export function cellAt(b, x, z) {
   const [s, t] = toFrame(b, x, z), i = Math.floor(s / b.c), j = Math.floor(t / b.c);
@@ -155,6 +163,9 @@ export function findBelt(app, p, screen, finger) {
 
 // the boards: the edges of the plan, merged into straight runs — [s0,t0,s1,t1, ns,nt]
 export function boardsOf(b) {
+  return boardsOf0(b).map(([s0, t0, s1, t1, ns, nt]) => [...snapS(b, s0, t0), ...snapS(b, s1, t1), ns, nt]);
+}
+function boardsOf0(b) {
   const P = plan(b), out = [], { ni, nj, c } = b, inside = (i, j) => i >= 0 && j >= 0 && i < ni && j < nj && P.mask[j * ni + i];
   // edges along s (between rows), then along t (between columns)
   for (let j = 0; j <= nj; j++) for (const sg of [-1, 1]) {
