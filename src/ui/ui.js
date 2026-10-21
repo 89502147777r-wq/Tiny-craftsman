@@ -5,7 +5,7 @@ import { DAY_LENGTHS, WEATHER } from '../world/sky.js';
 import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANELS } from '../world/facade.js';
-import { ROOF_TYPES, PITCHES, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS } from '../world/pitched.js';
+import { ROOF_TYPES, PITCHES, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
@@ -401,9 +401,9 @@ export class UI {
       const K = (k, l) => C(l, L && wk === k, () => lay({ wallKind: k }));
       const has = (...ks) => L && ks.includes(wk);
       // the masonry
-      const masonry = [K('block', 'Газоблок'), K('brick', 'Кирпич'), K('ublock', 'U-блок')];
-      if (has('block', 'brick', 'ublock')) masonry.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
-      if (has('block', 'brick')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
+      const masonry = [K('block', 'Газоблок'), K('brick', 'Кирпич'), K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];
+      if (has('block', 'brick', 'ublock', 'cinder')) masonry.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
+      if (has('block', 'brick', 'cinder')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
       // the roof: its layer → the colour
       const RL = s.roofLayer || 'vap';
       const roof = ROOF_LAYERS.map(([k, l], i) => {
@@ -434,6 +434,8 @@ export class UI {
         G('ppitch', `Уклон ${po.pitch}°`, PITCHES[po.style].map((v) => C(`${v}°`, po.pitch === v, () => pset({ proofPitch: v }, { pitch: v }))), 'Уклон'),
         ...(po.style === 'mono' && pr ? [C('↻ Скат', false, () => { lay({ wallKind: 'proof' }); wt.proof.turnSlope(); })] : []),
         G('pcover', COVERS[po.cover.kind], Object.entries(COVERS).map(([k, l]) => G('pc' + k, l, Object.entries(COVER_COLOURS[k]).map(([q, [n]]) => C('◼ ' + n, po.cover.kind === k && po.cover.col === q, () => pset({ proofCover: k, proofCol: q }, { cover: true }))), null, C('', po.cover.kind === k, () => pset({ proofCover: k }, { cover: true })))), 'Покрытие'),
+        // the gutters: the kind → the colour (changed on the roof at once when they hang)
+        G('pgut', `Водосток: ${GUTTERS[po.gut.kind]}`, Object.entries(GUTTERS).map(([k, l]) => G('pg' + k, l, Object.entries(GUTTER_COLOURS).map(([q, [n]]) => C('◼ ' + n, po.gut.kind === k && po.gut.col === q, () => pset({ proofGut: k, proofGutCol: q, proofStage: 'gutter' }, { gut: true }))), null, C('', po.gut.kind === k, () => pset({ proofGut: k, proofStage: 'gutter' }, { gut: true })))), 'Водосток'),
         ...PROOF_STAGES.map(([k, l], i) => C(`${i + 1} · ${l}`, has('proof') && (s.proofStage || 'plate') === k, () => lay({ wallKind: 'proof', proofStage: k }))),
       ];
       // the windows in the roof (a slope or a flat roof): the size, the colour of the frame
@@ -443,7 +445,7 @@ export class UI {
       ];
       const pick = (list, key, kind, def) => list.map(([k, l]) => C(l, has(kind) && (s[key] || def) === k, () => lay({ wallKind: kind, [key]: k })));
       const mats = [
-        G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock'))),
+        G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Перемычка'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'slab'))),
         G('win', 'Окна', pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · Антрацит 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), null, C('', has('window'))),

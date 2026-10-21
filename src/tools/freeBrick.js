@@ -23,11 +23,12 @@ const _Y = new THREE.Vector3(0, 1, 0);
 // sizes of a free unit (model): length, height, width, head joint, bed joint, first bed
 const blockish = (k) => k === 'block' || k === 'ublock';
 export function dims(kind, half = false) {
+  if (kind === 'cinder') { const k = KINDS.cinder; return { L: (half ? (k.L - k.head) / 2 : k.L) * S, Lf: k.L * S, H: k.H * S, W: k.W * S, J: k.head * S, B: k.bed * S, B0: k.bed0 * S, kind: 'cinder', grp: 'cinder' }; }
   const k = KINDS[blockish(kind) ? 'block' : 'brick'];
   // half: a half unit (sawn / broken in two: a joint shorter than half)
   return { L: (half ? (k.L - k.head) / 2 : k.L) * S, Lf: k.L * S, H: k.H * S, W: (k.W || k.T) * S, J: k.head * S, B: k.bed * S, B0: k.bed0 * S, kind: kind === 'ublock' ? 'ublock' : blockish(kind) ? 'block' : 'brick', grp: blockish(kind) ? 'block' : 'brick' };
 }
-const group = (u) => (u.kind === 'prop' ? 'prop' : blockish(u.kind) ? 'block' : 'brick');
+const group = (u) => (u.kind === 'prop' ? 'prop' : u.kind === 'cinder' ? 'cinder' : blockish(u.kind) ? 'block' : 'brick');
 
 function yawOf(q) { const v = new THREE.Vector3(1, 0, 0).applyQuaternion(new THREE.Quaternion().fromArray(q)); return Math.atan2(-v.z, v.x); }
 

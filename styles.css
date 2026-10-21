@@ -283,6 +283,7 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .wall-tray .tray-stack i { position: absolute; left: 0; width: 52px; height: 10px; border-radius: 2px; background: #e9e6df; box-shadow: inset 0 -2px 0 rgba(0,0,0,.12); }
 .wall-tray .tray-stack i:nth-child(1) { top: 22px; } .wall-tray .tray-stack i:nth-child(2) { top: 11px; } .wall-tray .tray-stack i:nth-child(3) { top: 0; left: 8px; width: 40px; }
 .wall-tray.brick .tray-stack i { background: #a9533d; }
+.wall-tray.cinder .tray-stack i { background: #8d8a84; height: 13px; }
 .wall-tray.active { outline: 2px solid var(--accent, #f0a53a); }
 
 /* ---- one row at a time: groups → tools → modes (‹ back) ---------------------------------- */

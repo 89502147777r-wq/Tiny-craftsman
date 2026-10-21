@@ -108,7 +108,7 @@ function metalNormal() {
   return (TEX.metal = normalOf(hc, 0.6));
 }
 let GRAVEL = null;
-function gravelTex() {
+export function gravelTex() {
   if (GRAVEL) return GRAVEL;
   const L = new THREE.TextureLoader(), set = (t, srgb) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
   GRAVEL = { map: set(L.load('assets/textures/gravel_floor_02/diff.jpg'), true), normalMap: set(L.load('assets/textures/gravel_floor_02/nor_gl.jpg'), false) };

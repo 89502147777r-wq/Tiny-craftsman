@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { canvas, asTex, normalOf } from './roof.js';
+import { canvas, asTex, normalOf, gravelTex } from './roof.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { aeratedTexture } from './walls.js';
 
 // A pitched roof (скатная крыша) over the house, built up layer by layer:
@@ -24,7 +25,7 @@ import { aeratedTexture } from './walls.js';
 //          style, pitch (its own; else the roof's), md (a mono-pitch wing: which way its
 //          slope rises — 0: +d, 1: −d, 2: +a, 3: −a) }
 //   roof { y0 (the top of the walls), T (their thickness), style ('gable'|'hip'|'mono'),
-//          pitch (°), cover { kind, col }, wings: […], done: { stage: true | [[w, a0, a1]…] } }
+//          pitch (°), cover { kind, col }, gut { kind, col } (the gutters: GUTTERS, GUTTER_COLOURS), wings: […], done: { stage: true | [[w, a0, a1]…] } }
 // A stage laid by the finger is done over stretches along a wing's ridge (a0…a1).
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const PITCHED = { plate: 150, rafterW: 50, rafterH: 200, step: 600, eave: 500, gable: 400, cb: 50, batten: [25, 100], sheet: { metal: 1180, seam: 500, shingle: 1000 } };
@@ -486,46 +487,167 @@ function trims(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
   const m2 = sof.mesh(mat('sof', () => new THREE.MeshStandardMaterial({ color: 0xe8e6e0, roughness: 0.6 }))); if (m2) G.add(m2);
 }
 
-// the gutters along the eaves (half round 125) and the downpipes (90) at their ends, down the
-// walls; in the rain the water runs out of them
+// the gutters along the eaves and how the water comes down from them (roof.gut { kind, col }):
+//   round  – a half-round gutter 125 on hooks, round downpipes 90 in clamps down the walls,
+//   square – a box gutter 125 × 85, rectangular downpipes 100 × 75,
+//   chain  – a rain chain of links hung from the outlet, the water running down it,
+//   cups   – a rain chain of cups (each one spills into the next);
+// a downpipe kicks out onto a concrete splash channel (лоток), a chain hangs into a drain
+// bowl of pebbles (the stormwater inlet under it). In the rain the water runs out of them.
 function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
-  const gm = kind === 'shingle' ? mat('gutSh', () => new THREE.MeshStandardMaterial({ color: 0x5a3b28, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide })) : metalMat();
-  const water = mat('water', () => new THREE.MeshStandardMaterial({ color: 0xb8c8d4, transparent: true, opacity: 0, roughness: 0.1, depthWrite: false }));
+  const gt = roof.gut || {}, typ = GUTTERS[gt.kind] ? gt.kind : 'round', GC = GUTTER_COLOURS[gt.col];
+  const gm = GC ? mat('gut' + gt.col, () => new THREE.MeshStandardMaterial({ color: GC[1], metalness: GC[2] ? 0.85 : 0.25, roughness: GC[2] ? 0.32 : 0.42, side: THREE.DoubleSide }))
+    : kind === 'shingle' ? mat('gutSh', () => new THREE.MeshStandardMaterial({ color: 0x5a3b28, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide })) : metalMat();
   const vis = (a, d) => { const p = f.W(a, d, 0); return roofTop(roof, shapes, p[0], p[2], wi) <= f.top(a, d) + MM(5); };
-  const r = MM(62), up = new THREE.Vector3(0, 1, 0), ground = roof.g ?? roof.y0 - MM(3000), pipes = new Beams();
+  const up = new THREE.Vector3(0, 1, 0), ground = roof.g ?? roof.y0 - MM(3000), sq = typ === 'square', chain = typ === 'chain' || typ === 'cups';
+  const depth = sq ? MM(85) : MM(62), prof = sq ? [[-MM(62), MM(6)], [-MM(62), -MM(85)], [MM(56), -MM(85)], [MM(72), MM(12)], [MM(80), MM(12)]] : gutterRound(MM(62));
+  const pipes = new Beams(), hooks = new Beams(), tubes = [], links = [], drains = [], streams = [];
   for (const P of PL) {
     const F = frameOf(f, P), out = F.et.clone().setY(0).normalize().negate();
     for (const [x0, x1] of runs(P.xa(0), P.xb(0), (x) => { const [a, d] = P.at(x, 0); return !vis(a, d); })) {
       if (x1 - x0 < MM(300)) continue;
-      const c0 = F.pt(x0, 0, coff).addScaledVector(out, MM(50)).addScaledVector(up, -MM(55)), c1 = F.pt(x1, 0, coff).addScaledVector(out, MM(50)).addScaledVector(up, -MM(55));
-      G.add(halfPipe(c0, c1, r, out, gm));
-      // the downpipes at the ends of the run: from the gutter to the wall, down it, out at the foot
-      for (const [x, s] of [[x0 + MM(250), 1], [x1 - MM(250), -1]]) {
-        void s;
-        const top = F.pt(x, 0, coff).addScaledVector(out, MM(50)).addScaledVector(up, -MM(55) - r);
-        const wallP = top.clone().addScaledVector(out, -(f.Oe - MM(110))).setY(top.y - MM(350));
-        const foot = wallP.clone().setY(ground + MM(260)), kick = foot.clone().addScaledVector(out, MM(180)).setY(ground + MM(120));
-        const p0 = top.clone().setY(top.y - MM(120));
-        pipes.add(top.toArray(), p0.toArray(), MM(90), MM(90)); pipes.add(p0.toArray(), wallP.toArray(), MM(90), MM(90)); pipes.add(wallP.toArray(), foot.toArray(), MM(90), MM(90)); pipes.add(foot.toArray(), kick.toArray(), MM(90), MM(90));
-        // the water out of it
-        const st = new THREE.Mesh(new THREE.CylinderGeometry(MM(18), MM(26), Math.max(MM(10), kick.y - ground), 8), water);
-        st.position.set(kick.x, (kick.y + ground) / 2, kick.z);
-        st.onBeforeRender = () => { water.opacity = 0.75 * WATER.rain; };
-        G.add(st);
+      const lip = (x) => F.pt(x, 0, coff).addScaledVector(out, MM(50)).addScaledVector(up, -MM(55));   // the top of the gutter, on its axis
+      const c0 = lip(x0), c1 = lip(x1), along = c1.clone().sub(c0).normalize(), side = new THREE.Vector3().crossVectors(along, up).normalize();
+      const sgn = side.dot(out) > 0 ? 1 : -1;   // (the profile's +s: out, away from the wall)
+      G.add(trough(c0, c1, prof.map(([q, y]) => [q * sgn, y]), gm));
+      // the hooks under it every 600
+      for (let x = x0 + MM(150); x < x1 - MM(100); x += MM(600)) {
+        const c = lip(x);
+        for (let i = 0; i + 1 < prof.length; i++) {
+          const pa = c.clone().addScaledVector(side, prof[i][0] * sgn * 1.04).addScaledVector(up, prof[i][1] - MM(3)), pb = c.clone().addScaledVector(side, prof[i + 1][0] * sgn * 1.04).addScaledVector(up, prof[i + 1][1] - MM(3));
+          hooks.add(pa.toArray(), pb.toArray(), MM(4), MM(25), along);
+        }
+        // and back up to the fascia board
+        const back = c.clone().addScaledVector(out, -MM(62)).addScaledVector(up, MM(6));
+        hooks.add(back.toArray(), back.clone().addScaledVector(out, -MM(40)).addScaledVector(up, MM(30)).toArray(), MM(25), MM(4));
+      }
+      // where the water comes down: near both ends of the run
+      for (const x of [x0 + MM(250), x1 - MM(250)]) {
+        const c = lip(x), bot = c.clone().addScaledVector(up, -depth);
+        // the outlet (воронка) under the gutter
+        tubes.push(cone(bot, MM(sq ? 58 : 52), MM(sq ? 44 : 46), MM(70)));
+        if (chain) {
+          const g0 = ground, top = bot.clone().addScaledVector(up, -MM(70));
+          const end = new THREE.Vector3(top.x, g0 + MM(70), top.z);
+          if (typ === 'chain') for (let y = top.y, k = 0; y > end.y + MM(20); y -= MM(42), k++) links.push([top.x, y - MM(21), top.z, k % 2]);
+          else for (let y = top.y; y > end.y + MM(60); y -= MM(118)) links.push([top.x, y - MM(40), top.z, 2]);
+          drains.push(end.clone().setY(g0));
+          streams.push([top, end, MM(typ === 'chain' ? 17 : 10)]);
+        } else {
+          // the downpipe: down from the outlet, the offset back to the wall, down the wall, the kick out at the foot
+          const top = bot.clone().addScaledVector(up, -MM(70));
+          const wallP = top.clone().addScaledVector(out, -(f.Oe - MM(110))).setY(top.y - MM(350));
+          const foot = wallP.clone().setY(ground + MM(300)), kick = foot.clone().addScaledVector(out, MM(200)).setY(ground + MM(150));
+          const p0 = top.clone().setY(top.y - MM(100));
+          const path = [top, p0, wallP, foot, kick];
+          for (let i = 0; i + 1 < path.length; i++) {
+            if (sq) pipes.add(path[i].toArray(), path[i + 1].toArray(), MM(100), MM(75), out);
+            else tubes.push(tube(path[i], path[i + 1], MM(45)));
+          }
+          if (!sq) for (let i = 1; i + 1 < path.length; i++) tubes.push(new THREE.SphereGeometry(MM(45), 10, 6).translate(path[i].x, path[i].y, path[i].z));
+          // the clamps to the wall every 1.5 m
+          for (let y = wallP.y - MM(300); y > foot.y + MM(200); y -= MM(1500)) {
+            const cp = wallP.clone().setY(y);
+            if (sq) pipes.add(cp.clone().setY(y - MM(15)).toArray(), cp.clone().setY(y + MM(15)).toArray(), MM(108), MM(83), out);
+            else tubes.push(tube(cp.clone().setY(y - MM(15)), cp.clone().setY(y + MM(15)), MM(50)));
+            pipes.add(cp.toArray(), cp.clone().addScaledVector(out, -MM(70)).toArray(), MM(6), MM(20));
+          }
+          // the splash channel under the kick
+          const ch = kick.clone().addScaledVector(out, MM(260)).setY(ground);
+          drains.push({ ch, out });
+          streams.push([kick.clone().addScaledVector(out, MM(30)), ch.clone().addScaledVector(out, -MM(160)).setY(ground + MM(40)), MM(20)]);
+        }
       }
     }
   }
   const m = pipes.mesh(gm); if (m) G.add(m);
+  const hm = hooks.mesh(gm); if (hm) G.add(hm);
+  if (tubes.length) { const tm = new THREE.Mesh(mergeGeometries(tubes.map((g) => (g.index ? g.toNonIndexed() : g))), gm); tm.castShadow = true; G.add(tm); }
+  // the chains (one instanced mesh of links / of cups)
+  if (links.length) {
+    const cupsOn = typ === 'cups', geo = cupsOn ? cupGeo() : new THREE.TorusGeometry(MM(13), MM(3.2), 5, 12).scale(1, 1.7, 1);
+    const im = new THREE.InstancedMesh(geo, gm, links.length), q = new THREE.Quaternion(), M4 = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1);
+    links.forEach(([x, y, z, k], i) => { q.setFromAxisAngle(up, k === 1 ? Math.PI / 2 : 0); im.setMatrixAt(i, M4.compose(new THREE.Vector3(x, y, z), q, one)); });
+    im.castShadow = true; G.add(im);
+    if (cupsOn) {   // the links between the cups
+      const lk = new THREE.InstancedMesh(new THREE.TorusGeometry(MM(9), MM(2.4), 4, 10).scale(1, 2.2, 1), gm, links.length);
+      links.forEach(([x, y, z], i) => lk.setMatrixAt(i, M4.compose(new THREE.Vector3(x, y + MM(62), z), q.identity(), one)));
+      G.add(lk);
+    }
+  }
+  // the drains: a bowl of pebbles under a chain, a concrete channel under a downpipe
+  const conc = mat('drainC', () => new THREE.MeshStandardMaterial({ color: 0x8e8c86, roughness: 0.9 }));
+  const peb = mat('drainP', () => { const T = gravelTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.normalMap, color: 0x8f8a84, roughness: 0.85 }); });
+  for (const d of drains) {
+    if (d.isVector3) {
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(MM(230), MM(240), MM(90), 20, 1, true), conc); ring.position.set(d.x, d.y + MM(45), d.z);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(MM(235), MM(14), 5, 20).rotateX(Math.PI / 2), conc); rim.position.set(d.x, d.y + MM(90), d.z);
+      const bed = new THREE.Mesh(new THREE.CircleGeometry(MM(228), 20).rotateX(-Math.PI / 2), peb); bed.position.set(d.x, d.y + MM(70), d.z);
+      for (const o of [ring, rim, bed]) { o.castShadow = o.receiveShadow = true; G.add(o); }
+    } else {
+      const { ch, out } = d, yaw = Math.atan2(-out.z, out.x), grp = new THREE.Group();
+      const L = MM(500), Wd = MM(160), H = MM(60);
+      for (const [y, h, z, wd] of [[H / 2 - MM(10), H - MM(20), 0, Wd], [H / 2, H, -Wd / 2 + MM(15), MM(30)], [H / 2, H, Wd / 2 - MM(15), MM(30)]]) {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(L, h, wd), conc); b.position.set(0, y - (wd === Wd ? MM(15) : 0), z); b.castShadow = b.receiveShadow = true; grp.add(b);
+      }
+      grp.position.copy(ch); grp.rotation.y = yaw; G.add(grp);
+    }
+  }
+  // the water: streaks running down (a texture scrolled), as thick as the rain is hard
+  if (streams.length) {
+    const wm = waterMat();
+    for (const [a, b, r] of streams) {
+      const st = new THREE.Mesh(tube(a, b, r, 6), wm); st.renderOrder = 2;
+      st.onBeforeRender = () => { wm.opacity = 0.45 * WATER.rain; wm.map.offset.y = (performance.now() / 700) % 1; };
+      G.add(st);
+    }
+  }
 }
-// a half-round gutter from c0 to c1 (its open side up), out: away from the wall
-function halfPipe(c0, c1, r, out, material) {
-  const dir = c1.clone().sub(c0), L = dir.length(); dir.normalize();
-  const side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize(), M = 10, pos = [], idx = [];
-  for (const [k, c] of [[0, c0], [1, c1]]) for (let i = 0; i <= M; i++) { const th = Math.PI * i / M, p = c.clone().addScaledVector(side, Math.cos(th) * r).addScaledVector(new THREE.Vector3(0, 1, 0), -Math.sin(th) * r); pos.push(p.x, p.y, p.z); void k; }
-  for (let i = 0; i < M; i++) { const a = i, b = i + 1, c = M + 1 + i, d = c + 1; idx.push(a, c, b, b, c, d); }
+export const GUTTERS = { round: 'Круглый', square: 'Прямоугольный', chain: 'Цепь', cups: 'Цепь с чашами' };
+export const GUTTER_COLOURS = { white: ['Белый', 0xecebe6], brown: ['Коричневый', 0x4b3326], graphite: ['Графит', 0x3d4145], red: ['Вишня', 0x5b1f26], zinc: ['Оцинковка', 0xb9bec1, true], copper: ['Медь', 0xb36b3d, true] };
+// the profile of a half-round gutter (s across, y up from its top edge): the bead rolled at the outer lip
+function gutterRound(r) {
+  const pts = [[-r, MM(6)]];
+  for (let i = 0; i <= 12; i++) { const th = Math.PI * (1 - i / 12); pts.push([Math.cos(th) * r, -Math.sin(th) * r]); }
+  for (let i = 0; i <= 5; i++) { const th = Math.PI * (1 - i / 5) - Math.PI / 2; pts.push([r + MM(6) + Math.cos(th) * MM(6), Math.sin(th) * MM(6) + MM(6)]); }
+  return pts;
+}
+// a gutter from c0 to c1 along its profile, the ends closed
+function trough(c0, c1, prof, material) {
+  const dir = c1.clone().sub(c0).normalize(), up = new THREE.Vector3(0, 1, 0), side = new THREE.Vector3().crossVectors(dir, up).normalize(), pos = [], idx = [], n = prof.length;
+  const at = (c, [q, y]) => c.clone().addScaledVector(side, q).addScaledVector(up, y);
+  for (const c of [c0, c1]) for (const pr of prof) { const p = at(c, pr); pos.push(p.x, p.y, p.z); }
+  for (let i = 0; i + 1 < n; i++) idx.push(i, n + i, i + 1, i + 1, n + i, n + i + 1);
+  // the end caps: a fan from the middle of the top
+  for (const [k, c] of [[0, c0], [1, c1]]) {
+    const mid = c.clone().addScaledVector(up, Math.min(...prof.map((q) => q[1])) * 0.25), base = pos.length / 3; pos.push(mid.x, mid.y, mid.z);
+    for (let i = 0; i + 1 < n; i++) idx.push(base, k * n + i, k * n + i + 1);
+  }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
-  const m = new THREE.Mesh(g, material); m.castShadow = true; void L; void out;
+  const m = new THREE.Mesh(g, material); m.castShadow = m.receiveShadow = true;
   return m;
+}
+// a round pipe from a to b
+function tube(a, b, r, seg = 10) {
+  const d = b.clone().sub(a), L = d.length(), g = new THREE.CylinderGeometry(r, r, Math.max(L, 1e-6), seg, 1, true);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+  return g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+}
+// the outlet funnel: from the bottom of the gutter (r0) down to the pipe (r1)
+function cone(top, r0, r1, h) { return new THREE.CylinderGeometry(r0, r1, h, 12, 1, true).translate(top.x, top.y - h / 2, top.z); }
+// a cup of a rain chain: a bell, open at the top, a hole in the bottom (the water falls through)
+function cupGeo() {
+  const pts = [[MM(14), MM(-34)], [MM(24), MM(-36)], [MM(34), MM(-28)], [MM(40), MM(-8)], [MM(43), MM(14)], [MM(46), MM(30)], [MM(48), MM(32)], [MM(44), MM(30)], [MM(40), MM(12)], [MM(36), MM(-8)], [MM(30), MM(-24)], [MM(22), MM(-30)], [MM(14), MM(-30)]];
+  return new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 14);
+}
+let _water = null;
+function waterMat() {
+  if (_water) return _water;
+  const cv = canvas(32, 128), g = cv.getContext('2d');
+  g.fillStyle = 'rgb(120,138,150)'; g.fillRect(0, 0, 32, 128);
+  for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(225,238,248,${0.15 + Math.random() * 0.35})`; g.fillRect(Math.random() * 32, Math.random() * 128, 1 + Math.random() * 2, 8 + Math.random() * 30); }
+  const t = asTex(cv); t.repeat.set(1, 3);
+  return (_water = new THREE.MeshStandardMaterial({ map: t, color: 0xdde8f0, transparent: true, opacity: 0, roughness: 0.08, metalness: 0.1, depthWrite: false }));
 }
 
 // a window in a slope: the flashing collar over the covering round it, the frame, the glass
