@@ -20,7 +20,7 @@ export const DOORS = {
 };
 export const isDoor = (key) => key in DOORS;
 
-const SIZES = { door1: [800, 1300, 1950, 2600], door2: [850, 1400, 2000, 2800], door3: [650, 1300, 1950, 2600], door4: [650, 1300, 1950, 2600], door5: [1250, 2400, 1950, 2800] };   // (a doorway of two blocks is 1,2 m)
+const SIZES = { door1: [500, 1400, 1700, 2900], door2: [500, 1400, 1700, 2900], door3: [500, 1400, 1700, 2900], door4: [500, 1400, 1700, 2900], door5: [1000, 2400, 1700, 2900] };   // (made to the opening: the leaf, its panels and glass shrink or grow with it)
 export function doorFits(key, w, h) {
   const [w0, w1, h0, h1] = SIZES[key], n = DOORS[key].name;
   if (w < w0) return `Проём ${w} мм узок для двери «${n}» (от ${w0} мм)`;
