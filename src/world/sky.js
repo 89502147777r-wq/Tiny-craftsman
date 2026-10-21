@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TRAY, MODEL_SCALE } from '../config.js';
 import { isPano } from './backdrop.js';
+import { WATER } from './pitched.js';
 
 // The time of day and the weather round the plot (the 360° places and the photo sheet; the
 // workshop is indoors and stays as it is):
@@ -68,6 +69,7 @@ export class Sky {
     this._puddlesUpdate(dt);
     if ((this._scanT -= dt) <= 0) { this._scanT = 1; this._wetScan(); }
     app.sfx?.rain?.(this.rain);
+    WATER.rain = this.rain;   // (the water out of the downpipes)
   }
 
   // ---- the sun, the moon, the sky -----------------------------------------------------------
@@ -308,6 +310,7 @@ export class Sky {
     for (const L of this.lamps) { L.spot.intensity = 0; L.mast.visible = false; L.glow.material.opacity = 0; }
     this.app.renderer.toneMappingExposure = 1.05;
     this.app.sfx?.rain?.(0);
+    WATER.rain = 0;
   }
 }
 
