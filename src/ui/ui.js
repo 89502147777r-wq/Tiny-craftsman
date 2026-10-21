@@ -101,6 +101,12 @@ export class UI {
     let statsOn = true; try { statsOn = localStorage.getItem('tc-stats') !== '0'; } catch { /* private mode */ }
     showStats(statsOn);
     sb.addEventListener('click', () => showStats(st.classList.contains('collapsed')));
+    // the hints at the bottom: shown / hidden by the button beside it (remembered)
+    const hb = $('btn-hints'), ui = $('ui');
+    const showHints = (on) => { ui.classList.toggle('no-hints', !on); hb.classList.toggle('off', !on); try { localStorage.setItem('tc-hints', on ? '1' : '0'); } catch { /* private mode */ } };
+    let hintsOn = true; try { hintsOn = localStorage.getItem('tc-hints') !== '0'; } catch { /* private mode */ }
+    showHints(hintsOn);
+    hb.addEventListener('click', () => showHints(ui.classList.contains('no-hints')));
     $('menu-close').addEventListener('click', () => this.openMenu(false));
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     $('act-export').addEventListener('click', () => app.exportProject());

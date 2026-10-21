@@ -68,6 +68,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .stats-btn svg { width: 16px; height: 16px; }
 .stats-btn.off { opacity: .75; }
 #stats.collapsed { display: none; }
+.hints-btn { left: calc(var(--safe-l) + 48px); }
+#ui.no-hints .hint { display: none !important; }
 .chip {
   position: absolute; left: calc(var(--safe-l) + 12px); top: calc(var(--safe-t) + 92px);
   background: var(--glass); border: 1px solid var(--line); border-radius: 14px; padding: 7px 10px; display: grid; gap: 3px;
@@ -196,7 +198,7 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .tool[hidden] { display: none; }
 
 /* ---- quiet mode: one round button, tools fan out of it ---------------------------------- */
-#ui.quiet .top, #ui.quiet #stats, #ui.quiet .stats-btn, #ui.quiet .hint, #ui.quiet .measure, #ui.quiet .subbar, #ui.quiet .params, #ui.quiet .tools { display: none !important; }
+#ui.quiet .top, #ui.quiet #stats, #ui.quiet .stats-btn, #ui.quiet .hints-btn, #ui.quiet .hint, #ui.quiet .measure, #ui.quiet .subbar, #ui.quiet .params, #ui.quiet .tools { display: none !important; }
 .fan { position: absolute; right: calc(var(--safe-r) + 18px); bottom: calc(var(--safe-b) + 18px); width: 50px; height: 50px; z-index: 22; }
 .fan[hidden], .fan-shade[hidden] { display: none; }
 .fab {

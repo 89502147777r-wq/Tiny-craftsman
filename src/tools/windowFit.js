@@ -37,7 +37,7 @@ export function findOpenings(app) {
     if (L.units.length < 3) continue;
     // its courses: the levels of the bottoms of the units
     const lv = [];
-    for (const u of [...L.units].sort((p, q) => p.bot - q.bot)) if (!lv.length || u.bot - lv.at(-1).bot > MM(30)) lv.push({ bot: u.bot, top: u.top, us: [u] }); else { const c = lv.at(-1); c.us.push(u); c.top = Math.max(c.top, u.top); }
+    for (const u of [...L.units].sort((p, q) => p.bot - q.bot)) if (!lv.length || u.bot - lv.at(-1).bot > (u.top - u.bot) * 0.5) lv.push({ bot: u.bot, top: u.top, us: [u] }); else { const c = lv.at(-1); c.us.push(u); c.top = Math.max(c.top, u.top); }
     // each course: the masonry along it (joints bridged), the gaps between
     const covered = (c) => { const iv = c.us.map((u) => [u.a0, u.a1]).sort((p, q) => p[0] - q[0]), m = []; for (const v of iv) { if (m.length && v[0] <= m.at(-1)[1] + MM(30)) m.at(-1)[1] = Math.max(m.at(-1)[1], v[1]); else m.push([...v]); } return m; };
     const gaps = lv.map((c) => { const m = covered(c), g = []; for (let i = 1; i < m.length; i++) if (m[i][0] - m[i - 1][1] >= MM(MIN_W)) g.push([m[i - 1][1], m[i][0]]); return g; });
@@ -48,12 +48,15 @@ export function findOpenings(app) {
       let a0 = g0[0], a1 = g0[1], top = k;
       used[k].add(gi);
       for (let q = k + 1; q < lv.length; q++) {
+        if (lv[q].bot - lv[q - 1].top > MM(60)) break;   // (a slab / a ring beam between: the next storey's opening)
         const j = gaps[q].findIndex((g) => Math.min(a1, g[1]) - Math.max(a0, g[0]) >= MM(MIN_W));
         if (j < 0) break;
         used[q].add(j); a0 = Math.max(a0, gaps[q][j][0]); a1 = Math.min(a1, gaps[q][j][1]); top = q;
       }
       // the bottom: the top of the course under it, or the floor (the bed under the first course)
-      const y0 = k > 0 ? lv[k - 1].top : lv[k].bot - (lv[k].us[0].b.u.bedT ?? MM(20)), yTop = lv[top].top;
+      // the storey: back down to the first course over a slab / the foundation
+      let k0 = k; while (k0 > 0 && lv[k0].bot - lv[k0 - 1].top <= MM(60)) k0--;
+      const first = k === k0, y0 = !first ? lv[k - 1].top : lv[k].bot - (lv[k].us[0].b.u.bedT ?? MM(20)), yTop = lv[top].top;
       // the top: a lintel / U-blocks / the next course spanning it, or a ring beam / a slab on the walls
       const mid = (a0 + a1) / 2, x = L.ux * mid - L.uz * L.d, z = L.uz * mid + L.ux * L.d;
       let y1 = null, why = null;
@@ -76,7 +79,7 @@ export function findOpenings(app) {
       // the outside: away from the middle of the masonry
       const nx = -L.uz, nz = L.ux, outSign = (x - cx) * nx + (z - cz) * nz >= 0 ? 1 : -1;
       const yaw = Math.atan2(-L.uz, L.ux) + (outSign > 0 ? 0 : Math.PI);
-      const floor0 = lv[0].bot - (lv[0].us[0].b.u.bedT ?? MM(20));   // (a doorway: from the floor, or over the first course — a step)
+      const floor0 = lv[k0].bot - (lv[k0].us[0].b.u.bedT ?? MM(20));   // (a doorway: from the floor, or over the first course — a step)
       out.push({ x, z, y0, y1, w: Math.round(w), h: Math.round(h), t: Math.round((L.hw * 2) / S), yaw, ok: !why, why, floor: y0 - floor0 < MM(320), line: L });
     });
   }
