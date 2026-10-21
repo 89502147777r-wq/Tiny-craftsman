@@ -284,3 +284,22 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .wall-tray .tray-stack i:nth-child(1) { top: 22px; } .wall-tray .tray-stack i:nth-child(2) { top: 11px; } .wall-tray .tray-stack i:nth-child(3) { top: 0; left: 8px; width: 40px; }
 .wall-tray.brick .tray-stack i { background: #a9533d; }
 .wall-tray.active { outline: 2px solid var(--accent, #f0a53a); }
+
+/* ---- one row at a time: groups → tools → modes (‹ back) ---------------------------------- */
+#ui.nav-tools #groups, #ui.nav-chips #groups { display: none; }
+#ui.nav-tools .toolrow { bottom: calc(var(--safe-b) + 12px); }
+.toolrow > .tool.nav-back { display: grid; color: var(--accent); }
+#ui.nav-chips .subbar { bottom: calc(var(--safe-b) + 12px); }
+#ui:not(.nav-chips) .subbar { display: none; }
+#ui.nav-chips .hint, #ui.nav-tools .hint, #ui.has-toolrow .hint { bottom: calc(var(--safe-b) + 66px); }
+.chip-btn.back { width: 40px; padding: 0; font-size: 20px; line-height: 1; color: var(--accent); }
+.chip-btn.crumb { pointer-events: none; background: transparent; border-color: transparent; color: var(--ink-dim); -webkit-backdrop-filter: none; backdrop-filter: none; padding: 0 4px; font-size: 11.5px; }
+.chip-btn.group:not(.on) { border-color: rgba(240, 166, 58, .55); }
+
+/* ---- the touches shown (for screen recording): a dot under each finger, a ring on a tap -- */
+#touches { position: fixed; inset: 0; pointer-events: none; z-index: 1000; }
+.touch-dot { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255, 255, 255, .32);
+  border: 2px solid rgba(255, 255, 255, .9); box-shadow: 0 0 0 1px rgba(0, 0, 0, .25), 0 3px 10px rgba(0, 0, 0, .35); transition: opacity .28s, transform .28s; }
+.touch-dot.up { opacity: 0; transform: scale(.55); }
+.touch-ring { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, .85); animation: touch-ring .5s ease-out forwards; }
+@keyframes touch-ring { from { transform: scale(.5); opacity: .9; } to { transform: scale(1.9); opacity: 0; } }

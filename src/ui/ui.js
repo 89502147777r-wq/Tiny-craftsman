@@ -2,6 +2,7 @@ import { BUILD, MODEL_SCALE, MACHINES_ENABLED, MATERIALS, DELIVERY, PUMP, CONCRE
 import { bbox, contains } from '../world/outlines.js';
 import { PANOS } from '../world/backdrop.js';
 import { DAY_LENGTHS, WEATHER } from '../world/sky.js';
+import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANELS } from '../world/facade.js';
 
@@ -82,8 +83,17 @@ export class UI {
     if (!MACHINES_ENABLED) document.querySelector('[data-tool="machine"]')?.setAttribute('hidden', '');
     document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => {
       app.setTool(b.dataset.tool);
+      this.navPath = []; this.navLevel = this.chips().length ? 'chips' : 'tools';
       if (this.fanOpen && !this.chips().length) this.fan(false);   // quiet mode: done choosing
+      this.refresh();
     }));
+    // one row at a time at the bottom: the groups → a group's tools → a tool's modes (and
+    // deeper: the material → its layer → its colour), «‹» goes back up
+    this.navPath = []; this.navLevel = 'groups';
+    const back = document.createElement('button');
+    back.className = 'tool nav-back'; back.innerHTML = '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Назад</span>';
+    back.addEventListener('click', () => this.navBack());
+    $('toolrow').prepend(back);
     this.lastTool = {};
     this.groups = GROUPS.filter((g) => this.groupTools(g.id).length);
     for (const g of this.groups) {
@@ -131,6 +141,7 @@ export class UI {
       if (e.key.toLowerCase() === 'q') this.setQuiet(!app.settings.quiet);
     });
     this.bindSettings();
+    showTouches(app);
     this.bindQuiet();
     this.bindJoystick();
     this.bindJoystick('joy2', 'joy2-knob', (x, y) => this.app.machineTool.manual('r', x, y));
@@ -157,9 +168,9 @@ export class UI {
     bind('set-rebarD', 'rebarD', () => '');
     bind('set-rebarStep', 'rebarStep', (v) => `${v} мм`);
     bind('set-cover', 'cover', (v) => `${v} мм`);
-    for (const [id, key] of [['set-shake', 'shake'], ['set-sound', 'sound'], ['set-grade', 'stopAtGrade']]) {
+    for (const [id, key] of [['set-shake', 'shake'], ['set-sound', 'sound'], ['set-grade', 'stopAtGrade'], ['set-touches', 'touches']]) {
       const el = $(id);
-      el.checked = !!s[key];
+      el.checked = key === 'touches' ? s[key] !== false : !!s[key];
       el.addEventListener('change', () => { s[key] = el.checked; app.applySettings(); });
     }
   }
@@ -189,22 +200,46 @@ export class UI {
   groupTools(gid) { return [...document.querySelectorAll(`#toolrow [data-group="${gid}"]`)].filter((b) => !b.hasAttribute('hidden')); }
   groupOf(tool) { return document.querySelector(`#toolrow [data-tool="${tool}"]`)?.dataset.group; }
 
-  // a group opens on the tool used last in it
+  // a group opens on the tool used last in it: its tools (when several), else its modes
   openGroup(gid) {
     const tools = this.groupTools(gid).filter((b) => b.dataset.tool);
     const last = this.lastTool[gid];
     const pick = tools.find((b) => b.dataset.tool === last) || tools[0];
     if (pick) this.app.setTool(pick.dataset.tool);
+    this.navPath = [];
+    this.navLevel = this.groupTools(gid).length > 1 ? 'tools' : this.chips().length ? 'chips' : 'groups';
     this.refresh();
+  }
+  navBack() {
+    if (this.navLevel === 'chips' && this.navPath.length) this.navPath.pop();
+    else if (this.navLevel === 'chips' && this.groupTools(this.groupOf(this.app.tool)).length > 1) this.navLevel = 'tools';
+    else { this.navLevel = 'groups'; this.navPath = []; }
+    this.refresh();
+  }
+  // the chips of the level open now (the tree: a chip with `kids` opens them)
+  navNodes() {
+    let list = this.chips();
+    const crumbs = [], path = [];
+    for (const id of this.navPath) {
+      const n = list.find((c) => c.id === id && c.kids);
+      if (!n) break;
+      path.push(id); crumbs.push(n.crumb || n.label); list = typeof n.kids === 'function' ? n.kids() : n.kids;
+    }
+    this.navPath = path;
+    return { list, crumbs };
   }
 
   renderGroups() {
     const app = this.app, gid = this.groupOf(app.tool);
     if (gid) this.lastTool[gid] = app.tool;
     for (const b of $('groups').children) b.classList.toggle('active', b.dataset.gid === gid);
-    const multi = this.groupTools(gid).length > 1;
-    for (const b of document.querySelectorAll('#toolrow > [data-group]')) b.classList.toggle('shown', multi && b.dataset.group === gid);
-    $('ui').classList.toggle('has-toolrow', multi);
+    // (the tool changed by itself — a shortcut, the fan: its group, from the top)
+    if (this._navTool !== app.tool) { if (this._navTool !== undefined && this.navLevel !== 'groups') { this.navPath = []; this.navLevel = this.groupTools(gid).length > 1 ? 'tools' : this.chips().length ? 'chips' : 'groups'; } this._navTool = app.tool; }
+    const lv = this.navLevel;
+    for (const b of document.querySelectorAll('#toolrow > [data-group]')) b.classList.toggle('shown', lv === 'tools' && b.dataset.group === gid);
+    const ui = $('ui');
+    ui.classList.toggle('has-toolrow', lv === 'tools');
+    for (const k of ['groups', 'tools', 'chips']) ui.classList.toggle('nav-' + k, lv === k);
   }
 
   openMenu(open) {
@@ -269,6 +304,7 @@ export class UI {
     if (save) app.applySettings();
     $('ui').classList.toggle('quiet', on);
     $('fan').hidden = !on;
+    if (!on) { this.navLevel = 'groups'; this.navPath = []; }   // (the panels back: from the top)
     if (on) { this.buildFan(); this.toast('Тихий режим: инструменты — в круглой кнопке'); }
     this.fan(false);
     this.refresh();
@@ -305,21 +341,27 @@ export class UI {
   chips() {
     const app = this.app, t = app.tool;
     const C = (label, on, fn, cls = '') => ({ label, on, fn, cls });
+    // a group of chips: opens its own row (and does what `self` does: selects it); `crumb` — its name on the path
+    const G = (id, label, kids, crumb = null, self = null) => ({ id, label, kids, crumb: crumb || label.replace(/^\S+ · /, ''), on: self ? !!self.on : false, fn: self?.fn, cls: self?.cls || '' });
     if (t === 'camera') {
-      const b = app.settings.backdrop;
-      return [
-        C(app.settings.orbit ? '■ Стоп облёт' : '▶ Облёт', app.settings.orbit, () => { app.settings.orbit = !app.settings.orbit; app.applySettings(); }),
-        C('Мастерская', b === 'workshop', () => app.setBackdrop('workshop')),
-        ...Object.entries(PANOS).map(([k, v]) => C(v.name, b === k, () => app.setBackdrop(k))),
-        C('Фото-фон', b === 'posters', () => app.setBackdrop('posters')),
-        // the time of day and the weather (outdoors only)
-        ...(b !== 'workshop' && app.sky ? [
-          C(`🕓 ${app.sky.label()}`, false, () => {}, 'info'),
-          ...[[7, 'Утро'], [13, 'День'], [20.4, 'Закат'], [0, 'Ночь']].map(([h, l]) => C(l, false, () => { app.sky.setHour(h); app.ui.refresh(); })),
-          C(`Сутки: ${(app.settings.dayMin ?? 30) ? (app.settings.dayMin ?? 30) + ' мин' : 'стоп'}`, false, () => { const L = DAY_LENGTHS, i = L.indexOf(app.settings.dayMin ?? 30); app.settings.dayMin = L[(i + 1) % L.length]; app.applySettings(); }),
-          ...Object.entries(WEATHER).map(([k, l]) => C(k === 'auto' ? l : (k === 'rain' ? '🌧 ' : '☀ ') + l, (app.settings.weather || 'auto') === k, () => { app.settings.weather = k; app.applySettings(); })),
-        ] : []),
+      const b = app.settings.backdrop, st = app.settings;
+      const out = [
+        C(st.orbit ? '■ Стоп облёт' : '▶ Облёт', st.orbit, () => { st.orbit = !st.orbit; app.applySettings(); }),
+        G('bg', 'Фон', [
+          C('Мастерская', b === 'workshop', () => app.setBackdrop('workshop')),
+          ...Object.entries(PANOS).map(([k, v]) => C(v.name, b === k, () => app.setBackdrop(k))),
+          C('Фото-фон', b === 'posters', () => app.setBackdrop('posters')),
+        ]),
       ];
+      // the time of day and the weather (outdoors only)
+      if (b !== 'workshop' && app.sky) out.push(
+        G('time', `🕓 ${app.sky.label()}`, [
+          ...[[7, 'Утро'], [13, 'День'], [20.4, 'Закат'], [0, 'Ночь']].map(([h, l]) => C(l, false, () => { app.sky.setHour(h); })),
+          ...DAY_LENGTHS.map((m) => C(m ? `Сутки ${m} мин` : 'Время стоит', (st.dayMin ?? 30) === m, () => { st.dayMin = m; app.applySettings(); })),
+        ], 'Время'),
+        G('weather', (st.weather || 'auto') === 'rain' ? '🌧 Погода' : '☀ Погода', Object.entries(WEATHER).map(([k, l]) => C(l, (st.weather || 'auto') === k, () => { st.weather = k; app.applySettings(); }))),
+      );
+      return out;
     }
     if (t === 'shovel') {
       return [
@@ -353,35 +395,51 @@ export class UI {
     if (t === 'wall') {
       const wt = app.wallTool, s = app.settings;
       const set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
-      const out = [['lay', 'Класть'], ['opening', 'Проём'], ['line', 'Линия'], ['delete', 'Удалить']].map(([k, l]) => C(l, wt.mode === k, () => wt.setMode(k), k === 'delete' ? 'warn' : ''));
-      if (wt.mode === 'line' || wt.mode === 'lay') {
-        const brick = (s.wallKind || 'block') !== 'block';
-        const wk = s.wallKind || 'block';
-        if (wt.mode === 'line') out.push(C('Газоблок', wk === 'block', () => set({ wallKind: 'block' })), C('Кирпич', wk !== 'block', () => set({ wallKind: 'brick' })));
-        else out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич'], ['lintel', 'Перемычка'], ['prop', 'Подпорка'], ['ublock', 'U-блок'], ['ucage', 'Каркас'], ['belt', 'Опалубка пояса'], ['slab', 'Перекрытие'], ['window', 'Окно'], ['door', 'Дверь'], ['roof', 'Кровля'], ['facade', 'Фасад']].map(([k, l]) => C(l, wk === k, () => set({ wallKind: k }))));
-        if (wt.mode === 'lay' && wk === 'roof') {
-          const L = s.roofLayer || 'vap';
-          out.push(...ROOF_LAYERS.map(([k, l], i) => C(`${i + 1} · ${l}`, L === k, () => set({ roofLayer: k }))));
-          if (L === 'mem') out.push(...Object.entries(MEM_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.roofMem || 'grey') === k, () => set({ roofMem: k }))));
-          if (L === 'cop') out.push(...Object.entries(COP_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.roofCop || 'zinc') === k, () => set({ roofCop: k }))));
-        }
-        if (wt.mode === 'lay' && wk === 'facade') {
-          const L = s.facLayer || 'eps';
-          out.push(...FAC_LAYERS.map(([k, l], i) => C(`${i + 1} · ${l}`, L === k, () => set({ facLayer: k }))));
-          if (L === 'pl') out.push(...Object.entries(PLASTER_KINDS).map(([k, l]) => C('▦ ' + l, (s.facTex || 'bark') === k, () => set({ facTex: k }))));
-          if (L === 'pl') out.push(...Object.entries(PLASTER_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.facCol || 'white') === k, () => set({ facCol: k }))));
-          if (L === 'pan') out.push(...Object.entries(PANELS).map(([k, [l]]) => C(l, (s.facPanel || 'oak') === k, () => set({ facPanel: k }))));
-        }
-        if (wt.mode === 'lay' && wk === 'door') out.push(...[['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']].map(([k, l]) => C(l, (s.doorKey || 'door1') === k, () => set({ doorKey: k }))));
-        if (wt.mode === 'lay' && wk === 'window') out.push(...[['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · Антрацит 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']].map(([k, l]) => C(l, (s.windowKey || 'pvc2') === k, () => set({ windowKey: k }))));
-        if (wt.mode === 'lay' && wk === 'slab') out.push(...[[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, (s.slabCant || 0) === v, () => set({ slabCant: v }))));
-        if (wt.mode === 'lay' && (wk === 'block' || wk === 'brick' || wk === 'ublock')) out.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
-        if (wt.mode === 'lay' && (wk === 'block' || wk === 'brick')) out.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
-        // the planned height of a wall laid out with «Линия» (one by one in «Класть»: not needed)
-        if (!brick && wt.mode === 'line') out.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
-      }
-      if (wt.mode === 'opening') out.push(...[['window', 'Окно'], ['door', 'Дверь']].map(([k, l]) => C(l, (s.openKind || 'window') === k, () => set({ openKind: k }))));
-      return out;
+      const lay = (o) => { if (wt.mode !== 'lay') wt.setMode('lay'); set(o); };
+      const wk = s.wallKind || 'block', L = wt.mode === 'lay';
+      const K = (k, l) => C(l, L && wk === k, () => lay({ wallKind: k }));
+      const has = (...ks) => L && ks.includes(wk);
+      // the masonry
+      const masonry = [K('block', 'Газоблок'), K('brick', 'Кирпич'), K('ublock', 'U-блок')];
+      if (has('block', 'brick', 'ublock')) masonry.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
+      if (has('block', 'brick')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
+      // the roof: its layer → the colour
+      const RL = s.roofLayer || 'vap';
+      const roof = ROOF_LAYERS.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('roof') && RL === k, () => lay({ wallKind: 'roof', roofLayer: k }));
+        if (k === 'mem') return G('mem', c.label, Object.entries(MEM_COLOURS).map(([q, [n]]) => C('◼ ' + n, (s.roofMem || 'grey') === q, () => lay({ wallKind: 'roof', roofLayer: 'mem', roofMem: q }))), null, c);
+        if (k === 'cop') return G('cop', c.label, Object.entries(COP_COLOURS).map(([q, [n]]) => C('◼ ' + n, (s.roofCop || 'zinc') === q, () => lay({ wallKind: 'roof', roofLayer: 'cop', roofCop: q }))), null, c);
+        return c;
+      });
+      // the facade: its layer → the texture, the colour / the panel
+      const FL = s.facLayer || 'eps';
+      const facade = FAC_LAYERS.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('facade') && FL === k, () => lay({ wallKind: 'facade', facLayer: k }));
+        if (k === 'pl') return G('pl', c.label, [
+          ...Object.entries(PLASTER_KINDS).map(([q, n]) => C('▦ ' + n, (s.facTex || 'bark') === q, () => lay({ wallKind: 'facade', facLayer: 'pl', facTex: q }))),
+          ...Object.entries(PLASTER_COLOURS).map(([q, [n]]) => C('◼ ' + n, (s.facCol || 'white') === q, () => lay({ wallKind: 'facade', facLayer: 'pl', facCol: q }))),
+        ], null, c);
+        if (k === 'pan') return G('pan', c.label, Object.entries(PANELS).map(([q, [n]]) => C(n, (s.facPanel || 'oak') === q, () => lay({ wallKind: 'facade', facLayer: 'pan', facPanel: q }))), null, c);
+        return c;
+      });
+      const pick = (list, key, kind, def) => list.map(([k, l]) => C(l, has(kind) && (s[key] || def) === k, () => lay({ wallKind: kind, [key]: k })));
+      const mats = [
+        G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock'))),
+        G('lintel', 'Перемычки', [K('lintel', 'Перемычка'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'prop', 'ucage'))),
+        G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'slab'))),
+        G('win', 'Окна', pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · Антрацит 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), null, C('', has('window'))),
+        G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'))),
+        G('roof', 'Кровля', roof, null, C('', has('roof'), () => lay({ wallKind: 'roof' }))),
+        G('facade', 'Фасад', facade, null, C('', has('facade'), () => lay({ wallKind: 'facade' }))),
+      ];
+      const lineKids = [C('Газоблок', wk === 'block', () => set({ wallKind: 'block' })), C('Кирпич', wk !== 'block', () => set({ wallKind: 'brick' }))];
+      if (wk === 'block') lineKids.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
+      return [
+        G('lay', 'Стройматериалы', mats, null, C('', L, () => wt.setMode('lay'))),
+        G('opening', 'Проём', [['window', 'Окно'], ['door', 'Дверь']].map(([k, l]) => C(l, wt.mode === 'opening' && (s.openKind || 'window') === k, () => { wt.setMode('opening'); set({ openKind: k }); })), null, C('', wt.mode === 'opening', () => wt.setMode('opening'))),
+        G('line', 'Линия', lineKids, null, C('', wt.mode === 'line', () => wt.setMode('line'))),
+        C('Удалить', wt.mode === 'delete', () => wt.setMode('delete'), 'warn'),
+      ];
     }
     if (t === 'form' || t === 'rebar') {
       const b = t === 'form' ? app.formTool : app.rebarTool;
@@ -403,19 +461,27 @@ export class UI {
   }
 
   renderChips() {
-    const list = this.chips();
-    const key = JSON.stringify(list.map((c) => [c.label, c.on, c.cls]));
+    const show = this.navLevel === 'chips' || (this.app.settings.quiet && this.fanOpen);
+    const { list, crumbs } = show ? this.navNodes() : { list: [], crumbs: [] };
+    const key = JSON.stringify([show, crumbs, list.map((c) => [c.label, c.on, c.cls, !!c.kids])]);
     if (key === this._chipKey) return;
     this._chipKey = key;
     const bar = $('subbar');
     bar.innerHTML = '';
+    if (!show) return;
+    const add = (label, cls, fn) => { const b = document.createElement('button'); b.className = `chip-btn ${cls}`; b.textContent = label; if (fn) b.addEventListener('click', fn); bar.appendChild(b); return b; };
+    add('‹', 'back', () => this.navBack());
+    const tool = document.querySelector(`#toolrow [data-tool="${this.app.tool}"] span`)?.textContent || '';
+    add([tool, ...crumbs].filter(Boolean).join(' › '), 'crumb');
     for (const c of list) {
-      const b = document.createElement('button');
-      b.className = `chip-btn ${c.on ? 'on' : ''} ${c.cls}`;
-      b.textContent = c.label;
-      b.addEventListener('click', () => { c.fn(); if (this.fanOpen) this.fan(false); this.refresh(); });
-      bar.appendChild(b);
+      add(c.label + (c.kids ? ' ›' : ''), `${c.on ? 'on' : ''} ${c.cls || ''} ${c.kids ? 'group' : ''}`, () => {
+        c.fn?.();
+        if (c.kids) this.navPath.push(c.id);
+        else if (this.fanOpen) this.fan(false);
+        this.refresh();
+      });
     }
+    bar.scrollLeft = 0;
   }
 
   // sliders for the selected outline (depth, trench width)
