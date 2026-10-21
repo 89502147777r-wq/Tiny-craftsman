@@ -12,12 +12,9 @@ import { beltContains } from './belt.js';
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 const MIN_W = 350, MIN_H = 350;
 
-export function findOpenings(app) {
-  const units = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop').map(boxOf);
-  if (!units.length) return [];
-  // the middle of the masonry (which side of a wall is outside)
-  let cx = 0, cz = 0; for (const b of units) { cx += b.x; cz += b.z; } cx /= units.length; cz /= units.length;
-  // lines of wall: a direction (one way only) and the offset across it
+// the lines of wall: a direction (one way only), the offset across it (d), the half
+// thickness (hw), the units along it { a0, a1, bot, top, b }
+export function wallLines(units) {
   const lines = [];
   for (const b of units) {
     for (const [ax, az, along, across] of [[b.ux, b.uz, b.hl, b.hw], [-b.uz, b.ux, b.hw, b.hl]]) {
@@ -32,6 +29,16 @@ export function findOpenings(app) {
       L.units.push({ a0: a - along, a1: a + along, bot: b.bot, top: b.top, b });
     }
   }
+  return lines;
+}
+export const masonry = (app) => app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop').map(boxOf);
+
+export function findOpenings(app) {
+  const units = masonry(app);
+  if (!units.length) return [];
+  // the middle of the masonry (which side of a wall is outside)
+  let cx = 0, cz = 0; for (const b of units) { cx += b.x; cz += b.z; } cx /= units.length; cz /= units.length;
+  const lines = wallLines(units);
   const out = [];
   for (const L of lines) {
     if (L.units.length < 3) continue;

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { MODEL_SCALE } from '../config.js';
 import { canvas, asTex, normalOf } from './roof.js';
+import { wallLines, masonry, findOpenings } from '../tools/windowFit.js';
 
 // The facade (мокрый фасад / навесные панели), laid piece by piece as on site:
 //   eps  – the insulation: facade EPS boards 1000 × 500 × 100 on glue, staggered, cut at the
@@ -48,21 +50,51 @@ export function epsTex() {
   return (TEX.eps = { map: asTex(c), normalMap: normalOf(hc, 2), roughness: 0.9 });
 }
 
-// ---- the base coat with the mesh (a 500 mm tile): grey glue, the 5 mm mesh showing through -----
+// ---- the base coat (a 500 mm tile): grey glue in the trowel's sweeps; with the mesh pressed in --
+function glueCanvas(col) {
+  const n = 512, c = canvas(n), g = c.getContext('2d'), hc = canvas(n), h = hc.getContext('2d');
+  g.fillStyle = col; g.fillRect(0, 0, n, n); h.fillStyle = '#808080'; h.fillRect(0, 0, n, n);
+  for (let i = 0; i < 60; i++) { const x = rnd() * n, y = rnd() * n, r = 30 + rnd() * 70; blob(h, n, x, y, r, rnd() < 0.5 ? 150 : 100, 0.35); blob(g, n, x, y, r, rnd() < 0.5 ? 200 : 120, 0.08); }
+  // the edges of the trowel's strokes
+  for (let i = 0; i < 40; i++) { const x = rnd() * n, y = rnd() * n, l = 60 + rnd() * 160; h.fillStyle = 'rgba(190,190,190,0.5)'; h.fillRect(x, y, 1.5, l); h.fillRect(x - n, y, 1.5, l); h.fillRect(x, y - n, 1.5, l); }
+  return { n, c, g, hc, h };
+}
+// the fresh glue: darker, wet
+export function glueTex() {
+  if (TEX.glue) return TEX.glue;
+  const { c, hc } = glueCanvas('#8f908b');
+  return (TEX.glue = { map: asTex(c), normalMap: normalOf(hc, 1.5), roughness: 0.55 });
+}
+function strands(ctx, n, col, w, jitter) {
+  const st = n / 100;
+  for (let k = 0; k < 100; k++) for (const dir of [0, 1]) {
+    const p = k * st + (rnd() - 0.5) * jitter;
+    ctx.strokeStyle = col(); ctx.lineWidth = w; ctx.beginPath();
+    if (dir) { ctx.moveTo(p, 0); ctx.lineTo(p + (rnd() - 0.5) * jitter, n); } else { ctx.moveTo(0, p); ctx.lineTo(n, p + (rnd() - 0.5) * jitter); }
+    ctx.stroke();
+  }
+}
+// the mesh pressed into the glue and smoothed over: it shows through faintly
 export function meshTex() {
   if (TEX.mesh) return TEX.mesh;
-  const n = 512, c = canvas(n), g = c.getContext('2d'), hc = canvas(n), h = hc.getContext('2d');
-  g.fillStyle = '#a9aaa4'; g.fillRect(0, 0, n, n); h.fillStyle = '#808080'; h.fillRect(0, 0, n, n);
-  // the trowel's sweeps
-  for (let i = 0; i < 60; i++) { const x = rnd() * n, y = rnd() * n, r = 30 + rnd() * 70; blob(h, n, x, y, r, rnd() < 0.5 ? 150 : 100, 0.35); blob(g, n, x, y, r, rnd() < 0.5 ? 200 : 120, 0.08); }
-  // the mesh: 5 mm (5 px), the strands a little wavy
-  const st = 512 / 100;
-  for (let k = 0; k < 100; k++) for (const dir of [0, 1]) {
-    const p = k * st + (rnd() - 0.5);
-    g.strokeStyle = `rgba(214,120,60,${0.22 + rnd() * 0.1})`; g.lineWidth = 1.1; h.strokeStyle = 'rgba(170,170,170,0.8)'; h.lineWidth = 1;
-    for (const ctx of [g, h]) { ctx.beginPath(); if (dir) { ctx.moveTo(p, 0); ctx.lineTo(p + (rnd() - 0.5), n); } else { ctx.moveTo(0, p); ctx.lineTo(n, p + (rnd() - 0.5)); } ctx.stroke(); }
-  }
+  const { n, c, g, hc, h } = glueCanvas('#a9aaa4');
+  strands(g, n, () => `rgba(200,130,80,${0.07 + rnd() * 0.05})`, 1.1, 1);
+  strands(h, n, () => 'rgba(150,150,150,0.5)', 1, 1);
   return (TEX.mesh = { map: asTex(c), normalMap: normalOf(hc, 1.5), roughness: 0.95 });
+}
+// the loose mesh (rolled out, not pressed in yet): orange strands, see-through
+export function looseMeshTex() {
+  if (TEX.loose) return TEX.loose;
+  const n = 512, c = canvas(n), g = c.getContext('2d');
+  strands(g, n, () => `rgb(${226 + rnd() * 20},${128 + rnd() * 20},${58 + rnd() * 10})`, 1.6, 0.6);
+  g.fillStyle = 'rgba(40,40,40,0.8)'; g.font = 'bold 13px sans-serif'; g.fillText('ФАСАДНАЯ 160', 40, 30);
+  return (TEX.loose = { map: asTex(c) });
+}
+// a smooth wet coat of the plaster (before the float): the colour, the trowel's sweeps
+export function wetTex(colour) {
+  const key = 'wet' + colour; if (TEX[key]) return TEX[key];
+  const { c, g, hc } = glueCanvas(PLASTER_COLOURS[colour][1]);
+  return (TEX[key] = { map: asTex(c), normalMap: normalOf(hc, 1.2), roughness: 0.5 });
 }
 
 // ---- the thin-coat plaster (a 500 mm tile): the height is the same for every colour ------------
@@ -96,7 +128,7 @@ export function plasterTex(kind, colour) {
   const hc = plasterHeight(kind), n = hc.width, c = canvas(n), g = c.getContext('2d'), col = PLASTER_COLOURS[colour][1];
   g.fillStyle = col; g.fillRect(0, 0, n, n);
   // the colour follows the relief a little (the hollows hold the dust, the tops catch the light)
-  g.globalAlpha = kind === 'bark' ? 0.45 : 0.3; g.globalCompositeOperation = 'multiply'; g.drawImage(hc, 0, 0); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  g.globalAlpha = kind === 'bark' ? 0.28 : 0.2; g.globalCompositeOperation = 'multiply'; g.drawImage(hc, 0, 0); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   for (let i = 0; i < 4000; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'; g.fillRect(rnd() * n, rnd() * n, 1.2, 1.2); }
   return (TEX[key] = { map: asTex(c), normalMap: normalOf(hc, kind === 'bark' ? 6 : 5), roughness: 0.97 });
 }
@@ -175,3 +207,285 @@ export function facadeMat(f) {
   return new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.normalMap, roughness: t.roughness, metalness: 0 });
 }
 export const tileOf = (f) => (f.kind === 'eps' ? [1000, 500] : f.kind === 'panel' ? [1000, 1000] : [500, 500]);
+
+// ---- the faces: the outside of each line of wall ----------------------------------------------
+// A face: the outer plane of a line of masonry (its units' far side, away from the middle of
+// the house), along it a (model, a = x·u), up it y; a point off the wall by `off` (model):
+// W(a, y, off). The ends meet the faces round the corners at their planes; one of the two
+// at a corner (the one along x) runs on past it by the thickness of what is on it, so the
+// insulation and the coats wrap the corner. The openings are holes [a0, y0, a1, y1].
+const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
+export const CELL = MM(50);   // the grid the coats are spread on (the spatula's dabs)
+export const OFF = { eps: MM(100), glue: MM(103), loose: MM(106), emb: MM(105), wet: MM(108), fin: MM(108), pan: MM(120) };
+export const LAYERS = [['eps', 'Утеплитель'], ['glue', 'Клей'], ['mesh', 'Сетка'], ['emb', 'Вдавить сетку'], ['pl', 'Штукатурка'], ['fl', 'Затирка'], ['pan', 'Панели']];
+
+const across = (b, nx, nz) => Math.abs(b.hl * (b.ux * nx + b.uz * nz)) + Math.abs(b.hw * (-b.uz * nx + b.ux * nz));
+export function facadeFaces(objects) {
+  const app = { objects }, units = masonry(app);
+  if (!units.length) return [];
+  let cx = 0, cz = 0; for (const b of units) { cx += b.x; cz += b.z; } cx /= units.length; cz /= units.length;
+  const lines = wallLines(units), opens = findOpenings(app), faces = [];
+  for (const L of lines) {
+    if (L.units.length < 3) continue;
+    const nx = -L.uz, nz = L.ux, mine = new Set(L.units.map((u) => u.b));
+    let a0 = Infinity, a1 = -Infinity, y0 = Infinity, y1 = -Infinity, lo = Infinity, hi = -Infinity;
+    for (const u of L.units) {
+      a0 = Math.min(a0, u.a0); a1 = Math.max(a1, u.a1); y0 = Math.min(y0, u.bot); y1 = Math.max(y1, u.top);
+      const c = u.b.x * nx + u.b.z * nz, h = across(u.b, nx, nz); lo = Math.min(lo, c - h); hi = Math.max(hi, c + h);
+    }
+    const am = (a0 + a1) / 2, md = (lo + hi) / 2, sg = (L.ux * am + nx * md - cx) * nx + (L.uz * am + nz * md - cz) * nz >= 0 ? 1 : -1, P = sg > 0 ? hi : lo;
+    // the outside only: no masonry in front of it
+    const front = units.some((b) => {
+      if (mine.has(b)) return false;
+      const c = b.x * nx + b.z * nz, h = across(b, nx, nz), a = b.x * L.ux + b.z * L.uz, ha = across(b, L.ux, L.uz);
+      return (sg > 0 ? c - h > P - MM(10) : c + h < P + MM(10)) && a + ha > a0 + MM(50) && a - ha < a1 - MM(50) && b.top > y0 && b.bot < y1;
+    });
+    if (front) continue;
+    const holes = opens.filter((o) => Math.abs(o.line.d - L.d) < 1e-9 && Math.abs(o.line.ux - L.ux) < 1e-9).map((o) => { const m = o.x * L.ux + o.z * L.uz, w = MM(o.w) / 2; return [m - w, o.y0, m + w, o.y1]; });
+    faces.push({ ux: L.ux, uz: L.uz, nx, nz, sg, P, a0, a1, y0, y1, holes, hw: L.hw, wrap0: false, wrap1: false, ru: Math.sign(L.ux * sg * nz - L.uz * sg * nx) || 1 });
+  }
+  // the corners: an end meets the plane of a face across it
+  for (const F of faces) for (const G of faces) {
+    if (F === G) continue;
+    const k = G.nx * F.ux + G.nz * F.uz;   // (G's across = ± F's along)
+    if (Math.abs(k) < 0.99) continue;
+    const aG = G.P * Math.sign(k), bF = F.P * Math.sign(F.nx * G.ux + F.nz * G.uz);
+    if (bF < G.a0 - 2 * F.hw - MM(80) || bF > G.a1 + 2 * F.hw + MM(80) || G.y1 < F.y0 || G.y0 > F.y1) continue;
+    const out = G.sg * k;   // (G faces along +u of F: F's far end)
+    const wrap = Math.abs(F.ux) >= Math.abs(F.uz);
+    if (out > 0 && Math.abs(aG - F.a1) < 2 * G.hw + MM(80)) { F.a1 = aG; F.wrap1 = wrap; }
+    if (out < 0 && Math.abs(aG - F.a0) < 2 * G.hw + MM(80)) { F.a0 = aG; F.wrap0 = wrap; }
+  }
+  for (const F of faces) F.key = faceKey(F);
+  return faces;
+}
+const faceKey = (F) => `${Math.round(Math.atan2(F.uz, F.ux) * 1000)}:${F.sg}:${Math.round(F.P / CELL)}`;
+// the record of a face (by its plane: the walls may be re-laid)
+export const recOf = (recs, F) => recs.find((r) => r.ux * F.ux + r.uz * F.uz > 0.999 && r.sg === F.sg && Math.abs(r.P - F.P) < MM(40));
+export const W = (F, a, y, off) => { const c = F.P + F.sg * off; return [F.ux * a + F.nx * c, y, F.uz * a + F.nz * c]; };
+// the face's extent at an offset (round the corner it wraps)
+export const ext = (F, off) => [F.a0 - (F.wrap0 ? off : 0), F.y0, F.a1 + (F.wrap1 ? off : 0), F.y1];
+
+// ---- rects and cells ----------------------------------------------------------------------------
+export const inR = (r, a, y) => a >= r[0] && a <= r[2] && y >= r[1] && y <= r[3];
+export function minus(rects, h) {
+  const out = [];
+  for (const r of rects) {
+    if (h[0] >= r[2] || h[2] <= r[0] || h[1] >= r[3] || h[3] <= r[1]) { out.push(r); continue; }
+    if (h[1] > r[1]) out.push([r[0], r[1], r[2], h[1]]);
+    if (h[3] < r[3]) out.push([r[0], h[3], r[2], r[3]]);
+    const y0 = Math.max(r[1], h[1]), y1 = Math.min(r[3], h[3]);
+    if (h[0] > r[0]) out.push([r[0], y0, h[0], y1]);
+    if (h[2] < r[2]) out.push([h[2], y0, r[2], y1]);
+  }
+  return out;
+}
+const clip = (r, e) => { const q = [Math.max(r[0], e[0]), Math.max(r[1], e[1]), Math.min(r[2], e[2]), Math.min(r[3], e[3])]; return q[2] - q[0] > 1e-7 && q[3] - q[1] > 1e-7 ? q : null; };
+// a piece as it is on the wall: its rect cut to the face and round the openings
+export function cutPiece(F, r, off) { const q = clip(r, ext(F, off)); if (!q) return []; let out = [q]; for (const h of F.holes) out = minus(out, h); return out; }
+export const area = (rs) => rs.reduce((s, r) => s + (r[2] - r[0]) * (r[3] - r[1]), 0);
+// the cells: a Set of keys; stored as runs [j, i0, i1] (i1 past the end)
+export const ck = (i, j) => (j + 30000) * 60000 + (i + 30000);
+export const cij = (k) => [(k % 60000) - 30000, Math.floor(k / 60000) - 30000];
+const _dec = new WeakMap();
+export function cellsOf(runs) {
+  if (!runs?.length) return new Set();
+  let s = _dec.get(runs); if (s) return s;
+  s = new Set(); for (const [j, i0, i1] of runs) for (let i = i0; i < i1; i++) s.add(ck(i, j));
+  _dec.set(runs, s); return s;
+}
+export function runsOf(set) {
+  const rows = new Map();
+  for (const k of set) { const [i, j] = cij(k); (rows.get(j) || rows.set(j, []).get(j)).push(i); }
+  const out = [];
+  for (const [j, is] of [...rows].sort((p, q) => p[0] - q[0])) { is.sort((p, q) => p - q); let s0 = is[0], prev = is[0]; for (const i of is.slice(1)) { if (i !== prev + 1) { out.push([j, s0, prev + 1]); s0 = i; } prev = i; } out.push([j, s0, prev + 1]); }
+  return out;
+}
+// cells → rects (row runs, merged up while the same)
+function cellRects(set) {
+  const runs = runsOf(set), open = new Map(), out = [];
+  let row = null;
+  for (const [j, i0, i1] of runs) {
+    if (j !== row) { for (const [k, r] of [...open]) if (r.j1 < j) { out.push(r); open.delete(k); } row = j; }
+    const k = i0 + ':' + i1, r = open.get(k);
+    if (r && r.j1 === j) r.j1 = j + 1; else { if (r) out.push(r); open.set(k, { i0, i1, j0: j, j1: j + 1 }); }
+  }
+  out.push(...open.values());
+  return out.map((r) => [r.i0 * CELL, r.j0 * CELL, r.i1 * CELL, r.j1 * CELL]);
+}
+// the slots of the boards / the panels: from the corner and the bottom of the face, the
+// insulation staggered by half a board
+export function slotAt(F, a, y, kind) {
+  const [L, H] = kind === 'pan' ? [1000, 500] : [FACADE.epsL, FACADE.epsW], e = ext(F, kind === 'pan' ? OFF.pan : OFF.eps);
+  const row = Math.floor((y - e[1]) / MM(H)), off = kind === 'eps' && row % 2 ? MM(L / 2) : 0;
+  // (counted from the left end as seen from outside)
+  const fromLeft = F.ru > 0, base = fromLeft ? e[0] - off : e[2] + off, col = Math.floor((fromLeft ? a - base : base - a) / MM(L));
+  const s0 = fromLeft ? base + col * MM(L) : base - (col + 1) * MM(L), t0 = e[1] + row * MM(H);
+  return [s0, t0, s0 + MM(L), t0 + MM(H)].map((v) => +v.toFixed(6));
+}
+export const sameSlot = (p, q) => Math.abs(p[0] - q[0]) < MM(2) && Math.abs(p[1] - q[1]) < MM(2);
+
+// ---- the model of a face ------------------------------------------------------------------------
+class Geo {
+  constructor() { this.p = []; this.uv = []; }
+  // a quad P0..P3 (corners in turn) facing n, its uvs
+  quad(P, U, n) {
+    const e1 = [P[1][0] - P[0][0], P[1][1] - P[0][1], P[1][2] - P[0][2]], e2 = [P[2][0] - P[0][0], P[2][1] - P[0][1], P[2][2] - P[0][2]];
+    const cr = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const o = cr[0] * n[0] + cr[1] * n[1] + cr[2] * n[2] >= 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+    for (const k of o) { this.p.push(...P[k]); this.uv.push(...U[k]); }
+  }
+  mesh(mat) {
+    if (!this.p.length) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2)); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true; return m;
+  }
+}
+const MATS = {};
+function mat(key, make) { return MATS[key] || (MATS[key] = make()); }
+function stdMat(t, extra = {}, po = 0) {
+  const m = new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.normalMap, roughness: t.roughness ?? 0.9, metalness: 0, ...extra });
+  if (po) { m.polygonOffset = true; m.polygonOffsetFactor = -po; m.polygonOffsetUnits = -2 * po; }
+  return m;
+}
+// a sheet on the face over rects at `off`, the uv: (a, y) / the tile (mm), from an origin
+function sheet(geo, F, rects, off, tile, o = [0, 0], rot = false) {
+  const n = [F.sg * F.nx, 0, F.sg * F.nz];
+  for (const r of rects) {
+    const cs = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]];
+    geo.quad(cs.map(([a, y]) => W(F, a, y, off)), cs.map(([a, y]) => { const u = F.ru * (a - o[0]) / MM(tile[0]), v = (y - o[1]) / MM(tile[1]); return rot ? [v, -u] : [u, v]; }), n);
+  }
+}
+// a board: the front at off1, the edges back to off0
+function board(geo, F, rects, off0, off1, tile, o) {
+  sheet(geo, F, rects, off1, tile, o);
+  const u = [F.ux, 0, F.uz];
+  for (const r of rects) {
+    const e = (pts, n) => geo.quad(pts.map(([a, y, f]) => W(F, a, y, f)), [[0, 0], [1, 0], [1, 0.05], [0, 0.05]], n);
+    e([[r[0], r[1], off0], [r[2], r[1], off0], [r[2], r[1], off1], [r[0], r[1], off1]], [0, -1, 0]);
+    e([[r[0], r[3], off0], [r[2], r[3], off0], [r[2], r[3], off1], [r[0], r[3], off1]], [0, 1, 0]);
+    e([[r[0], r[1], off0], [r[0], r[3], off0], [r[0], r[3], off1], [r[0], r[1], off1]], u.map((v) => -v));
+    e([[r[2], r[1], off0], [r[2], r[3], off0], [r[2], r[3], off1], [r[2], r[1], off1]], u);
+  }
+}
+// cells cut to the face and the openings
+function cellsCut(F, set, off) { let out = []; for (const r of cellRects(set)) out.push(...cutPiece(F, r, off)); return out; }
+const DOWELS = [[100, 100], [900, 100], [500, 250], [100, 400], [900, 400]];
+
+// rec: { eps, glue, mesh, emb, pl: {variant: runs}, fl: { v, h }, pan }; live (the hand):
+// { layer, slot | rect | cells, variant, dir, tool: { kind, a, y } }
+export function buildFacade(F, rec, live) {
+  const group = new THREE.Group();
+  const eps = [...(rec.eps || [])], mesh = [...(rec.mesh || [])], pan = [...(rec.pan || [])];
+  const glue = new Set(cellsOf(rec.glue)), emb = new Set(cellsOf(rec.emb)), pl = {}, fl = { v: new Set(cellsOf(rec.fl?.v)), h: new Set(cellsOf(rec.fl?.h)) };
+  for (const [k, runs] of Object.entries(rec.pl || {})) pl[k] = new Set(cellsOf(runs));
+  let ghost = null;
+  if (live) {
+    if (live.layer === 'eps' && live.slot) ghost = { kind: 'eps', slot: live.slot, ok: live.ok };
+    if (live.layer === 'pan' && live.slot) ghost = { kind: 'pan', slot: live.slot, ok: live.ok, key: live.key };
+    if (live.layer === 'mesh' && live.rect) mesh.push(live.rect);
+    const add = (set) => { for (const k of live.cells || []) set.add(k); };
+    if (live.layer === 'glue') add(glue);
+    if (live.layer === 'emb') add(emb);
+    if (live.layer === 'pl') { for (const s of [...Object.values(pl), fl.v, fl.h]) for (const k of live.cells || []) s.delete(k); add(pl[live.variant] || (pl[live.variant] = new Set())); }
+    if (live.layer === 'fl') { for (const k of live.cells || []) { fl.v.delete(k); fl.h.delete(k); } add(fl[live.dir || 'v']); }
+  }
+  // the insulation: the boards, the dowels (until the glue covers them)
+  const ge = new Geo(), gd = [];
+  for (const s of eps) {
+    board(ge, F, cutPiece(F, s, OFF.eps), 0, OFF.eps, [FACADE.epsL, FACADE.epsW], F.ru > 0 ? [s[0], s[1]] : [s[2], s[1]]);
+    for (const [da, dy] of DOWELS) {
+      const a = F.ru > 0 ? s[0] + MM(da) : s[2] - MM(da), y = s[1] + MM(dy);
+      if (!cutPiece(F, s, OFF.eps).some((r) => inR(r, a, y))) continue;
+      if (glue.has(ck(Math.floor(a / CELL), Math.floor(y / CELL)))) continue;
+      gd.push(W(F, a, y, OFF.eps + MM(2)));
+    }
+  }
+  const add = (m) => { if (m) group.add(m); return m; };
+  add(ge.mesh(mat('eps', () => stdMat(epsTex()))));
+  if (gd.length) {
+    const dm = new THREE.InstancedMesh(new THREE.CylinderGeometry(MM(30), MM(32), MM(4), 16), mat('dowel', () => new THREE.MeshStandardMaterial({ color: '#d8d8d2', roughness: 0.55 })), gd.length);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(F.sg * F.nx, 0, F.sg * F.nz)), m4 = new THREE.Matrix4();
+    gd.forEach((p, i) => dm.setMatrixAt(i, m4.compose(new THREE.Vector3(...p), q, new THREE.Vector3(1, 1, 1))));
+    dm.castShadow = true; group.add(dm);
+  }
+  // the glue; the mesh rolled out on it (loose: off the wall, sagging); pressed in
+  const gg = new Geo(); sheet(gg, F, cellsCut(F, glue, OFF.glue), OFF.glue, [500, 500]); add(gg.mesh(mat('glue', () => stdMat(glueTex(), {}, 1))));
+  const embIn = new Set([...emb].filter((k) => glue.has(k)));
+  const gl = new Geo();
+  for (const r of mesh) for (const q of cutPiece(F, r, OFF.loose)) {
+    // in strips of 100 mm, each off the wall by its sag; the pressed-in cells under it skipped
+    const st = MM(100);
+    for (let y = q[1]; y < q[3] - 1e-7; y += st) for (let a = q[0]; a < q[2] - 1e-7; a += st) {
+      const c = [a, y, Math.min(a + st, q[2]), Math.min(y + st, q[3])], mid = ck(Math.floor((c[0] + c[2]) / 2 / CELL), Math.floor((c[1] + c[3]) / 2 / CELL));
+      if (embIn.has(mid)) continue;
+      const sag = MM(2.5 + 2.5 * Math.sin(a / MM(370) + y / MM(530)) * Math.cos(y / MM(290)));
+      sheet(gl, F, [c], OFF.loose + sag, [500, 500], [r[0], r[1]]);
+    }
+  }
+  add(gl.mesh(mat('loose', () => { const m = new THREE.MeshStandardMaterial({ map: looseMeshTex().map, transparent: true, alphaTest: 0.3, roughness: 0.7, side: THREE.DoubleSide }); return m; })));
+  const meshCells = new Set([...embIn].filter((k) => { const [i, j] = cij(k), a = (i + 0.5) * CELL, y = (j + 0.5) * CELL; return mesh.some((r) => inR(r, a, y)); }));
+  const gm = new Geo(); sheet(gm, F, cellsCut(F, meshCells, OFF.emb), OFF.emb, [500, 500]); add(gm.mesh(mat('emb', () => stdMat(meshTex(), {}, 2))));
+  // the plaster: wet (smooth, the colour) → floated (its texture, the way the float went)
+  for (const [variant, set] of Object.entries(pl)) {
+    const [tex, col] = variant.split(':');
+    const wet = new Set([...set].filter((k) => !fl.v.has(k) && !fl.h.has(k)));
+    const gw = new Geo(); sheet(gw, F, cellsCut(F, wet, OFF.wet), OFF.wet, [500, 500]); add(gw.mesh(mat('wet' + col, () => stdMat(wetTex(col), {}, 3))));
+    for (const dir of ['v', 'h']) {
+      const done = new Set([...set].filter((k) => fl[dir].has(k)));
+      const gf = new Geo(); sheet(gf, F, cellsCut(F, done, OFF.fin), OFF.fin, [500, 500], [0, 0], dir === 'h'); add(gf.mesh(mat('fin' + variant, () => stdMat(plasterTex(tex, col), {}, 3))));
+    }
+  }
+  // the panels
+  const byKey = {};
+  for (const p of pan) (byKey[p[4]] || (byKey[p[4]] = [])).push(p);
+  if (ghost?.kind === 'pan' && ghost.ok) (byKey[ghost.key] || (byKey[ghost.key] = [])).push([...ghost.slot, ghost.key]);
+  for (const [key, ps] of Object.entries(byKey)) {
+    const gp = new Geo();
+    for (const p of ps) board(gp, F, cutPiece(F, p, OFF.pan).map((r) => [r[0] + MM(1), r[1] + MM(1), r[2] - MM(1), r[3] - MM(1)]), OFF.eps, OFF.pan, [1000, 1000], [0, 0]);
+    add(gp.mesh(mat('pan' + key, () => stdMat(panelTex(key)))));
+  }
+  // the board in the hand: where it goes (green / red)
+  if (ghost?.kind === 'eps' || (ghost?.kind === 'pan' && !ghost.ok)) {
+    const gh = new Geo(), o0 = ghost.kind === 'eps' ? 0 : OFF.eps, o1 = ghost.kind === 'eps' ? OFF.eps : OFF.pan;
+    board(gh, F, cutPiece(F, ghost.slot, o1), o0 + MM(1), o1 + MM(1), [FACADE.epsL, FACADE.epsW], F.ru > 0 ? [ghost.slot[0], ghost.slot[1]] : [ghost.slot[2], ghost.slot[1]]);
+    const m = gh.mesh(ghost.ok && ghost.kind === 'eps' ? mat('epsGhost', () => stdMat(epsTex(), { emissive: 0x1d6b33, emissiveIntensity: 0.35 })) : mat('ghostRed', () => new THREE.MeshBasicMaterial({ color: 0xd04040, transparent: true, opacity: 0.5, depthWrite: false })));
+    if (m) { m.castShadow = false; m.userData.noPick = true; group.add(m); }
+  }
+  // the tool in the hand: the spatula, the float, the roll
+  if (live?.tool) group.add(toolMesh(F, live));
+  return group;
+}
+
+// the spatula (a steel blade 350 mm), the float (a plastic plate 280 × 140), the roll of mesh
+function toolMesh(F, live) {
+  const { kind, a, y } = live.tool, g = new THREE.Group();
+  const n = new THREE.Vector3(F.sg * F.nx, 0, F.sg * F.nz), u = new THREE.Vector3(F.ux * F.sg, 0, F.uz * F.sg), up = new THREE.Vector3(0, 1, 0);
+  g.matrixAutoUpdate = false;
+  const steel = mat('steel', () => new THREE.MeshStandardMaterial({ color: 0xc9ced3, metalness: 0.9, roughness: 0.3 }));
+  const grip = mat('grip', () => new THREE.MeshStandardMaterial({ color: 0x2b2f35, roughness: 0.6 }));
+  const yellow = mat('grip2', () => new THREE.MeshStandardMaterial({ color: 0xe6b422, roughness: 0.5 }));
+  if (kind === 'spatula') {
+    // the blade flat on the wall, tilted 25° off it, the handle along its back
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(MM(350), MM(110), MM(1.2)), steel); blade.position.set(0, MM(40), MM(25)); blade.rotation.x = -0.45;
+    const back = new THREE.Mesh(new THREE.BoxGeometry(MM(350), MM(18), MM(8)), grip); back.position.set(0, MM(90), MM(48)); back.rotation.x = -0.45;
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(MM(14), MM(16), MM(130), 12), yellow); handle.position.set(0, MM(150), MM(80)); handle.rotation.x = -0.45;
+    g.add(blade, back, handle);
+  } else if (kind === 'float') {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(MM(280), MM(140), MM(10)), mat('pvc', () => new THREE.MeshStandardMaterial({ color: 0xe9e6dc, roughness: 0.4 }))); plate.position.z = MM(6);
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(MM(200), MM(30), MM(35)), yellow); handle.position.z = MM(35);
+    g.add(plate, handle);
+  } else if (kind === 'roll' && live.rect) {
+    const r = live.rect, vert = live.vert, len = vert ? r[2] - r[0] : r[3] - r[1];
+    const roll = new THREE.Mesh(new THREE.CylinderGeometry(MM(45), MM(45), len, 20), mat('rollMat', () => new THREE.MeshStandardMaterial({ map: looseMeshTex().map, color: 0xffffff, roughness: 0.7, transparent: true, alphaTest: 0.2 })));
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(MM(25), MM(25), len, 12), mat('core', () => new THREE.MeshStandardMaterial({ color: 0xc8a06a, roughness: 0.8 })));
+    if (vert) roll.rotation.z = core.rotation.z = Math.PI / 2;
+    roll.position.z = core.position.z = MM(45); g.add(roll, core);
+  }
+  const off = kind === 'roll' ? OFF.loose : live.layer === 'glue' ? OFF.glue : live.layer === 'emb' ? OFF.emb : OFF.wet;
+  const ta = kind === 'roll' && live.rect ? (live.vert ? (live.rect[0] + live.rect[2]) / 2 : live.end) : a, ty = kind === 'roll' && live.rect ? (live.vert ? live.end : (live.rect[1] + live.rect[3]) / 2) : y;
+  g.matrix.makeBasis(u, up, n).setPosition(...W(F, ta, ty, off));
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.userData.noPick = true; } });
+  return g;
+}
