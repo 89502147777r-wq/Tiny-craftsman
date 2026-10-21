@@ -150,7 +150,7 @@ export class WallTool {
     }
     if (this.mode === 'lay' && this.rowMode && (this.kind === 'block' || this.kind === 'brick')) {
       if (this.rowJob) { this._rowStop('Ряд остановлен'); return true; }
-      this.rowDrag = [p.clone()]; this._rowLine(); return true;
+      this._rowDown(p, e); return true;
     }
     if (this.mode === 'lay' && this.kind === 'roof') return this.roof.down(p, e);
     if (this.mode === 'lay' && this.kind === 'facade') return this.facade.down(p, e);
@@ -174,7 +174,7 @@ export class WallTool {
     const app = this.app;
     p = this._pt(p, e);
     if (this.carry) { this._carryMove(p, e); return; }
-    if (this.rowDrag) { if (p.distanceTo(this.rowDrag.at(-1)) > MM(60)) { this.rowDrag.push(p.clone()); this._rowLine(); } return; }
+    if (this.rowDrag) { this._rowMove(p, e); return; }
     if (this.roof.drag) { this.roof.move(p, e); return; }
     if (this.facade.drag) { this.facade.move(p, e); return; }
     if (!this.drag) return;
@@ -213,7 +213,7 @@ export class WallTool {
   up() {
     const app = this.app, d = this.drag;
     if (this.carry) { this._carryDrop(); return; }
-    if (this.rowDrag) { const path = this.rowDrag; this.rowDrag = null; this._rowStart(path); return; }
+    if (this.rowDrag) { const d = this.rowDrag; this.rowDrag = null; this._rowStart(d); return; }
     if (this.roof.drag) { this.roof.up(); return; }
     if (this.facade.drag) { this.facade.up(); return; }
     this.drag = null;
@@ -263,92 +263,150 @@ export class WallTool {
     this.syncTray();
     if (this.rowMode) { loadPhysics().catch(() => {}); app.ui.toast(`Ряд по линии: проведите пальцем, где пойдёт ряд — ${this.kind === 'block' ? 'блоки' : 'кирпичи'} лягут один за другим, продолжая начатый ряд`); }
   }
-  _rowLine() {
-    const app = this.app, pts = this.rowDrag || [];
-    if (!this._rowMesh) {
-      this._rowMesh = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf0a53a, depthTest: false, transparent: true }));
-      this._rowMesh.renderOrder = 10; this._rowMesh.frustumCulled = false; app.scene.add(this._rowMesh);
+  // the finger on the plane of the course (its top), or on the masonry / the ground
+  _rowPt(p, e, y) {
+    if (y == null || !e || e.clientX === undefined) return p.clone();
+    _ray.setFromCamera(this.app.gestures.ndc(e.clientX, e.clientY), this.app.camera);
+    return _ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -y), new THREE.Vector3()) || p.clone();
+  }
+  // the finger on a brick / a block: that one is the guide — the course goes on from it,
+  // laid the way it lies (a header goes on in headers, a stretcher in stretchers)
+  _rowDown(p, e) {
+    const app = this.app, grp = this.kind === 'block' ? 'block' : 'brick';
+    const id = e?.clientX !== undefined ? app.pickObject(e.clientX, e.clientY, 'wall') : null, u = id && app.objects.get(id);
+    const ref = u?.type === 'unit' && u.p && u.s && u.q && !u.lintel && u.kind !== 'ublock' && (boxOf(u).kind === 'brick' || boxOf(u).kind === 'block') ? boxOf(u) : null;
+    const y = ref ? ref.top : null;
+    this.rowDrag = { ref, y, pts: [ref ? new THREE.Vector3(ref.x, ref.top, ref.z) : p.clone()] };
+    if (!ref) app.ui.toast(`Ряд начнётся здесь — или коснитесь ${grp === 'block' ? 'блока' : 'кирпича'}-ориентира, ряд пойдёт от него`);
+    this._rowShow();
+  }
+  _rowMove(p, e) {
+    const d = this.rowDrag, q = this._rowPt(p, e, d.y);
+    // the line: straight from the last corner; a new corner where the finger turns away
+    const pts = d.pts, last = pts.at(-1);
+    if (pts.length < 2) { if (Math.hypot(q.x - last.x, q.z - last.z) > MM(100)) pts.push(q); }
+    else {
+      const a = pts.at(-2), b = pts.at(-1), L1 = Math.hypot(b.x - a.x, b.z - a.z), ux = (b.x - a.x) / L1, uz = (b.z - a.z) / L1;
+      const off = Math.abs(-(q.x - a.x) * uz + (q.z - a.z) * ux), al = (q.x - a.x) * ux + (q.z - a.z) * uz;
+      if (off > MM(450) && al > 0 && L1 > MM(400)) { b.set(a.x + ux * Math.min(al, L1 + MM(300)), b.y, a.z + uz * Math.min(al, L1 + MM(300))); pts.push(q); }   // (the corner where it turned)
+      else pts[pts.length - 1] = q;
     }
-    this._rowMesh.geometry.setFromPoints(pts.map((q) => q.clone().setY(q.y + MM(30))));
-    this._rowMesh.visible = pts.length > 1;
-    if (pts.length > 1) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z); app.ui.showMeasure(`Ряд: ${(L * MODEL_SCALE).toFixed(2).replace('.', ',')} м`); }
+    this._rowShow();
+  }
+  // the places of the course along the line (no checks yet): from the guide, square to it
+  _rowPlan(d, kind, half) {
+    const D = dims(kind, half), { L, W, J } = D, out = [], pts = d.pts;
+    if (pts.length < 2) return out;
+    let cx, cz, bot, mode, dir, hl, hw;
+    // the first stretch, snapped to an axis of the guide (or as drawn)
+    const a = pts[0], b = pts[1], l0 = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+    let dx = (b.x - a.x) / l0, dz = (b.z - a.z) / l0;
+    const r = d.ref;
+    if (r) {
+      const cu = r.ux * dx + r.uz * dz, cv = -r.uz * dx + r.ux * dz;
+      if (Math.abs(cu) >= Math.abs(cv)) { mode = 'along'; dir = [r.ux * Math.sign(cu), r.uz * Math.sign(cu)]; }
+      else { mode = 'across'; dir = [-r.uz * Math.sign(cv), r.ux * Math.sign(cv)]; }
+      cx = r.x; cz = r.z; bot = r.bot; hl = mode === 'along' ? r.hl : r.hw; hw = mode === 'along' ? r.hw : r.hl;
+    } else {
+      mode = 'along'; dir = [dx, dz]; bot = null; hl = 0; hw = W / 2;
+      cx = a.x - dx * (J + L / 2); cz = a.z - dz * (J + L / 2); hl = L / 2;
+    }
+    const nl = mode === 'along' ? L / 2 : W / 2, nw = mode === 'along' ? W / 2 : L / 2;   // (the new ones: half along / across the course)
+    let ox = a.x, oz = a.z;
+    for (let k = 1; k < pts.length && out.length < 200; k++) {
+      const P = pts[k], Q = pts[k - 1];
+      if (k > 1) {
+        // a corner: the course turns square to the way it went
+        const ex = P.x - Q.x, ez = P.z - Q.z, el = Math.hypot(ex, ez) || 1, side = Math.sign(-dir[1] * ex + dir[0] * ez) || 1;
+        const nd = [-dir[1] * side, dir[0] * side];
+        // round the corner: the last one's end, flush with its far face
+        const fx = cx + dir[0] * (hl - nw), fz = cz + dir[1] * (hl - nw);
+        cx = fx + nd[0] * (hw + J + nl) - nd[0] * (nl + J + nl); cz = fz + nd[1] * (hw + J + nl) - nd[1] * (nl + J + nl);
+        hl = nl; hw = nw; dir = nd; ox = Q.x; oz = Q.z;
+        void el;
+      }
+      // along this stretch: one after another until past its end
+      const segL = k === 1 ? Math.max(0, (P.x - ox) * dir[0] + (P.z - oz) * dir[1]) : Math.hypot(P.x - ox, P.z - oz);
+      for (let g = 0; g < 200 && out.length < 200; g++) {
+        const nx = cx + dir[0] * (hl + J + nl), nz = cz + dir[1] * (hl + J + nl);
+        const t = (nx - ox) * dir[0] + (nz - oz) * dir[1];
+        if (t > segL + nl * 0.6) break;
+        const yaw = mode === 'along' ? Math.atan2(-dir[1], dir[0]) : Math.atan2(-dir[0], -dir[1]);
+        out.push({ x: nx, z: nz, yaw, bot });
+        cx = nx; cz = nz; hl = nl; hw = nw;
+      }
+    }
+    return out;
+  }
+  // the line and the places on it (the ghosts), while drawing and while laying
+  _rowShow(plan) {
+    const app = this.app, d = this.rowDrag || this.rowJob;
+    if (!this._rowG) {
+      this._rowG = new THREE.Group(); this._rowG.renderOrder = 10; app.scene.add(this._rowG);
+      this._rowMat = new THREE.MeshBasicMaterial({ color: 0xf0a53a, depthTest: false, transparent: true, opacity: 0.95 });
+      this._rowGhost = new THREE.MeshBasicMaterial({ color: 0x35d06a, transparent: true, opacity: 0.38, depthWrite: false });
+    }
+    const G = this._rowG;
+    for (const c of [...G.children]) { G.remove(c); c.geometry.dispose(); }
+    if (!d) { G.visible = false; return; }
+    G.visible = true;
+    const pts = d.pts, y = (d.y ?? pts[0].y) + MM(15), w = MM(45);
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i], L = Math.hypot(b.x - a.x, b.z - a.z);
+      if (L < 1e-6) continue;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(L + w, MM(4), w), this._rowMat);
+      m.position.set((a.x + b.x) / 2, y, (a.z + b.z) / 2); m.rotation.y = Math.atan2(-(b.z - a.z), b.x - a.x); m.renderOrder = 11; m.frustumCulled = false; G.add(m);
+    }
+    // the dot on the guide
+    const dot = new THREE.Mesh(new THREE.CylinderGeometry(MM(70), MM(70), MM(6), 20), this._rowMat); dot.position.set(pts[0].x, y, pts[0].z); dot.renderOrder = 11; G.add(dot);
+    const kind = this.rowJob?.kind || d.ref?.kind || this.kind, half = this.rowJob ? this.rowJob.half : d.ref ? !!d.ref.u.cut : !!app.settings.wallHalf, D = dims(kind, half);
+    const list = plan || (this.rowJob ? this.rowJob.plan.slice(this.rowJob.n) : this._rowPlan(d, kind, half));
+    const bot = d.ref ? d.ref.bot : (pts[0].y + D.B0);
+    for (const q of list) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(D.L, D.H, D.W), this._rowGhost);
+      m.position.set(q.x, (q.bot ?? bot) + D.H / 2, q.z); m.rotation.y = q.yaw; G.add(m);
+    }
+    if (this.rowDrag) app.ui.showMeasure(`Ряд: ${list.length} шт.`);
   }
   _rowStop(msg) {
     const J = this.rowJob;
     this.rowJob = null; this.rowDrag = null;
-    if (this._rowMesh) this._rowMesh.visible = false;
+    this._rowShow();
     this.app.ui.hideMeasure();
     if (msg) this.app.ui.toast(J ? `${msg} — уложено ${J.n}` : msg);
     this.app.ui.refresh();
   }
-  _rowStart(path) {
-    const app = this.app, kind = this.kind;
-    // the line: its corners (where it turns) only
-    const xz = path.map((q) => [q.x, q.z]), rdp = (a, b) => {
-      let k = -1, dm = MM(250);
-      const [x0, z0] = xz[a], [x1, z1] = xz[b], L = Math.hypot(x1 - x0, z1 - z0) || 1;
-      for (let i = a + 1; i < b; i++) { const d = Math.abs((xz[i][0] - x0) * (z1 - z0) - (xz[i][1] - z0) * (x1 - x0)) / L; if (d > dm) { dm = d; k = i; } }
-      return k < 0 ? [a, b] : [...rdp(a, k).slice(0, -1), ...rdp(k, b)];
-    };
-    const idx = rdp(0, xz.length - 1), pts = idx.map((i) => path[i]);
-    let len = 0; for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
-    const D = dims(kind, !!app.settings.wallHalf);
-    if (len < D.L * 0.8) { this._rowStop('Проведите линию длиннее — вдоль будущего ряда'); return; }
-    // the course to go on: the end of a unit of this kind nearest the start of the line
-    const grp = kind === 'block' ? 'block' : 'brick', a = pts[0];
-    let last = null, bd = MM(1200);
-    for (const b of app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf)) {
-      if (b.kind !== grp) continue;
-      for (const sg of [-1, 1]) {
-        const ex = b.x + b.ux * b.hl * sg, ez = b.z + b.uz * b.hl * sg, d = Math.hypot(ex - a.x, ez - a.z) + Math.abs(b.top - a.y) * 1.5;
-        if (d < bd) { bd = d; last = b; }
-      }
-    }
-    this.rowJob = { kind, half: !!app.settings.wallHalf, pts, seg: 0, n: 0, last, y: last ? last.bot : a.y, prevDir: null, fails: 0 };
-    if (this._rowMesh) { this._rowMesh.geometry.setFromPoints(pts.map((q) => q.clone().setY(q.y + MM(30)))); this._rowMesh.visible = true; }
+  _rowStart(d) {
+    // (the guide says what goes on: a brick or a block, whole or a half)
+    const app = this.app, kind = d.ref ? d.ref.kind : this.kind, half = d.ref ? !!d.ref.u.cut : !!app.settings.wallHalf, plan = this._rowPlan(d, kind, half);
+    if (!plan.length) { this._rowStop(d.ref ? 'Тяните линию от кирпича-ориентира вдоль будущего ряда' : 'Проведите линию длиннее — вдоль будущего ряда'); return; }
+    this.rowJob = { kind, half, plan, n: 0, ref: d.ref, y: d.y, pts: d.pts };
     loadPhysics().catch(() => {});
-    app.ui.toast(last ? `Продолжаю ряд: ${len * MODEL_SCALE > 0 ? (len * MODEL_SCALE).toFixed(1).replace('.', ',') : ''} м — коснитесь, чтобы остановить` : 'Кладу ряд по линии — коснитесь, чтобы остановить');
+    this._rowShow();
+    app.ui.toast(`Кладу ряд: ${plan.length} шт. — коснитесь, чтобы остановить`);
   }
   _rowStep() {
     const app = this.app, J = this.rowJob;
     if (app.physJob || app.physLoading || !physicsReady()) return;
     if (app.tool !== 'wall' || this.mode !== 'lay') { this._rowStop(); return; }
-    const D = dims(J.kind, J.half), { L, W, J: jt } = D;
-    for (let guard = 0; guard < 4; guard++) {
-      const A = J.pts[J.seg], B = J.pts[J.seg + 1];
-      if (!B) { this._rowStop(`Ряд уложен по линии`); return; }
-      const sl = Math.hypot(B.x - A.x, B.z - A.z), dx = (B.x - A.x) / sl, dz = (B.z - A.z) / sl;
-      let gx, gz;
-      const b = J.last;
-      if (!b) { gx = A.x + dx * L / 2; gz = A.z + dz * L / 2; }
-      else {
-        const c = b.ux * dx + b.uz * dz;
-        if (Math.abs(c) > 0.7) { const sg = Math.sign(c); gx = b.x + b.ux * sg * (b.hl + jt + L / 2); gz = b.z + b.uz * sg * (b.hl + jt + L / 2); }
-        else {
-          // round the corner: across the end of the last one, flush with its outer face
-          const pd = J.prevDir || [b.ux, b.uz], ps = Math.sign(b.ux * pd[0] + b.uz * pd[1]) || 1;
-          gx = b.x + b.ux * ps * (b.hl - W / 2) + dx * (b.hw + jt + L / 2); gz = b.z + b.uz * ps * (b.hl - W / 2) + dz * (b.hw + jt + L / 2);
-        }
-      }
-      // past the end of this stretch of the line: round the corner, or done
-      const t = (gx - A.x) * dx + (gz - A.z) * dz;
-      if (t > sl + L * 0.25) { J.seg++; J.prevDir = [dx, dz]; continue; }
-      const yaw = Math.atan2(-dz, dx);
-      const r = placeUnit(app, J.kind, new THREE.Vector3(gx, J.y, gz), null, null, false, { yaw, half: J.half });
-      const corner = b && Math.abs(b.ux * dx + b.uz * dz) <= 0.7;   // (round a corner: across the end of the last one, or flush along it)
-      if (!r || !r.ok || Math.hypot(r.p.x - gx, r.p.z - gz) > L * (corner ? 0.9 : 0.5)) {
-        this._rowStop(J.n ? 'Дальше по линии ряд не встаёт (мешает кладка, проём или нет опоры)' : 'Здесь ряд не начать: ведите линию от конца уложенного ряда, по верху кладки или по плите');
-        return;
-      }
-      const u = { type: 'unit', free: true, kind: r.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +r.bedT.toFixed(6), s: r.s.toArray().map((x) => +x.toFixed(6)), ...(r.half ? { cut: true } : {}) };
-      app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, []);
-      const ux = Math.cos(yaw), uz = -Math.sin(yaw);
-      J.last = { x: r.p.x, z: r.p.z, ux, uz, hl: r.s.x / 2, hw: r.s.z / 2, bot: r.p.y - r.s.y / 2, top: r.p.y + r.s.y / 2 };
-      J.y = J.last.bot; J.n++;
-      app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [J.kind === 'brick' ? 'brick' : 'block']: +yaw.toFixed(5) };
+    const q = J.plan[J.n];
+    if (!q) { this._rowStop('Ряд уложен по линии'); return; }
+    const D = dims(J.kind, J.half), y = q.bot ?? (J.pts[0].y);
+    const r = placeUnit(app, J.kind, new THREE.Vector3(q.x, y, q.z), null, null, false, { yaw: q.yaw, half: J.half });
+    if (!r || !r.ok || Math.hypot(r.p.x - q.x, r.p.z - q.z) > D.L * 0.3 || (q.bot != null && Math.abs(r.p.y - D.H / 2 - q.bot) > D.H * 0.4)) {
+      this._rowStop(J.n ? 'Дальше по линии ряд не встаёт (мешает кладка, проём или нет опоры)' : 'Здесь ряд не встаёт: ведите линию от кирпича-ориентира по верху кладки или по плите');
       return;
     }
+    const u = { type: 'unit', free: true, kind: r.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +r.bedT.toFixed(6), s: r.s.toArray().map((x) => +x.toFixed(6)), ...(r.half ? { cut: true } : {}) };
+    app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, []);
+    // the rest of the plan follows where this one really went (and at its height)
+    const dx = r.p.x - q.x, dz = r.p.z - q.z, bot = r.p.y - r.s.y / 2;
+    for (let k = J.n + 1; k < J.plan.length; k++) { J.plan[k].x += dx; J.plan[k].z += dz; if (J.plan[k].bot == null) J.plan[k].bot = bot; }
+    J.n++;
+    app.settings.freeYaw = { ...(app.settings.freeYaw || {}), [J.kind === 'brick' ? 'brick' : 'block']: +q.yaw.toFixed(5) };
+    this._rowShow();
   }
+
 
   // ---- line ----------------------------------------------------------------------------
   _snap(q, from) {
