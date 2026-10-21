@@ -647,7 +647,9 @@ app.exportProject = () => {
   app.shovelTool.finish();
   app.rakeTool.finish();
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-  download(`tiny-craftsman-stage${STAGE}-${stamp}.json`, toJSON(buildProject()));
+  let text;
+  try { text = toJSON(buildProject()); } catch (e) { app.ui?.toast('Не удалось собрать проект: ' + (e?.message || e)); return; }
+  download(`tiny-craftsman-stage${STAGE}-${stamp}.json`, text).catch((e) => app.ui?.toast('Не удалось сохранить файл: ' + (e?.message || e)));
 };
 
 app.importProject = async (file) => {

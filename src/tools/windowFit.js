@@ -26,7 +26,7 @@ export function findOpenings(app) {
       let ux = ax, uz = az;
       if (ux < -1e-6 || (Math.abs(ux) < 1e-6 && uz < 0)) { ux = -ux; uz = -uz; }
       const d = -b.x * uz + b.z * ux, a = b.x * ux + b.z * uz;
-      let L = lines.find((l) => Math.abs(l.ux * uz - l.uz * ux) < 0.02 && Math.abs(l.d - d) < Math.max(l.hw, across) + MM(20));
+      let L = lines.find((l) => Math.abs(l.ux * uz - l.uz * ux) < 0.05 && Math.abs(l.d - d) < Math.max(l.hw, across) + MM(40));   // (laid by hand: up to 3° and 40 mm off)
       if (!L) lines.push((L = { ux, uz, d, hw: across, units: [] }));
       L.hw = Math.max(L.hw, across);
       L.units.push({ a0: a - along, a1: a + along, bot: b.bot, top: b.top, b });

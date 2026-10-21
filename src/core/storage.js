@@ -78,11 +78,18 @@ export function fromJSON(text) {
   });
 }
 
-export function download(name, text) {
+export async function download(name, text) {
   const blob = new Blob([text], { type: 'application/json' });
+  // iPhone / iPad: the share sheet («Сохранить в Файлы», a messenger) — Safari does not save
+  // a blob link (an error in a home-screen app)
+  try {
+    const file = new File([blob], name, { type: 'application/json' });
+    if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: name }); return 'shared'; }
+  } catch (e) { if (e?.name === 'AbortError') return 'cancelled'; }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return 'downloaded';
 }
