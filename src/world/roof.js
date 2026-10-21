@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
-import { plan, toWorld, toFrame } from '../tools/belt.js';
+import { plan, toWorld, toFrame, snapS } from '../tools/belt.js';
 import { boxOf } from '../tools/freeBrick.js';
 import { mats as winMats } from './windows.js';
 
@@ -185,7 +185,7 @@ export function buildRoof(b, units, rec, live) {
   if (!r.drain) r.drain = drainOf(b, area);
   const L = (k, rk = k) => [...(Array.isArray(r[rk]) ? r[rk] : []), ...(live && live.layer === k && live.rect ? [live.rect] : [])];
   const group = new THREE.Group();
-  const W = (s, t, hmm) => { const [x, z] = toWorld(b, s, t); return [x, top0 + MM(hmm), z]; };
+  const W = (s, t, hmm) => { const [x, z] = toWorld(b, ...snapS(b, s, t)); return [x, top0 + MM(hmm), z]; };
   // a rectangle of the frame clipped cell by cell to the roof: quads at height h(s, t)
   const sheet = (rects, hOf, uvOf, lift) => {
     const pos = [], uv = [];

@@ -1,5 +1,6 @@
 import { MODEL_SCALE } from '../config.js';
-import { findBelt, plan, toWorld, toFrame, beltContains, rle, unrle } from './belt.js';
+import { findBelt, plan, toWorld, toFrame, beltContains, rle, unrle, snapS } from './belt.js';
+import { boxOf } from './freeBrick.js';
 
 // The floor slab (монолитное перекрытие) cast on the top of the walls (or on a cast ring
 // beam), as on site: the formwork deck — film-faced plywood on timber beams (secondary
@@ -99,8 +100,29 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
     mask: rle(mask), deck: rle(deck), top: +T.toFixed(6), H: +MM(SLAB.H).toFixed(6), lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0, segs: [],
     cant,
   };
+  rec.clip = slabClip(rec, app.objects.all('unit'), belts);
   const exists = belts.some((b) => isSlab(b) && Math.abs(b.top - rec.top) < MM(30) && beltContains(b, p.x, p.z));
   return { rec, n, area: n * (SLAB.cell / 1000) ** 2, exists };
+}
+
+// the slab's true outline in its frame: the outer faces of what carries it (the walls whose
+// top is its bottom, a ring beam cast on them), out by the cantilever — or null
+export function slabClip(b, units, belts) {
+  const pts = [], inGrid = ([s, t]) => s > -b.c * 2 && t > -b.c * 2 && s < (b.ni + 2) * b.c && t < (b.nj + 2) * b.c;
+  for (const u of units) {
+    if (!u.p || !u.s || !u.q || u.kind === 'prop' || Math.abs(u.p[1] + u.s[1] / 2 - b.top) > MM(30)) continue;
+    const x = boxOf(u);
+    for (const [a, w] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) pts.push(toFrame(b, x.x + x.ux * x.hl * a - x.uz * x.hw * w, x.z + x.uz * x.hl * a + x.ux * x.hw * w));
+  }
+  for (const r of belts || []) {
+    if (isSlab(r) || !(r.fill > 0.3) || Math.abs(r.top + r.H - b.top) > MM(30) || !r.segs) continue;
+    for (const [a0, a1, l, h, par] of r.segs) for (const [a, o] of [[a0, -h], [a1, -h], [a0, h], [a1, h]]) pts.push(toFrame(b, ...toWorld(r, par ? a : l + o, par ? l + o : a)));
+  }
+  const q = pts.filter(inGrid);
+  if (q.length < 4) return null;
+  const c = [Math.min(...q.map((v) => v[0])), Math.min(...q.map((v) => v[1])), Math.max(...q.map((v) => v[0])), Math.max(...q.map((v) => v[1]))];
+  if (b.cant) { const [ds, dt, mm] = b.cant; if (ds > 0) c[2] += MM(mm); if (ds < 0) c[0] -= MM(mm); if (dt > 0) c[3] += MM(mm); if (dt < 0) c[1] -= MM(mm); }
+  return c.map((v) => +v.toFixed(6));
 }
 
 // the deck cells of a slab (over the open)
@@ -159,7 +181,8 @@ export function slabForm(b, floor) {
       }
     }
   }
-  return { deck, sec, prim, props, yDeck, ySec, yPrim };
+  const sn = (r) => [...snapS(b, r[0], r[1]), ...snapS(b, r[2], r[3])];
+  return { deck: deck.map(sn), sec: sec.map(sn), prim: prim.map(sn), props, yDeck, ySec, yPrim };
 }
 
 // The cage: two mats Ø12 every 200 mm both ways (bottom: 25 mm cover on plastic chairs,
@@ -178,13 +201,18 @@ export function slabCage(b) {
     for (let k = 0; k <= N; k++) {
       const x = (k + 0.5) * q, inn = k < N && (alongS ? inside(x, fixed) : inside(fixed, x));
       if (inn && a == null) a = x - q / 2;
-      if (!inn && a != null) { if (x - q / 2 - a > 2 * cov + MM(100)) out.push([a + cov, x - q / 2 - cov]); a = null; }
+      if (!inn && a != null) {
+        const ax = (v) => (alongS ? snapS(b, v, fixed)[0] : snapS(b, fixed, v)[1]), a2 = ax(a), e2 = ax(x - q / 2);   // (to the true faces)
+        if (e2 - a2 > 2 * cov + MM(100)) out.push([a2 + cov, e2 - cov]);
+        a = null;
+      }
     }
     return out;
   };
   const yb1 = y0 + cov + d / 2, yb2 = yb1 + d, yt2 = y0 + H - cov - d / 2, yt1 = yt2 - d;
-  const lines = (L) => { const n = Math.floor((L - 2 * cov) / st); const off = (L - n * st) / 2; return Array.from({ length: n + 1 }, (_, k) => off + k * st); };
-  const tL = lines(nj * c), sL = lines(ni * c);
+  const [S0, T0, S1, T1] = b.clip || [0, 0, ni * c, nj * c];
+  const lines = (lo, hi) => { const n = Math.floor((hi - lo - 2 * cov) / st); const off = lo + (hi - lo - n * st) / 2; return Array.from({ length: n + 1 }, (_, k) => off + k * st); };
+  const tL = lines(T0, T1), sL = lines(S0, S1);
   for (const [y, yx] of [[yb1, yb2], [yt1, yt2]]) {
     for (const t of tL) for (const [a, e] of runs(t, true)) bars.push([...W(a, t, y), ...W(e, t, y), +d.toFixed(6)]);
     for (const s of sL) for (const [a, e] of runs(s, false)) bars.push([...W(s, a, yx), ...W(s, e, yx), +d.toFixed(6)]);
@@ -225,11 +253,11 @@ export function slabCage(b) {
   if (b.cant) {
     const [ds, dt, mm] = b.cant, dc = MM(SLAB.cantBar), back = MM(mm) * 1.5 + MM(mm), y = ds ? yt1 : yt2;   // (beside the top mat's bars that run the same way)
     if (ds) {
-      const iEdge = ds > 0 ? ni * c - cov : cov, iIn = iEdge - ds * back;
+      const iEdge = ds > 0 ? S1 - cov : S0 + cov, iIn = iEdge - ds * back;
       const lo = Math.min(iIn, iEdge), hi = Math.max(iIn, iEdge);
       for (const t of tL.slice(0, -1).map((v) => v + st / 2)) if (inside(iEdge - ds * MM(50), t)) for (const [a, e] of runs(t, true)) { const f = Math.max(a, lo), g = Math.min(e, hi); if (g - f > MM(300)) bars.push([...W(f, t, y), ...W(g, t, y), +dc.toFixed(6)]); }
     } else {
-      const jEdge = dt > 0 ? nj * c - cov : cov, jIn = jEdge - dt * back;
+      const jEdge = dt > 0 ? T1 - cov : T0 + cov, jIn = jEdge - dt * back;
       const lo = Math.min(jIn, jEdge), hi = Math.max(jIn, jEdge);
       for (const s of sL.slice(0, -1).map((v) => v + st / 2)) if (inside(s, jEdge - dt * MM(50))) for (const [a, e] of runs(s, false)) { const f = Math.max(a, lo), g = Math.min(e, hi); if (g - f > MM(300)) bars.push([...W(s, f, y), ...W(s, g, y), +dc.toFixed(6)]); }
     }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { levels, worked, uLinks, UN } from '../tools/uPour.js';
-import { plan, boardsOf, toWorld, BELT } from '../tools/belt.js';
+import { plan, boardsOf, toWorld, snapS, BELT } from '../tools/belt.js';
 import { SlabFormView, floorUnder } from './slabForm.js';
 import { buildWindow } from './windows.js';
 import { buildDoor, isDoor } from './doors.js';
@@ -687,7 +687,7 @@ export class WallView {
         }
         return key;
       };
-      const vert = (i, j, hmm) => { const key = corner(i, j), [x, z] = toWorld(b, i * c, j * c); pos.push(x, b.top + (hmm ?? vh.get(key)) * S, z); col.push(1, 1, 1); pt.push(tp); ws.push(vs.get(key)); return pos.length / 3 - 1; };
+      const vert = (i, j, hmm) => { const key = corner(i, j), [x, z] = toWorld(b, ...snapS(b, i * c, j * c)); pos.push(x, b.top + (hmm ?? vh.get(key)) * S, z); col.push(1, 1, 1); pt.push(tp); ws.push(vs.get(key)); return pos.length / 3 - 1; };
       P.cells.forEach(([i, j], k) => {
         if (lv[k] <= 0.3) return;
         const a = vert(i, j), b2 = vert(i + 1, j), c2 = vert(i + 1, j + 1), d = vert(i, j + 1);

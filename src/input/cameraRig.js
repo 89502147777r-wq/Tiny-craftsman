@@ -33,8 +33,11 @@ export class CameraRig {
     const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
     // visible ground height at the target ≈ 2·dist·tan(fov/2), foreshortened by the pitch
     const h = 2 * this.goal.dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const k = h, kf = h / Math.max(0.25, Math.sin(this.goal.pitch));
-    this.goal.target.addScaledVector(right, -dx * k).addScaledVector(fwd, dy * kf);
+    // in the plane of the screen: across — sideways, up / down — along the camera's own up
+    // (from above that is over the ground, from low down it is up the picture), so the
+    // picture follows the fingers both ways alike (not a dolly in and out)
+    const p = this.goal.pitch, up = new THREE.Vector3(0, Math.cos(p), 0).addScaledVector(fwd, Math.sin(p));
+    this.goal.target.addScaledVector(right, -dx * h).addScaledVector(up, dy * h);
     this.clampTarget();
   }
 
@@ -42,6 +45,7 @@ export class CameraRig {
     const g = this.goal.target, l = this.limits;
     g.x = THREE.MathUtils.clamp(g.x, -l.boxX, l.boxX);
     g.z = THREE.MathUtils.clamp(g.z, -l.boxZ, l.boxZ);
+    g.y = THREE.MathUtils.clamp(g.y, -0.25, 1.5);
   }
 
   lookAtPoint(p) { this.goal.target.copy(p); this.clampTarget(); }
