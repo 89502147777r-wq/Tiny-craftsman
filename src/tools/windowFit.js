@@ -79,8 +79,8 @@ export function findOpenings(app) {
       // the outside: away from the middle of the masonry
       const nx = -L.uz, nz = L.ux, outSign = (x - cx) * nx + (z - cz) * nz >= 0 ? 1 : -1;
       const yaw = Math.atan2(-L.uz, L.ux) + (outSign > 0 ? 0 : Math.PI);
-      const floor0 = lv[k0].bot - (lv[k0].us[0].b.u.bedT ?? MM(20));   // (a doorway: from the floor, or over the first course — a step)
-      out.push({ x, z, y0, y1, w: Math.round(w), h: Math.round(h), t: Math.round((L.hw * 2) / S), yaw, ok: !why, why, floor: y0 - floor0 < MM(320), line: L });
+      const floor0 = lv[k0].bot - (lv[k0].us[0].b.u.bedT ?? MM(20));   // (a doorway: from the floor, or over the first course — a step; a brick plinth under it too: ≤ 450 mm)
+      out.push({ x, z, y0, y1, w: Math.round(w), h: Math.round(h), t: Math.round((L.hw * 2) / S), yaw, ok: !why, why, floor: y0 - floor0 < MM(450), line: L });
     });
   }
   return out;
