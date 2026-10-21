@@ -256,7 +256,7 @@ export class BeltChannel {
     const near = this._near(k, r), subs = Math.max(1, Math.ceil(dt * K * 2 / 0.2)), d = dt / subs;
     for (let s = 0; s < subs; s++) this._flow(d, 0, K * 2, near);
     const [i0, j0] = this.P.cells[k];
-    for (const q of near) { const [i, j] = this.P.cells[q]; this.sm[q] = Math.min(1, this.sm[q] + dt * 1.2 * (1 - Math.hypot(i - i0, j - j0) / (r + 1))); }
+    for (const q of near) { const [i, j] = this.P.cells[q]; this.sm[q] = Math.max(this.sm[q], Math.min(0.5, this.sm[q] + dt * 1.2 * (1 - Math.hypot(i - i0, j - j0) / (r + 1)))); }   // (the vibrator settles it, it does not smooth it: ≤ 0.5, as the foundation)
   }
   dir(a, b) {
     const pa = this.point(a), pb = this.point(b), dx = pb.x - pa.x, dz = pb.z - pa.z, l = Math.hypot(dx, dz) || 1;

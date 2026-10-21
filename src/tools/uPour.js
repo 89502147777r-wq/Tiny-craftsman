@@ -146,7 +146,7 @@ export class Channel {
   vibrate(i, r, dt) {
     const near = this._near(i, r), subs = Math.max(1, Math.ceil(dt * K * 2 / 0.2)), d = dt / subs, p = this.point(i);
     for (let s = 0; s < subs; s++) this._flow(d, 0, K * 2, near);
-    for (const k of near) { const q = this.point(k); this.sm[k] = Math.min(1, this.sm[k] + dt * 1.2 * (1 - Math.hypot(q.x - p.x, q.z - p.z) / ((r + 1) * 50 * S))); }
+    for (const k of near) { const q = this.point(k); this.sm[k] = Math.max(this.sm[k], Math.min(0.5, this.sm[k] + dt * 1.2 * (1 - Math.hypot(q.x - p.x, q.z - p.z) / ((r + 1) * 50 * S)))); }   // (≤ 0.5: settled, not smoothed — as the foundation)
   }
   // the rule drawn from sample a to b, riding on the rims: what stands above them is pushed
   // on ahead (off the end of a run it falls off)
