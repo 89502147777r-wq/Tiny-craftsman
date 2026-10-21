@@ -64,7 +64,10 @@ export function findOpenings(app) {
         y1 = Math.min(...over.map((u) => u.bot)) - (over[0].b.u.bedT ?? 0);
         if (!ok || reach < a1 - MM(5)) why = 'Над проёмом кладка не сплошная — положите перемычку или U-блоки';
       } else {
-        const bl = app.objects.all('belt').find((b) => b.fill > 0.3 && beltContains(b, x, z) && Math.abs(b.top - yTop) < MM(60));
+        // a ring beam / a slab cast on the walls each side of it (its plan may stop at the gap:
+        // it was set out on the masonry) spans it
+        const side = (a) => [L.ux * a - L.uz * L.d, L.uz * a + L.ux * L.d];
+        const bl = app.objects.all('belt').find((b) => b.fill > 0.3 && b.top > yTop - MM(30) && b.top < yTop + MM(80) && (beltContains(b, x, z) || (beltContains(b, ...side(a0 - MM(150))) && beltContains(b, ...side(a1 + MM(150))))));
         if (bl) y1 = bl.top;
         else { y1 = yTop; why = 'Над проёмом нет перемычки — сначала перемычка, U-блоки или перекрытие'; }
       }
@@ -73,7 +76,8 @@ export function findOpenings(app) {
       // the outside: away from the middle of the masonry
       const nx = -L.uz, nz = L.ux, outSign = (x - cx) * nx + (z - cz) * nz >= 0 ? 1 : -1;
       const yaw = Math.atan2(-L.uz, L.ux) + (outSign > 0 ? 0 : Math.PI);
-      out.push({ x, z, y0, y1, w: Math.round(w), h: Math.round(h), t: Math.round((L.hw * 2) / S), yaw, ok: !why, why, floor: k === 0, line: L });
+      const floor0 = lv[0].bot - (lv[0].us[0].b.u.bedT ?? MM(20));   // (a doorway: from the floor, or over the first course — a step)
+      out.push({ x, z, y0, y1, w: Math.round(w), h: Math.round(h), t: Math.round((L.hw * 2) / S), yaw, ok: !why, why, floor: y0 - floor0 < MM(320), line: L });
     });
   }
   return out;

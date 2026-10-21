@@ -688,6 +688,8 @@ export class WallView {
         if (lv[k] <= 0.3) return;
         const a = vert(i, j), b2 = vert(i + 1, j), c2 = vert(i + 1, j + 1), d = vert(i, j + 1);
         idx.push(a, d, b2, b2, d, c2); own.push(b.id, b.id);
+        // its underside (seen over an opening it spans)
+        { const a0 = vert(i, j, 0), b0 = vert(i + 1, j, 0), c0 = vert(i + 1, j + 1, 0), d0 = vert(i, j + 1, 0); idx.push(a0, b0, d0, b0, c0, d0); own.push(b.id, b.id); }
         // the sides where the ring ends
         for (const [q, e0, e1] of [[P.nb[k][0], [i + 1, j], [i + 1, j + 1]], [P.nb[k][1], [i, j + 1], [i, j]], [P.nb[k][2], [i + 1, j + 1], [i, j + 1]], [P.nb[k][3], [i, j], [i + 1, j]]]) {
           if (q >= 0) continue;

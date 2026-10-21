@@ -95,6 +95,12 @@ export class UI {
     $('btn-redo').addEventListener('click', () => app.redo());
     $('btn-level').addEventListener('click', () => { app.settings.level = !app.settings.level; app.applySettings(); });
     $('btn-menu').addEventListener('click', () => this.openMenu(true));
+    // the numbers in the corner: shown / hidden by the small button over them (remembered)
+    const st = $('stats'), sb = $('btn-stats');
+    const showStats = (on) => { st.classList.toggle('collapsed', !on); sb.classList.toggle('off', !on); try { localStorage.setItem('tc-stats', on ? '1' : '0'); } catch { /* private mode */ } };
+    let statsOn = true; try { statsOn = localStorage.getItem('tc-stats') !== '0'; } catch { /* private mode */ }
+    showStats(statsOn);
+    sb.addEventListener('click', () => showStats(st.classList.contains('collapsed')));
     $('menu-close').addEventListener('click', () => this.openMenu(false));
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     $('act-export').addEventListener('click', () => app.exportProject());
