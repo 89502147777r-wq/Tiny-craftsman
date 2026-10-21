@@ -1,6 +1,7 @@
 import { BUILD, MODEL_SCALE, MACHINES_ENABLED, MATERIALS, DELIVERY, PUMP, CONCRETE } from '../config.js';
 import { bbox, contains } from '../world/outlines.js';
 import { PANOS } from '../world/backdrop.js';
+import { DAY_LENGTHS, WEATHER } from '../world/sky.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANELS } from '../world/facade.js';
 
@@ -311,6 +312,13 @@ export class UI {
         C('Мастерская', b === 'workshop', () => app.setBackdrop('workshop')),
         ...Object.entries(PANOS).map(([k, v]) => C(v.name, b === k, () => app.setBackdrop(k))),
         C('Фото-фон', b === 'posters', () => app.setBackdrop('posters')),
+        // the time of day and the weather (outdoors only)
+        ...(b !== 'workshop' && app.sky ? [
+          C(`🕓 ${app.sky.label()}`, false, () => {}, 'info'),
+          ...[[7, 'Утро'], [13, 'День'], [20.4, 'Закат'], [0, 'Ночь']].map(([h, l]) => C(l, false, () => { app.sky.setHour(h); app.ui.refresh(); })),
+          C(`Сутки: ${(app.settings.dayMin ?? 30) ? (app.settings.dayMin ?? 30) + ' мин' : 'стоп'}`, false, () => { const L = DAY_LENGTHS, i = L.indexOf(app.settings.dayMin ?? 30); app.settings.dayMin = L[(i + 1) % L.length]; app.applySettings(); }),
+          ...Object.entries(WEATHER).map(([k, l]) => C(k === 'auto' ? l : (k === 'rain' ? '🌧 ' : '☀ ') + l, (app.settings.weather || 'auto') === k, () => { app.settings.weather = k; app.applySettings(); })),
+        ] : []),
       ];
     }
     if (t === 'shovel') {

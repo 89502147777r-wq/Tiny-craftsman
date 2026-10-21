@@ -81,6 +81,7 @@ function baseUniforms(tex) {
     uCornerSign: { value: (() => { const c = innerCorner(); return new THREE.Vector2(c.sx, c.sz); })() },
     tMat: { value: tex.matDiff },
     uClock: { value: 0 },
+    uWet: { value: 0 },   // (rain: the soil wet — darker, with a sheen)
     uCure: { value: CONCRETE.cure },
     uMatScale: { value: new THREE.Vector3(1 / MATERIALS[1].tile, 1 / MATERIALS[2].tile, 1 / MATERIALS[3].tile) },
   };
@@ -107,6 +108,7 @@ const VERT_PROJECT = `#include <project_vertex>
 
 // one sampler per declaration: some mobile shader compilers choke on lists
 const FRAG_DECL = `
+        uniform float uWet;
         uniform sampler2D tWall;
         uniform sampler2D tLoam;
         uniform sampler2D tFloor;
@@ -254,7 +256,8 @@ const ROUGH_TAIL = `
           roughnessFactor = mix(roughnessFactor, mix(wetR, dryR, smoothstep(0.1, 0.8, cu)), cw);
           // bitumen on a face shines
           roughnessFactor = mix(roughnessFactor, 0.28, smoothstep(0.0, 0.6, vExtra.x) * cw);
-        }`;
+        }
+        roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.78, uWet);   // (after rain: a wet sheen)`;
 
 export function makeTerrainMaterial(tex) {
   const mat = new THREE.MeshStandardMaterial({
