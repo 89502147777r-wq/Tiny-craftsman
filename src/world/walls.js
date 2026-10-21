@@ -3,6 +3,7 @@ import { levels, worked, uLinks, UN } from '../tools/uPour.js';
 import { plan, boardsOf, toWorld, BELT } from '../tools/belt.js';
 import { SlabFormView, floorUnder } from './slabForm.js';
 import { buildWindow } from './windows.js';
+import { buildDoor, isDoor } from './doors.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -716,7 +717,7 @@ export class WallView {
       let e = this._win.get(r.id);
       if (!e || e.key !== key) {
         if (e) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); }
-        const g = buildWindow(r.key, r.w, r.h, r.t);
+        const g = (isDoor(r.key) ? buildDoor : buildWindow)(r.key, r.w, r.h, r.t);
         g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id === 'live' ? null : r.id; });
         this.windows.add(g);
         this._win.set(r.id, (e = { key, group: g }));
