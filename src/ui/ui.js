@@ -1,6 +1,7 @@
 import { BUILD, MODEL_SCALE, MACHINES_ENABLED, MATERIALS, DELIVERY, PUMP, CONCRETE } from '../config.js';
 import { bbox, contains } from '../world/outlines.js';
 import { PANOS } from '../world/backdrop.js';
+import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 
 const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
@@ -349,7 +350,12 @@ export class UI {
         const wk = s.wallKind || 'block';
         if (wt.mode === 'line') out.push(C('Газоблок', wk === 'block', () => set({ wallKind: 'block' })), C('Кирпич', wk !== 'block', () => set({ wallKind: 'brick' })));
         else out.push(...[['block', 'Газоблок'], ['brick', 'Кирпич'], ['lintel', 'Перемычка'], ['prop', 'Подпорка'], ['ublock', 'U-блок'], ['ucage', 'Каркас'], ['belt', 'Опалубка пояса'], ['slab', 'Перекрытие'], ['window', 'Окно'], ['door', 'Дверь'], ['roof', 'Кровля']].map(([k, l]) => C(l, wk === k, () => set({ wallKind: k }))));
-        if (wt.mode === 'lay' && wk === 'roof') out.push(...[['grey', '1 · Светло-серая'], ['graphite', '2 · Графит'], ['white', '3 · Белая'], ['gravel', '4 · Гравий']].map(([k, l]) => C(l, (s.roofLook || 'grey') === k, () => set({ roofLook: k }))));
+        if (wt.mode === 'lay' && wk === 'roof') {
+          const L = s.roofLayer || 'vap';
+          out.push(...ROOF_LAYERS.map(([k, l], i) => C(`${i + 1} · ${l}`, L === k, () => set({ roofLayer: k }))));
+          if (L === 'mem') out.push(...Object.entries(MEM_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.roofMem || 'grey') === k, () => set({ roofMem: k }))));
+          if (L === 'cop') out.push(...Object.entries(COP_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.roofCop || 'zinc') === k, () => set({ roofCop: k }))));
+        }
         if (wt.mode === 'lay' && wk === 'door') out.push(...[['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']].map(([k, l]) => C(l, (s.doorKey || 'door1') === k, () => set({ doorKey: k }))));
         if (wt.mode === 'lay' && wk === 'window') out.push(...[['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · Антрацит 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']].map(([k, l]) => C(l, (s.windowKey || 'pvc2') === k, () => set({ windowKey: k }))));
         if (wt.mode === 'lay' && wk === 'slab') out.push(...[[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, (s.slabCant || 0) === v, () => set({ slabCant: v }))));
