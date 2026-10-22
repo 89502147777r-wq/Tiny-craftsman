@@ -17,11 +17,16 @@ export const PLASTER_COLOURS = {
   grey: ['Светло-серый', '#b9bbb8'], graphite: ['Графит', '#55585b'], terra: ['Терракота', '#b46f4f'], olive: ['Оливковый', '#8f9172'],
 };
 export const PLASTER_KINDS = { bark: 'Короед', fur: 'Шуба' };
-export const PANELS = {
-  oak: ['Планкен — светлый дуб', 'wood', ['#b98a58', '#8c6038']], walnut: ['Планкен — термо-орех', 'wood', ['#6b4429', '#43281a']],
-  sandstone: ['Камень — песчаник', 'stone', ['#cdb894', '#b9a37c', '#d9c8a6', '#a99372']], slate: ['Камень — сланец', 'stone', ['#73777a', '#5c6063', '#878a8c', '#6a675f']],
-  clinker: ['Клинкер — красный', 'brick', ['#9c4a33', '#7c3626', '#b35d40']],
+// the panels: a type, then its colour (a key 'type:colour'); the old keys still read
+export const PANEL_TYPES = {
+  stone: ['Камень', { sandstone: ['Песчаник', ['#cdb894', '#b9a37c', '#d9c8a6', '#a99372']], slate: ['Сланец', ['#6b6f72', '#55595c', '#81848a', '#625f58']], travertine: ['Травертин', ['#e2d6bd', '#cfc0a2', '#ebe1cb', '#bfae8c']], granite: ['Гранит', ['#5a5450', '#6c6560', '#48433f', '#7a726a']], rust: ['Рваный ржавый', ['#9a6b45', '#b5875a', '#7d5537', '#c49a6c']] }],
+  clinker: ['Клинкер', { red: ['Красный', ['#9c4a33', '#7c3626', '#b35d40']], brown: ['Коричневый', ['#5e3a2a', '#6f4632', '#4c2e22']], straw: ['Соломенный', ['#d5b779', '#c7a663', '#e0c58e']], graphite: ['Графит', ['#3d3d40', '#4a494b', '#2f2f32']], white: ['Белый', ['#e8e4dc', '#d9d4ca', '#f1eee8']] }],
+  wood: ['Планкен', { oak: ['Светлый дуб', ['#b98a58', '#8c6038']], walnut: ['Термо-орех', ['#6b4429', '#43281a']], wenge: ['Венге', ['#3f2a20', '#24170f']], grey: ['Серый состаренный', ['#8d8a83', '#5f5c56']] }],
 };
+const KIND = { stone: 'stone', clinker: 'brick', wood: 'wood' };
+export const PANELS = {};
+for (const [t, [tn, cols]] of Object.entries(PANEL_TYPES)) for (const [c, [cn, pal]] of Object.entries(cols)) PANELS[`${t}:${c}`] = [`${tn} — ${cn.toLowerCase()}`, KIND[t], pal];
+for (const [o, n] of Object.entries({ oak: 'wood:oak', walnut: 'wood:walnut', sandstone: 'stone:sandstone', slate: 'stone:slate', clinker: 'clinker:red' })) PANELS[o] = PANELS[n];
 
 const TEX = {};
 let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -132,10 +137,22 @@ export function plasterTex(kind, colour) {
   // the colour follows the relief a little (the hollows hold the dust, the tops catch the light)
   g.globalAlpha = kind === 'bark' ? 0.28 : 0.2; g.globalCompositeOperation = 'multiply'; g.drawImage(hc, 0, 0); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   for (let i = 0; i < 4000; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'; g.fillRect(rnd() * n, rnd() * n, 1.2, 1.2); }
-  return (TEX[key] = { map: asTex(c), normalMap: normalOf(hc, kind === 'bark' ? 6 : 5), roughness: 0.97 });
+  bake(c, hc, kind === 'bark' ? 0.9 : 1.1, 0.35);
+  return (TEX[key] = { map: asTex(c), normalMap: normalOf(hc, kind === 'bark' ? 10 : 8), roughness: 0.97 });
 }
 
 // ---- the panels (a 1 m tile) ----------------------------------------------------------------
+// the relief in the colour too: lit from the top left over the height (k: how strong), the
+// hollows darker (they hold the shadow) — so the stone, the clinker, the plaster read in any light
+function bake(c, hc, k, ao = 0.35) {
+  const n = c.width, g = c.getContext('2d'), img = g.getImageData(0, 0, n, n), H = hc.getContext('2d').getImageData(0, 0, n, n).data;
+  const h = (x, y) => H[(((y + n) % n) * n + ((x + n) % n)) * 4] / 255;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const v = h(x, y), lit = 1 + k * ((h(x - 2, y - 2) - h(x + 2, y + 2))), occ = 1 - ao * Math.max(0, 0.5 - v) * 2, f = Math.max(0.2, lit * occ), i = (y * n + x) * 4;
+    img.data[i] = Math.min(255, img.data[i] * f); img.data[i + 1] = Math.min(255, img.data[i + 1] * f); img.data[i + 2] = Math.min(255, img.data[i + 2] * f);
+  }
+  g.putImageData(img, 0, 0);
+}
 function woodTex(cols) {
   const n = 512, c = canvas(n), g = c.getContext('2d'), hc = canvas(n), h = hc.getContext('2d');
   h.fillStyle = '#808080'; h.fillRect(0, 0, n, n);
@@ -157,7 +174,8 @@ function woodTex(cols) {
     g.fillStyle = '#1d1712'; g.fillRect(0, y + bw, n, gap); h.fillStyle = '#101010'; h.fillRect(0, y + bw, n, gap);
     h.fillStyle = '#a8a8a8'; h.fillRect(0, y, n, 2); h.fillStyle = '#5a5a5a'; h.fillRect(0, y + bw - 2, n, 2);
   }
-  return { map: asTex(c), normalMap: normalOf(hc, 3), roughness: 0.75 };
+  bake(c, hc, 0.8, 0.5);
+  return { map: asTex(c), normalMap: normalOf(hc, 5), roughness: 0.75 };
 }
 function stoneTex(cols) {
   // flat stones (a jittered Voronoi, wrapped), mortar between
@@ -175,26 +193,36 @@ function stoneTex(cols) {
     const edge = d2 - d1, i4 = (y * n + x) * 4, joint = edge < 4.5;
     // each stone its own tone, darker to its edge (the split face rounds off)
     const col = pc[Math.floor(best[2] * pc.length)], f = (0.9 + ((best[2] * 7.3) % 1) * 0.18) * (0.9 + Math.min(edge, 14) / 14 * 0.1) + (rnd() - 0.5) * 0.07;
-    const hv = joint ? 0.2 : Math.min(1, 0.5 + Math.min(edge, 14) / 14 * 0.3 + (rnd() - 0.5) * 0.08);
-    if (joint) { const j = 95 + rnd() * 20; img.data[i4] = j; img.data[i4 + 1] = j * 0.97; img.data[i4 + 2] = j * 0.92; }
+    const hv = joint ? 0.12 : Math.min(1, 0.42 + Math.sqrt(Math.min(edge, 22) / 22) * 0.45 + best[2] * 0.08 + (rnd() - 0.5) * 0.06);
+    if (joint) { const j = 70 + rnd() * 20; img.data[i4] = j; img.data[i4 + 1] = j * 0.97; img.data[i4 + 2] = j * 0.92; }
     else { img.data[i4] = col.r * 255 * f; img.data[i4 + 1] = col.g * 255 * f; img.data[i4 + 2] = col.b * 255 * f; }
     img.data[i4 + 3] = 255; himg.data[i4] = himg.data[i4 + 1] = himg.data[i4 + 2] = hv * 255; himg.data[i4 + 3] = 255;
   }
   g.putImageData(img, 0, 0); hg.putImageData(himg, 0, 0);
   // the split face: a few layers of the stone
-  for (let i = 0; i < 1400; i++) { const x = rnd() * n, y = rnd() * n; hg.fillStyle = `rgba(${rnd() < 0.5 ? 200 : 60},0,0,0.25)`; hg.fillRect(x, y, 3 + rnd() * 10, 1.5); }
-  return { map: asTex(c), normalMap: normalOf(hc, 2.5), roughness: 0.9 };
+  for (let i = 0; i < 2600; i++) { const x = rnd() * n, y = rnd() * n, v = rnd() < 0.5 ? 210 : 50; hg.fillStyle = `rgba(${v},${v},${v},0.22)`; hg.fillRect(x, y, 3 + rnd() * 12, 1 + rnd() * 2); }
+  for (let i = 0; i < 9000; i++) { const v = rnd() < 0.5 ? 255 : 0; g.fillStyle = `rgba(${v},${v},${v},${0.04 + rnd() * 0.06})`; g.fillRect(rnd() * n, rnd() * n, 1 + rnd() * 2, 1 + rnd() * 2); }
+  bake(c, hc, 1.6, 0.55);
+  return { map: asTex(c), normalMap: normalOf(hc, 7), roughness: 0.92 };
 }
 function brickTex(cols) {
-  // clinker 240 × 71, joints 10 mm, the courses staggered by half
-  const n = 512, sc = 0.512, L = 250 * sc, H = 81 * sc, c = canvas(n), g = c.getContext('2d'), hc = canvas(n), h = hc.getContext('2d');
-  g.fillStyle = '#8d8a84'; g.fillRect(0, 0, n, n); h.fillStyle = '#404040'; h.fillRect(0, 0, n, n);
+  // clinker 240 × 71, joints 10 mm (recessed), the courses staggered by half; each brick its
+  // own shade and a rough fired face, the edges eased
+  const n = 512, sc = 0.512, L = 250 * sc, H = 81 * sc, j = 10 * sc, c = canvas(n), g = c.getContext('2d'), hc = canvas(n), h = hc.getContext('2d');
+  g.fillStyle = '#7d7a74'; g.fillRect(0, 0, n, n); h.fillStyle = '#202020'; h.fillRect(0, 0, n, n);
+  for (let i = 0; i < 6000; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * 0.25})`; g.fillRect(rnd() * n, rnd() * n, 1.5, 1.5); }
   for (let r = 0, y = 0; y < n; r++, y += H) for (let x = (r % 2) * L / 2 - L; x < n; x += L) {
-    const col = shade(cols[Math.floor(rnd() * cols.length)], 0.85 + rnd() * 0.3);
-    g.fillStyle = col; g.fillRect(x, y, L - 10 * sc, H - 10 * sc); h.fillStyle = '#9a9a9a'; h.fillRect(x, y, L - 10 * sc, H - 10 * sc);
-    for (let i = 0; i < 30; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * 0.12})`; g.fillRect(x + rnd() * L * 0.9, y + rnd() * H * 0.8, 2, 2); }
+    const col = shade(cols[Math.floor(rnd() * cols.length)], 0.8 + rnd() * 0.35), w = L - j, hh = H - j, up = 0.62 + rnd() * 0.1;
+    g.fillStyle = col; g.fillRect(x, y, w, hh);
+    // the eased edges: a ramp of 3 px round the face
+    for (let e = 0; e < 4; e++) { const v = Math.round((0.3 + (up - 0.3) * (e + 1) / 4) * 255); h.fillStyle = `rgb(${v},${v},${v})`; h.fillRect(x + e, y + e, w - 2 * e, hh - 2 * e); }
+    // the fired face: pits, darker flecks (the iron in the clay), a lighter skin here and there
+    for (let i = 0; i < 70; i++) { const px = x + 4 + rnd() * (w - 8), py = y + 4 + rnd() * (hh - 8), v = Math.round((up - 0.08 + rnd() * 0.16) * 255); h.fillStyle = `rgb(${v},${v},${v})`; h.fillRect(px, py, 1 + rnd() * 3, 1 + rnd() * 2); }
+    for (let i = 0; i < 45; i++) { g.fillStyle = `rgba(${rnd() < 0.7 ? '20,10,5' : '255,235,200'},${0.06 + rnd() * 0.14})`; g.fillRect(x + rnd() * w, y + rnd() * hh, 1 + rnd() * 3, 1 + rnd() * 2); }
+    const sh = g.createLinearGradient(x, y, x, y + hh); sh.addColorStop(0, 'rgba(255,255,255,0.06)'); sh.addColorStop(1, 'rgba(0,0,0,0.1)'); g.fillStyle = sh; g.fillRect(x, y, w, hh);
   }
-  return { map: asTex(c), normalMap: normalOf(hc, 2.5), roughness: 0.7 };
+  bake(c, hc, 1.3, 0.6);
+  return { map: asTex(c), normalMap: normalOf(hc, 6), roughness: 0.62 };
 }
 export function panelTex(key) {
   if (TEX[key]) return TEX[key];
@@ -233,7 +261,19 @@ export function facadeFaces(objects) {
     // which side is out: away from the middle of the masonry
     let a0 = Infinity, a1 = -Infinity, lo = Infinity, hi = -Infinity;
     for (const u of L.units) { a0 = Math.min(a0, u.a0); a1 = Math.max(a1, u.a1); const c = u.b.x * nx + u.b.z * nz, h = across(u.b, nx, nz); lo = Math.min(lo, c - h); hi = Math.max(hi, c + h); }
-    const am = (a0 + a1) / 2, md = (lo + hi) / 2, sg = (L.ux * am + nx * md - cx) * nx + (L.uz * am + nz * md - cz) * nz >= 0 ? 1 : -1;
+    // which side is out: the side with less masonry near it (the house is on the inside: its
+    // other walls; a loose block or a trial wall elsewhere on the plot does not turn it), the
+    // middle of all the masonry only when that does not tell
+    const am = (a0 + a1) / 2, md = (lo + hi) / 2, mine0 = new Set(L.units.map((u) => u.b));
+    let wp = 0, wn = 0;
+    for (const b of units) {
+      if (mine0.has(b)) continue;
+      const al = b.x * L.ux + b.z * L.uz, c = b.x * nx + b.z * nz - md;
+      if (al < a0 - MM(300) || al > a1 + MM(300) || Math.abs(c) < MM(200) || Math.abs(c) > MM(12000)) continue;
+      const wgt = (b.hl + b.hw) / (1 + Math.abs(c) / MM(3000));
+      if (c > 0) wp += wgt; else wn += wgt;
+    }
+    const sg = Math.abs(wp - wn) > 0.15 * (wp + wn) && wp + wn > 0 ? (wp < wn ? 1 : -1) : (L.ux * am + nx * md - cx) * nx + (L.uz * am + nz * md - cz) * nz >= 0 ? 1 : -1;
     // its tiers by their outer faces: a plinth standing out of the wall over it (or a wall
     // set back) is a face of its own — the wall's facade starts over the plinth
     const outer = (u) => { const c = u.b.x * nx + u.b.z * nz, h = across(u.b, nx, nz); return sg > 0 ? c + h : -(c - h); };

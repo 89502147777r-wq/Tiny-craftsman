@@ -6,7 +6,7 @@ import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
-import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANELS } from '../world/facade.js';
+import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES } from '../world/facade.js';
 import { ROOF_TYPES, PITCHES, PITCH_RANGE, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 const $ = (id) => document.getElementById(id);
@@ -448,7 +448,11 @@ export class UI {
           ...Object.entries(PLASTER_KINDS).map(([q, n]) => C('▦ ' + n, (s.facTex || 'bark') === q, () => lay({ wallKind: 'facade', facLayer: 'pl', facTex: q }))),
           ...Object.entries(PLASTER_COLOURS).map(([q, [n]]) => C('◼ ' + n, (s.facCol || 'white') === q, () => lay({ wallKind: 'facade', facLayer: 'pl', facCol: q }))),
         ], null, c);
-        if (k === 'pan') return G('pan', c.label, Object.entries(PANELS).map(([q, [n]]) => C(n, (s.facPanel || 'oak') === q, () => lay({ wallKind: 'facade', facLayer: 'pan', facPanel: q }))), null, c);
+        if (k === 'pan') {
+          // the panels: the type (stone, clinker, planks) → its colour
+          const cur = s.facPanel || 'stone:sandstone';
+          return G('pan', c.label, Object.entries(PANEL_TYPES).map(([t, [tn, cols]]) => G('pt' + t, tn, Object.entries(cols).map(([q, [n]]) => C('◼ ' + n, cur === `${t}:${q}`, () => lay({ wallKind: 'facade', facLayer: 'pan', facPanel: `${t}:${q}` }))), null, C('', cur.startsWith(t + ':'), () => lay({ wallKind: 'facade', facLayer: 'pan', facPanel: `${t}:${Object.keys(cols)[0]}` })))), null, c);
+        }
         return c;
       });
       // the pitched roof: its type, pitch, covering (and colour), then the stages

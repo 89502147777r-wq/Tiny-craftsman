@@ -209,7 +209,7 @@ export class FacadeWork {
     }
     const cut = !why && Math.abs(area(piece) - full) > full * 0.01;
     this.place = { F, slot, why, cut, size: piece.length ? [Math.round((Math.max(...piece.map((r) => r[2])) - Math.min(...piece.map((r) => r[0]))) / S), Math.round((Math.max(...piece.map((r) => r[3])) - Math.min(...piece.map((r) => r[1]))) / S)] : [0, 0] };
-    this._live(F, { layer: L, slot, ok: !why, key: this.app.settings.facPanel || 'oak' });
+    this._live(F, { layer: L, slot, ok: !why, key: this.app.settings.facPanel || 'stone:sandstone' });
     return { ok: !why, why, cut };
   }
   carryDrop() {
@@ -222,7 +222,7 @@ export class FacadeWork {
       this._save(P.F, { eps: [...(rec.eps || []), P.slot] }, 'facade-eps');
       app.ui.toast(`Лист ППС ${P.size[0]} × ${P.size[1]} мм на клей${P.cut ? ' — подрезан по месту' : ''}, 5 дюбелей-грибков`);
     } else {
-      const key = app.settings.facPanel || 'oak';
+      const key = app.settings.facPanel || 'stone:sandstone';
       this._save(P.F, { pan: [...(rec.pan || []), [...P.slot, key]] }, 'facade-panel');
       app.ui.toast(`${PANELS[key][0]}: панель ${P.size[0]} × ${P.size[1]} мм${P.cut ? ' — подрезана по месту' : ''}`);
     }
