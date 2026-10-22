@@ -262,18 +262,27 @@ export function facadeFaces(objects) {
       faces.push({ ux: L.ux, uz: L.uz, nx, nz, sg, P, a0: b0, a1: b1, y0, y1, holes, hw: L.hw, wrap0: false, wrap1: false, ledge, ru: Math.sign(L.ux * sg * nz - L.uz * sg * nx) || 1 });
     }
   }
-  // the corners: an end meets the plane of a face across it
-  for (const F of faces) for (const G of faces) {
-    if (F === G) continue;
-    const k = G.nx * F.ux + G.nz * F.uz;   // (G's across = ± F's along)
-    if (Math.abs(k) < 0.99) continue;
-    const aG = G.P * Math.sign(k), bF = F.P * Math.sign(F.nx * G.ux + F.nz * G.uz);
-    if (bF < G.a0 - 2 * F.hw - MM(80) || bF > G.a1 + 2 * F.hw + MM(80) || Math.min(G.y1, F.y1) - Math.max(G.y0, F.y0) < (F.y1 - F.y0) * 0.5) continue;
-    const out = G.sg * k;   // (G faces along +u of F: F's far end)
+  // the corners: an end of a face meets an end of a face across it (a corner of the house —
+  // not any wall the line of it crosses); the nearest such for each end, on the extents the
+  // faces had before (the order they are met in does not matter)
+  const orig = faces.map((F) => [F.a0, F.a1]);
+  faces.forEach((F, fi) => {
+    const best = [null, null];
+    faces.forEach((G, gi) => {
+      if (F === G) return;
+      const k = G.nx * F.ux + G.nz * F.uz;   // (G's across = ± F's along)
+      if (Math.abs(k) < 0.99) return;
+      const aG = G.P * Math.sign(k), bF = F.P * Math.sign(F.nx * G.ux + F.nz * G.uz), [g0, g1] = orig[gi], [f0, f1] = orig[fi];
+      if (Math.min(Math.abs(bF - g0), Math.abs(bF - g1)) > 2 * F.hw + MM(80)) return;   // (F's plane at an end of G)
+      if (Math.min(G.y1, F.y1) - Math.max(G.y0, F.y0) < (F.y1 - F.y0) * 0.5) return;
+      const out = G.sg * k;   // (G faces along +u of F: F's far end)
+      const e = out > 0 ? 1 : 0, d = Math.abs(aG - (e ? f1 : f0));
+      if (d < 2 * G.hw + MM(80) && (!best[e] || d < best[e].d)) best[e] = { d, aG };
+    });
     const wrap = Math.abs(F.ux) >= Math.abs(F.uz);
-    if (out > 0 && Math.abs(aG - F.a1) < 2 * G.hw + MM(80)) { F.a1 = aG; F.wrap1 = wrap; }
-    if (out < 0 && Math.abs(aG - F.a0) < 2 * G.hw + MM(80)) { F.a0 = aG; F.wrap0 = wrap; }
-  }
+    if (best[1]) { F.a1 = best[1].aG; F.wrap1 = wrap; }
+    if (best[0]) { F.a0 = best[0].aG; F.wrap0 = wrap; }
+  });
   // up the ring beam cast on the wall (its band over the top course) and the gables of the
   // roof (built with it, not of units): the face goes up to the gable's slopes — the part
   // over them a hole in 100 mm steps
