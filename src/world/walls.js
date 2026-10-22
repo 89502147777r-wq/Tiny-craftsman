@@ -6,7 +6,8 @@ import { buildWindow } from './windows.js';
 import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
-import { buildPitched, flatWindow, wingShape } from './pitched.js';
+import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
+import { buildBlind, blindTopAt } from './blind.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -371,7 +372,12 @@ export class WallView {
     loadCinder(this.cinders);
     this.mortar = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x8a857b, roughness: 0.95 }), this.max.mortar);   // cement-sand mortar: light grey
     // precast concrete lintels; the marked frame of a planned opening (orange, like the cord)
-    this.lintels = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9c9a94, roughness: 0.9 }), this.max.lintel);
+    // (the precast lintels: the concrete of the foundation, set, smooth from the steel mould)
+    const lg = new THREE.BoxGeometry(1, 1, 1), nv = lg.attributes.position.count;
+    lg.setAttribute('aPour', new THREE.Float32BufferAttribute(new Float32Array(nv).fill(-1e9), 1));
+    lg.setAttribute('aSm', new THREE.Float32BufferAttribute(new Float32Array(nv).fill(0.85), 1));
+    lg.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(nv * 3).fill(1), 3));
+    this.lintels = new THREE.InstancedMesh(lg, makeCastConcreteMaterial({ uClock: { value: 0 }, uCure: { value: 1 } }, { steel: true }), this.max.lintel);
     this.frames = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xff6a1c, roughness: 0.6, emissive: 0x401000 }), this.max.frame);
     this.cord = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshStandardMaterial({ color: 0xff4a1c, roughness: 0.6 }));
     for (const m of [this.blocks, this.bricks, this.cinders, this.mortar]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
@@ -423,6 +429,10 @@ export class WallView {
     this.liveFacade = null; this.facadeDirty = true; this._faces = null; this._facKnown = new Set();
     // the pitched roof (pitched.js)
     this.proofs = new THREE.Group(); this.group.add(this.proofs);
+    // the blind area round the house (blind.js)
+    this.blinds = new THREE.Group(); this.group.add(this.blinds);
+    this.liveBlind = null; this.blindDirty = true;
+    GROUND.at = (x, z) => blindTopAt(objects.all('blind'), x, z);
     this.liveProof = null; this.proofDirty = true;
     for (const m of [this.blocks, this.bricks, this.cinders]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3), 3);
     this.owner = { blocks: [], bricks: [], cinders: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
@@ -431,6 +441,7 @@ export class WallView {
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
     objects.on((id, rec) => {
+      if (rec?.type === 'blind' || this._blindIds?.has(id)) { this.blindDirty = true; this.proofDirty = true; return; }
       if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
@@ -438,7 +449,7 @@ export class WallView {
   }
 
   update() {
-    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); if (this.proofDirty) this._buildProofs(); return; }
+    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); if (this.proofDirty) this._buildProofs(); if (this.blindDirty) this._buildBlinds(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt'), ...O.all('window'), ...O.all('roof')].map((r) => r.id));
@@ -604,12 +615,29 @@ export class WallView {
           this.owner.beltBoards[nbb++] = b.id ?? null;
         }
         const n = Math.max(1, Math.round(L / (600 * S)));
-        for (let k = 0; k <= n; k++) {
+        for (let k = 0; k <= n && !b.lform; k++) {
           const f = k / n - 0.5, ss = cs + (along ? f * (L - 60 * S) : 0) + ns * (th / 2 + 20 * S), tt = ct + (along ? 0 : f * (L - 60 * S)) + nt * (th / 2 + 20 * S);
           const [sx, sz] = toWorld(b, ss, tt);
           this.wood.setMatrixAt(nw, m.compose(P.set(sx, yc + 15 * S, sz), Q, Sv.set(40 * S, h + 30 * S, 40 * S))); this.owner.wood[nw++] = b.id ?? null;
         }
       }
+    }
+    // a lintel cast in place: under it over the opening the deck (plywood), the beams across
+    // and the posts down to the floor; clamps (studs) round the side boards
+    for (const b of [...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])]) {
+      if (!b.lform || b.stripped || nw >= this.max.wood - 30) continue;
+      const { g0, g1, floor } = b.lform, Wc = b.nj * b.c, th = BELT.board * S, yaw = Math.atan2(-b.u[1], b.u[0]), dk = 21 * S;
+      const at = (s, t, y, sx, sy, sz, rot = 0) => { const [x, z] = toWorld(b, s, t); Q.setFromAxisAngle(_Y, yaw + rot); this.wood.setMatrixAt(nw, m.compose(P.set(x, y, z), Q, Sv.set(sx, sy, sz))); this.owner.wood[nw++] = b.id ?? null; };
+      at((g0 + g1) / 2, Wc / 2, b.top - dk / 2, g1 - g0, dk, Wc + 2 * th);
+      const span = g1 - g0, nb = span > 1300 * S ? Math.ceil(span / (900 * S)) + 1 : 2, by = b.top - dk - 50 * S;
+      for (let k = 0; k < nb; k++) {
+        const s = g0 + 80 * S + (span - 160 * S) * k / (nb - 1);
+        at(s, Wc / 2, by, 50 * S, 100 * S, Wc + 2 * th + 160 * S);
+        const ph = by - 50 * S - floor;
+        if (ph > 0.002) at(s, Wc / 2, floor + ph / 2, 100 * S, ph, 100 * S);
+      }
+      // the clamps round the boards every 500 mm
+      for (let s = 150 * S; s < b.ni * b.c - 100 * S; s += 500 * S) at(s, Wc / 2, b.top + b.H * 0.6, 40 * S, 40 * S, Wc + 2 * th + 80 * S);
     }
     if (this.terrain) this.slabForm.build([...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])], floorUnder(this.terrain, O.all('belt')));
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
@@ -623,7 +651,7 @@ export class WallView {
     this.blocks.count = nb; this.bricks.count = nk; this.cinders.count = ncb; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu; this.beltBoards.count = nbb; this.beltBoards.geometry.attributes.aBoard.needsUpdate = true;
     for (const im of [this.blocks, this.bricks, this.cinders, this.mortar, this.lintels, this.frames, this.wood, this.ublocks, this.beltBoards]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     this._buildFill();
-    for (const im of [this.blocks, this.bricks, this.cinders]) im.instanceColor.needsUpdate = true;
+    for (const im of [this.blocks, this.bricks, this.cinders]) if (im.instanceColor) im.instanceColor.needsUpdate = true;
     this.bricks.geometry.attributes.aSkin.needsUpdate = true;
   }
 
@@ -786,7 +814,7 @@ export class WallView {
   _buildProofs() {
     this.proofDirty = false;
     const sel = this.app?.settings?.wallKind === 'proof' ? (this.app.settings.proofWing ?? -1) : -1;
-    const key = JSON.stringify([this.objects.all('proof'), this.objects.all('rwin'), this.liveProof, this.liveRwin, sel]);
+    const key = JSON.stringify([this.objects.all('proof'), this.objects.all('rwin'), this.liveProof, this.liveRwin, sel, this.objects.all('blind').map((r) => [r.id, r.fin, r.W])]);   // (the blind area: what the downpipes come down onto)
     if (key === this._proofKey) return;
     this._proofKey = key;
     for (const g of [...this.proofs.children]) { this.proofs.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); }); }
@@ -811,6 +839,19 @@ export class WallView {
       const g = flatWindow(q);
       g.traverse((o) => { if (o.isMesh) o.userData.uOwner = q.id ?? null; });
       this.proofs.add(g);
+    }
+  }
+
+  _buildBlinds() {
+    this.blindDirty = false;
+    for (const g of [...this.blinds.children]) { this.blinds.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); }); }
+    const recs = this.objects.all('blind'), live = this.liveBlind;
+    this._blindIds = new Set(recs.map((r) => r.id));
+    const list = live?.form ? [{ ...live.form, id: null }] : recs;
+    for (const r of list) {
+      const g = buildBlind(r, live?.form ? null : live);
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
+      this.blinds.add(g);
     }
   }
 

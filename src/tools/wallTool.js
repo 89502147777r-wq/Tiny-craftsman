@@ -3,7 +3,7 @@ import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt, beltTopAt, boxOf, dims } from './freeBrick.js';
-import { placeLintel, placeProp, uRun, cageRec, uStrength } from './lintels.js';
+import { placeLintel, placeProp, placeLintelForm, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld } from './belt.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
@@ -12,6 +12,7 @@ import { WINDOWS, windowFits } from '../world/windows.js';
 import { DOORS, doorFits } from '../world/doors.js';
 import { RoofWork } from './roofTool.js';
 import { FacadeWork } from './facadeTool.js';
+import { BlindWork } from './blindTool.js';
 import { PitchedWork, RoofWindowWork } from './pitchedTool.js';
 const winName = (k) => (WINDOWS[k] || DOORS[k]).name;
 
@@ -37,9 +38,18 @@ const _ray = new THREE.Raycaster();
 
 // why a precast lintel can't go over an opening
 function lintelWhy(f) {
-  return f.why === 'long' ? `проём ${f.gapMm} мм — шире, чем перекроет перемычка 3,0 м`
-    : f.why === 'clash' ? `над рядом что-то мешает: по бокам проёма кладка разной высоты? Перемычка ложится на ряд, общий для обеих сторон — доложите ряд на низкой стороне`
+  return f.why === 'long' ? `проём ${f.gapMm} мм — шире, чем перекроет перемычка 3,9 м (с опорой по 250 мм): над таким проёмом — подпорка и U-блоки с каркасом`
+    : f.why === 'above' ? `над опорой уже лежит следующий ряд — перемычку кладут раньше него: снимите блоки над опорой (по ${Math.round((f.lenMm - f.gapMm) / 2)} мм с каждой стороны)`
+    : f.why === 'clash' ? `на месте перемычки уже что-то лежит — снимите это («Удалить»)`
     : `опоры меньше 250 мм: по бокам проёма (${f.gapMm} мм) нужно по ${Math.round((f.lenMm - f.gapMm) / 2)} мм кладки в том же ряду`;
+}
+
+function lformWhy(f) {
+  return f.why === 'bear' ? 'по бокам проёма нужно по 250 мм кладки в том же ряду — опалубка ляжет на неё'
+    : f.why === 'above' ? 'над опорой уже лежит следующий ряд — опалубку ставят до него: снимите блоки над опорой'
+    : f.why === 'taken' ? 'здесь опалубка уже стоит'
+    : f.why === 'low' ? 'под проёмом нет места для стоек'
+    : 'на месте перемычки уже что-то лежит — снимите это («Удалить»)';
 }
 
 export class WallTool {
@@ -47,6 +57,7 @@ export class WallTool {
     this.app = app;
     this.roof = new RoofWork(app);
     this.facade = new FacadeWork(app);
+    this.blind = new BlindWork(app);
     this.proof = new PitchedWork(app);
     this.rwin = new RoofWindowWork(app);
     this.mode = 'lay';
@@ -68,6 +79,7 @@ export class WallTool {
         if (this.mode !== 'lay' || app.physJob || app.physLoading) return;
         if (this.kind === 'roof' && !this.roof.isCarry) { app.ui.toast(this.roof.status(false)); return; }
         if (this.kind === 'facade' && !this.facade.isCarry) { app.ui.toast(this.facade.status(false)); return; }
+        if (this.kind === 'blind' && !this.blind.isCarry) { app.ui.toast(this.blind.status(false)); return; }
         if (this.kind === 'proof' && !this.proof.isCarry) { app.ui.toast(this.proof.status(false)); return; }
         const w = this._trayWall();
         try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ }
@@ -161,6 +173,7 @@ export class WallTool {
     }
     if (this.mode === 'lay' && this.kind === 'roof') return this.roof.down(p, e);
     if (this.mode === 'lay' && this.kind === 'facade') return this.facade.down(p, e);
+    if (this.mode === 'lay' && this.kind === 'blind') return this.blind.down(p, e);
     if (this.mode === 'lay' && this.kind === 'proof') return this.proof.down(p, e);
     if (this.mode === 'lay') {
       if (app.physJob || app.physLoading) return true;   // the last one is still being set
@@ -185,6 +198,7 @@ export class WallTool {
     if (this.rowDrag) { this._rowMove(p, e); return; }
     if (this.roof.drag) { this.roof.move(p, e); return; }
     if (this.facade.drag) { this.facade.move(p, e); return; }
+    if (this.blind.drag) { this.blind.move(p, e); return; }
     if (this.proof.drag) { this.proof.move(p, e); return; }
     if (!this.drag) return;
     if (this.mode === 'line') {
@@ -225,6 +239,7 @@ export class WallTool {
     if (this.rowDrag) { const d = this.rowDrag; this.rowDrag = null; this._rowStart(d); return; }
     if (this.roof.drag) { this.roof.up(); return; }
     if (this.facade.drag) { this.facade.up(); return; }
+    if (this.blind.drag) { this.blind.up(); return; }
     if (this.proof.drag) { this.proof.up(); return; }
     this.drag = null;
     app.ui.hideMeasure();
@@ -728,6 +743,22 @@ export class WallTool {
       v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
       app.ui.refresh();
       return;
+    } else if (c.kind === 'lform') {
+      // the formwork of a lintel cast in place: over the opening under the finger
+      const F = placeLintelForm(app, p, scr, fing);
+      c.lform = F; c.free = undefined; c.snap = null;
+      v.live = null; v.liveBed = null;
+      v.liveBelt = F?.ok ? F.rec : null;
+      if (F && !F.ok) {
+        const r = F.rec, L = r.ni * r.c, W = r.nj * r.c, cx = r.o[0] + r.u[0] * L / 2 - r.u[1] * W / 2, cz = r.o[1] + r.u[1] * L / 2 + r.u[0] * W / 2;
+        v.hl = { p: [cx, r.top + r.H / 2, cz], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-r.u[1], r.u[0])).toArray(), s: [L, r.H, W], ok: false };
+      } else v.hl = null;
+      v.dirty = true; app.ui.refresh();
+      return;
+    } else if (c.kind === 'blind') {
+      c.free = undefined; c.snap = null; v.live = null; v.hl = null; v.liveBed = null;
+      this.blind.carryMove(p, e); app.ui.refresh();
+      return;
     } else if (c.kind === 'roof' || c.kind === 'facade' || c.kind === 'proof' || c.kind === 'rwin') {
       c.free = undefined; c.snap = null; v.live = null; v.hl = null; v.liveBed = null;
       (c.kind === 'roof' ? this.roof : c.kind === 'proof' ? this.proof : c.kind === 'rwin' ? this.rwin : this.facade).carryMove(p, e);
@@ -848,8 +879,9 @@ export class WallTool {
     this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');
     this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
+    const NAMES = { lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
     if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
+    if (lab && kind === 'blind') { lab.textContent = this.app.settings.blindLayer === 'drain' ? 'Лоток' : 'Опалубка'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель' }[this.app.settings.facLayer || 'eps']; return; }
     if (lab && kind === 'roof') { lab.textContent = { vap: 'Рулон пароизоляции', xps: 'Лист XPS', wedge: 'Клиновидная плита', mem: 'Рулон мембраны', cop: 'Отлив 2 м', grav: 'Гравий' }[this.app.settings.roofLayer || 'vap']; return; }
     if (lab) lab.textContent = this.app.settings.wallHalf && (kind === 'block' || kind === 'brick' || kind === 'cinder') ? (kind === 'block' ? '½ блока' : kind === 'cinder' ? '½ шлакоблока' : '½ кирпича') : NAMES[kind] || 'Блок';
@@ -859,13 +891,20 @@ export class WallTool {
 
   _carryCancel() {
     const v = this.app.wallView;
-    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.liveBelt = null; v.liveWin = null; v.dirty = true; this.roof._live(null); this.facade._live(null); this.proof._live(null); this.rwin._live(null);
+    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.liveBelt = null; v.liveWin = null; v.dirty = true; this.roof._live(null); this.facade._live(null); this.proof._live(null); this.rwin._live(null); this.blind._live(null);
     this.app.ui.refresh();
   }
 
   _carryDrop() {
-    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage, belt = this.carry.belt, bc = this.carry.beltCage, win = this.carry.win;
+    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage, belt = this.carry.belt, bc = this.carry.beltCage, win = this.carry.win, lf = this.carry.lform;
     this._carryCancel();
+    if (ck === 'lform') {
+      if (!lf) { app.ui.toast('Опалубку перемычки — к проёму: промежутку 300…4000 мм между блоками одного ряда'); return; }
+      if (!lf.ok) { app.ui.toast(lformWhy(lf)); return; }
+      app.journal.act('lintel-form', {}, app.clock, () => app.objects.add(lf.rec));
+      app.ui.toast(`Опалубка перемычки над проёмом ${lf.gapMm} мм: днище на стойках, доски по бокам, длина ${lf.lenMm} мм (опора по 250 мм), высота ${lf.hMm} мм — теперь «Каркас», потом бетон`);
+      return;
+    }
     if (ck === 'belt') {
       if (!belt) { app.ui.toast('Опалубку пояса — на верх стены: коснитесь верхнего ряда кладки'); return; }
       if (belt.exists) { app.ui.toast('На этих стенах опалубка пояса уже стоит'); return; }
@@ -875,6 +914,7 @@ export class WallTool {
     }
     if (ck === 'roof') { this.roof.carryDrop(); return; }
     if (ck === 'facade') { this.facade.carryDrop(); return; }
+    if (ck === 'blind') { this.blind.carryDrop(); return; }
     if (ck === 'proof') { this.proof.carryDrop(); return; }
     if (ck === 'rwin') { this.rwin.carryDrop(); return; }
     if (ck === 'window' || ck === 'door') {
@@ -904,6 +944,7 @@ export class WallTool {
       }
       const rec = beltCage(bc);
       app.journal.act('belt-cage', {}, app.clock, () => app.objects.add(rec));
+      if (bc.lform) { app.ui.toast('Каркас перемычки: 4 прутка Ø12 на всю длину с опорами, хомуты Ø6 через ≤ 350 мм, звёздочки 40 мм — теперь бетон (ведро или шланг), потом вибратор и правило'); return; }
       app.ui.toast(`Каркас пояса: 4 прутка Ø12 вдоль каждой стены, на углах — внахлёст до дальней стороны, хомуты Ø6 через ≤ 350 мм, звёздочки — теперь бетон (ведро или шланг)`);
       return;
     }
@@ -917,7 +958,7 @@ export class WallTool {
     }
     if (free !== undefined) {
       if (!free?.ok) {
-        app.ui.toast(ck === 'lintel' ? (free ? lintelWhy(free) : 'Поднесите перемычку к проёму — промежутку 300…2700 мм между блоками одного ряда')
+        app.ui.toast(ck === 'lintel' ? (free ? lintelWhy(free) : 'Поднесите перемычку к проёму — промежутку 300…4000 мм между блоками одного ряда')
           : ck === 'prop' ? 'Подпорку — в проём: между блоками одного ряда, под их верх'
             : `Сюда ${ck === 'block' || ck === 'ublock' ? 'блок' : ck === 'cinder' ? 'шлакоблок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`);
         return;
@@ -953,9 +994,11 @@ export class WallTool {
   status() {
     const app = this.app, walls = app.objects.all('wall');
     const c = this.carry;
+    if (c?.kind === 'lform') return c.lform ? (c.lform.ok ? `Опалубка перемычки над проёмом ${c.lform.gapMm} мм, длина ${c.lform.lenMm} мм — отпустите` : 'Красный — ' + lformWhy(c.lform)) : 'Поднесите опалубку к проёму в кладке';
     if (c?.kind === 'belt') return c.belt ? (c.belt.exists ? 'Здесь опалубка пояса уже стоит' : `Опалубка по верху стен: ${c.belt.lenM.toFixed(1).replace('.', ',')} м — отпустите`) : 'Поднесите к верхнему ряду кладки — опалубка встанет по всему его контуру';
     if (c?.kind === 'roof') return this.roof.status(true);
     if (c?.kind === 'facade') return this.facade.status(true);
+    if (c?.kind === 'blind') return this.blind.status(true);
     if (c?.kind === 'proof') return this.proof.status(true);
     if (c?.kind === 'rwin') return this.rwin.status();
     if (c?.kind === 'window' || c?.kind === 'door') { const door = c.kind === 'door', key = door ? this.app.settings.doorKey || 'door1' : this.app.settings.windowKey || 'pvc2'; return c.win ? (c.win.why2 ? 'Красный — ' + c.win.why2 : `${winName(key)}: ${c.win.w} × ${c.win.h} мм — отпустите`) : door ? 'Поднесите дверь к проёму до пола — она встанет по его размеру' : 'Поднесите окно к проёму в кладке — оно встанет по его размеру'; }
@@ -968,7 +1011,9 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : c.kind === 'cinder' ? 'Шлакоблок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform'].includes(this.kind)) return {
+      lform: 'Монолитная перемычка: тяните опалубку из лотка к проёму — днище на стойках и доски по бокам встанут над ним с опорой по 250 мм; потом «Каркас», бетон (ведро / шланг), вибратор, правило; когда наберёт прочность — «Удалить» снимет опалубку',
+      blind: this.blind.status(false),
       roof: this.roof.status(false),
       proof: this.proof.status(false),
       rwin: this.rwin.status(),
@@ -980,7 +1025,7 @@ export class WallTool {
       lintel: 'Перемычка: тяните из лотка к проёму — встанет над ним, опора ≥ 250 мм с каждой стороны, длина подберётся (1,0…3,0 м)',
       prop: 'Подпорка: поставьте в проём под монолитную перемычку, на неё — U-блоки',
       ublock: 'U-блок: кладите на подпорку над проёмом и рядом на кладку, как газоблок; потом каркас и бетон из ведра (Бетон → Ведро)',
-      ucage: 'Каркас: поднесите к ряду U-блоков (в лоток) или в опалубку пояса — 4 прутка Ø12 в хомутах, со звёздочками',
+      ucage: 'Каркас: поднесите к ряду U-блоков (в лоток), в опалубку перемычки или пояса — 4 прутка Ø12 в хомутах, со звёздочками',
     }[this.kind];
     if (this.kind !== 'block' || (c && c.kind !== 'block')) {
       if (c) return 'Несите к кирпичу (продолжит ряд, ляжет рядом или повернёт за угол), на кладку или на плиту';
@@ -1017,6 +1062,7 @@ export class WallTool {
     }
     if (id && app.objects.get(id)?.type === 'roof') { this.roof.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'facade') { this.facade.remove(id); return; }
+    if (id && app.objects.get(id)?.type === 'blind') { this.blind.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'proof') { this.proof.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'rwin') { app.journal.act('rwin-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Окно сняли — кровля снова сплошная'); return; }
     if (id && app.objects.get(id)?.type === 'window') {
@@ -1029,14 +1075,14 @@ export class WallTool {
       const b = app.objects.get(id), sl = isSlab(b);
       if (!(b.fill > 0.05)) {
         app.journal.act('belt-remove', {}, app.clock, () => { for (const c of app.objects.all('cage').filter((r) => r.beltId === b.id)) app.objects.remove(c.id); app.objects.remove(b.id); });
-        app.ui.toast(sl ? 'Опалубку перекрытия разобрали' : 'Опалубку пояса разобрали');
+        app.ui.toast(sl ? 'Опалубку перекрытия разобрали' : b.lform ? 'Опалубку перемычки разобрали' : 'Опалубку пояса разобрали');
         return;
       }
       if (b.stripped) { app.ui.toast(sl ? 'Стойки и опалубка уже сняты — перекрытие готово' : 'Опалубка уже снята — пояс готов'); return; }
       const k = uStrength(b, app.clock);
       if (!(b.fill >= 0.95) || k < 1) { app.ui.toast(!(b.fill >= 0.95) ? (sl ? 'Перекрытие залито не доверху — долейте бетон' : 'Пояс залит не доверху — долейте бетон') : `Бетон набирает прочность: ${Math.round(k * 100)} % — ${sl ? (b.cant ? 'стойки рано убирать: консоль без них просядет' : 'стойки рано убирать: плита прогнётся') : 'опалубку рано снимать'}`); return; }
       app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, { stripped: true, set: true }));
-      app.ui.toast(sl ? 'Стойки, балки и фанеру сняли — перекрытие готово' + (b.cant ? ', консоль держится сама' : '') : 'Опалубку сняли — армопояс готов');
+      app.ui.toast(sl ? 'Стойки, балки и фанеру сняли — перекрытие готово' + (b.cant ? ', консоль держится сама' : '') : b.lform ? 'Стойки, днище и доски сняли — монолитная перемычка готова, на неё можно класть дальше' : 'Опалубку сняли — армопояс готов');
       return;
     }
     if (id) {

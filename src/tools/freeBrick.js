@@ -323,8 +323,19 @@ export function mortarOf(units) {
   const half = (b, ax, az) => Math.abs(b.hl * (b.ux * ax + b.uz * az)) + Math.abs(b.hw * (-b.uz * ax + b.ux * az));
   for (const [i, b] of list.entries()) {
     const D = dims(b.kind), inset = 1 * S, bed = bedOf(b.u, D);   // (struck flush with the faces: the joint shows)
-    // the bed
-    out.push({ x: b.x, y: b.bot - bed / 2, z: b.z, yaw: b.yaw, l: b.hl * 2 - 2 * inset, h: bed, w: b.hw * 2 - 2 * inset });
+    // the bed — under a lintel only where it rests (on the jambs, not over the opening), down
+    // to what is under each end (a jamb a few mm lower: a thicker bed)
+    if (b.kind === 'lintel') {
+      for (const o of list) {
+        if (o === b || o.kind === 'lintel' || o.top > b.bot + 0.5 * S || o.top < b.bot - bed - 60 * S) continue;
+        const so = (o.x - b.x) * b.ux + (o.z - b.z) * b.uz, co = -(o.x - b.x) * b.uz + (o.z - b.z) * b.ux;
+        const s0 = Math.max(-b.hl, so - half(o, b.ux, b.uz)) + inset, s1 = Math.min(b.hl, so + half(o, b.ux, b.uz)) - inset;
+        const c0 = Math.max(-b.hw, co - half(o, -b.uz, b.ux)) + inset, c1 = Math.min(b.hw, co + half(o, -b.uz, b.ux)) - inset;
+        if (s1 - s0 < 20 * S || c1 - c0 < 20 * S) continue;
+        const sm = (s0 + s1) / 2, cm = (c0 + c1) / 2, h = b.bot - o.top;
+        out.push({ x: b.x + b.ux * sm - b.uz * cm, y: o.top + h / 2, z: b.z + b.uz * sm + b.ux * cm, yaw: b.yaw, l: s1 - s0, h: Math.max(h, 0.5 * S), w: c1 - c0 });
+      }
+    } else out.push({ x: b.x, y: b.bot - bed / 2, z: b.z, yaw: b.yaw, l: b.hl * 2 - 2 * inset, h: bed, w: b.hw * 2 - 2 * inset });
     // the vertical joints to the neighbours of the course (each pair once): end to end, the
     // two leaves side by side, a header against a stretcher, a corner — wherever two faces
     // of the course face each other a joint apart, over the length they share
@@ -332,10 +343,13 @@ export function mortarOf(units) {
     for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gz = cz - 1; gz <= cz + 1; gz++) for (const j of grid.get(`${gx},${gz}`) || []) {
       if (j <= i) continue;
       const o = list[j];
-      if (Math.abs(o.bot - b.bot) > 0.0004 || Math.abs(o.top - b.top) > 0.0006) continue;
+      // (one course: side by side over most of their height — a lintel two bricks high beside
+      // its course, a jamb a few mm off: the joint over the height they share)
+      const y0 = Math.max(b.bot, o.bot), y1 = Math.min(b.top, o.top);
+      if (y1 - y0 < 0.6 * Math.min(b.top - b.bot, o.top - o.bot)) continue;
       const c = Math.abs(Math.cos(o.yaw - b.yaw)), sn = Math.abs(Math.sin(o.yaw - b.yaw));
       if (!(c > 0.998 || sn > 0.998)) continue;   // (square to each other only)
-      const Jmax = Math.max(dims(b.kind).J, dims(o.kind).J) * 1.8 + 1.5 * S;
+      const Jmax = b.kind === 'lintel' || o.kind === 'lintel' ? 60 * S : Math.max(dims(b.kind).J, dims(o.kind).J) * 1.8 + 1.5 * S;   // (at the end of a lintel: filled up to 60 mm)
       for (const [nx, nz, mx, mz, yaw] of [[b.ux, b.uz, -b.uz, b.ux, b.yaw + Math.PI / 2], [-b.uz, b.ux, b.ux, b.uz, b.yaw]]) {
         const pb = b.x * nx + b.z * nz, po = o.x * nx + o.z * nz, rb = half(b, nx, nz), ro = half(o, nx, nz);
         const gap = Math.abs(po - pb) - rb - ro;
@@ -346,7 +360,8 @@ export function mortarOf(units) {
         if (m1 - m0 < 20 * S) continue;
         const g = Math.max(gap, 0.5 * S), n0 = pb + Math.sign(po - pb) * (rb + g / 2), mm = (m0 + m1) / 2;
         // (a box: l along its yaw = the length shared, w across = the joint)
-        out.push({ x: nx * n0 + mx * mm, y: (b.bot - bed + b.top - 1 * S) / 2, z: nz * n0 + mz * mm, yaw: Math.atan2(-mz, mx), l: m1 - m0, h: b.top - 1 * S - (b.bot - bed), w: g });   // (down through the bed: no hole under it)
+        const yb = Math.max(b.bot - bed, o.bot - bedOf(o.u, dims(o.kind))), yt = y1 - 1 * S;
+        out.push({ x: nx * n0 + mx * mm, y: (yb + yt) / 2, z: nz * n0 + mz * mm, yaw: Math.atan2(-mz, mx), l: m1 - m0, h: yt - yb, w: g });   // (down through the bed: no hole under it)
         break;
       }
     }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
 import { KINDS } from '../world/walls.js';
 import { boxOf } from './freeBrick.js';
+import { rle } from './belt.js';
 
 // Openings in free masonry and what spans them:
 //   lintel – a precast lintel: a standard length (1.0 … 3.0 m) that bears ≥ 250 mm on the
@@ -12,10 +13,11 @@ import { boxOf } from './freeBrick.js';
 //            four Ø12 bars — goes into their channel; the hose fills the channel with
 //            concrete (HoseTool), which sets; then the prop may come out.
 const S = 1 / 1000 / MODEL_SCALE, _Y = new THREE.Vector3(0, 1, 0);
-export const LINTEL_LENGTHS = [1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000];
+export const LINTEL_LENGTHS = [1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3600, 3900];   // (3ПБ 36, 3ПБ 39 for the wide ones)
+export const MAX_GAP = 4000;   // (wider: no lintel — but a prop and U-blocks still span it)
 const BEAR = 250;
 
-// the opening nearest the finger: a gap 300 … 2700 mm between two units of one course,
+// the opening nearest the finger: a gap 300 … 4000 mm between two units of one course,
 // in one line — { ux, uz, nx, nz, yaw, c0, c1 (gap ends along), o (line point), top,
 // width, gap }. Hand-laid jambs are rarely exact: the two sides may differ in height by
 // up to a third of a course (an uneven footing) and stand off the line by up to a quarter
@@ -30,7 +32,7 @@ export function findOpening(app, p, screen, finger) {
     const dx = b.x - a.x, dz = b.z - a.z, along = dx * a.ux + dz * a.uz, side = -dx * a.uz + dz * a.ux;
     if (Math.abs(side) > Math.min(a.hw, b.hw) / 2) continue;
     const gap = (Math.abs(along) - a.hl - b.hl) / S;
-    if (gap < 300 || gap > 2700) continue;
+    if (gap < 300 || gap > MAX_GAP) continue;
     // nothing of that course in between
     const sg = Math.sign(along), e0 = a.hl, e1 = Math.abs(along) - b.hl;
     if (boxes.some((u, k) => k !== i && k !== j && Math.abs(u.top - a.top) < ty && (() => { const ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux; return Math.abs(sd - side / 2) < a.hw && s + u.hl > e0 + 0.0001 && s - u.hl < e1 - 0.0001; })())) continue;
@@ -47,7 +49,9 @@ export function findOpening(app, p, screen, finger) {
   return best;
 }
 
-// the course beside the opening carries it for `len` (model) from the gap end, each side
+// the course beside the opening carries it for `len` (model) from the gap end, each side:
+// the top it rests on (the highest unit under its ends — hand-laid courses differ by a few
+// mm; the mortar under it makes up the rest), or null when the course is short of it
 function bears(app, op, len) {
   const boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q && !u.lintel && u.kind !== 'prop').map(boxOf);
   const covered = (s0, s1) => {
@@ -56,14 +60,15 @@ function bears(app, op, len) {
       if (Math.abs(b.top - op.top) > op.ty) continue;
       const dx = b.x - op.o[0], dz = b.z - op.o[1], s = dx * op.ux + dz * op.uz, sd = -dx * op.uz + dz * op.ux;
       if (Math.abs(sd) > op.width / 2 + op.side) continue;
-      iv.push([s - b.hl - 0.0012, s + b.hl + 0.0012]);
+      iv.push([s - b.hl - 0.0012, s + b.hl + 0.0012, b.top]);
     }
     iv.sort((x, y) => x[0] - y[0]);
-    let e = s0;
-    for (const [a, b] of iv) { if (a > e + 1e-5) break; e = Math.max(e, b); }
-    return e >= s1 - 1e-5;
+    let e = s0, top = -Infinity;
+    for (const [a, b, t] of iv) { if (a > e + 1e-5) break; if (b > s0 && a < s1) top = Math.max(top, t); e = Math.max(e, b); }
+    return e >= s1 - 1e-5 ? top : null;
   };
-  return covered(op.c0 - len, op.c0) && covered(op.c1, op.c1 + len);
+  const t0 = covered(op.c0 - len, op.c0), t1 = covered(op.c1, op.c1 + len);
+  return t0 != null && t1 != null ? Math.max(t0, t1) : null;
 }
 
 // a precast lintel over the opening under the finger
@@ -76,15 +81,52 @@ export function placeLintel(app, p, screen, finger) {
   const mid = (op.c0 + op.c1) / 2;
   const x = op.o[0] + op.ux * mid, z = op.o[1] + op.uz * mid;
   const L = (len || 3000) * S;
-  const bear = !!len && bears(app, op, ((len - op.gap) / 2) * S - 0.0001);
-  const bot = op.top + bed, q = new THREE.Quaternion().setFromAxisAngle(_Y, op.yaw);
+  const sup = len ? bears(app, op, ((len - op.gap) / 2) * S - 0.0001) : null, bear = sup != null;
+  const bot = (bear ? sup : op.top) + bed, q = new THREE.Quaternion().setFromAxisAngle(_Y, op.yaw);
   // nothing in its way above the course
   const me = { x, z, yaw: op.yaw, ux: op.ux, uz: op.uz, hl: L / 2, hw: op.width / 2, bot, top: bot + H };
-  const clash = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf).some((b) => me.bot < b.top - 1e-5 && me.top > b.bot + 1e-5 && overlap(me, b));
-  // why it can't go: too wide / short of bearing / something above the course (a jamb a course higher)
-  const why = !len ? 'long' : !bear ? 'bear' : clash ? 'clash' : null;
+  const hit = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf).find((b) => me.bot < b.top - 1e-5 && me.top > b.bot + 1e-5 && overlap(me, b));
+  // why it can't go: too wide / short of bearing / the next course already over its ends /
+  // something else in its place
+  const why = !len ? 'long' : !bear ? 'bear' : hit ? (hit.bot > me.bot - (me.top - me.bot) * 0.5 ? 'above' : 'clash') : null;
   return { ok: !why, why, how: 'lintel', kind: 'lintel', lenMm: len || 0, gapMm: Math.round(op.gap), p: new THREE.Vector3(x, bot + H / 2, z), q, s: new THREE.Vector3(L, H, op.width), bedY: op.top + bed / 2, bedT: bed };
 }
+
+// a lintel cast in place in a timber formwork (опалубка перемычки) over the opening under
+// the finger: a belt record (belt.js — the cage, the concrete, the vibrator, the stripping
+// work on it as on a ring beam) over the opening and 250 mm onto the course each side, the
+// height of a course (two brick courses); under it over the opening a deck on beams and
+// posts down to the floor (lform: the opening in its frame)
+export function placeLintelForm(app, p, screen, finger) {
+  const op = findOpening(app, p, screen, finger);
+  if (!op) return null;
+  const k = KINDS[op.kind === 'block' || op.kind === 'ublock' ? 'block' : 'brick'];
+  const c = 50 * S, bear = BEAR * S, W = op.width;
+  const sup = bears(app, op, bear - 0.0001);
+  const top = sup ?? op.top, H = (op.kind === 'brick' ? 2 * k.H + k.bed : k.H) * S;
+  const L0 = op.gap * S + 2 * bear, ni = Math.ceil(L0 / c - 1e-6), nj = Math.max(2, Math.round(W / c)), L = ni * c, Wc = nj * c;
+  const s0 = op.c0 - (L - op.gap * S) / 2, tx = -op.uz, tz = op.ux;   // (s0: where it starts along the line)
+  const o = [op.o[0] + op.ux * s0 - tx * Wc / 2, op.o[1] + op.uz * s0 - tz * Wc / 2];
+  // the floor under the deck: the ground, or the masonry of a sill
+  const t = app.terrain, boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf);
+  const mid = (op.c0 + op.c1) / 2, mx = op.o[0] + op.ux * mid, mz = op.o[1] + op.uz * mid;
+  let floor = t.inside(mx, mz) ? t.heightAt(mx, mz) : 0;
+  for (const b of boxes) if (b.top < top - 0.002 && Math.abs((mx - b.x) * b.ux + (mz - b.z) * b.uz) < b.hl && Math.abs(-(mx - b.x) * b.uz + (mz - b.z) * b.ux) < b.hw) floor = Math.max(floor, b.top);
+  // nothing in its place (the next course already over the ends, a lintel, a belt)
+  const me = { x: o[0] + op.ux * L / 2 + tx * Wc / 2, z: o[1] + op.uz * L / 2 + tz * Wc / 2, yaw: op.yaw, ux: op.ux, uz: op.uz, hl: L / 2, hw: Wc / 2, bot: top + 0.0003, top: top + H };
+  const hit = boxes.find((b) => me.bot < b.top - 1e-5 && me.top > b.bot + 1e-5 && overlap(me, b));
+  const taken = app.objects.all('belt').some((b) => !b.stripped && Math.abs(b.top - top) < 0.003 && Math.hypot(toW(b, b.ni * b.c / 2, b.nj * b.c / 2)[0] - me.x, toW(b, b.ni * b.c / 2, b.nj * b.c / 2)[1] - me.z) < me.hl);
+  const why = sup == null ? 'bear' : hit ? (hit.bot > me.bot - H * 0.5 ? 'above' : 'clash') : taken ? 'taken' : top - floor < 0.004 ? 'low' : null;
+  const n = ni * nj;
+  const rec = {
+    type: 'belt', lform: { g0: +(op.c0 - s0).toFixed(6), g1: +(op.c1 - s0).toFixed(6), floor: +floor.toFixed(6) },
+    o: o.map((v) => +v.toFixed(6)), u: [+op.ux.toFixed(6), +op.uz.toFixed(6)], c: +c.toFixed(7), ni, nj, mask: rle(new Uint8Array(n).fill(1)),
+    top: +top.toFixed(6), H: +H.toFixed(6), lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0,
+    segs: [[0, +L.toFixed(6), +(Wc / 2).toFixed(6), +(Wc / 2).toFixed(6), 1]],
+  };
+  return { ok: !why, why, rec, gapMm: Math.round(op.gap), lenMm: Math.round(L / S), hMm: Math.round(H / S) };
+}
+const toW = (b, s, t) => [b.o[0] + b.u[0] * s - b.u[1] * t, b.o[1] + b.u[1] * s + b.u[0] * t];
 
 // a temporary prop under the opening: a board flush with the top of the course
 export function placeProp(app, p, screen, finger) {

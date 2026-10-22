@@ -375,13 +375,14 @@ export function makeFallbackTerrainMaterial(tex) {
 // colour and texture as the concrete of the foundation — fresh: dark wet paste with the
 // stones of the aggregate showing; set: matt light grey, cloudy, fine pores; wet sheen
 // while fresh. Per vertex: aPour — when it was poured (clock), uClock / uCure shared.
-export function makeCastConcreteMaterial(uniforms) {
+// steel: precast in a steel mould (a lintel) — the sides smooth, no boards printed in them
+export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, side: THREE.DoubleSide, vertexColors: true });
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aPour;\nattribute float aSm;\nvarying float vPour;\nvarying float vSm;\nvarying vec3 vCWPos;\nvarying vec3 vCWNrm;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\nvPour = aPour;\nvSm = aSm;\nvCWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvCWNrm = normalize(mat3(modelMatrix) * objectNormal);');
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvPour = aPour;\nvSm = aSm;\n#ifdef USE_INSTANCING\nvCWPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;\nvCWNrm = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);\n#else\nvCWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvCWNrm = normalize(mat3(modelMatrix) * objectNormal);\n#endif');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform float uClock;
@@ -417,8 +418,8 @@ export function makeCastConcreteMaterial(uniforms) {
             vec3 wn = normalize(vCWNrm);
             float along = (abs(wn.x) > abs(wn.z) ? vCWPos.z : vCWPos.x) * ${RESCALE.toFixed(5)}, wy = vCWPos.y * ${RESCALE.toFixed(5)};
             float by = fract(vCWPos.y / ${(0.15 / MODEL_SCALE).toFixed(6)});
-            float joint = 1.0 - smoothstep(0.0, 0.035, min(by, 1.0 - by));
-            float grain = tcSNoise(vec2(along * 40.0, wy * 1400.0)) * 0.6 + tcSNoise(vec2(along * 9.0, wy * 300.0)) * 0.4;
+            float joint = ${steel ? '0.0' : '1.0 - smoothstep(0.0, 0.035, min(by, 1.0 - by))'};
+            float grain = (tcSNoise(vec2(along * 40.0, wy * 1400.0)) * 0.6 + tcSNoise(vec2(along * 9.0, wy * 300.0)) * 0.4) * ${steel ? '0.3' : '1.0'};
             float hole = step(0.985, tcHash(floor(vec2(along, wy) * 900.0)));
             vec3 face = mix(vec3(0.07, 0.07, 0.067), vec3(0.17, 0.168, 0.161), smoothstep(0.05, 1.0, cure)) * (0.93 + 0.12 * grain) * (1.0 - 0.28 * joint) * (1.0 - 0.45 * hole);
             cc = mix(cc, face, cside);
@@ -452,6 +453,6 @@ export function makeCastConcreteMaterial(uniforms) {
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(mix(0.8, 0.32, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));   // (as the foundation)`);
   };
-  m.customProgramCacheKey = () => 'tc-cast-concrete';
+  m.customProgramCacheKey = () => 'tc-cast-concrete' + (steel ? '-steel' : '');
   return m;
 }

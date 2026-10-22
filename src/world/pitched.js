@@ -44,6 +44,8 @@ export const RWIN = { s1: ['55 × 78', 550, 780], s2: ['78 × 118', 780, 1180], 
 export const RWIN_COLOURS = { graphite: ['Графит', 0x3a3d41], grey: ['Серый', 0x7a7f84], brown: ['Коричневый', 0x4a3426] };
 // a shared value the sky sets: how hard it rains (the water out of the downpipes)
 export const WATER = { rain: 0 };
+// the ground under what comes down to it (a downpipe, a chain): the blind area's top where it is
+export const GROUND = { at: null };
 export const FINGER = new Set(['frame', 'memb', 'battens', 'cover']);   // (laid along the wing by the finger; the rest at one go)
 
 // ---- the textures ----------------------------------------------------------------------------
@@ -499,7 +501,7 @@ function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
   const gm = GC ? mat('gut' + gt.col, () => new THREE.MeshStandardMaterial({ color: GC[1], metalness: GC[2] ? 0.85 : 0.25, roughness: GC[2] ? 0.32 : 0.42, side: THREE.DoubleSide }))
     : kind === 'shingle' ? mat('gutSh', () => new THREE.MeshStandardMaterial({ color: 0x5a3b28, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide })) : metalMat();
   const vis = (a, d) => { const p = f.W(a, d, 0); return roofTop(roof, shapes, p[0], p[2], wi) <= f.top(a, d) + MM(5); };
-  const up = new THREE.Vector3(0, 1, 0), ground = roof.g ?? roof.y0 - MM(3000), sq = typ === 'square', chain = typ === 'chain' || typ === 'cups';
+  const up = new THREE.Vector3(0, 1, 0), ground = roof.g ?? roof.y0 - MM(3000), gAt = (p) => Math.max(ground, GROUND.at?.(p.x, p.z) ?? -Infinity), sq = typ === 'square', chain = typ === 'chain' || typ === 'cups';
   const depth = sq ? MM(85) : MM(62), prof = sq ? [[-MM(62), MM(6)], [-MM(62), -MM(85)], [MM(56), -MM(85)], [MM(72), MM(12)], [MM(80), MM(12)]] : gutterRound(MM(62));
   const pipes = new Beams(), hooks = new Beams(), tubes = [], links = [], drains = [], streams = [];
   for (const P of PL) {
@@ -527,7 +529,7 @@ function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
         // the outlet (воронка) under the gutter
         tubes.push(cone(bot, MM(sq ? 58 : 52), MM(sq ? 44 : 46), MM(70)));
         if (chain) {
-          const g0 = ground, top = bot.clone().addScaledVector(up, -MM(70));
+          const top = bot.clone().addScaledVector(up, -MM(70)), g0 = gAt(top);
           const end = new THREE.Vector3(top.x, g0 + MM(70), top.z);
           if (typ === 'chain') for (let y = top.y, k = 0; y > end.y + MM(20); y -= MM(42), k++) links.push([top.x, y - MM(21), top.z, k % 2]);
           else for (let y = top.y; y > end.y + MM(60); y -= MM(118)) links.push([top.x, y - MM(40), top.z, 2]);
@@ -537,7 +539,8 @@ function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
           // the downpipe: down from the outlet, the offset back to the wall, down the wall, the kick out at the foot
           const top = bot.clone().addScaledVector(up, -MM(70));
           const wallP = top.clone().addScaledVector(out, -(f.Oe - MM(110))).setY(top.y - MM(350));
-          const foot = wallP.clone().setY(ground + MM(300)), kick = foot.clone().addScaledVector(out, MM(200)).setY(ground + MM(150));
+          const gk = gAt(wallP.clone().addScaledVector(out, MM(450)));
+          const foot = wallP.clone().setY(gk + MM(300)), kick = foot.clone().addScaledVector(out, MM(200)).setY(gk + MM(150));
           const p0 = top.clone().setY(top.y - MM(100));
           const path = [top, p0, wallP, foot, kick];
           for (let i = 0; i + 1 < path.length; i++) {
@@ -553,9 +556,9 @@ function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
             pipes.add(cp.toArray(), cp.clone().addScaledVector(out, -MM(70)).toArray(), MM(6), MM(20));
           }
           // the splash channel under the kick
-          const ch = kick.clone().addScaledVector(out, MM(260)).setY(ground);
+          const ch = kick.clone().addScaledVector(out, MM(260)).setY(gk);
           drains.push({ ch, out });
-          streams.push([kick.clone().addScaledVector(out, MM(30)), ch.clone().addScaledVector(out, -MM(160)).setY(ground + MM(40)), MM(20)]);
+          streams.push([kick.clone().addScaledVector(out, MM(30)), ch.clone().addScaledVector(out, -MM(160)).setY(gk + MM(40)), MM(20)]);
         }
       }
     }
