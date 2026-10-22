@@ -433,6 +433,24 @@ export function buildPitched(roof, live = null, wins = []) {
 // the masonry under the roof: each outer wall of the wing (not where it joins another) built up
 // to the underside of the rafters where they stand clear of the wall plate — the gables, on a
 // mono-pitch roof its high wall and the slopes of its ends
+// the gables (and the high walls of a mono-pitch roof) of a roof with its wall plate on: the
+// line of their tops along the outer face — [[x, y, z]…] each (the facade goes up to them)
+export function gableWalls(roof) {
+  const out = [];
+  roof.wings.forEach((w) => {
+    const f = wingShape(roof, w), T = roof.T, y0 = roof.y0, ub = (a, d) => Math.max(y0, f.top(a, d) - MM(PITCHED.rafterH) / f.cs - MM(5));
+    const faces = [];
+    for (const k of [0, 1]) if (f.ends[k] !== 'join') { const s = k ? 1 : -1; faces.push({ q0: -w.B, q1: w.B, at: (q, e) => [s * (w.A - e), q] }); }
+    for (const s of [-1, 1]) faces.push({ q0: -w.A, q1: w.A, at: (q, e) => [q, s * (w.B - e)] });
+    for (const F of faces) {
+      const N = 32, pts = [];
+      for (let k = 0; k <= N; k++) { const q = F.q0 + (F.q1 - F.q0) * k / N, [a, d] = F.at(q, T / 2), [ao, do_] = F.at(q, 0); pts.push(f.W(ao, do_, ub(a, d))); }
+      if (Math.max(...pts.map((p) => p[1])) < y0 + MM(PITCHED.plate) + MM(150)) continue;
+      out.push(pts);
+    }
+  });
+  return out;
+}
 function walls(G, roof, w, f) {
   const gm = mat('gable', () => { const t = aeratedTexture(); t.wrapS = t.wrapT = THREE.RepeatWrapping; return new THREE.MeshStandardMaterial({ map: t, roughness: 0.92, side: THREE.DoubleSide }); });
   const T = roof.T, y0 = roof.y0, ub = (a, d) => Math.max(y0, f.top(a, d) - MM(PITCHED.rafterH) / f.cs - MM(5));
