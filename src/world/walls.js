@@ -810,11 +810,11 @@ export class WallView {
   _buildWindows() {
     const recs = [...this.objects.all('window'), ...(this.liveWin ? [{ id: 'live', ...this.liveWin }] : [])], seen = new Set();
     for (const r of recs) {
-      const key = `${r.key}:${r.w}:${r.h}:${r.t}`;
+      const key = `${r.key}:${r.w}:${r.h}:${r.t}:${r.col || 'white'}`;
       let e = this._win.get(r.id);
       if (!e || e.key !== key) {
         if (e) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); }
-        const g = (isDoor(r.key) ? buildDoor : buildWindow)(r.key, r.w, r.h, r.t);
+        const g = (isDoor(r.key) ? buildDoor : buildWindow)(r.key, r.w, r.h, r.t, r.col || 'white');
         g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id === 'live' ? null : r.id; });
         this.windows.add(g);
         this._win.set(r.id, (e = { key, group: g }));

@@ -58,6 +58,10 @@ export function findOpenings(app) {
         if (lv[q].bot - lv[q - 1].top > MM(60)) break;   // (a slab / a ring beam between: the next storey's opening)
         const j = gaps[q].findIndex((g) => Math.min(a1, g[1]) - Math.max(a0, g[0]) >= MM(MIN_W));
         if (j < 0) break;
+        // a lintel cast in place spans it at this course (the course beside it, the gap filled
+        // with concrete): the opening stops under it
+        { const m = (a0 + a1) / 2, mx = L.ux * m - L.uz * L.d, mz = L.uz * m + L.ux * L.d;
+          if (app.objects.all('belt').some((b) => b.fill > 0.3 && b.top > lv[q - 1].top - MM(30) && b.top < lv[q].bot + MM(40) && beltContains(b, mx, mz))) break; }
         used[q].add(j); a0 = Math.max(a0, gaps[q][j][0]); a1 = Math.min(a1, gaps[q][j][1]); top = q;
       }
       // the bottom: the top of the course under it, or the floor (the bed under the first course)

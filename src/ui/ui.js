@@ -4,6 +4,7 @@ import { PANOS } from '../world/backdrop.js';
 import { DAY_LENGTHS, WEATHER } from '../world/sky.js';
 import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
+import { WIN_COLOURS } from '../world/windows.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
 import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANELS } from '../world/facade.js';
 import { ROOF_TYPES, PITCHES, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
@@ -459,7 +460,7 @@ export class UI {
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
-        G('win', 'Окна', pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · Антрацит 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), null, C('', has('window'))),
+        G('win', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window'))),
         G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'))),
         G('roof', 'Плоская кровля', roof, 'Кровля', C('', has('roof'), () => lay({ wallKind: 'roof' }))),
         G('proof', 'Скатная крыша', proof, null, C('', has('proof'), () => lay({ wallKind: 'proof' }))),
