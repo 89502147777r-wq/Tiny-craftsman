@@ -247,21 +247,36 @@ export class FacadeWork {
       pan: 'Панели 1000 × 500: выберите вид и тяните из лотка на утеплитель — у проёмов и углов подрежутся',
     }[L];
   }
-  // «Удалить» on the facade: the top layer of that wall comes off (a board / a strip / a coat)
-  remove(id) {
+  // «Удалить» on the facade: what is on top under the finger comes off — the panel there, the
+  // coat round the finger, the strip of mesh there, the board there
+  remove(id, e) {
     const app = this.app, r = app.objects.get(id);
     if (!r) return;
-    const steps = [['pan', 'панель'], ['fl', 'затирку'], ['pl', 'штукатурку'], ['emb', 'базовый слой'], ['mesh', 'полосу сетки'], ['glue', 'клей'], ['eps', 'лист утеплителя']];
-    for (const [k, nm] of steps) {
-      const v = r[k];
-      const has = Array.isArray(v) ? v.length : v && Object.values(v).some((x) => x?.length);
-      if (!has) continue;
-      const patch = { ...r, [k]: Array.isArray(v) ? (k === 'glue' || k === 'emb' ? [] : v.slice(0, -1)) : k === 'fl' ? { v: [], h: [] } : {} };
-      delete patch.id;
-      const empty = steps.every(([q]) => { const x = patch[q]; return !x || (Array.isArray(x) ? !x.length : !Object.values(x).some((y) => y?.length)); });
-      app.journal.act('facade-remove', {}, app.clock, () => { if (empty) app.objects.remove(id); else app.objects.update(id, patch); });
+    const F = this.faces().find((f) => recOf([r], f));
+    const h = F && this._hit(e, OFF.fin, F) || (F && this._hit(e, OFF.eps, F));
+    if (!F || !h) { app.ui.toast('Коснитесь того, что снять, на стене'); return; }
+    const { a, y } = h, R = MM(250), save = (patch, nm) => {
+      const rec = { ...r, ...patch }; delete rec.id;
+      const empty = !rec.eps?.length && !rec.pan?.length && !rec.mesh?.length && !cellsOf(rec.glue).size && !cellsOf(rec.emb).size && !Object.values(rec.pl || {}).some((x) => x?.length);
+      app.journal.act('facade-remove', {}, app.clock, () => { if (empty) app.objects.remove(id); else app.objects.update(id, rec); });
       app.ui.toast(`Сняли ${nm}`);
-      return;
+    };
+    const near = (set) => { const out = new Set(); for (const k of set) { const [i, j] = cij(k); if (Math.hypot((i + 0.5) * CELL - a, (j + 0.5) * CELL - y) < R) out.add(k); } return out; };
+    const without = (runs) => { const s = cellsOf(runs), cut = near(s); return cut.size ? runsOf(new Set([...s].filter((k) => !cut.has(k)))) : null; };
+    // the panel
+    const pi = (r.pan || []).findIndex((p) => inR(p, a, y));
+    if (pi >= 0) { save({ pan: r.pan.filter((_, k) => k !== pi) }, 'панель'); return; }
+    // the plaster (with its float marks)
+    for (const [k, runs] of Object.entries(r.pl || {})) {
+      const left = without(runs);
+      if (left) { const fl = { v: without(r.fl?.v) || r.fl?.v || [], h: without(r.fl?.h) || r.fl?.h || [] }; save({ pl: { ...r.pl, [k]: left }, fl }, 'штукатурку'); return; }
     }
+    const emb = without(r.emb); if (emb) { save({ emb }, 'базовый слой'); return; }
+    const mi = (r.mesh || []).findIndex((m) => inR(m, a, y));
+    if (mi >= 0) { save({ mesh: r.mesh.filter((_, k) => k !== mi) }, 'полосу сетки'); return; }
+    const glue = without(r.glue); if (glue) { save({ glue }, 'клей'); return; }
+    const ei = (r.eps || []).findIndex((s) => inR(s, a, y));
+    if (ei >= 0) { save({ eps: r.eps.filter((_, k) => k !== ei) }, 'лист утеплителя'); return; }
+    app.ui.toast('Здесь на стене ничего нет');
   }
 }

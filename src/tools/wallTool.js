@@ -1093,7 +1093,7 @@ export class WallTool {
       return;
     }
     if (id && app.objects.get(id)?.type === 'roof') { this.roof.remove(id); return; }
-    if (id && app.objects.get(id)?.type === 'facade') { this.facade.remove(id); return; }
+    if (id && app.objects.get(id)?.type === 'facade') { this.facade.remove(id, e); return; }
     if (id && app.objects.get(id)?.type === 'blind') { this.blind.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'proof') { this.proof.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'rwin') { app.journal.act('rwin-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Окно сняли — кровля снова сплошная'); return; }
