@@ -46,6 +46,9 @@ export class Terrain {
     // formwork boards: top height of the board standing on a cell (0 = none);
     // concrete cannot flow into these cells
     this.wall = new Float32Array(N);
+    // zones the loose material keeps to: 0 the plot, 1 inside the boards of a blind area (what is
+    // poured there does not run out under the boards, nor in from outside)
+    this.zone = new Uint8Array(N);
     // concrete is simulated tile by tile (16 × 16 cells): only tiles where it moves
     this.TS = 16; this.tnx = Math.ceil(this.nx / 16); this.tnz = Math.ceil(this.nz / 16);
     this._tAct = new Uint8Array(this.tnx * this.tnz); this._tList = [];
@@ -399,8 +402,10 @@ export class Terrain {
       if (ex <= 1e-8) continue;
       const tx = cells.x[k] + dx * ahead, tz = cells.z[k] + dz * ahead;
       if (!this.inside(tx, tz)) continue;
+      const ti = this.index(tx, tz);
+      if (this.zone[ti] !== this.zone[i]) continue;   // (it stays inside the boards)
       loose[i] -= ex;
-      this._move(i, this.index(tx, tz), ex);
+      this._move(i, ti, ex);
       moved += ex;
     }
     const e = Math.ceil(ahead / cell) + 1;
@@ -490,6 +495,7 @@ export class Terrain {
           const jx = ix + NB[k][0], jz = iz + NB[k][1];
           if (jx < 0 || jx > rx || jz < 0 || jz > rz) continue;
           const j = jz * n + jx;
+          if (this.zone[i] !== this.zone[j]) continue;
           if (conc[i] > 1e-6 || conc[j] > 1e-6) {
             // concrete itself does not slide here, but what lies on it does (sand on a
             // slab, off its edge), and loose material next to a slab slides onto it
@@ -762,6 +768,37 @@ export class Terrain {
         if (u >= -over && u <= L + over && v >= -pad && v <= w.t + pad) { const i = iz * n + ix; wall[i] = Math.max(wall[i], w.top); }
       }
     }
+  }
+
+  // the zones: inside(x, z) → 1 over the box [x0, z0, x1, z1] (the rest of the plot 0)
+  setZone(inside, box) {
+    this.zone.fill(0);
+    if (!box) return;
+    const ix0 = Math.max(0, Math.floor(this.toCellX(box[0]))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(box[2])));
+    const iz0 = Math.max(0, Math.floor(this.toCellZ(box[1]))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(box[3])));
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) if (inside(this.toWorldX(ix), this.toWorldZ(iz))) this.zone[iz * this.nx + ix] = 1;
+  }
+  // the ground levelled to y under what is laid on it (the geotextile): the loose cover gone,
+  // the native ground cut or filled to it — over the samples where at(x, z) is true
+  levelTo(at, y, box) {
+    const ix0 = Math.max(0, Math.floor(this.toCellX(box[0]))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(box[2])));
+    const iz0 = Math.max(0, Math.floor(this.toCellZ(box[1]))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(box[3])));
+    let any = false;
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      if (!at(this.toWorldX(ix), this.toWorldZ(iz))) continue;
+      const i = iz * this.nx + ix;
+      if (this.conc[i] > 1e-6) continue;
+      this.nat[i] = y; this.loose[i] = 0; this.lN[i] = 0; this.ldep[i] = 0; this.top[i] = 0;
+      for (let k = 0; k < LAYERS; k++) this.lH[i * LAYERS + k] = 0;
+      any = true;
+    }
+    if (any) this._touch(ix0, iz0, ix1, iz1);
+  }
+  // how thick each material lies loose at a sample (m): [soil, sand, 5–20, 20–40]
+  looseOf(i, out = [0, 0, 0, 0]) {
+    out.fill(0);
+    for (let k = 0; k < this.lN[i]; k++) out[this.lM[i * LAYERS + k]] += this.lH[i * LAYERS + k];
+    return out;
   }
 
   // after loading: no pour time ahead of the clock, no broken values

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { KT as K, MODEL_SCALE } from '../config.js';
+import { KT as K } from '../config.js';
 import { materialTint } from '../world/soilColor.js';
 
 // crumb size and how many stay visible on top, per material (soil, sand, 5–20, 20–40)
@@ -182,8 +182,6 @@ export class ScoopTool {
     this.state = 'dump';
     this.dumpT = 0;
     this.emitted = 0;
-    // tipped over the blind area: sand / gravel goes into its layer (blindTool.js), not the ground
-    this.toBlind = this.app.wallTool?.blind?.dumpAt(this.lastP, this.mat) || null; this.blindVol = 0;
     this.total = Math.round(70 + 170 * Math.min(1, this.load / this.capacity));
     const app = this.app;
     this.imp.poseDump(this.dir, this.lastP);
@@ -194,11 +192,6 @@ export class ScoopTool {
   }
 
   _rest(p) { this.imp.poseRest(p, this.dir); }
-  // what was tipped over the blind area: into its sand / gravel (litres)
-  _intoBlind() {
-    if (this.toBlind && this.blindVol > 0) this.app.wallTool.blind.dumpIn(this.toBlind, this.blindVol * MODEL_SCALE ** 3 * 1000);
-    this.toBlind = null; this.blindVol = 0;
-  }
 
   // the concrete on the blade slides off as a soft lump where it is tipped
   _dropConc() {
@@ -240,15 +233,13 @@ export class ScoopTool {
             this.emitted++;
             continue;
           }
-          if (this.toBlind) this.blindVol += per;   // (the crumbs only show it falling)
-          app.particles.emit(pos, v, this.toBlind ? 0 : per, (0.0007 + Math.pow(r(), 3) * 0.0014) * K * (s.crumbScale ?? 1) * CRUMB[mat], this.toBlind ? 0 : KEEP[mat], this.depth || 0, mat);
+          app.particles.emit(pos, v, per, (0.0007 + Math.pow(r(), 3) * 0.0014) * K * (s.crumbScale ?? 1) * CRUMB[mat], KEEP[mat], this.depth || 0, mat);
           this.emitted++;
         }
         s.fill = Math.max(0, 1 - this.emitted / this.total) * (this.load / this.capacity);
         this._dropConc();
       }
       if (this.emitted >= this.total) {
-        this._intoBlind();
         this.state = 'settle';
         this.settleT = 0;
         s.fill = 0;
@@ -274,8 +265,7 @@ export class ScoopTool {
       const rc = rest * (this.share?.[CONC] || 0);
       this.concOut = (this.concOut || 0) + rc;
       this._dropConc();
-      if (rest - rc > 0) { if (this.toBlind) this.blindVol += rest - rc; else t.deposit(x, z, rest - rc, 0.004 * K, this.depth || 0, this.soilMat || 0); }
-      this._intoBlind();
+      if (rest - rc > 0) t.deposit(x, z, rest - rc, 0.004 * K, this.depth || 0, this.soilMat || 0);
       this.emitted = this.total;
     }
     if (this.state === 'dump' || this.state === 'settle') {

@@ -7,7 +7,7 @@ import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
-import { buildBlind, blindTopAt, BLIND_TEX, BLIND_GROUND, planOf as blindPlan, cellList, concLevels, CONC as BCONC } from './blind.js';
+import { buildBlind, blindTopAt, BLIND_TEX, BLIND_GROUND, planOf as blindPlan, cellList, concLevels, gravTop } from './blind.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -439,6 +439,7 @@ export class WallView {
     this.blinds = new THREE.Group(); this.group.add(this.blinds);
     this.liveBlind = null; this.blindDirty = true;
     BLIND_GROUND.at = (x, z) => (this.terrain ? this.terrain.heightAt(x, z) : null);
+    Object.defineProperty(BLIND_GROUND, 't', { get: () => this.terrain || null, configurable: true });
     GROUND.at = (x, z) => blindTopAt(objects.all('blind'), x, z) ?? (this.terrain ? this.terrain.heightAt(x, z) : null);
     GROUND.normal = (x, z) => (blindTopAt(objects.all('blind'), x, z) == null && this.terrain ? this.terrain.normalAt(x, z, new THREE.Vector3()) : new THREE.Vector3(0, 1, 0));
     this.liveProof = null; this.proofDirty = true;
@@ -801,7 +802,7 @@ export class WallView {
     for (const r of this.objects.all('blind')) {
       const live = this.blindLive?.get(r.id), lv = live?.lv ?? concLevels(r), sw = live?.sm ?? r.sm ?? [];
       if (!lv.some((h) => h > 0.3)) continue;
-      const P = blindPlan(r), CL = cellList(P), base = r.g + BCONC.base * S, C = P.C, tw = Math.max(r.wetT ?? -1e9, r.pourT ?? -1e9, r.castT ?? -1e9), tp = r.set ? -1e6 : tw > -1e9 ? tw : 1e9;
+      const P = blindPlan(r), CL = cellList(P), C = P.C, tw = Math.max(r.wetT ?? -1e9, r.pourT ?? -1e9, r.castT ?? -1e9), tp = r.set ? -1e6 : tw > -1e9 ? tw : 1e9;
       const vh = new Map();
       const corner = (i, j) => {
         const key = j * (P.ni + 1) + i;
@@ -812,7 +813,7 @@ export class WallView {
         }
         return vh.get(key);
       };
-      const vert = (i, j, flat) => { const [h, w] = corner(i, j), [x, z] = P.W2(P.A0 + i * C, P.D0 + j * C); pos.push(x, base + (flat ? -2 : h) * S, z); col.push(1, 1, 1); pt.push(tp); ws.push(w); return pos.length / 3 - 1; };
+      const vert = (i, j, flat) => { const [h, w] = corner(i, j), [x, z] = P.W2(P.A0 + i * C, P.D0 + j * C); pos.push(x, gravTop(r, x, z) + (flat ? -2 : h) * S, z); col.push(1, 1, 1); pt.push(tp); ws.push(w); return pos.length / 3 - 1; };
       CL.keys.forEach((k, n) => {
         if (!(lv[n] > 0.3) && !CL.nb[n].some((q) => q >= 0 && lv[q] > 0.3)) return;
         const c = P.cells.get(k), a = vert(c.i, c.j), b2 = vert(c.i + 1, c.j), c2 = vert(c.i + 1, c.j + 1), d = vert(c.i, c.j + 1);
@@ -908,6 +909,14 @@ export class WallView {
     for (const g of [...this.blinds.children]) { this.blinds.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); }); }
     const recs = this.objects.all('blind'), live = this.liveBlind;
     this._blindIds = new Set(recs.map((r) => r.id));
+    // the ground inside the boards: what is poured there stays there (terrain.js zones)
+    const zr = recs.find((r) => r.form && !r.stripped);
+    if (this.terrain) {
+      if (zr) {
+        const P = blindPlan(zr), cs = [[P.A0, P.D0], [P.A0 + P.ni * P.C, P.D0], [P.A0, P.D0 + P.nj * P.C], [P.A0 + P.ni * P.C, P.D0 + P.nj * P.C]].map(([a, d]) => P.W2(a, d));
+        this.terrain.setZone((x, z) => { const k = P.cellAt(...P.frame(x, z)); return k >= 0 && P.cells.has(k); }, [Math.min(...cs.map((c) => c[0])), Math.min(...cs.map((c) => c[1])), Math.max(...cs.map((c) => c[0])), Math.max(...cs.map((c) => c[1]))]);
+      } else this.terrain.setZone(null, null);
+    }
     const list = live?.form ? [{ ...live.form, id: null }] : recs;
     for (const r of list) {
       const g = buildBlind(r, live?.form ? null : live);

@@ -113,7 +113,27 @@ export function heights(rec, L) {
 }
 // the concrete: mm over the gravel per cell (lv), how worked (sm); where it is full
 export const CONC = { base: 120 };
-export function concCap(rec, c) { return Math.max(20, (finTop(rec, c.dist) - rec.g) / S - CONC.base); }
+// the top of the gravel under a point (the ground's loose cover, terrain.js), or its mark
+export function gravTop(rec, x, z) { const h = BLIND_GROUND.at?.(x, z); return h ?? rec.g + MM(CONC.base); }
+export function concCap(rec, c, base) { return Math.max(20, (finTop(rec, c.dist) - base) / S); }
+// the sand and the gravel lie on the ground as its loose cover (terrain.js: poured by the finger,
+// by the shovel, delivered — the same stuff, the same physics); a cell is done where the layer
+// is near its thickness at the cell's middle
+const _sets = new WeakMap();
+export function looseSet(rec, L) {
+  const t = BLIND_GROUND.t;
+  if (!t) return setOf(rec[L]);
+  let c = _sets.get(rec);
+  if (!c || c.v !== t.version) _sets.set(rec, (c = { v: t.version }));
+  if (c[L]) return c[L];
+  const P = planOf(rec), out = new Set(), m = [0, 0, 0, 0], need = MM(LOOSE[L].t * 0.85);
+  for (const [k, cell] of P.cells) {
+    const [x, z] = P.W2(cell.a, cell.d); t.looseOf(t.index(x, z), m);
+    if ((L === 'sand' ? m[1] : m[2] + m[3]) >= need) out.add(k);
+  }
+  return (c[L] = out);
+}
+export const layerSet = (rec, L) => (L === 'sand' || L === 'grav' ? looseSet(rec, L) : setOf(rec[L]));
 export function concLevels(rec) {
   const CL = cellList(planOf(rec)), h = new Float32Array(CL.n);
   if (Array.isArray(rec.lv) && rec.lv.length === CL.n) for (let n = 0; n < CL.n; n++) h[n] = rec.lv[n];
@@ -136,7 +156,7 @@ export function newBlind(H, Wmm) {
 export function finTop(rec, dist) { return rec.g + MM(BLIND.top) - BLIND.slope * dist; }
 export function layerTop(rec, L, dist = 0) { return L === 'fin' ? finTop(rec, dist) : rec.g + MM(TOP[L] || 0); }
 // the share of the area not yet done in a layer (0…1)
-export function leftOf(rec, L) { const P = planOf(rec), s = setOf(rec[L]); let n = 0; for (const k of P.cells.keys()) if (s.has(k)) n++; return 1 - n / Math.max(1, P.cells.size); }
+export function leftOf(rec, L) { const P = planOf(rec), s = layerSet(rec, L); let n = 0; for (const k of P.cells.keys()) if (s.has(k)) n++; return 1 - n / Math.max(1, P.cells.size); }
 
 // ---- the materials -------------------------------------------------------------------------
 const MATS = {};
@@ -150,7 +170,7 @@ function noiseTex(base, spread, n = 256, dots = 2600, k = 1) {
 // the photo textures (set by walls.js once they are loaded)
 export const BLIND_TEX = { tex: null };
 // the terrain under it (set by walls.js): the boards and the edges of the layers go down to it
-export const BLIND_GROUND = { at: null };
+export const BLIND_GROUND = { at: null, t: null };
 // the geotextile: white nonwoven polypropylene — a felt of fine fibres, the name printed along
 // the roll in blue every 0,5 m («GEOTEXTILE · NONWOVEN 200 g/m²»), a line along each edge
 let _geo = null;
@@ -271,32 +291,6 @@ function slab(P, set, top, bottom, tile) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
   return g;
 }
-// a loose layer as it lies: a surface over the cells at their heights (the corners: the mean of
-// the cells round them, so a heap runs out to nothing at its foot), on its base (per cell)
-function looseSurf(P, h, base, tile) {
-  const CL = cellList(P), pos = [], uv = [], idx = [], vid = new Map(), C = P.C;
-  const corner = (i, j) => {
-    const key = j * (P.ni + 1) + i;
-    let v = vid.get(key);
-    if (v !== undefined) return v;
-    let sh = 0, sb = 0, n = 0;
-    for (const [a, d] of [[i, j], [i - 1, j], [i, j - 1], [i - 1, j - 1]]) { if (a < 0 || d < 0 || a >= P.ni || d >= P.nj) continue; const q = CL.index.get(d * P.ni + a); if (q === undefined) continue; sh += h[q]; sb += base(q); n++; }
-    const A = P.A0 + i * C, D = P.D0 + j * C, [x, z] = P.W2(A, D);
-    pos.push(x, sb / n + MM(sh / n) + MM(0.3), z); uv.push(A / tile, D / tile);
-    vid.set(key, (v = pos.length / 3 - 1));
-    return v;
-  };
-  CL.keys.forEach((k, n) => {
-    const c = P.cells.get(k);
-    if (!(h[n] > 0.4) && !CL.nb[n].some((q) => q >= 0 && h[q] > 0.4)) return;
-    const a = corner(c.i, c.j), b = corner(c.i + 1, c.j), cc = corner(c.i + 1, c.j + 1), d = corner(c.i, c.j + 1);
-    idx.push(a, cc, b, a, d, cc);
-  });
-  if (!idx.length) return null;
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
-  return g;
-}
 // the welded mesh: rods Ø5 every 150 mm both ways over the cells it is laid on (the rods
 // across on top of the rods along), on plastic chairs every 600 mm
 function meshRods(P, set, y) {
@@ -364,12 +358,8 @@ export function buildBlind(rec, live) {
   const down = (a, d) => { const [x, z] = P.W2(a, d), h = BLIND_GROUND.at?.(x, z); return Math.min(g0, h ?? g0) - MM(40); };
   add(slab(P, cellsOfL('geo'), flat('geo'), down, MM(1000)), M.geo(), false);
   if (lv === 'geo' && live.roll) G.add(geoRoll(P, live.roll, layerTop(rec, 'geo'), Math.min(MM(1000), rec.W + MM(100))));
-  // the sand and the gravel: heaps as poured, levelled where raked (the gravel on the sand)
-  const hs = lv === 'sand' && live.H ? live.H : heights(rec, 'sand'), hg = lv === 'grav' && live.H ? live.H : heights(rec, 'grav');
-  const geoTop = g0 + MM(TOP.geo);
-  add(looseSurf(P, hs, () => geoTop - MM(0.6), MM(1500)), M.sand());
-  add(looseSurf(P, hg, (q) => geoTop + MM(hs[q]), MM(800)), M.grav());
-  if (live?.stream) G.add(stream(P, live.stream, lv === 'grav' ? M.grav() : M.sand(), geoTop + MM((lv === 'grav' ? hg : hs)[live.stream.n] || 0) + (lv === 'grav' ? MM(hs[live.stream.n] || 0) : 0)));
+  // (the sand and the gravel are the ground's: drawn with it; here only the stream off the shovel)
+  if (live?.stream) G.add(stream(P, live.stream, lv === 'grav' ? M.grav() : M.sand(), live.stream.y));
   const fin = cellsOfL('fin'), kind = rec.finKind || (lv === 'fin' ? live.kind : null) || 'conc';
   const top = (a, d) => finTop(rec, P.distAt(a, d));
   // the mesh: rods on chairs (in the concrete too: it is drawn over them)
@@ -398,7 +388,7 @@ export function buildBlind(rec, live) {
     const B = [], T = MM(25), stakes = [];
     for (const sg of P.segs) {
       // (down into the ground where it falls away: a wider board there, the stakes driven deeper)
-      const gAt = (q) => { const [x, z] = sg.axis === 'a' ? P.W2(q, sg.at) : P.W2(sg.at, q), h = BLIND_GROUND.at?.(x, z); return h == null ? g0 : h; };
+      const out = sg.at + sg.n * MM(60), gAt = (q) => { const [x, z] = sg.axis === 'a' ? P.W2(q, out) : P.W2(out, q), h = BLIND_GROUND.at?.(x, z); return h == null ? g0 : h; };   // (the ground just outside: inside it is levelled)
       const s0 = sg.s0 - T * 2, s1 = sg.s1 + T * 2, n = Math.max(1, Math.ceil((s1 - s0) / MM(400)));
       for (let k = 0; k < n; k++) {
         const q0 = s0 + (s1 - s0) * k / n, q1 = s0 + (s1 - s0) * (k + 1) / n, low = Math.min(gAt(q0), gAt(q1), gAt((q0 + q1) / 2));
