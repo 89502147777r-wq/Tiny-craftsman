@@ -23,6 +23,9 @@ const GROUPS = [
   { id: 'concrete', label: 'Бетон', icon: 'hose' },
   { id: 'backfill', label: 'Засыпка', icon: 'plate' },
   { id: 'walls', label: 'Стены', icon: 'wall' },
+  // (of the walls' tool, but on the top row of their own: straight to their chips)
+  { id: 'facadeG', label: 'Фасад', svg: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M4 9h16M4 14h16M9 4v5M15 9v5M9 14v6"/><path d="M2 20h20"/></svg>', virt: { kind: 'facade', path: ['facade'] } },
+  { id: 'winG', label: 'Окна', svg: '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="17"/><path d="M12 3v17M5 11h14"/><path d="M3 21h18"/></svg>', virt: { kind: 'window', path: ['win'] } },
   { id: 'machines', label: 'Техника', icon: 'machine' },
 ];
 const m3 = (v) => `${String(v).replace('.', ',')} м³`;
@@ -98,12 +101,12 @@ export class UI {
     back.addEventListener('click', () => this.navBack());
     $('toolrow').prepend(back);
     this.lastTool = {};
-    this.groups = GROUPS.filter((g) => this.groupTools(g.id).length);
+    this.groups = GROUPS.filter((g) => g.virt || this.groupTools(g.id).length);
     for (const g of this.groups) {
       const b = document.createElement('button');
       b.className = 'tool';
       b.dataset.gid = g.id;
-      b.innerHTML = document.querySelector(`[data-tool="${g.icon}"] svg`).outerHTML + `<span>${g.label}</span>`;
+      b.innerHTML = this.groupSvg(g) + `<span>${g.label}</span>`;
       b.addEventListener('click', () => this.openGroup(g.id));
       $('groups').appendChild(b);
     }
@@ -204,7 +207,28 @@ export class UI {
   groupOf(tool) { return document.querySelector(`#toolrow [data-tool="${tool}"]`)?.dataset.group; }
 
   // a group opens on the tool used last in it: its tools (when several), else its modes
+  groupSvg(g) { return g.svg || document.querySelector(`[data-tool="${g.icon}"] svg`).outerHTML; }
+  // the group on the top row the current work is under (the facade, the windows: their own)
+  curGroup() {
+    const app = this.app, k = app.settings.wallKind;
+    if (app.tool === 'wall' && app.wallTool.mode === 'lay') { const v = GROUPS.find((g) => g.virt && g.virt.kind === k); if (v) return v.id; }
+    return this.groupOf(app.tool);
+  }
   openGroup(gid) {
+    const vg = GROUPS.find((g) => g.id === gid && g.virt);
+    if (vg) {
+      // the walls' tool with this kind, straight to its chips
+      const app = this.app;
+      app.setTool('wall'); if (app.wallTool.mode !== 'lay') app.wallTool.setMode('lay');
+      app.settings.wallKind = vg.virt.kind; app.applySettings();
+      this._navTool = 'wall'; this.virt = vg;
+      this.navPath = [...vg.virt.path]; this.navLevel = 'chips';
+      this.refresh();
+      return;
+    }
+    this.virt = null;
+    // (back to the walls from the facade / the windows: the masonry again)
+    if (gid === 'walls' && ['facade', 'window'].includes(this.app.settings.wallKind)) { this.app.settings.wallKind = 'block'; this.app.applySettings(); }
     const tools = this.groupTools(gid).filter((b) => b.dataset.tool);
     const last = this.lastTool[gid];
     const pick = tools.find((b) => b.dataset.tool === last) || tools[0];
@@ -214,7 +238,8 @@ export class UI {
     this.refresh();
   }
   navBack() {
-    if (this.navLevel === 'chips' && this.navPath.length) this.navPath.pop();
+    if (this.virt && this.navLevel === 'chips' && this.navPath.length <= this.virt.virt.path.length) { this.virt = null; this.navLevel = 'groups'; this.navPath = []; }
+    else if (this.navLevel === 'chips' && this.navPath.length) this.navPath.pop();
     else if (this.navLevel === 'chips' && this.groupTools(this.groupOf(this.app.tool)).length > 1) this.navLevel = 'tools';
     else { this.navLevel = 'groups'; this.navPath = []; }
     this.refresh();
@@ -235,7 +260,8 @@ export class UI {
   renderGroups() {
     const app = this.app, gid = this.groupOf(app.tool);
     if (gid) this.lastTool[gid] = app.tool;
-    for (const b of $('groups').children) b.classList.toggle('active', b.dataset.gid === gid);
+    const cg = this.curGroup();
+    for (const b of $('groups').children) b.classList.toggle('active', b.dataset.gid === cg);
     // (the tool changed by itself — a shortcut, the fan: its group, from the top)
     if (this._navTool !== app.tool) { if (this._navTool !== undefined && this.navLevel !== 'groups') { this.navPath = []; this.navLevel = this.groupTools(gid).length > 1 ? 'tools' : this.chips().length ? 'chips' : 'groups'; } this._navTool = app.tool; }
     const lv = this.navLevel;
@@ -279,7 +305,7 @@ export class UI {
     this.groups.forEach((g, k) => {
       const el = document.createElement('button');
       el.className = 'fan-item';
-      el.innerHTML = document.querySelector(`[data-tool="${g.icon}"] svg`).outerHTML + `<span>${g.label}</span>`;
+      el.innerHTML = this.groupSvg(g) + `<span>${g.label}</span>`;
       place(el, R1, (k / Math.max(1, this.groups.length - 1)) * Math.PI / 2);
       el.addEventListener('click', () => {
         this.openGroup(g.id);
@@ -463,17 +489,18 @@ export class UI {
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
-        G('win', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window'))),
         G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'))),
         G('roof', 'Плоская кровля', roof, 'Кровля', C('', has('roof'), () => lay({ wallKind: 'roof' }))),
         G('proof', 'Скатная крыша', proof, null, C('', has('proof'), () => lay({ wallKind: 'proof' }))),
         G('rwin', 'Окна в крышу', rwin, null, C('', has('rwin'), () => lay({ wallKind: 'rwin' }))),
-        G('facade', 'Фасад', facade, null, C('', has('facade'), () => lay({ wallKind: 'facade' }))),
         G('blind', 'Отмостка', blind, null, C('', has('blind'), () => lay({ wallKind: 'blind' }))),
       ];
       const lineKids = [C('Газоблок', wk === 'block', () => set({ wallKind: 'block' })), C('Кирпич', wk !== 'block', () => set({ wallKind: 'brick' }))];
       if (wk === 'block') lineKids.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
+      const hid = (n) => ({ ...n, hidden: true });
       return [
+        hid(G('facade', 'Фасад', facade, null, C('', has('facade'), () => lay({ wallKind: 'facade' })))),
+        hid(G('win', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window')))),
         G('lay', 'Стройматериалы', mats, null, C('', L, () => wt.setMode('lay'))),
         G('opening', 'Проём', [['window', 'Окно'], ['door', 'Дверь']].map(([k, l]) => C(l, wt.mode === 'opening' && (s.openKind || 'window') === k, () => { wt.setMode('opening'); set({ openKind: k }); })), null, C('', wt.mode === 'opening', () => wt.setMode('opening'))),
         G('line', 'Линия', lineKids, null, C('', wt.mode === 'line', () => wt.setMode('line'))),
@@ -510,9 +537,10 @@ export class UI {
     if (!show) return;
     const add = (label, cls, fn) => { const b = document.createElement('button'); b.className = `chip-btn ${cls}`; b.textContent = label; if (fn) b.addEventListener('click', fn); bar.appendChild(b); return b; };
     add('‹', 'back', () => this.navBack());
-    const tool = document.querySelector(`#toolrow [data-tool="${this.app.tool}"] span`)?.textContent || '';
+    const tool = this.virt ? '' : document.querySelector(`#toolrow [data-tool="${this.app.tool}"] span`)?.textContent || '';
     add([tool, ...crumbs].filter(Boolean).join(' › '), 'crumb');
     for (const c of list) {
+      if (c.hidden) continue;
       add(c.label + (c.kids ? ' ›' : ''), `${c.on ? 'on' : ''} ${c.cls || ''} ${c.kids ? 'group' : ''}`, () => {
         c.fn?.();
         if (c.kids) this.navPath.push(c.id);
