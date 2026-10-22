@@ -50,7 +50,7 @@ export const RWIN_COLOURS = { graphite: ['Графит', 0x3a3d41], grey: ['Се
 // a shared value the sky sets: how hard it rains (the water out of the downpipes)
 export const WATER = { rain: 0 };
 // the ground under what comes down to it (a downpipe, a chain): the blind area's top where it is
-export const GROUND = { at: null };
+export const GROUND = { at: null, normal: null };
 export const FINGER = new Set(['frame', 'memb', 'battens', 'cover']);   // (laid along the wing by the finger; the rest at one go)
 
 // ---- the textures ----------------------------------------------------------------------------
@@ -536,14 +536,14 @@ function trims(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
 //   square – a box gutter 125 × 85, rectangular downpipes 100 × 75,
 //   chain  – a rain chain of links hung from the outlet, the water running down it,
 //   cups   – a rain chain of cups (each one spills into the next);
-// a downpipe kicks out onto a concrete splash channel (лоток), a chain hangs into a drain
+// a downpipe kicks out over a stormwater inlet (a square grate), a chain hangs into a drain
 // bowl of pebbles (the stormwater inlet under it). In the rain the water runs out of them.
 function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
   const gt = roof.gut || {}, typ = GUTTERS[gt.kind] ? gt.kind : 'round', GC = GUTTER_COLOURS[gt.col];
   const gm = GC ? mat('gut' + gt.col, () => new THREE.MeshStandardMaterial({ color: GC[1], metalness: GC[2] ? 0.85 : 0.25, roughness: GC[2] ? 0.32 : 0.42, side: THREE.DoubleSide }))
     : kind === 'shingle' ? mat('gutSh', () => new THREE.MeshStandardMaterial({ color: 0x5a3b28, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide })) : metalMat();
   const vis = (a, d) => { const p = f.W(a, d, 0); return roofTop(roof, shapes, p[0], p[2], wi) <= f.top(a, d) + MM(5); };
-  const up = new THREE.Vector3(0, 1, 0), ground = roof.g ?? roof.y0 - MM(3000), gAt = (p) => Math.max(ground, GROUND.at?.(p.x, p.z) ?? -Infinity), sq = typ === 'square', chain = typ === 'chain' || typ === 'cups';
+  const up = new THREE.Vector3(0, 1, 0), ground = roof.g ?? roof.y0 - MM(3000), gAt = (p) => GROUND.at?.(p.x, p.z) ?? ground, sq = typ === 'square', chain = typ === 'chain' || typ === 'cups';
   const depth = sq ? MM(85) : MM(62), prof = sq ? [[-MM(62), MM(6)], [-MM(62), -MM(85)], [MM(56), -MM(85)], [MM(72), MM(12)], [MM(80), MM(12)]] : gutterRound(MM(62));
   const pipes = new Beams(), hooks = new Beams(), tubes = [], links = [], drains = [], streams = [];
   for (const P of PL) {
@@ -581,8 +581,9 @@ function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
           // the downpipe: down from the outlet, the offset back to the wall, down the wall, the kick out at the foot
           const top = bot.clone().addScaledVector(up, -MM(70));
           const wallP = top.clone().addScaledVector(out, -(f.Oe - MM(110))).setY(top.y - MM(350));
-          const gk = gAt(wallP.clone().addScaledVector(out, MM(450)));
-          const foot = wallP.clone().setY(gk + MM(300)), kick = foot.clone().addScaledVector(out, MM(200)).setY(gk + MM(150));
+          // (the inlet under the kick: on the ground there — or the blind area)
+          const inl = wallP.clone().addScaledVector(out, MM(330)), gk = gAt(inl);
+          const foot = wallP.clone().setY(gk + MM(320)), kick = foot.clone().addScaledVector(out, MM(260)).setY(gk + MM(130));
           const p0 = top.clone().setY(top.y - MM(100));
           const path = [top, p0, wallP, foot, kick];
           for (let i = 0; i + 1 < path.length; i++) {
@@ -597,10 +598,10 @@ function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
             else tubes.push(tube(cp.clone().setY(y - MM(15)), cp.clone().setY(y + MM(15)), MM(50)));
             pipes.add(cp.toArray(), cp.clone().addScaledVector(out, -MM(70)).toArray(), MM(6), MM(20));
           }
-          // the splash channel under the kick
-          const ch = kick.clone().addScaledVector(out, MM(260)).setY(gk);
-          drains.push({ ch, out });
-          streams.push([kick.clone().addScaledVector(out, MM(30)), ch.clone().addScaledVector(out, -MM(160)).setY(gk + MM(40)), MM(20)]);
+          // the stormwater inlet under the kick: a square grate on the surface there
+          const ch = kick.clone().addScaledVector(out, MM(60)).setY(gk);
+          drains.push({ ch, out, n: GROUND.normal?.(ch.x, ch.z) || up.clone() });
+          streams.push([kick.clone().addScaledVector(out, MM(30)), ch.clone().setY(gk + MM(15)), MM(20)]);
         }
       }
     }
@@ -630,12 +631,18 @@ function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
       const bed = new THREE.Mesh(new THREE.CircleGeometry(MM(228), 20).rotateX(-Math.PI / 2), peb); bed.position.set(d.x, d.y + MM(70), d.z);
       for (const o of [ring, rim, bed]) { o.castShadow = o.receiveShadow = true; G.add(o); }
     } else {
-      const { ch, out } = d, yaw = Math.atan2(-out.z, out.x), grp = new THREE.Group();
-      const L = MM(500), Wd = MM(160), H = MM(60);
-      for (const [y, h, z, wd] of [[H / 2 - MM(10), H - MM(20), 0, Wd], [H / 2, H, -Wd / 2 + MM(15), MM(30)], [H / 2, H, Wd / 2 - MM(15), MM(30)]]) {
-        const b = new THREE.Mesh(new THREE.BoxGeometry(L, h, wd), conc); b.position.set(0, y - (wd === Wd ? MM(15) : 0), z); b.castShadow = b.receiveShadow = true; grp.add(b);
-      }
-      grp.position.copy(ch); grp.rotation.y = yaw; G.add(grp);
+      // a stormwater inlet 300 × 300: the frame flush with the surface, the grate bars, dark below;
+      // set square to the surface there (on a slope it leans with it)
+      const { ch, out, n } = d, yaw = Math.atan2(-out.z, out.x), grp = new THREE.Group(), S3 = MM(300), fr = MM(28);
+      const steel = mat('grateS', () => new THREE.MeshStandardMaterial({ color: 0x2c2e31, metalness: 0.7, roughness: 0.45 })), dark = mat('grateD', () => new THREE.MeshStandardMaterial({ color: 0x0d0d0d, roughness: 1 }));
+      const box = (w, h, d2, x, y, z, m) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d2), m); b.position.set(x, y, z); b.castShadow = b.receiveShadow = true; grp.add(b); };
+      for (const s of [-1, 1]) { box(S3, MM(24), fr, 0, MM(2), s * (S3 - fr) / 2, conc); box(fr, MM(24), S3 - 2 * fr, s * (S3 - fr) / 2, MM(2), 0, conc); }
+      for (let k = -4; k <= 4; k++) box(MM(8), MM(14), S3 - 2 * fr, k * MM(26), MM(6), 0, steel);
+      box(S3 - 2 * fr, MM(10), MM(8), 0, MM(6), 0, steel);
+      box(S3 - 2 * fr, MM(2), S3 - 2 * fr, 0, -MM(60), 0, dark);
+      grp.position.copy(ch);
+      grp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n.clone().normalize()).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw));
+      G.add(grp);
     }
   }
   // the water: streaks running down (a texture scrolled), as thick as the rain is hard
