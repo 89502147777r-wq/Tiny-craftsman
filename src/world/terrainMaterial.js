@@ -392,7 +392,16 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
         varying vec3 vCWPos;
         varying vec3 vCWNrm;
         float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        ${CONC_NOISE_GLSL}`)
+        ${CONC_NOISE_GLSL}
+        // set concrete as on the foundation: matt light grey, cloudy, the fine grain of the
+        // cement and the sand, small round pores (cq: real size)
+        vec3 tcConcSet(vec2 cq, float big, float sm) {
+          vec3 c = vec3(0.19, 0.187, 0.178) * mix(0.88, 1.05, mix(big, 0.6, sm * 0.6));
+          c *= 0.94 + 0.09 * tcSNoise(cq * 650.0) + 0.05 * tcSNoise(cq * 2300.0 + 11.0);
+          vec2 pc = cq * 1100.0;
+          float pr = step(0.982, tcHash(floor(pc))) * (1.0 - smoothstep(0.12, 0.32, length(fract(pc) - 0.5)));
+          return c * (1.0 - pr * 0.35 * (1.0 - 0.7 * sm));
+        }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
         float cure = clamp((uClock - vPour) / uCure, 0.0, 1.0);
         {
@@ -407,9 +416,7 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
           vec3 paste = vec3(0.062, 0.062, 0.06) * mix(0.92, 1.05, big) * mix(1.0, 0.82, smoothstep(0.2, 1.0, sm));
           vec3 rock = vec3(0.092, 0.09, 0.086) * mix(0.8, 1.25, shade);
           vec3 fresh = mix(paste, rock, stone * 0.8);
-          vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.88, 1.05, mix(big, 0.6, sm * 0.6));
-          float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * sm);
-          setC *= 1.0 - pore * 0.35;
+          vec3 setC = tcConcSet(cq, big, sm);
           vec3 cc = mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2));
           // a side cast against the boards (seen once the formwork is off): smooth, the joints
           // and the grain of the 150 mm boards printed in it, a few blowholes — as the foundation
@@ -420,8 +427,10 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
             float by = fract(vCWPos.y / ${(0.15 / MODEL_SCALE).toFixed(6)});
             float joint = ${steel ? '0.0' : '1.0 - smoothstep(0.0, 0.035, min(by, 1.0 - by))'};
             float grain = (tcSNoise(vec2(along * 40.0, wy * 1400.0)) * 0.6 + tcSNoise(vec2(along * 9.0, wy * 300.0)) * 0.4) * ${steel ? '0.3' : '1.0'};
-            float hole = step(0.985, tcHash(floor(vec2(along, wy) * 900.0)));
-            vec3 face = mix(vec3(0.07, 0.07, 0.067), vec3(0.17, 0.168, 0.161), smoothstep(0.05, 1.0, cure)) * (0.93 + 0.12 * grain) * (1.0 - 0.28 * joint) * (1.0 - 0.45 * hole);
+            // the face: the same concrete as the top (its grain, its pores), the boards printed faintly
+            vec2 sq2 = vec2(along, wy);
+            float bigS = tcSNoise(sq2 * 7.0) * 0.6 + tcSNoise(sq2 * 19.0 + 3.0) * 0.4;
+            vec3 face = mix(vec3(0.07, 0.07, 0.067) * mix(0.92, 1.05, bigS), tcConcSet(sq2, bigS, 0.5), smoothstep(0.05, 1.0, cure + (bigS - 0.5) * 0.2)) * (0.97 + 0.06 * grain) * (1.0 - 0.12 * joint);
             cc = mix(cc, face, cside);
           }
           diffuseColor.rgb *= cc * vColor;
@@ -448,6 +457,15 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
             vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 1.6 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06
                    + vec3(r0 - rx, 0.0, r0 - rz) * (1.0 - 0.85 * vSm) * 0.25;
             normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz * up);
+          }
+          // the sides: the fine grit of the cast face (as the top, a little smoother)
+          float sd = 1.0 - up;
+          if (sd > 0.001) {
+            vec3 wn = normalize(vCWNrm), ta = abs(wn.x) > abs(wn.z) ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+            vec2 rq = vec2(dot(vCWPos, ta), vCWPos.y) * (700.0 * ${RESCALE.toFixed(5)});
+            float r0 = tcSNoise(rq), ra = tcSNoise(rq + vec2(0.4, 0.0)), rb = tcSNoise(rq + vec2(0.0, 0.4));
+            vec3 g = (ta * (r0 - ra) + vec3(0.0, 1.0, 0.0) * (r0 - rb)) * 0.16;
+            normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz * sd);
           }
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>

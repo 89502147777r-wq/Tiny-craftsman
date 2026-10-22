@@ -532,7 +532,7 @@ export class WallView {
         list.sort((a, b) => a.s0 - b.s0);
         for (let j = 1; j < list.length && nm < this.max.mortar; j++) {
           const A = list[j - 1], B = list[j];
-          if (B.s0 - A.s1 > k.head * 1.5 || B.s0 < A.s1) continue;
+          if (B.s0 - A.s1 > (A.lintel || B.lintel ? 60 : k.head * 1.5) || B.s0 < A.s1) continue;   // (at the end of a lintel: filled up to 60 mm)
           const sc = (A.s1 + B.s0) / 2 * S, y = rowY(w, A.row) + k.H * S / 2;
           P.set(w.a[0] + ux * sc + nx * (A.off || 0) * S, y, w.a[1] + uz * sc + nz * (A.off || 0) * S);
           Sv.set((B.s0 - A.s1) * S, k.H * S * 0.96, A.s[2] * 0.92);
