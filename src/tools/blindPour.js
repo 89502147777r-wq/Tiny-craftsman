@@ -40,20 +40,20 @@ export class Pile {
     }
     return moved;
   }
-  // the rake at cell n, drawn along (da, dd): over its width (500 mm) what is above the
+  // the rake at cell n, drawn along (da, dd): over its width (~700 mm) what is above the
   // thickness goes on ahead of it, the hollows under it are filled from the heap it pushes
   rake(n, da, dd) {
     if (n < 0) return;
-    const P = this.P, c = P.cells.get(this.CL.keys[n]), near = [], R = MM(260);
+    const P = this.P, c = P.cells.get(this.CL.keys[n]), near = [], R = MM(340);
     const len = Math.hypot(da, dd) || 1, ua = da / len, ud = dd / len;
     for (const [q, k] of this.CL.keys.entries()) {
       const e = P.cells.get(k), ea = e.a - c.a, ed = e.d - c.d;
-      if (Math.abs(ea) > MM(400) || Math.abs(ed) > MM(400)) continue;
+      if (Math.abs(ea) > MM(450) || Math.abs(ed) > MM(450)) continue;
       const al = ea * ua + ed * ud, ac = -ea * ud + ed * ua;
       if (Math.abs(ac) <= R && al > -P.C && al <= P.C * 0.6) near.push(q);
     }
     let surplus = 0;
-    for (const q of near) { const over = this.h[q] - this.t; if (over > 0) { surplus += over * 0.85; this.h[q] -= over * 0.85; } }
+    for (const q of near) { const over = this.h[q] - this.t; if (over > 0) { surplus += over; this.h[q] -= over; } }
     // (the hollows under the rake first, the rest pushed ahead of it)
     for (const q of near) { const need = this.t - this.h[q]; if (need > 0 && surplus > 0) { const g = Math.min(need, surplus); this.h[q] += g; surplus -= g; } }
     if (surplus > 0) {

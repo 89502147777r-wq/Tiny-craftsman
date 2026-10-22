@@ -335,11 +335,12 @@ export function facadeFaces(objects) {
       if (Math.min(G.y1, F.y1) - Math.max(G.y0, F.y0) < (F.y1 - F.y0) * 0.5) return;
       const out = G.sg * k;   // (G faces along +u of F: F's far end)
       const e = out > 0 ? 1 : 0, d = Math.abs(aG - (e ? f1 : f0));
-      if (d < 2 * G.hw + MM(80) && (!best[e] || d < best[e].d)) best[e] = { d, aG };
+      if (d < 2 * G.hw + MM(80) && (!best[e] || d < best[e].d)) best[e] = { d, aG, G, bF };
     });
     const wrap = Math.abs(F.ux) >= Math.abs(F.uz);
-    if (best[1]) { F.a1 = best[1].aG; F.wrap1 = wrap; }
-    if (best[0]) { F.a0 = best[0].aG; F.wrap0 = wrap; }
+    // (cn: the face round the corner, and where this one's plane is along it)
+    if (best[1]) { F.a1 = best[1].aG; F.wrap1 = wrap; F.cn1 = { G: best[1].G, aF: best[1].bF }; }
+    if (best[0]) { F.a0 = best[0].aG; F.wrap0 = wrap; F.cn0 = { G: best[0].G, aF: best[0].bF }; }
   });
   // up the ring beam cast on the wall (its band over the top course) and the gables of the
   // roof (built with it, not of units): the face goes up to the gable's slopes — the part
@@ -374,7 +375,9 @@ const faceKey = (F) => `${Math.round(Math.atan2(F.uz, F.ux) * 1000)}:${F.sg}:${M
 export const recOf = (recs, F) => recs.find((r) => r.ux * F.ux + r.uz * F.uz > 0.999 && r.sg === F.sg && Math.abs(r.P - F.P) < MM(20) && (r.y0 == null || Math.abs(r.y0 - F.y0) < MM(150)));
 export const W = (F, a, y, off) => { const c = F.P + F.sg * off; return [F.ux * a + F.nx * c, y, F.uz * a + F.nz * c]; };
 // the face's extent at an offset (round the corner it wraps)
-export const ext = (F, off) => [F.a0 - (F.wrap0 ? off : 0), F.y0, F.a1 + (F.wrap1 ? off : 0), F.y1];
+// (the face that stops at a corner: its coats run on over the end of the other's insulation)
+const endOff = (F, e, off) => ((e ? F.wrap1 : F.wrap0) ? off : (e ? F.cn1 : F.cn0) && off > OFF.eps + 1e-9 && off < OFF.pan - 1e-9 ? OFF.eps : 0);
+export const ext = (F, off) => [F.a0 - endOff(F, 0, off), F.y0, F.a1 + endOff(F, 1, off), F.y1];
 
 // ---- rects and cells ----------------------------------------------------------------------------
 export const inR = (r, a, y) => a >= r[0] && a <= r[2] && y >= r[1] && y <= r[3];
@@ -507,7 +510,7 @@ const DOWELS = [[100, 100], [900, 100], [500, 250], [100, 400], [900, 400]];
 
 // rec: { eps, glue, mesh, emb, pl: {variant: runs}, fl: { v, h }, pan }; live (the hand):
 // { layer, slot | rect | cells, variant, dir, tool: { kind, a, y } }
-export function buildFacade(F, rec, live) {
+export function buildFacade(F, rec, live, recG = null) {
   const group = new THREE.Group();
   const eps = [...(rec.eps || [])], mesh = [...(rec.mesh || [])], pan = [...(rec.pan || [])];
   const glue = new Set(cellsOf(rec.glue)), emb = new Set(cellsOf(rec.emb)), pl = {}, fl = { v: new Set(cellsOf(rec.fl?.v)), h: new Set(cellsOf(rec.fl?.h)) };
@@ -587,6 +590,18 @@ export function buildFacade(F, rec, live) {
     for (const p of ps) board(gp, F, cutPiece(F, p, OFF.pan).map((r) => [r[0] + MM(1), r[1] + MM(1), r[2] - MM(1), r[3] - MM(1)]), OFF.eps, OFF.pan, [1000, 1000], [0, 0]);
     add(gp.mesh(mat('pan' + key, () => stdMat(panelTex(key)))));
   }
+  // the corners: built by the face that stops at one (the other runs on round it), where both
+  // are clad with panels at the same heights
+  for (const e of [0, 1]) {
+    const cn = e ? F.cn1 : F.cn0;
+    if (!cn || (e ? F.wrap1 : F.wrap0) || !recG || !pan.length) continue;
+    const rg = recG(cn.G), gp = rg?.pan || [];
+    if (!gp.length) continue;
+    const aEnd = e ? F.a1 : F.a0, mine = pan.filter((p) => (e ? p[2] >= aEnd - MM(5) : p[0] <= aEnd + MM(5)));
+    const theirs = gp.filter((p) => p[0] <= cn.aF + OFF.pan + MM(5) && p[2] >= cn.aF - OFF.pan - MM(5));
+    const top = F.topAt ? F.topAt(aEnd) : Infinity;
+    for (const [y0, y1, key] of overlapY(mine, theirs)) if (Math.min(y1, top) - y0 > MM(40)) cornerPieces(group, F, e, aEnd, y0, Math.min(y1, top), key);
+  }
   // the board in the hand: where it goes (green / red)
   if (ghost?.kind === 'eps' || (ghost?.kind === 'pan' && !ghost.ok)) {
     const gh = new Geo(), o0 = ghost.kind === 'eps' ? 0 : OFF.eps, o1 = ghost.kind === 'eps' ? OFF.eps : OFF.pan;
@@ -597,6 +612,90 @@ export function buildFacade(F, rec, live) {
   // the tool in the hand: the spatula, the float, the roll
   if (live?.tool) group.add(toolMesh(F, live));
   return group;
+}
+
+// the heights where both faces have panels at the corner: [y0, y1, the key of this face's]
+function overlapY(mine, theirs) {
+  const out = [];
+  for (const p of mine) for (const q of theirs) { const y0 = Math.max(p[1], q[1]), y1 = Math.min(p[3], q[3]); if (y1 - y0 > MM(5)) out.push([y0, y1, p[4]]); }
+  out.sort((a, b) => a[0] - b[0]);
+  const m = [];
+  for (const r of out) { const l = m[m.length - 1]; if (l && r[0] <= l[1] + MM(2) && r[2] === l[2]) l[1] = Math.max(l[1], r[1]); else m.push([...r]); }
+  return m;
+}
+// a box on the face: along it a0…a1, off it o0…o1, up y0…y1; every side shows the uv rect
+// [u0, v0, u1, v1] (rot: the grain up)
+function boxUV(geo, F, a0, a1, o0, o1, y0, y1, R, rot = false) {
+  const [A0, A1] = [Math.min(a0, a1), Math.max(a0, a1)], [O0, O1] = [Math.min(o0, o1), Math.max(o0, o1)];
+  const U = rot ? [[R[0], R[1]], [R[0], R[3]], [R[2], R[3]], [R[2], R[1]]] : [[R[0], R[1]], [R[2], R[1]], [R[2], R[3]], [R[0], R[3]]];
+  const n = [F.sg * F.nx, 0, F.sg * F.nz], u = [F.ux, 0, F.uz], neg = (v) => v.map((x) => -x), P = (a, y, o) => W(F, a, y, o);
+  geo.quad([P(A0, y0, O1), P(A1, y0, O1), P(A1, y1, O1), P(A0, y1, O1)], U, n);
+  geo.quad([P(A1, y0, O0), P(A0, y0, O0), P(A0, y1, O0), P(A1, y1, O0)], U, neg(n));
+  geo.quad([P(A1, y0, O1), P(A1, y0, O0), P(A1, y1, O0), P(A1, y1, O1)], U, u);
+  geo.quad([P(A0, y0, O0), P(A0, y0, O1), P(A0, y1, O1), P(A0, y1, O0)], U, neg(u));
+  geo.quad([P(A0, y1, O1), P(A1, y1, O1), P(A1, y1, O0), P(A0, y1, O0)], U, [0, 1, 0]);
+  geo.quad([P(A0, y0, O0), P(A1, y0, O0), P(A1, y0, O1), P(A0, y0, O1)], U, [0, -1, 0]);
+}
+// the corner pieces at the end e of F (aEnd: the plane of the other face's masonry), y0…y1:
+//   clinker – corner tiles (Г-shaped, 240 and 115 legs, swapped course by course), on the
+//             courses of the panels' bricks;
+//   stone   – quoins: dressed blocks 240 high, 400 / 200 legs in turn, standing out 12 mm;
+//   planken – a corner trim of two boards 120 × 22 over the ends of the boards.
+function cornerPieces(group, F, e, aEnd, y0, y1, key) {
+  const [, kind, cols] = PANELS[key] || PANELS['clinker:red'], s = e ? 1 : -1, ac = aEnd + s * OFF.pan, R = MM(1), geo = new Geo();
+  // (F's leg: on F's face back from the corner; G's leg: on G's face, back along it)
+  if (kind === 'brick') {
+    const n = 512, sc = 0.512, L = 250 * sc, H = 81 * sc, hh = 71 * sc;
+    for (let p = Math.floor(y0 / MM(1000)) - 1; p * MM(1000) < y1; p++) for (let r = 0; r <= 12; r++) {
+      const top = p * MM(1000) + MM(1000) - r * MM(81), bot = top - Math.min(MM(71), r * MM(81) + MM(71) > MM(1000) ? MM(1000) - r * MM(81) : MM(71));
+      const ya = Math.max(bot, y0), yb = Math.min(top, y1);
+      if (yb - ya < MM(8)) continue;
+      const k = ((p * 13 + r) % 2 + 2) % 2, x0 = (r % 2) * L / 2 + L * (1 + ((p * 7 + r * 3) % 2 + 2) % 2), v1 = 1 - r * H / n, v0 = 1 - Math.min(n, r * H + hh) / n;
+      const long = [x0 / n, v0, (x0 + 240 * sc) / n, v1], short = [x0 / n, v0, (x0 + 115 * sc) / n, v1];
+      const [lF, lG] = k ? [MM(240), MM(115)] : [MM(115), MM(240)];
+      boxUV(geo, F, ac + s * R * 2 - s * lF, ac + s * R * 2, OFF.eps, OFF.pan + R * 2, ya, yb, k ? long : short);
+      boxUV(geo, F, aEnd + s * OFF.eps, ac + s * R * 2, OFF.pan + R * 2 - lG, OFF.pan + R * 2, ya, yb, k ? short : long);
+    }
+    group.add(geo.mesh(mat('pan' + key, () => stdMat(panelTex(key)))));
+    return;
+  }
+  if (kind === 'stone') {
+    const t = MM(12), gap = MM(10), hb = MM(240);
+    let i = 0;
+    for (let y = y0; y < y1 - MM(30); y += hb + gap, i++) {
+      const yb = Math.min(y1, y + hb), [lF, lG] = i % 2 ? [MM(200), MM(400)] : [MM(400), MM(200)], q = (i * 3) % 4, uv = [(q % 2) / 2, Math.floor(q / 2) / 2, (q % 2) / 2 + 0.5, Math.floor(q / 2) / 2 + 0.5];
+      boxUV(geo, F, ac + s * t - s * lF, ac + s * t, OFF.eps, OFF.pan + t, y, yb, uv);
+      boxUV(geo, F, aEnd + s * OFF.eps, ac + s * t, OFF.pan + t - lG, OFF.pan + t, y, yb, uv);
+    }
+    group.add(geo.mesh(mat('quoin' + key, () => stdMat(quoinTex(cols)))));
+    return;
+  }
+  // planken: the trim boards, the grain up
+  const t = MM(22), w = MM(120), bv = 1 - 140 * 0.512 / 512, uv = [y0 / MM(1000), bv, y1 / MM(1000), 1];
+  boxUV(geo, F, ac + s * t - s * w, ac + s * t, OFF.pan, OFF.pan + t, y0, y1, uv, true);
+  boxUV(geo, F, ac, ac + s * t, OFF.pan + t - w, OFF.pan + t, y0, y1, uv, true);
+  group.add(geo.mesh(mat('pan' + key, () => stdMat(panelTex(key)))));
+}
+// the quoins: four dressed blocks (2 × 2 in the picture), a chiselled margin round each face
+function quoinTex(cols) {
+  const k = 'quoin' + cols.join();
+  if (TEX[k]) return TEX[k];
+  const n = 512, c = canvas(n), g = c.getContext('2d'), hc = canvas(n), h = hc.getContext('2d'), b = 256;
+  for (let q = 0; q < 4; q++) {
+    const x = (q % 2) * b, y = Math.floor(q / 2) * b, col = shade(cols[q % cols.length], 0.92 + rnd() * 0.14);
+    g.fillStyle = col; g.fillRect(x, y, b, b); h.fillStyle = '#9a9a9a'; h.fillRect(x, y, b, b);
+    // the rock face: lumps and flakes
+    for (let i = 0; i < 260; i++) { const v = 90 + rnd() * 120, px = x + 22 + rnd() * (b - 44), py = y + 22 + rnd() * (b - 44), r = 4 + rnd() * 16; h.fillStyle = `rgba(${v},${v},${v},0.35)`; h.beginPath(); h.ellipse(px, py, r, r * (0.4 + rnd() * 0.6), rnd() * 3, 0, 7); h.fill(); }
+    for (let i = 0; i < 1600; i++) { g.fillStyle = `rgba(${rnd() < 0.6 ? '30,25,20' : '255,250,240'},${0.04 + rnd() * 0.08})`; g.fillRect(x + rnd() * b, y + rnd() * b, 1 + rnd() * 3, 1 + rnd() * 2); }
+    // the margin: tooled flat, fine lines across it
+    h.fillStyle = '#b4b4b4'; for (const [rx, ry, rw, rh] of [[x, y, b, 18], [x, y + b - 18, b, 18], [x, y, 18, b], [x + b - 18, y, 18, b]]) h.fillRect(rx, ry, rw, rh);
+    h.strokeStyle = 'rgba(120,120,120,0.5)'; h.lineWidth = 1; for (let l = 3; l < b; l += 5) { h.beginPath(); h.moveTo(x + l, y + 2); h.lineTo(x + l, y + 16); h.moveTo(x + l, y + b - 16); h.lineTo(x + l, y + b - 2); h.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,0.08)'; for (const [rx, ry, rw, rh] of [[x, y, b, 18], [x, y + b - 18, b, 18], [x, y, 18, b], [x + b - 18, y, 18, b]]) g.fillRect(rx, ry, rw, rh);
+    // the arrises eased
+    h.fillStyle = '#505050'; h.fillRect(x, y, b, 3); h.fillRect(x, y, 3, b); h.fillRect(x, y + b - 3, b, 3); h.fillRect(x + b - 3, y, 3, b);
+  }
+  bake(c, hc, 1.4, 0.5);
+  return (TEX[k] = { map: asTex(c), normalMap: normalOf(hc, 6), roughness: 0.9 });
 }
 
 // the spatula (a steel blade 350 mm), the float (a plastic plate 280 × 140), the roll of mesh
