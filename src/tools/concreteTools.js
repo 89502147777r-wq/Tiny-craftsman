@@ -185,7 +185,7 @@ export class HoseTool extends ConcreteTool {
     const lps = isSlab(this.uT) || this.uT.type === 'blind' ? (app.settings.pump || PUMP[1]) * (this.uT.type === 'blind' ? 300 : 1000) : this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;   // (a slab: the pump's whole rate)
     if (!ch.full && ch.h[i] < (ch.caps ? ch.caps[i] : ch.cap) - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
     else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT.type === 'blind' ? 'Здесь отмостка полна — ведите шланг дальше вдоль дома' : isSlab(this.uT) ? 'Здесь уже 200 мм — ведите шланг дальше по перекрытию' : this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
-    else if (!this.warned) { this.warned = true; app.ui?.toast(this.uT.type === 'blind' ? 'Отмостка залита — отпустите; потом вибратор, правило по доскам (уклон от стен) и кельма' : isSlab(this.uT) ? 'Перекрытие залито — отпустите; потом вибратор и правило по доскам' : this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
+    else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast(this.uT.type === 'blind' ? 'Отмостка залита — отпустите; потом вибратор, правило по доскам (уклон от стен) и кельма' : isSlab(this.uT) ? 'Перекрытие залито — отпустите; потом вибратор и правило по доскам' : this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
     ch.show(app.wallView);
     return ch.point(i);
