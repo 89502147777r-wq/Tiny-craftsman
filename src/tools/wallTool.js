@@ -12,6 +12,7 @@ import { WINDOWS, windowFits } from '../world/windows.js';
 import { DOORS, doorFits } from '../world/doors.js';
 import { RoofWork } from './roofTool.js';
 import { FacadeWork } from './facadeTool.js';
+import { BlindWork } from './blindTool.js';
 import { PitchedWork, RoofWindowWork } from './pitchedTool.js';
 const winName = (k) => (WINDOWS[k] || DOORS[k]).name;
 
@@ -47,6 +48,7 @@ export class WallTool {
     this.app = app;
     this.roof = new RoofWork(app);
     this.facade = new FacadeWork(app);
+    this.blind = new BlindWork(app);
     this.proof = new PitchedWork(app);
     this.rwin = new RoofWindowWork(app);
     this.mode = 'lay';
@@ -68,6 +70,7 @@ export class WallTool {
         if (this.mode !== 'lay' || app.physJob || app.physLoading) return;
         if (this.kind === 'roof' && !this.roof.isCarry) { app.ui.toast(this.roof.status(false)); return; }
         if (this.kind === 'facade' && !this.facade.isCarry) { app.ui.toast(this.facade.status(false)); return; }
+        if (this.kind === 'blind' && !this.blind.isCarry) { app.ui.toast(this.blind.status(false)); return; }
         if (this.kind === 'proof' && !this.proof.isCarry) { app.ui.toast(this.proof.status(false)); return; }
         const w = this._trayWall();
         try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ }
@@ -161,6 +164,7 @@ export class WallTool {
     }
     if (this.mode === 'lay' && this.kind === 'roof') return this.roof.down(p, e);
     if (this.mode === 'lay' && this.kind === 'facade') return this.facade.down(p, e);
+    if (this.mode === 'lay' && this.kind === 'blind') return this.blind.down(p, e);
     if (this.mode === 'lay' && this.kind === 'proof') return this.proof.down(p, e);
     if (this.mode === 'lay') {
       if (app.physJob || app.physLoading) return true;   // the last one is still being set
@@ -185,6 +189,7 @@ export class WallTool {
     if (this.rowDrag) { this._rowMove(p, e); return; }
     if (this.roof.drag) { this.roof.move(p, e); return; }
     if (this.facade.drag) { this.facade.move(p, e); return; }
+    if (this.blind.drag) { this.blind.move(p, e); return; }
     if (this.proof.drag) { this.proof.move(p, e); return; }
     if (!this.drag) return;
     if (this.mode === 'line') {
@@ -225,6 +230,7 @@ export class WallTool {
     if (this.rowDrag) { const d = this.rowDrag; this.rowDrag = null; this._rowStart(d); return; }
     if (this.roof.drag) { this.roof.up(); return; }
     if (this.facade.drag) { this.facade.up(); return; }
+    if (this.blind.drag) { this.blind.up(); return; }
     if (this.proof.drag) { this.proof.up(); return; }
     this.drag = null;
     app.ui.hideMeasure();
@@ -728,6 +734,10 @@ export class WallTool {
       v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
       app.ui.refresh();
       return;
+    } else if (c.kind === 'blind') {
+      c.free = undefined; c.snap = null; v.live = null; v.hl = null; v.liveBed = null;
+      this.blind.carryMove(p, e); app.ui.refresh();
+      return;
     } else if (c.kind === 'roof' || c.kind === 'facade' || c.kind === 'proof' || c.kind === 'rwin') {
       c.free = undefined; c.snap = null; v.live = null; v.hl = null; v.liveBed = null;
       (c.kind === 'roof' ? this.roof : c.kind === 'proof' ? this.proof : c.kind === 'rwin' ? this.rwin : this.facade).carryMove(p, e);
@@ -848,8 +858,9 @@ export class WallTool {
     this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');
     this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
+    const NAMES = { blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
     if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
+    if (lab && kind === 'blind') { lab.textContent = this.app.settings.blindLayer === 'drain' ? 'Лоток' : 'Опалубка'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель' }[this.app.settings.facLayer || 'eps']; return; }
     if (lab && kind === 'roof') { lab.textContent = { vap: 'Рулон пароизоляции', xps: 'Лист XPS', wedge: 'Клиновидная плита', mem: 'Рулон мембраны', cop: 'Отлив 2 м', grav: 'Гравий' }[this.app.settings.roofLayer || 'vap']; return; }
     if (lab) lab.textContent = this.app.settings.wallHalf && (kind === 'block' || kind === 'brick' || kind === 'cinder') ? (kind === 'block' ? '½ блока' : kind === 'cinder' ? '½ шлакоблока' : '½ кирпича') : NAMES[kind] || 'Блок';
@@ -859,7 +870,7 @@ export class WallTool {
 
   _carryCancel() {
     const v = this.app.wallView;
-    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.liveBelt = null; v.liveWin = null; v.dirty = true; this.roof._live(null); this.facade._live(null); this.proof._live(null); this.rwin._live(null);
+    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.liveBelt = null; v.liveWin = null; v.dirty = true; this.roof._live(null); this.facade._live(null); this.proof._live(null); this.rwin._live(null); this.blind._live(null);
     this.app.ui.refresh();
   }
 
@@ -875,6 +886,7 @@ export class WallTool {
     }
     if (ck === 'roof') { this.roof.carryDrop(); return; }
     if (ck === 'facade') { this.facade.carryDrop(); return; }
+    if (ck === 'blind') { this.blind.carryDrop(); return; }
     if (ck === 'proof') { this.proof.carryDrop(); return; }
     if (ck === 'rwin') { this.rwin.carryDrop(); return; }
     if (ck === 'window' || ck === 'door') {
@@ -956,6 +968,7 @@ export class WallTool {
     if (c?.kind === 'belt') return c.belt ? (c.belt.exists ? 'Здесь опалубка пояса уже стоит' : `Опалубка по верху стен: ${c.belt.lenM.toFixed(1).replace('.', ',')} м — отпустите`) : 'Поднесите к верхнему ряду кладки — опалубка встанет по всему его контуру';
     if (c?.kind === 'roof') return this.roof.status(true);
     if (c?.kind === 'facade') return this.facade.status(true);
+    if (c?.kind === 'blind') return this.blind.status(true);
     if (c?.kind === 'proof') return this.proof.status(true);
     if (c?.kind === 'rwin') return this.rwin.status();
     if (c?.kind === 'window' || c?.kind === 'door') { const door = c.kind === 'door', key = door ? this.app.settings.doorKey || 'door1' : this.app.settings.windowKey || 'pvc2'; return c.win ? (c.win.why2 ? 'Красный — ' + c.win.why2 : `${winName(key)}: ${c.win.w} × ${c.win.h} мм — отпустите`) : door ? 'Поднесите дверь к проёму до пола — она встанет по его размеру' : 'Поднесите окно к проёму в кладке — оно встанет по его размеру'; }
@@ -968,7 +981,8 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : c.kind === 'cinder' ? 'Шлакоблок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind'].includes(this.kind)) return {
+      blind: this.blind.status(false),
       roof: this.roof.status(false),
       proof: this.proof.status(false),
       rwin: this.rwin.status(),
@@ -1017,6 +1031,7 @@ export class WallTool {
     }
     if (id && app.objects.get(id)?.type === 'roof') { this.roof.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'facade') { this.facade.remove(id); return; }
+    if (id && app.objects.get(id)?.type === 'blind') { this.blind.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'proof') { this.proof.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'rwin') { app.journal.act('rwin-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Окно сняли — кровля снова сплошная'); return; }
     if (id && app.objects.get(id)?.type === 'window') {

@@ -6,7 +6,8 @@ import { buildWindow } from './windows.js';
 import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
-import { buildPitched, flatWindow, wingShape } from './pitched.js';
+import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
+import { buildBlind, blindTopAt } from './blind.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -423,6 +424,10 @@ export class WallView {
     this.liveFacade = null; this.facadeDirty = true; this._faces = null; this._facKnown = new Set();
     // the pitched roof (pitched.js)
     this.proofs = new THREE.Group(); this.group.add(this.proofs);
+    // the blind area round the house (blind.js)
+    this.blinds = new THREE.Group(); this.group.add(this.blinds);
+    this.liveBlind = null; this.blindDirty = true;
+    GROUND.at = (x, z) => blindTopAt(objects.all('blind'), x, z);
     this.liveProof = null; this.proofDirty = true;
     for (const m of [this.blocks, this.bricks, this.cinders]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3), 3);
     this.owner = { blocks: [], bricks: [], cinders: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
@@ -431,6 +436,7 @@ export class WallView {
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
     objects.on((id, rec) => {
+      if (rec?.type === 'blind' || this._blindIds?.has(id)) { this.blindDirty = true; this.proofDirty = true; return; }
       if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
@@ -438,7 +444,7 @@ export class WallView {
   }
 
   update() {
-    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); if (this.proofDirty) this._buildProofs(); return; }
+    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); if (this.proofDirty) this._buildProofs(); if (this.blindDirty) this._buildBlinds(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt'), ...O.all('window'), ...O.all('roof')].map((r) => r.id));
@@ -786,7 +792,7 @@ export class WallView {
   _buildProofs() {
     this.proofDirty = false;
     const sel = this.app?.settings?.wallKind === 'proof' ? (this.app.settings.proofWing ?? -1) : -1;
-    const key = JSON.stringify([this.objects.all('proof'), this.objects.all('rwin'), this.liveProof, this.liveRwin, sel]);
+    const key = JSON.stringify([this.objects.all('proof'), this.objects.all('rwin'), this.liveProof, this.liveRwin, sel, this.objects.all('blind').map((r) => [r.id, r.fin, r.W])]);   // (the blind area: what the downpipes come down onto)
     if (key === this._proofKey) return;
     this._proofKey = key;
     for (const g of [...this.proofs.children]) { this.proofs.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); }); }
@@ -811,6 +817,19 @@ export class WallView {
       const g = flatWindow(q);
       g.traverse((o) => { if (o.isMesh) o.userData.uOwner = q.id ?? null; });
       this.proofs.add(g);
+    }
+  }
+
+  _buildBlinds() {
+    this.blindDirty = false;
+    for (const g of [...this.blinds.children]) { this.blinds.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); }); }
+    const recs = this.objects.all('blind'), live = this.liveBlind;
+    this._blindIds = new Set(recs.map((r) => r.id));
+    const list = live?.form ? [{ ...live.form, id: null }] : recs;
+    for (const r of list) {
+      const g = buildBlind(r, live?.form ? null : live);
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
+      this.blinds.add(g);
     }
   }
 

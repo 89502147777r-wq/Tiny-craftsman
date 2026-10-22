@@ -4,6 +4,7 @@ import { PANOS } from '../world/backdrop.js';
 import { DAY_LENGTHS, WEATHER } from '../world/sky.js';
 import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
+import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
 import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANELS } from '../world/facade.js';
 import { ROOF_TYPES, PITCHES, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
@@ -438,6 +439,16 @@ export class UI {
         G('pgut', `Водосток: ${GUTTERS[po.gut.kind]}`, Object.entries(GUTTERS).map(([k, l]) => G('pg' + k, l, Object.entries(GUTTER_COLOURS).map(([q, [n]]) => C('◼ ' + n, po.gut.kind === k && po.gut.col === q, () => pset({ proofGut: k, proofGutCol: q, proofStage: 'gutter' }, { gut: true }))), null, C('', po.gut.kind === k, () => pset({ proofGut: k, proofStage: 'gutter' }, { gut: true })))), 'Водосток'),
         ...PROOF_STAGES.map(([k, l], i) => C(`${i + 1} · ${l}`, has('proof') && (s.proofStage || 'plate') === k, () => lay({ wallKind: 'proof', proofStage: k }))),
       ];
+      // the blind area: the width, then its stages (the top: concrete or paving and its colour)
+      const BL = s.blindLayer || 'form', bset = (o) => lay({ wallKind: 'blind', ...o });
+      const blind = [
+        G('bw', `Ширина ${(s.blindW || 1000) / 1000} м`.replace('.', ','), BLIND_WIDTHS.map((v) => C(`${v / 1000} м`.replace('.', ','), (s.blindW || 1000) === v, () => bset({ blindW: v, blindLayer: 'form' }))), 'Ширина'),
+        ...BLIND_LAYERS.map(([k, l], i) => {
+          const c = C(`${i + 1} · ${k === 'fin' ? BLIND_FIN[s.blindFin || 'conc'] : l}`, has('blind') && BL === k, () => bset({ blindLayer: k }));
+          if (k !== 'fin') return c;
+          return G('bfin', c.label, [C('Бетон', (s.blindFin || 'conc') === 'conc', () => bset({ blindLayer: 'fin', blindFin: 'conc' })), G('btile', 'Плитка', Object.entries(TILE_COLOURS).map(([q, [n]]) => C('◼ ' + n, s.blindFin === 'tile' && (s.blindCol || 'grey') === q, () => bset({ blindLayer: 'fin', blindFin: 'tile', blindCol: q }))), null, C('', s.blindFin === 'tile', () => bset({ blindLayer: 'fin', blindFin: 'tile' })))], null, c);
+        }),
+      ];
       // the windows in the roof (a slope or a flat roof): the size, the colour of the frame
       const rwin = [
         ...Object.entries(RWIN).map(([k, [l]]) => C(l, has('rwin') && (s.rwinKey || 's2') === k, () => lay({ wallKind: 'rwin', rwinKey: k }))),
@@ -454,6 +465,7 @@ export class UI {
         G('proof', 'Скатная крыша', proof, null, C('', has('proof'), () => lay({ wallKind: 'proof' }))),
         G('rwin', 'Окна в крышу', rwin, null, C('', has('rwin'), () => lay({ wallKind: 'rwin' }))),
         G('facade', 'Фасад', facade, null, C('', has('facade'), () => lay({ wallKind: 'facade' }))),
+        G('blind', 'Отмостка', blind, null, C('', has('blind'), () => lay({ wallKind: 'blind' }))),
       ];
       const lineKids = [C('Газоблок', wk === 'block', () => set({ wallKind: 'block' })), C('Кирпич', wk !== 'block', () => set({ wallKind: 'brick' }))];
       if (wk === 'block') lineKids.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
