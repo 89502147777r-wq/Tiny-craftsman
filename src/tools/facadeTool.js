@@ -43,7 +43,7 @@ export class FacadeWork {
   }
   _save(F, patch, label) {
     const app = this.app, r = this._rec(F);
-    const rec = { ux: F.ux, uz: F.uz, sg: F.sg, P: F.P, ...(r || {}), ...patch };
+    const rec = { ux: F.ux, uz: F.uz, sg: F.sg, P: F.P, y0: F.y0, ...(r || {}), ...patch };
     delete rec.id;
     app.journal.act(label, {}, app.clock, () => { if (r) app.objects.update(r.id, rec); else app.objects.add({ type: 'facade', ...rec }); });
   }

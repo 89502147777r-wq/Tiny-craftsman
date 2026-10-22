@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { canvas, asTex, normalOf } from './roof.js';
 import { wallLines, masonry, findOpenings } from '../tools/windowFit.js';
+import { beltContains } from '../tools/belt.js';
+import { gableWalls } from './pitched.js';
 
 // The facade (мокрый фасад / навесные панели), laid piece by piece as on site:
 //   eps  – the insulation: facade EPS boards 1000 × 500 × 100 on glue, staggered, cut at the
@@ -227,22 +229,38 @@ export function facadeFaces(objects) {
   const lines = wallLines(units), opens = findOpenings(app), faces = [];
   for (const L of lines) {
     if (L.units.length < 3) continue;
-    const nx = -L.uz, nz = L.ux, mine = new Set(L.units.map((u) => u.b));
-    let a0 = Infinity, a1 = -Infinity, y0 = Infinity, y1 = -Infinity, lo = Infinity, hi = -Infinity;
-    for (const u of L.units) {
-      a0 = Math.min(a0, u.a0); a1 = Math.max(a1, u.a1); y0 = Math.min(y0, u.bot); y1 = Math.max(y1, u.top);
-      const c = u.b.x * nx + u.b.z * nz, h = across(u.b, nx, nz); lo = Math.min(lo, c - h); hi = Math.max(hi, c + h);
+    const nx = -L.uz, nz = L.ux;
+    // which side is out: away from the middle of the masonry
+    let a0 = Infinity, a1 = -Infinity, lo = Infinity, hi = -Infinity;
+    for (const u of L.units) { a0 = Math.min(a0, u.a0); a1 = Math.max(a1, u.a1); const c = u.b.x * nx + u.b.z * nz, h = across(u.b, nx, nz); lo = Math.min(lo, c - h); hi = Math.max(hi, c + h); }
+    const am = (a0 + a1) / 2, md = (lo + hi) / 2, sg = (L.ux * am + nx * md - cx) * nx + (L.uz * am + nz * md - cz) * nz >= 0 ? 1 : -1;
+    // its tiers by their outer faces: a plinth standing out of the wall over it (or a wall
+    // set back) is a face of its own — the wall's facade starts over the plinth
+    const outer = (u) => { const c = u.b.x * nx + u.b.z * nz, h = across(u.b, nx, nz); return sg > 0 ? c + h : -(c - h); };
+    const sorted = [...L.units].sort((p, q) => outer(p) - outer(q)), tiers = [];
+    for (const u of sorted) { const f = outer(u), T = tiers.at(-1); if (T && f - T.f0 < MM(25)) { T.us.push(u); T.f = Math.max(T.f, f); } else tiers.push({ f, f0: f, us: [u] }); }   // (each tier within 25 mm: a few mm off by hand, not a plinth)
+    const big = tiers.filter((T) => T.us.length >= 3);
+    for (const T of big) {
+      const mine = new Set(T.us.map((u) => u.b));
+      let b0 = Infinity, b1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const u of T.us) { b0 = Math.min(b0, u.a0); b1 = Math.max(b1, u.a1); y0 = Math.min(y0, u.bot); y1 = Math.max(y1, u.top); }
+      const P = sg > 0 ? T.f : -T.f;
+      if (b1 - b0 < MM(400)) continue;   // (a column of bricks across a wall: no face)
+      // the outside only: no masonry against it in front (another leaf, a wall built on to it)
+      // over a good part of it — a loose block lying on the plot does not count
+      const front = units.filter((b) => {
+        if (mine.has(b)) return false;
+        const c = b.x * nx + b.z * nz, h = across(b, nx, nz), a = b.x * L.ux + b.z * L.uz, ha = across(b, L.ux, L.uz);
+        const near = sg > 0 ? c - h > P - MM(30) && c - h < P + MM(150) : c + h < P + MM(30) && c + h > P - MM(150);
+        return near && a + ha > b0 + MM(50) && a - ha < b1 - MM(50) && Math.min(b.top, y1) - Math.max(b.bot, y0) > Math.min(MM(100), (b.top - b.bot) * 0.6);
+      });
+      const cover = front.reduce((sum, b) => sum + Math.min(b.top, y1) - Math.max(b.bot, y0), 0);
+      if (front.length >= 3 && cover > (y1 - y0) * 0.5) continue;
+      // a tier standing out under it: the wall's facade starts on a starter track over it
+      const ledge = big.some((o) => o !== T && o.f > T.f + MM(10) && Math.max(...o.us.map((u) => u.top)) <= y0 + MM(30));
+      const holes = opens.filter((o) => Math.abs(o.line.d - L.d) < 1e-9 && Math.abs(o.line.ux - L.ux) < 1e-9).map((o) => { const m = o.x * L.ux + o.z * L.uz, w = MM(o.w) / 2; return [m - w, o.y0, m + w, o.y1]; });
+      faces.push({ ux: L.ux, uz: L.uz, nx, nz, sg, P, a0: b0, a1: b1, y0, y1, holes, hw: L.hw, wrap0: false, wrap1: false, ledge, ru: Math.sign(L.ux * sg * nz - L.uz * sg * nx) || 1 });
     }
-    const am = (a0 + a1) / 2, md = (lo + hi) / 2, sg = (L.ux * am + nx * md - cx) * nx + (L.uz * am + nz * md - cz) * nz >= 0 ? 1 : -1, P = sg > 0 ? hi : lo;
-    // the outside only: no masonry in front of it
-    const front = units.some((b) => {
-      if (mine.has(b)) return false;
-      const c = b.x * nx + b.z * nz, h = across(b, nx, nz), a = b.x * L.ux + b.z * L.uz, ha = across(b, L.ux, L.uz);
-      return (sg > 0 ? c - h > P - MM(10) : c + h < P + MM(10)) && a + ha > a0 + MM(50) && a - ha < a1 - MM(50) && b.top > y0 && b.bot < y1;
-    });
-    if (front) continue;
-    const holes = opens.filter((o) => Math.abs(o.line.d - L.d) < 1e-9 && Math.abs(o.line.ux - L.ux) < 1e-9).map((o) => { const m = o.x * L.ux + o.z * L.uz, w = MM(o.w) / 2; return [m - w, o.y0, m + w, o.y1]; });
-    faces.push({ ux: L.ux, uz: L.uz, nx, nz, sg, P, a0, a1, y0, y1, holes, hw: L.hw, wrap0: false, wrap1: false, ru: Math.sign(L.ux * sg * nz - L.uz * sg * nx) || 1 });
   }
   // the corners: an end meets the plane of a face across it
   for (const F of faces) for (const G of faces) {
@@ -250,18 +268,42 @@ export function facadeFaces(objects) {
     const k = G.nx * F.ux + G.nz * F.uz;   // (G's across = ± F's along)
     if (Math.abs(k) < 0.99) continue;
     const aG = G.P * Math.sign(k), bF = F.P * Math.sign(F.nx * G.ux + F.nz * G.uz);
-    if (bF < G.a0 - 2 * F.hw - MM(80) || bF > G.a1 + 2 * F.hw + MM(80) || G.y1 < F.y0 || G.y0 > F.y1) continue;
+    if (bF < G.a0 - 2 * F.hw - MM(80) || bF > G.a1 + 2 * F.hw + MM(80) || Math.min(G.y1, F.y1) - Math.max(G.y0, F.y0) < (F.y1 - F.y0) * 0.5) continue;
     const out = G.sg * k;   // (G faces along +u of F: F's far end)
     const wrap = Math.abs(F.ux) >= Math.abs(F.uz);
     if (out > 0 && Math.abs(aG - F.a1) < 2 * G.hw + MM(80)) { F.a1 = aG; F.wrap1 = wrap; }
     if (out < 0 && Math.abs(aG - F.a0) < 2 * G.hw + MM(80)) { F.a0 = aG; F.wrap0 = wrap; }
   }
+  // up the ring beam cast on the wall (its band over the top course) and the gables of the
+  // roof (built with it, not of units): the face goes up to the gable's slopes — the part
+  // over them a hole in 100 mm steps
+  for (const F of faces) {
+    for (const b of objects.all('belt')) {
+      if (!(b.fill > 0.3) || b.lform || Math.abs(b.top - F.y1) > MM(40)) continue;
+      const am = (F.a0 + F.a1) / 2, c = F.P - F.sg * F.hw, [x, z] = [F.ux * am + F.nx * c, F.uz * am + F.nz * c];
+      if (beltContains(b, x, z)) F.y1 = Math.max(F.y1, b.top + b.H);
+    }
+    for (const r of objects.all('proof')) {
+      if (!r.done?.plate || F.y1 < r.y0 - MM(60)) continue;   // (the wall under the roof, not a plinth)
+      for (const pts of gableWalls(r)) {
+        const q = pts.map(([x, y, z]) => [x * F.ux + z * F.uz, y, x * F.nx + z * F.nz]);
+        if (q.some(([, , c]) => Math.abs(c - F.P) > MM(80))) continue;
+        q.sort((p, o) => p[0] - o[0]);
+        const topAt = (a) => { for (let i = 1; i < q.length; i++) if (a <= q[i][0]) { const t = (a - q[i - 1][0]) / Math.max(1e-9, q[i][0] - q[i - 1][0]); return q[i - 1][1] + (q[i][1] - q[i - 1][1]) * Math.max(0, Math.min(1, t)); } return q.at(-1)[1]; };
+        const Y = Math.max(...q.map((p) => p[1])), st = MM(100);
+        if (Y <= F.y1) continue;
+        F.y1 = Y;
+        for (let a = F.a0 - MM(200); a < F.a1 + MM(200); a += st) { const yt = Math.min(topAt(a), topAt(a + st)); if (yt < Y - MM(1)) F.holes.push([a, yt, a + st, Y + MM(10)]); }
+        F.gable = true;
+      }
+    }
+  }
   for (const F of faces) F.key = faceKey(F);
   return faces;
 }
-const faceKey = (F) => `${Math.round(Math.atan2(F.uz, F.ux) * 1000)}:${F.sg}:${Math.round(F.P / CELL)}`;
+const faceKey = (F) => `${Math.round(Math.atan2(F.uz, F.ux) * 1000)}:${F.sg}:${Math.round(F.P / CELL)}:${Math.round(F.y0 / CELL)}`;
 // the record of a face (by its plane: the walls may be re-laid)
-export const recOf = (recs, F) => recs.find((r) => r.ux * F.ux + r.uz * F.uz > 0.999 && r.sg === F.sg && Math.abs(r.P - F.P) < MM(40));
+export const recOf = (recs, F) => recs.find((r) => r.ux * F.ux + r.uz * F.uz > 0.999 && r.sg === F.sg && Math.abs(r.P - F.P) < MM(20) && (r.y0 == null || Math.abs(r.y0 - F.y0) < MM(150)));
 export const W = (F, a, y, off) => { const c = F.P + F.sg * off; return [F.ux * a + F.nx * c, y, F.uz * a + F.nz * c]; };
 // the face's extent at an offset (round the corner it wraps)
 export const ext = (F, off) => [F.a0 - (F.wrap0 ? off : 0), F.y0, F.a1 + (F.wrap1 ? off : 0), F.y1];
@@ -404,6 +446,14 @@ export function buildFacade(F, rec, live) {
   }
   const add = (m) => { if (m) group.add(m); return m; };
   add(ge.mesh(mat('eps', () => stdMat(epsTex()))));
+  // over a plinth standing out: the starter track (цокольный профиль) the first row of
+  // boards stands in — its base under them, a lip up their face, a drip over the plinth
+  if (F.ledge && eps.length) {
+    const alu = mat('track', () => new THREE.MeshStandardMaterial({ color: 0xc4c8cc, metalness: 0.8, roughness: 0.35 })), yaw = Math.atan2(-F.uz, F.ux), am = (F.a0 + F.a1) / 2, L = F.a1 - F.a0;
+    for (const [y, h, o, d] of [[F.y0 + MM(1), MM(2), OFF.eps / 2, OFF.eps + MM(4)], [F.y0 + MM(15), MM(30), OFF.eps + MM(2), MM(2)], [F.y0 - MM(4), MM(8), OFF.eps + MM(5), MM(3)]]) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(L, h, d), alu); m.position.set(...W(F, am, y, o)); m.rotation.y = yaw; m.castShadow = true; group.add(m);
+    }
+  }
   if (gd.length) {
     const dm = new THREE.InstancedMesh(new THREE.CylinderGeometry(MM(30), MM(32), MM(4), 16), mat('dowel', () => new THREE.MeshStandardMaterial({ color: '#d8d8d2', roughness: 0.55 })), gd.length);
     const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(F.sg * F.nx, 0, F.sg * F.nz)), m4 = new THREE.Matrix4();

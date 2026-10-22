@@ -447,7 +447,7 @@ export class WallView {
     this.marks = false;    // planned openings shown (while working on walls)
     objects.on((id, rec) => {
       if (rec?.type === 'blind' || this._blindIds?.has(id)) { this.blindDirty = true; this.proofDirty = true; return; }
-      if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; if (rec?.type === 'proof' || !rec) this.dirty = true; return; }   // (the nuts on the studs follow the wall plate)
+      if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; if (rec?.type === 'proof' || !rec) { this.dirty = true; this._faces = null; this.facadeDirty = true; } return; }   // (the nuts on the studs follow the wall plate)
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
     });
