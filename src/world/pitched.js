@@ -707,6 +707,7 @@ function slopeWindow(F, q, coff, covered, kind) {
   const o = F.pt(q.x, q.t, covered ? coff + MM(lift) : MM(30)), up = F.pt(q.x, q.t + 1e-3, 0).sub(F.pt(q.x, q.t, 0)).normalize();
   _bx.crossVectors(up, F.n).normalize();
   _bm.makeBasis(_bx, up, F.n).setPosition(o); grp.applyMatrix4(_bm);
+  grp.traverse((m) => { if (m.isMesh) m.userData.rwin = q.id ?? null; });   // (a tap on it: the window, not the roof)
   return grp;
 }
 // a window on a flat roof: on a kerb 150 high, the membrane turned up it
