@@ -104,11 +104,24 @@ export function placeLintelForm(app, p, screen, finger) {
   const c = 50 * S, bear = BEAR * S, W = op.width;
   const sup = bears(app, op, bear - 0.0001);
   const top = sup ?? op.top, H = (op.kind === 'brick' ? 2 * k.H + k.bed : k.H) * S;
-  const L0 = op.gap * S + 2 * bear, ni = Math.ceil(L0 / c - 1e-6), nj = Math.max(2, Math.round(W / c)), L = ni * c, Wc = nj * c;
-  const s0 = op.c0 - (L - op.gap * S) / 2, tx = -op.uz, tz = op.ux;   // (s0: where it starts along the line)
+  const t = app.terrain, boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf);
+  // the ends: 250 mm onto the course each side — or as far as what already stands in the
+  // course there (a block laid beside it: the formwork runs to its face, no board across
+  // the end — the concrete is cast against the block, no gap left when it comes off)
+  const ls = (b) => (b.x - op.o[0]) * op.ux + (b.z - op.o[1]) * op.uz, lt = (b) => -(b.x - op.o[0]) * op.uz + (b.z - op.o[1]) * op.ux;
+  const hu = (b) => Math.abs(b.hl * (b.ux * op.ux + b.uz * op.uz)) + Math.abs(b.hw * (-b.uz * op.ux + b.ux * op.uz));
+  let sA = op.c0 - bear, sB = op.c1 + bear;
+  const closed = [false, false];
+  for (const b of boxes) {
+    if (b.bot < top - 5 * S || b.bot > top + 40 * S || Math.abs(lt(b)) > W / 2) continue;
+    const s = ls(b), h = hu(b);
+    if (s < op.c0) { const f = s + h; if (f > op.c0 - bear - 400 * S && f <= op.c0 - 150 * S && (!closed[0] || f > sA)) { sA = f; closed[0] = true; } }
+    else if (s > op.c1) { const f = s - h; if (f < op.c1 + bear + 400 * S && f >= op.c1 + 150 * S && (!closed[1] || f < sB)) { sB = f; closed[1] = true; } }
+  }
+  const L = sB - sA, ni = Math.max(2, Math.round(L / c)), nj = Math.max(2, Math.round(W / c)), Wc = nj * c;
+  const s0 = sA, tx = -op.uz, tz = op.ux;   // (s0: where it starts along the line)
   const o = [op.o[0] + op.ux * s0 - tx * Wc / 2, op.o[1] + op.uz * s0 - tz * Wc / 2];
   // the floor under the deck: the ground, or the masonry of a sill
-  const t = app.terrain, boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf);
   const mid = (op.c0 + op.c1) / 2, mx = op.o[0] + op.ux * mid, mz = op.o[1] + op.uz * mid;
   let floor = t.inside(mx, mz) ? t.heightAt(mx, mz) : 0;
   for (const b of boxes) if (b.top < top - 0.002 && Math.abs((mx - b.x) * b.ux + (mz - b.z) * b.uz) < b.hl && Math.abs(-(mx - b.x) * b.uz + (mz - b.z) * b.ux) < b.hw) floor = Math.max(floor, b.top);
@@ -119,7 +132,7 @@ export function placeLintelForm(app, p, screen, finger) {
   const why = sup == null ? 'bear' : hit ? (hit.bot > me.bot - H * 0.5 ? 'above' : 'clash') : taken ? 'taken' : top - floor < 0.004 ? 'low' : null;
   const n = ni * nj;
   const rec = {
-    type: 'belt', lform: { g0: +(op.c0 - s0).toFixed(6), g1: +(op.c1 - s0).toFixed(6), floor: +floor.toFixed(6) },
+    type: 'belt', lform: { g0: +(op.c0 - s0).toFixed(6), g1: +(op.c1 - s0).toFixed(6), floor: +floor.toFixed(6), closed }, clip: [0, 0, +L.toFixed(6), +Wc.toFixed(6)],
     o: o.map((v) => +v.toFixed(6)), u: [+op.ux.toFixed(6), +op.uz.toFixed(6)], c: +c.toFixed(7), ni, nj, mask: rle(new Uint8Array(n).fill(1)),
     top: +top.toFixed(6), H: +H.toFixed(6), lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0,
     segs: [[0, +L.toFixed(6), +(Wc / 2).toFixed(6), +(Wc / 2).toFixed(6), 1]],
