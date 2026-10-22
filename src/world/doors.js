@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { mats, box, glazing } from './windows.js';
+import { GARAGES, GARAGE_SIZE, buildGarage } from './garage.js';
 
 // Doors, built to the opening like the windows (windows.js): the frame (коробка) round the
 // top and the sides, the leaf (полотно) in it with a 3 mm gap, its panels / grooves / glass,
@@ -17,10 +18,12 @@ export const DOORS = {
   door3: { name: 'Межкомнатная, дуб', leaf: 'wood', panels: true },
   door4: { name: 'Межкомнатная белая со стеклом', leaf: 'white', frosted: true },
   door5: { name: 'Двустворчатая входная, дуб', leaf: 'wood', entrance: true, double: true, panels: true, lites: true },
+  // the garage doors (garage.js)
+  ...Object.fromEntries(Object.entries(GARAGES).map(([k, g]) => [k, { name: g.name, garage: g.kind }])),
 };
 export const isDoor = (key) => key in DOORS;
 
-const SIZES = { door1: [400, 9000, 900, 9000], door2: [400, 9000, 900, 9000], door3: [400, 9000, 900, 9000], door4: [400, 9000, 900, 9000], door5: [800, 9000, 900, 9000] };   // (made to any opening: the leaf, its panels, glass and handles follow it)
+const SIZES = { door1: [400, 9000, 900, 9000], door2: [400, 9000, 900, 9000], door3: [400, 9000, 900, 9000], door4: [400, 9000, 900, 9000], door5: [800, 9000, 900, 9000], ...Object.fromEntries(Object.keys(GARAGES).map((k) => [k, GARAGE_SIZE])) };   // (made to any opening: the leaf, its panels, glass and handles follow it)
 export function doorFits(key, w, h) {
   const [w0, w1, h0, h1] = SIZES[key], n = DOORS[key].name;
   if (w < w0) return `Проём ${w} мм узок для двери «${n}» (от ${w0} мм)`;
@@ -86,6 +89,7 @@ function woodUV(g) {
 
 export function buildDoor(key, w, h, t = 300) {
   setDoorTextures();
+  if (DOORS[key].garage) return buildGarage(key, w, h, t, WOOD);
   const P = DOORS[key], M = mats(), D = dmats(), gap = 15;
   const G = { frame: [], leaf: [], groove: [], chrome: [], glass: [], spacer: [], frosted: [], foam: [], tapeOut: [], tapeIn: [], casing: [], seal: [] };
   const ent = !!P.entrance, F = ent ? 50 : 30;            // the frame seen (steel / wood)
