@@ -372,7 +372,12 @@ export class WallView {
     loadCinder(this.cinders);
     this.mortar = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x8a857b, roughness: 0.95 }), this.max.mortar);   // cement-sand mortar: light grey
     // precast concrete lintels; the marked frame of a planned opening (orange, like the cord)
-    this.lintels = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9c9a94, roughness: 0.9 }), this.max.lintel);
+    // (the precast lintels: the concrete of the foundation, set, smooth from the steel mould)
+    const lg = new THREE.BoxGeometry(1, 1, 1), nv = lg.attributes.position.count;
+    lg.setAttribute('aPour', new THREE.Float32BufferAttribute(new Float32Array(nv).fill(-1e9), 1));
+    lg.setAttribute('aSm', new THREE.Float32BufferAttribute(new Float32Array(nv).fill(0.85), 1));
+    lg.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(nv * 3).fill(1), 3));
+    this.lintels = new THREE.InstancedMesh(lg, makeCastConcreteMaterial({ uClock: { value: 0 }, uCure: { value: 1 } }, { steel: true }), this.max.lintel);
     this.frames = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xff6a1c, roughness: 0.6, emissive: 0x401000 }), this.max.frame);
     this.cord = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 6), new THREE.MeshStandardMaterial({ color: 0xff4a1c, roughness: 0.6 }));
     for (const m of [this.blocks, this.bricks, this.cinders, this.mortar]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; this.group.add(m); }
@@ -610,12 +615,29 @@ export class WallView {
           this.owner.beltBoards[nbb++] = b.id ?? null;
         }
         const n = Math.max(1, Math.round(L / (600 * S)));
-        for (let k = 0; k <= n; k++) {
+        for (let k = 0; k <= n && !b.lform; k++) {
           const f = k / n - 0.5, ss = cs + (along ? f * (L - 60 * S) : 0) + ns * (th / 2 + 20 * S), tt = ct + (along ? 0 : f * (L - 60 * S)) + nt * (th / 2 + 20 * S);
           const [sx, sz] = toWorld(b, ss, tt);
           this.wood.setMatrixAt(nw, m.compose(P.set(sx, yc + 15 * S, sz), Q, Sv.set(40 * S, h + 30 * S, 40 * S))); this.owner.wood[nw++] = b.id ?? null;
         }
       }
+    }
+    // a lintel cast in place: under it over the opening the deck (plywood), the beams across
+    // and the posts down to the floor; clamps (studs) round the side boards
+    for (const b of [...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])]) {
+      if (!b.lform || b.stripped || nw >= this.max.wood - 30) continue;
+      const { g0, g1, floor } = b.lform, Wc = b.nj * b.c, th = BELT.board * S, yaw = Math.atan2(-b.u[1], b.u[0]), dk = 21 * S;
+      const at = (s, t, y, sx, sy, sz, rot = 0) => { const [x, z] = toWorld(b, s, t); Q.setFromAxisAngle(_Y, yaw + rot); this.wood.setMatrixAt(nw, m.compose(P.set(x, y, z), Q, Sv.set(sx, sy, sz))); this.owner.wood[nw++] = b.id ?? null; };
+      at((g0 + g1) / 2, Wc / 2, b.top - dk / 2, g1 - g0, dk, Wc + 2 * th);
+      const span = g1 - g0, nb = span > 1300 * S ? Math.ceil(span / (900 * S)) + 1 : 2, by = b.top - dk - 50 * S;
+      for (let k = 0; k < nb; k++) {
+        const s = g0 + 80 * S + (span - 160 * S) * k / (nb - 1);
+        at(s, Wc / 2, by, 50 * S, 100 * S, Wc + 2 * th + 160 * S);
+        const ph = by - 50 * S - floor;
+        if (ph > 0.002) at(s, Wc / 2, floor + ph / 2, 100 * S, ph, 100 * S);
+      }
+      // the clamps round the boards every 500 mm
+      for (let s = 150 * S; s < b.ni * b.c - 100 * S; s += 500 * S) at(s, Wc / 2, b.top + b.H * 0.6, 40 * S, 40 * S, Wc + 2 * th + 80 * S);
     }
     if (this.terrain) this.slabForm.build([...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])], floorUnder(this.terrain, O.all('belt')));
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
@@ -629,7 +651,7 @@ export class WallView {
     this.blocks.count = nb; this.bricks.count = nk; this.cinders.count = ncb; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu; this.beltBoards.count = nbb; this.beltBoards.geometry.attributes.aBoard.needsUpdate = true;
     for (const im of [this.blocks, this.bricks, this.cinders, this.mortar, this.lintels, this.frames, this.wood, this.ublocks, this.beltBoards]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     this._buildFill();
-    for (const im of [this.blocks, this.bricks, this.cinders]) im.instanceColor.needsUpdate = true;
+    for (const im of [this.blocks, this.bricks, this.cinders]) if (im.instanceColor) im.instanceColor.needsUpdate = true;
     this.bricks.geometry.attributes.aSkin.needsUpdate = true;
   }
 

@@ -3,7 +3,7 @@ import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt, beltTopAt, boxOf, dims } from './freeBrick.js';
-import { placeLintel, placeProp, uRun, cageRec, uStrength } from './lintels.js';
+import { placeLintel, placeProp, placeLintelForm, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld } from './belt.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
@@ -42,6 +42,14 @@ function lintelWhy(f) {
     : f.why === 'above' ? `над опорой уже лежит следующий ряд — перемычку кладут раньше него: снимите блоки над опорой (по ${Math.round((f.lenMm - f.gapMm) / 2)} мм с каждой стороны)`
     : f.why === 'clash' ? `на месте перемычки уже что-то лежит — снимите это («Удалить»)`
     : `опоры меньше 250 мм: по бокам проёма (${f.gapMm} мм) нужно по ${Math.round((f.lenMm - f.gapMm) / 2)} мм кладки в том же ряду`;
+}
+
+function lformWhy(f) {
+  return f.why === 'bear' ? 'по бокам проёма нужно по 250 мм кладки в том же ряду — опалубка ляжет на неё'
+    : f.why === 'above' ? 'над опорой уже лежит следующий ряд — опалубку ставят до него: снимите блоки над опорой'
+    : f.why === 'taken' ? 'здесь опалубка уже стоит'
+    : f.why === 'low' ? 'под проёмом нет места для стоек'
+    : 'на месте перемычки уже что-то лежит — снимите это («Удалить»)';
 }
 
 export class WallTool {
@@ -735,6 +743,18 @@ export class WallTool {
       v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
       app.ui.refresh();
       return;
+    } else if (c.kind === 'lform') {
+      // the formwork of a lintel cast in place: over the opening under the finger
+      const F = placeLintelForm(app, p, scr, fing);
+      c.lform = F; c.free = undefined; c.snap = null;
+      v.live = null; v.liveBed = null;
+      v.liveBelt = F?.ok ? F.rec : null;
+      if (F && !F.ok) {
+        const r = F.rec, L = r.ni * r.c, W = r.nj * r.c, cx = r.o[0] + r.u[0] * L / 2 - r.u[1] * W / 2, cz = r.o[1] + r.u[1] * L / 2 + r.u[0] * W / 2;
+        v.hl = { p: [cx, r.top + r.H / 2, cz], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-r.u[1], r.u[0])).toArray(), s: [L, r.H, W], ok: false };
+      } else v.hl = null;
+      v.dirty = true; app.ui.refresh();
+      return;
     } else if (c.kind === 'blind') {
       c.free = undefined; c.snap = null; v.live = null; v.hl = null; v.liveBed = null;
       this.blind.carryMove(p, e); app.ui.refresh();
@@ -859,7 +879,7 @@ export class WallTool {
     this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');
     this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
+    const NAMES = { lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
     if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
     if (lab && kind === 'blind') { lab.textContent = this.app.settings.blindLayer === 'drain' ? 'Лоток' : 'Опалубка'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель' }[this.app.settings.facLayer || 'eps']; return; }
@@ -876,8 +896,15 @@ export class WallTool {
   }
 
   _carryDrop() {
-    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage, belt = this.carry.belt, bc = this.carry.beltCage, win = this.carry.win;
+    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage, belt = this.carry.belt, bc = this.carry.beltCage, win = this.carry.win, lf = this.carry.lform;
     this._carryCancel();
+    if (ck === 'lform') {
+      if (!lf) { app.ui.toast('Опалубку перемычки — к проёму: промежутку 300…4000 мм между блоками одного ряда'); return; }
+      if (!lf.ok) { app.ui.toast(lformWhy(lf)); return; }
+      app.journal.act('lintel-form', {}, app.clock, () => app.objects.add(lf.rec));
+      app.ui.toast(`Опалубка перемычки над проёмом ${lf.gapMm} мм: днище на стойках, доски по бокам, длина ${lf.lenMm} мм (опора по 250 мм), высота ${lf.hMm} мм — теперь «Каркас», потом бетон`);
+      return;
+    }
     if (ck === 'belt') {
       if (!belt) { app.ui.toast('Опалубку пояса — на верх стены: коснитесь верхнего ряда кладки'); return; }
       if (belt.exists) { app.ui.toast('На этих стенах опалубка пояса уже стоит'); return; }
@@ -917,6 +944,7 @@ export class WallTool {
       }
       const rec = beltCage(bc);
       app.journal.act('belt-cage', {}, app.clock, () => app.objects.add(rec));
+      if (bc.lform) { app.ui.toast('Каркас перемычки: 4 прутка Ø12 на всю длину с опорами, хомуты Ø6 через ≤ 350 мм, звёздочки 40 мм — теперь бетон (ведро или шланг), потом вибратор и правило'); return; }
       app.ui.toast(`Каркас пояса: 4 прутка Ø12 вдоль каждой стены, на углах — внахлёст до дальней стороны, хомуты Ø6 через ≤ 350 мм, звёздочки — теперь бетон (ведро или шланг)`);
       return;
     }
@@ -966,6 +994,7 @@ export class WallTool {
   status() {
     const app = this.app, walls = app.objects.all('wall');
     const c = this.carry;
+    if (c?.kind === 'lform') return c.lform ? (c.lform.ok ? `Опалубка перемычки над проёмом ${c.lform.gapMm} мм, длина ${c.lform.lenMm} мм — отпустите` : 'Красный — ' + lformWhy(c.lform)) : 'Поднесите опалубку к проёму в кладке';
     if (c?.kind === 'belt') return c.belt ? (c.belt.exists ? 'Здесь опалубка пояса уже стоит' : `Опалубка по верху стен: ${c.belt.lenM.toFixed(1).replace('.', ',')} м — отпустите`) : 'Поднесите к верхнему ряду кладки — опалубка встанет по всему его контуру';
     if (c?.kind === 'roof') return this.roof.status(true);
     if (c?.kind === 'facade') return this.facade.status(true);
@@ -982,7 +1011,8 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : c.kind === 'cinder' ? 'Шлакоблок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform'].includes(this.kind)) return {
+      lform: 'Монолитная перемычка: тяните опалубку из лотка к проёму — днище на стойках и доски по бокам встанут над ним с опорой по 250 мм; потом «Каркас», бетон (ведро / шланг), вибратор, правило; когда наберёт прочность — «Удалить» снимет опалубку',
       blind: this.blind.status(false),
       roof: this.roof.status(false),
       proof: this.proof.status(false),
@@ -995,7 +1025,7 @@ export class WallTool {
       lintel: 'Перемычка: тяните из лотка к проёму — встанет над ним, опора ≥ 250 мм с каждой стороны, длина подберётся (1,0…3,0 м)',
       prop: 'Подпорка: поставьте в проём под монолитную перемычку, на неё — U-блоки',
       ublock: 'U-блок: кладите на подпорку над проёмом и рядом на кладку, как газоблок; потом каркас и бетон из ведра (Бетон → Ведро)',
-      ucage: 'Каркас: поднесите к ряду U-блоков (в лоток) или в опалубку пояса — 4 прутка Ø12 в хомутах, со звёздочками',
+      ucage: 'Каркас: поднесите к ряду U-блоков (в лоток), в опалубку перемычки или пояса — 4 прутка Ø12 в хомутах, со звёздочками',
     }[this.kind];
     if (this.kind !== 'block' || (c && c.kind !== 'block')) {
       if (c) return 'Несите к кирпичу (продолжит ряд, ляжет рядом или повернёт за угол), на кладку или на плиту';
@@ -1045,14 +1075,14 @@ export class WallTool {
       const b = app.objects.get(id), sl = isSlab(b);
       if (!(b.fill > 0.05)) {
         app.journal.act('belt-remove', {}, app.clock, () => { for (const c of app.objects.all('cage').filter((r) => r.beltId === b.id)) app.objects.remove(c.id); app.objects.remove(b.id); });
-        app.ui.toast(sl ? 'Опалубку перекрытия разобрали' : 'Опалубку пояса разобрали');
+        app.ui.toast(sl ? 'Опалубку перекрытия разобрали' : b.lform ? 'Опалубку перемычки разобрали' : 'Опалубку пояса разобрали');
         return;
       }
       if (b.stripped) { app.ui.toast(sl ? 'Стойки и опалубка уже сняты — перекрытие готово' : 'Опалубка уже снята — пояс готов'); return; }
       const k = uStrength(b, app.clock);
       if (!(b.fill >= 0.95) || k < 1) { app.ui.toast(!(b.fill >= 0.95) ? (sl ? 'Перекрытие залито не доверху — долейте бетон' : 'Пояс залит не доверху — долейте бетон') : `Бетон набирает прочность: ${Math.round(k * 100)} % — ${sl ? (b.cant ? 'стойки рано убирать: консоль без них просядет' : 'стойки рано убирать: плита прогнётся') : 'опалубку рано снимать'}`); return; }
       app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, { stripped: true, set: true }));
-      app.ui.toast(sl ? 'Стойки, балки и фанеру сняли — перекрытие готово' + (b.cant ? ', консоль держится сама' : '') : 'Опалубку сняли — армопояс готов');
+      app.ui.toast(sl ? 'Стойки, балки и фанеру сняли — перекрытие готово' + (b.cant ? ', консоль держится сама' : '') : b.lform ? 'Стойки, днище и доски сняли — монолитная перемычка готова, на неё можно класть дальше' : 'Опалубку сняли — армопояс готов');
       return;
     }
     if (id) {
