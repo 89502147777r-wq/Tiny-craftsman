@@ -12,10 +12,11 @@ import { boxOf } from './freeBrick.js';
 //            four Ø12 bars — goes into their channel; the hose fills the channel with
 //            concrete (HoseTool), which sets; then the prop may come out.
 const S = 1 / 1000 / MODEL_SCALE, _Y = new THREE.Vector3(0, 1, 0);
-export const LINTEL_LENGTHS = [1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000];
+export const LINTEL_LENGTHS = [1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3600, 3900];   // (3ПБ 36, 3ПБ 39 for the wide ones)
+export const MAX_GAP = 4000;   // (wider: no lintel — but a prop and U-blocks still span it)
 const BEAR = 250;
 
-// the opening nearest the finger: a gap 300 … 2700 mm between two units of one course,
+// the opening nearest the finger: a gap 300 … 4000 mm between two units of one course,
 // in one line — { ux, uz, nx, nz, yaw, c0, c1 (gap ends along), o (line point), top,
 // width, gap }. Hand-laid jambs are rarely exact: the two sides may differ in height by
 // up to a third of a course (an uneven footing) and stand off the line by up to a quarter
@@ -30,7 +31,7 @@ export function findOpening(app, p, screen, finger) {
     const dx = b.x - a.x, dz = b.z - a.z, along = dx * a.ux + dz * a.uz, side = -dx * a.uz + dz * a.ux;
     if (Math.abs(side) > Math.min(a.hw, b.hw) / 2) continue;
     const gap = (Math.abs(along) - a.hl - b.hl) / S;
-    if (gap < 300 || gap > 2700) continue;
+    if (gap < 300 || gap > MAX_GAP) continue;
     // nothing of that course in between
     const sg = Math.sign(along), e0 = a.hl, e1 = Math.abs(along) - b.hl;
     if (boxes.some((u, k) => k !== i && k !== j && Math.abs(u.top - a.top) < ty && (() => { const ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux; return Math.abs(sd - side / 2) < a.hw && s + u.hl > e0 + 0.0001 && s - u.hl < e1 - 0.0001; })())) continue;
@@ -47,7 +48,9 @@ export function findOpening(app, p, screen, finger) {
   return best;
 }
 
-// the course beside the opening carries it for `len` (model) from the gap end, each side
+// the course beside the opening carries it for `len` (model) from the gap end, each side:
+// the top it rests on (the highest unit under its ends — hand-laid courses differ by a few
+// mm; the mortar under it makes up the rest), or null when the course is short of it
 function bears(app, op, len) {
   const boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q && !u.lintel && u.kind !== 'prop').map(boxOf);
   const covered = (s0, s1) => {
@@ -56,14 +59,15 @@ function bears(app, op, len) {
       if (Math.abs(b.top - op.top) > op.ty) continue;
       const dx = b.x - op.o[0], dz = b.z - op.o[1], s = dx * op.ux + dz * op.uz, sd = -dx * op.uz + dz * op.ux;
       if (Math.abs(sd) > op.width / 2 + op.side) continue;
-      iv.push([s - b.hl - 0.0012, s + b.hl + 0.0012]);
+      iv.push([s - b.hl - 0.0012, s + b.hl + 0.0012, b.top]);
     }
     iv.sort((x, y) => x[0] - y[0]);
-    let e = s0;
-    for (const [a, b] of iv) { if (a > e + 1e-5) break; e = Math.max(e, b); }
-    return e >= s1 - 1e-5;
+    let e = s0, top = -Infinity;
+    for (const [a, b, t] of iv) { if (a > e + 1e-5) break; if (b > s0 && a < s1) top = Math.max(top, t); e = Math.max(e, b); }
+    return e >= s1 - 1e-5 ? top : null;
   };
-  return covered(op.c0 - len, op.c0) && covered(op.c1, op.c1 + len);
+  const t0 = covered(op.c0 - len, op.c0), t1 = covered(op.c1, op.c1 + len);
+  return t0 != null && t1 != null ? Math.max(t0, t1) : null;
 }
 
 // a precast lintel over the opening under the finger
@@ -76,13 +80,14 @@ export function placeLintel(app, p, screen, finger) {
   const mid = (op.c0 + op.c1) / 2;
   const x = op.o[0] + op.ux * mid, z = op.o[1] + op.uz * mid;
   const L = (len || 3000) * S;
-  const bear = !!len && bears(app, op, ((len - op.gap) / 2) * S - 0.0001);
-  const bot = op.top + bed, q = new THREE.Quaternion().setFromAxisAngle(_Y, op.yaw);
+  const sup = len ? bears(app, op, ((len - op.gap) / 2) * S - 0.0001) : null, bear = sup != null;
+  const bot = (bear ? sup : op.top) + bed, q = new THREE.Quaternion().setFromAxisAngle(_Y, op.yaw);
   // nothing in its way above the course
   const me = { x, z, yaw: op.yaw, ux: op.ux, uz: op.uz, hl: L / 2, hw: op.width / 2, bot, top: bot + H };
-  const clash = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf).some((b) => me.bot < b.top - 1e-5 && me.top > b.bot + 1e-5 && overlap(me, b));
-  // why it can't go: too wide / short of bearing / something above the course (a jamb a course higher)
-  const why = !len ? 'long' : !bear ? 'bear' : clash ? 'clash' : null;
+  const hit = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf).find((b) => me.bot < b.top - 1e-5 && me.top > b.bot + 1e-5 && overlap(me, b));
+  // why it can't go: too wide / short of bearing / the next course already over its ends /
+  // something else in its place
+  const why = !len ? 'long' : !bear ? 'bear' : hit ? (hit.bot > me.bot - (me.top - me.bot) * 0.5 ? 'above' : 'clash') : null;
   return { ok: !why, why, how: 'lintel', kind: 'lintel', lenMm: len || 0, gapMm: Math.round(op.gap), p: new THREE.Vector3(x, bot + H / 2, z), q, s: new THREE.Vector3(L, H, op.width), bedY: op.top + bed / 2, bedT: bed };
 }
 
