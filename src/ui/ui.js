@@ -7,7 +7,7 @@ import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
 import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANELS } from '../world/facade.js';
-import { ROOF_TYPES, PITCHES, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
+import { ROOF_TYPES, PITCHES, PITCH_RANGE, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
@@ -433,8 +433,11 @@ export class UI {
         // (a house of several wings: each its own type — the wing first)
         ...(pr && pr.wings.length > 1 ? [G('pwing', wsel >= 0 ? `Крыло ${wsel + 1}` : 'Все крылья', [C('Все крылья', wsel < 0, () => set({ wallKind: 'proof', proofWing: -1 })), ...pr.wings.map((w, i) => C(wingName(w, i), wsel === i, () => set({ wallKind: 'proof', proofWing: i })))], 'Крыло')] : []),
         G('ptype', `Тип: ${ROOF_TYPES[po.style]}`, Object.entries(ROOF_TYPES).map(([k, l]) => C(l, po.style === k, () => pset({ proofType: k }, { style: k }))), 'Тип'),
-        G('ppitch', `Уклон ${po.pitch}°`, PITCHES[po.style].map((v) => C(`${v}°`, po.pitch === v, () => pset({ proofPitch: v }, { pitch: v }))), 'Уклон'),
-        ...(po.style === 'mono' && pr ? [C('↻ Скат', false, () => { lay({ wallKind: 'proof' }); wt.proof.turnSlope(); })] : []),
+        G('ppitch', `Уклон ${po.pitch}°`, [
+          ...[-5, -1, 1, 5].map((d) => { const v = Math.max(PITCH_RANGE[po.style][0], Math.min(PITCH_RANGE[po.style][1], po.pitch + d)); return C(`${d > 0 ? '+' : '−'}${Math.abs(d)}°`, false, () => pset({ proofPitch: v }, { pitch: v })); }),
+          ...PITCHES[po.style].map((v) => C(`${v}°`, po.pitch === v, () => pset({ proofPitch: v }, { pitch: v }))),
+        ], 'Уклон'),
+        ...(pr ? [po.style === 'mono' ? C('↻ Скат', false, () => { lay({ wallKind: 'proof' }); wt.proof.turnSlope(); }) : C('↻ Конёк', false, () => { lay({ wallKind: 'proof' }); wt.proof.turnRidge(); })] : []),
         G('pcover', COVERS[po.cover.kind], Object.entries(COVERS).map(([k, l]) => G('pc' + k, l, Object.entries(COVER_COLOURS[k]).map(([q, [n]]) => C('◼ ' + n, po.cover.kind === k && po.cover.col === q, () => pset({ proofCover: k, proofCol: q }, { cover: true }))), null, C('', po.cover.kind === k, () => pset({ proofCover: k }, { cover: true })))), 'Покрытие'),
         // the gutters: the kind → the colour (changed on the roof at once when they hang)
         G('pgut', `Водосток: ${GUTTERS[po.gut.kind]}`, Object.entries(GUTTERS).map(([k, l]) => G('pg' + k, l, Object.entries(GUTTER_COLOURS).map(([q, [n]]) => C('◼ ' + n, po.gut.kind === k && po.gut.col === q, () => pset({ proofGut: k, proofGutCol: q, proofStage: 'gutter' }, { gut: true }))), null, C('', po.gut.kind === k, () => pset({ proofGut: k, proofStage: 'gutter' }, { gut: true })))), 'Водосток'),

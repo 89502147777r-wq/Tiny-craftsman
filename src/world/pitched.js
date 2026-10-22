@@ -31,6 +31,8 @@ const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const PITCHED = { plate: 150, rafterW: 50, rafterH: 200, step: 600, eave: 500, gable: 400, cb: 50, batten: [25, 100], sheet: { metal: 1180, seam: 500, shingle: 1000 } };
 export const ROOF_TYPES = { gable: 'Двускатная', hip: 'Вальмовая', mono: 'Односкатная' };
 export const PITCHES = { gable: [25, 30, 35, 45], hip: [20, 25, 30, 35], mono: [8, 12, 15, 20] };
+// any pitch within these (the chips above are the usual ones; ± steps between them)
+export const PITCH_RANGE = { gable: [10, 60], hip: [10, 50], mono: [3, 35] };
 export const COVERS = { metal: 'Металлочерепица', seam: 'Фальц', shingle: 'Мягкая черепица' };
 export const COVER_COLOURS = {
   metal: { ral3005: ['Вишня', 0x5b1f26], ral8017: ['Шоколад', 0x45322e], ral7024: ['Графит', 0x474a50], ral6005: ['Зелёный мох', 0x163f33], ral3011: ['Красно-коричневый', 0x7a2622] },

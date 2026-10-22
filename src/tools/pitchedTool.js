@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { boxOf } from './freeBrick.js';
-import { wingShape, roofTop, planeAt, STAGES, FINGER, PITCHED, PITCHES, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
+import { wingShape, roofTop, planeAt, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
 //   plate – carried from the tray onto the top of the walls: the house is found (its plan
@@ -21,12 +21,21 @@ const PREV = { frame: 'plate', memb: 'frame', battens: 'memb', cover: 'battens',
 // the house under the roof: the plan of the masonry in a grid along its walls, filled in,
 // cut into rectangles → the wings; the top of the walls (or of the ring beam on them)
 export function findHouse(app) {
-  const units = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel).map(boxOf);
+  const all = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel).map(boxOf);
+  if (all.length < 8) return null;
+  // the walls the roof stands on: the upper courses (a plinth, a wider first tier under them
+  // would push the outline out)
+  const yMax = Math.max(...all.map((b) => b.top)), units = all.filter((b) => b.top > yMax - MM(1500));
   if (units.length < 8) return null;
-  // the way the walls run: the most common direction (mod 90°)
+  // the way the walls run: the most common direction (mod 90°), then the mean of the units
+  // near it (laid by hand: each a little off — the plate must follow the walls, not a 1,4° step)
+  const md = (b) => (((b.yaw % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2));
   const bins = new Map();
-  for (const b of units) { const k = Math.round((((b.yaw % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2)) * 40); bins.set(k, (bins.get(k) || 0) + b.hl); }
-  const yaw = [...bins].sort((p, q) => q[1] - p[1])[0][0] / 40, ux = Math.cos(yaw), uz = -Math.sin(yaw);
+  for (const b of units) { const k = Math.round(md(b) * 40); bins.set(k, (bins.get(k) || 0) + b.hl); }
+  const y0b = [...bins].sort((p, q) => q[1] - p[1])[0][0] / 40;
+  let sx = 0, sy = 0;
+  for (const b of units) { let d = md(b) - y0b; if (d > Math.PI / 4) d -= Math.PI / 2; if (d < -Math.PI / 4) d += Math.PI / 2; if (Math.abs(d) < 0.06) { sx += b.hl * Math.cos(d * 4); sy += b.hl * Math.sin(d * 4); } }
+  const yaw = y0b + Math.atan2(sy, sx) / 4, ux = Math.cos(yaw), uz = -Math.sin(yaw);
   const C = MM(100), toA = (x, z) => x * ux + z * uz, toD = (x, z) => -x * uz + z * ux;
   let a0 = Infinity, a1 = -Infinity, d0 = Infinity, d1 = -Infinity;
   for (const b of units) for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
@@ -109,7 +118,7 @@ export function findHouse(app) {
   let y0 = Math.max(...units.map((b) => b.top));
   for (const b of app.objects.all('belt')) if (b.fill > 0.5 && b.top + b.H > y0 - MM(50) && b.top + b.H < y0 + MM(400)) y0 = Math.max(y0, b.top + b.H);
   const T = [...units.map((b) => 2 * Math.min(b.hw, b.hl))].sort((p, q) => p - q)[Math.floor(units.length / 2)];
-  const g = Math.min(...units.map((b) => b.bot)) - MM(20);
+  const g = Math.min(...all.map((b) => b.bot)) - MM(20);
   return { y0: +y0.toFixed(6), T: +T.toFixed(6), g: +g.toFixed(6), wings: wings.map((w) => ({ cx: +w.cx.toFixed(6), cz: +w.cz.toFixed(6), ux: +w.ux.toFixed(6), uz: +w.uz.toFixed(6), A: +w.A.toFixed(6), B: +w.B.toFixed(6), e: w.e, x: w.x.map((v) => +v.toFixed(6)) })) };
 }
 
@@ -124,7 +133,7 @@ export class PitchedWork {
     const s = this.app.settings, r = this.rec, w = this.wing >= 0 ? r.wings[this.wing] : null;
     const type = w?.style || (r ? r.style : s.proofType) || s.proofType || 'gable', kind = s.proofCover || 'metal';
     const p0 = w?.pitch || (r ? r.pitch : s.proofPitch) || s.proofPitch;
-    const pitch = PITCHES[type].includes(p0) ? p0 : PITCHES[type][type === 'mono' ? 1 : 2];
+    const [plo, phi] = PITCH_RANGE[type], pitch = p0 >= plo && p0 <= phi ? p0 : PITCHES[type][type === 'mono' ? 1 : 2];
     const col = COVER_COLOURS[kind][s.proofCol] ? s.proofCol : Object.keys(COVER_COLOURS[kind])[0];
     const gk = GUTTERS[s.proofGut] ? s.proofGut : 'round', gc = GUTTER_COLOURS[s.proofGutCol] ? s.proofGutCol : 'graphite';
     return { style: type, pitch, cover: { kind, col }, gut: { kind: gk, col: gc }, md: w?.md || 0 };
@@ -164,6 +173,18 @@ export class PitchedWork {
   }
   // the slope of a mono-pitch wing: which way it rises (round the four sides)
   turnSlope() { const r = this.rec; if (!r) return; const k = this.wing, w = r.wings[k >= 0 ? k : 0]; this.applyOpts({ md: ((w.md || 0) + 1) % 4 }); }
+  // the ridge of a wing turned 90° (along the other side): a wing on its own (not joined to
+  // another), till its rafters are up
+  turnRidge() {
+    const r = this.rec, app = this.app; if (!r) return;
+    const k = this.wing, list = k >= 0 ? [k] : r.wings.map((_, i) => i);
+    const framed = (wi) => r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === wi);
+    if (list.some(framed)) { app.ui.toast('Стропила уже стоят — конёк не повернуть (снимите стропила «Удалить»)'); return; }
+    if (list.some((i) => r.wings[i].e.includes('join') || r.wings.some((o) => o.e.includes('join')))) { app.ui.toast('У дома из нескольких крыльев конёк идёт вдоль каждого крыла — поверните скат у односкатного крыла или выберите тип'); return; }
+    const wings = r.wings.map((w, i) => (list.includes(i) ? { ...w, ux: +(-w.uz).toFixed(6), uz: +w.ux.toFixed(6), A: w.B, B: w.A } : w));
+    this._save({ wings }, 'proof-ridge');
+    app.ui.toast('Конёк повернули на 90°');
+  }
 
   // ---- the finger on the roof: the point of its surface (the top of the rafters) under it ----
   _hit(e) {
