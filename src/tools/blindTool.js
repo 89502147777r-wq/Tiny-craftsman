@@ -3,6 +3,7 @@ import { MODEL_SCALE } from '../config.js';
 import { findHouse } from './pitchedTool.js';
 import { Pile } from './blindPour.js';
 import { uStrength } from './lintels.js';
+import { heights } from '../world/blind.js';
 import { BLIND, BLIND_LAYERS, BLIND_FIN, TILE_COLOURS, planOf, newBlind, layerTop, leftOf, runsOf, setOf } from '../world/blind.js';
 
 // The blind area done by hand (blind.js): the boards and the channels are carried from the
@@ -70,6 +71,7 @@ export class BlindWork {
       const mode = this.app.settings.blindAct === 'rake' ? 'rake' : 'pour';
       if (mode === 'rake' && !pile.h.some((v) => v > 5)) { app.ui.toast(`Разравнивать нечего — сначала «Сыпать лопатой»${L === 'sand' ? ' (или лопатой с кучи песка)' : ' (или лопатой с кучи щебня)'}`); return true; }
       this.drag = { r, y, L, pile, n, a: h.a, d: h.d, mode, t: 0 };
+      if (mode === 'rake') this._rake(this.drag, h.a, h.d, null, true);
       app.ui.toast(mode === 'pour' ? (L === 'sand' ? 'Сыплем песок лопатой — держите палец, куча растёт; потом ведите по куче — разровняете' : 'Сыплем щебень — держите палец; потом ведите по куче граблями') : 'Грабли: ведите по куче — разравниваете до 60 мм');
     } else if (L === 'geo' || L === 'mesh') {
       // (the side of the house it is on: the strip runs along that wall)
@@ -93,7 +95,7 @@ export class BlindWork {
     if (d.pile) {
       const n = d.pile.at(h.a, h.d);
       if (n < 0) return;
-      if (d.mode === 'rake') { const da = h.a - d.a, dd = h.d - d.d, L = Math.hypot(da, dd); if (L > MM(40)) { for (let s = MM(60); s <= L; s += MM(60)) d.pile.rake(d.pile.at(d.a + da * s / L, d.d + dd * s / L), da, dd); d.pile.rake(n, da, dd); d.pile.step(3); d.a = h.a; d.d = h.d; d.dir = [da, dd]; } }
+      if (d.mode === 'rake') { const da = h.a - d.a, dd = h.d - d.d, L = Math.hypot(da, dd); if (L > MM(40)) { for (let s = MM(60); s <= L; s += MM(60)) d.pile.rake(d.pile.at(d.a + da * s / L, d.d + dd * s / L), da, dd); d.pile.rake(n, da, dd); d.pile.step(3); d.a = h.a; d.d = h.d; d.dir = [da, dd]; } this._rake(d, h.a, h.d, d.dir); }
       else { d.a = h.a; d.d = h.d; }
       d.n = n;
       this._show();
@@ -103,6 +105,15 @@ export class BlindWork {
     if (d.last) { const n = Math.ceil(Math.hypot(h.a - d.last[0], h.d - d.last[1]) / (BRUSH * 0.5)); for (let k = 1; k < n; k++) this._dab(d.last[0] + (h.a - d.last[0]) * k / n, d.last[1] + (h.d - d.last[1]) * k / n); }
     this._dab(h.a, h.d);
     this._show();
+  }
+  // the rake in the hands (world/rake.js, the one of «Земля»): its tines on the layer under the
+  // finger, the handle back the way it is drawn (the head goes on ahead); let go — it lies there
+  _rake(d, a, dd, dir, snap = false, down = false) {
+    const rk = this.app.rake; if (!rk) return;
+    const P = planOf(d.r), [x, z] = P.W2(a, dd), n = d.pile.at(a, dd), hs = d.L === 'grav' ? heights(d.r, 'sand') : null;
+    const y = d.r.g + MM(8 + (n >= 0 ? d.pile.h[n] + (hs ? hs[n] : 0) : 0)) - MM(6);
+    if (dir) { const [ex, ez] = P.W2(dir[0], dir[1]), l = Math.hypot(ex, ez) || 1; this._hdir = new THREE.Vector2(-ex / l, -ez / l); }
+    rk.setPose({ pos: new THREE.Vector3(x, y + (down ? MM(8) : 0), z), dir: this._hdir || new THREE.Vector2(0, 1), lift: down ? 0.45 : 0.62 }, snap);
   }
   // the shovel tips while the finger is held (sand / gravel)
   update(dt) {
@@ -153,6 +164,7 @@ export class BlindWork {
     this.drag = null; this._live(null);
     if (!d) return;
     if (d.pile) {
+      if (d.mode === 'rake') this._rake(d, d.a, d.d, d.dir, false, true);
       d.pile.step(40);
       const patch = d.pile.patch();
       this._save(d.r, patch, 'blind-' + L);
