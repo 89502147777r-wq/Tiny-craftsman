@@ -838,7 +838,7 @@ export class WallView {
       if (!b) continue;
       const g = buildRoof(b, units, r, live && live.slab === r.slab ? live : null);
       if (!g) continue;
-      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = o.userData.rwin ?? r.id ?? null; });
       this.roofs.add(g);
     }
   }
@@ -858,7 +858,7 @@ export class WallView {
       const ws = wins.filter((q) => q.host === r.id && !q.flat);
       if (lw && !lw.flat && r.id != null) ws.push(lw);
       const g = buildPitched(r, lv, ws);
-      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = o.userData.rwin ?? r.id ?? null; });
       // the wing chosen for its own type: its outline over the walls
       if (sel >= 0 && r.wings?.[sel]) {
         const w = r.wings[sel], f = wingShape(r, w), pts = [[-w.A, -w.B], [w.A, -w.B], [w.A, w.B], [-w.A, w.B], [-w.A, -w.B]].map(([a, d]) => new THREE.Vector3(...f.W(a, d, r.y0 + 0.002)));
@@ -882,7 +882,7 @@ export class WallView {
     const list = live?.form ? [{ ...live.form, id: null }] : recs;
     for (const r of list) {
       const g = buildBlind(r, live?.form ? null : live);
-      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = o.userData.rwin ?? r.id ?? null; });
       this.blinds.add(g);
     }
   }
