@@ -8,8 +8,8 @@ import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds } from './belt.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
 import { findOpenings, openingAt } from './windowFit.js';
-import { WINDOWS, windowFits } from '../world/windows.js';
-import { DOORS, doorFits } from '../world/doors.js';
+import { WINDOWS, windowFits, WIN_COLOURS } from '../world/windows.js';
+import { DOORS, doorFits, isDoor } from '../world/doors.js';
 import { RoofWork } from './roofTool.js';
 import { FacadeWork } from './facadeTool.js';
 import { BlindWork } from './blindTool.js';
@@ -170,6 +170,16 @@ export class WallTool {
     if (this.mode === 'lay' && this.rowMode && (this.kind === 'block' || this.kind === 'brick' || this.kind === 'cinder')) {
       if (this.rowJob) { this._rowStop('Ряд остановлен'); return true; }
       this._rowDown(p, e); return true;
+    }
+    // a window already in: a touch gives it the colour chosen
+    if (this.mode === 'lay' && this.kind === 'window' && e?.clientX !== undefined) {
+      const id = app.pickObject(e.clientX, e.clientY, 'wall'), r = id && app.objects.get(id);
+      if (r?.type === 'window' && !isDoor(r.key)) {
+        const col = app.settings.winCol || 'white';
+        if ((r.col || 'white') !== col) { app.journal.act('window-colour', {}, app.clock, () => app.objects.update(id, { col })); app.ui.toast(`Окно перекрасили: ${WIN_COLOURS[col][0].toLowerCase()}`); }
+        else app.ui.toast(`Окно уже ${WIN_COLOURS[col][0].toLowerCase()} — выберите другой цвет и коснитесь окна`);
+        return true;
+      }
     }
     if (this.mode === 'lay' && this.kind === 'roof') return this.roof.down(p, e);
     if (this.mode === 'lay' && this.kind === 'facade') return this.facade.down(p, e);
@@ -784,7 +794,7 @@ export class WallTool {
       if (o) {
         const taken = app.objects.all('window').some((w) => Math.hypot(w.x - o.x, w.z - o.z) < MM(150) && Math.abs(w.y - o.y0) < MM(150));
         o.why2 = taken ? 'В этом проёме уже стоит окно или дверь' : !o.ok ? o.why : door ? (o.floor ? doorFits(key, o.w, o.h) : 'Под дверь нужен проём до пола — здесь снизу кладка (это проём под окно)') : windowFits(key, o.w, o.h);
-        if (!o.why2) v.liveWin = { key, w: o.w, h: o.h, t: o.t, x: o.x, y: o.y0, z: o.z, yaw: o.yaw };
+        if (!o.why2) v.liveWin = { key, w: o.w, h: o.h, t: o.t, x: o.x, y: o.y0, z: o.z, yaw: o.yaw, ...(door ? {} : { col: app.settings.winCol || 'white' }) };
         else v.hl = { p: [o.x, (o.y0 + o.y1) / 2, o.z], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), o.yaw).toArray(), s: [o.w * S, o.y1 - o.y0, o.t * S], ok: false };
       }
       v.dirty = true;
@@ -941,7 +951,7 @@ export class WallTool {
       const o = win, door = ck === 'door', key = door ? app.settings.doorKey || 'door1' : app.settings.windowKey || 'pvc2';
       if (!o) { app.ui.toast(door ? 'Дверь — в проём до пола: оставьте его в кладке (перемычка или перекрытие сверху) и поднесите дверь к нему' : 'Окно — в проём: оставьте его в кладке (перемычка или перекрытие сверху) и поднесите окно к нему'); return; }
       if (o.why2) { app.ui.toast(o.why2); return; }
-      app.journal.act(door ? 'door' : 'window', {}, app.clock, () => app.objects.add({ type: 'window', key, w: o.w, h: o.h, t: o.t, x: +o.x.toFixed(6), y: +o.y0.toFixed(6), z: +o.z.toFixed(6), yaw: +o.yaw.toFixed(5) }));
+      app.journal.act(door ? 'door' : 'window', {}, app.clock, () => app.objects.add({ type: 'window', key, ...(door ? {} : { col: app.settings.winCol || 'white' }), w: o.w, h: o.h, t: o.t, x: +o.x.toFixed(6), y: +o.y0.toFixed(6), z: +o.z.toFixed(6), yaw: +o.yaw.toFixed(5) }));
       app.ui.toast(door ? `${DOORS[key].name}: ${o.w} × ${o.h} мм — коробка на пене с зазором 15 мм, полотно на ${DOORS[key].entrance ? 'трёх петлях, порог' : 'двух петлях'}, наличники` : `${WINDOWS[key].name}: ${o.w} × ${o.h} мм — рама с зазором 18 мм на пене, снаружи лента и ${WINDOWS[key].sill ? 'отлив, внутри подоконник' : 'пароизоляция внутри'}`);
       return;
     }
@@ -1041,7 +1051,7 @@ export class WallTool {
       rwin: this.rwin.status(),
       facade: this.facade.status(false),
       door: 'Дверь: выберите вид и тяните из лотка к проёму до пола, оставленному в кладке (сверху перемычка, U-блоки или перекрытие) — дверь подгонится по его размеру; снять — «Удалить»',
-      window: 'Окно: выберите вид и тяните из лотка к проёму, оставленному в кладке (сверху перемычка, U-блоки или перекрытие) — окно подгонится по его размеру; снять — «Удалить»',
+      window: 'Окно: выберите вид и цвет (по умолчанию белое) и тяните из лотка к проёму; коснитесь готового окна — оно перекрасится в выбранный цвет. Проём — в кладке (сверху перемычка, U-блоки или перекрытие) — окно подгонится по его размеру; снять — «Удалить»',
       slab: 'Перекрытие: поднесите к верху стен или армопояса — фанера на балках и стойках по всему дому, доски по краю (консоль — с той стороны, где коснулись); потом «Каркас», бетон шлангом, вибратор, правило; стойки и опалубку снимают («Удалить»), когда бетон наберёт прочность',
       belt: 'Армопояс в опалубке: поднесите к верхнему ряду стен — доски встанут по всему контуру; потом «Каркас», бетон (ведро / шланг), вибратор, правило; снять опалубку — «Удалить», когда бетон наберёт прочность',
       lintel: 'Перемычка: тяните из лотка к проёму — встанет над ним, опора ≥ 250 мм с каждой стороны, длина подберётся (1,0…3,0 м)',

@@ -15,7 +15,7 @@ const S = 1 / 1000 / MODEL_SCALE;
 export const WINDOWS = {
   pvc1: { name: 'ПВХ, одна створка', mat: 'pvc', cols: [1], sill: true },
   pvc2: { name: 'ПВХ, две створки', mat: 'pvc', cols: [1, 1], sill: true },
-  pvc3: { name: 'ПВХ антрацит, три створки', mat: 'anth', cols: [1, 0, 1], sill: true },
+  pvc3: { name: 'ПВХ, три створки', mat: 'pvc', cols: [1, 0, 1], sill: true },
   pano: { name: 'Панорамное, узкий алюминий', mat: 'alu', narrow: true, maxPane: 1600 },
   portal: { name: 'Раздвижной портал', mat: 'alu', slide: true },
 };
@@ -48,7 +48,14 @@ const PROF = {
   slideFrame: [[0, -60], [0, 60], [46, 60], [50, 56], [50, -56], [46, -60]],
 };
 
+// the colour of the frame outside (the PVC is white inside — the face toward the room); white
+// by default, each window its own
+export const WIN_COLOURS = { white: ['Белый', 0xf1f1ec], anth: ['Антрацит', 0x383b3f], black: ['Чёрный', 0x1d1e20], grey: ['Серый', 0x8a8d91], brown: ['Шоколад', 0x4a3328], oak: ['Золотой дуб', 0x9a6638] };
 const MATS = {};
+function frameMat(col, alu) {
+  const k = 'f' + col + (alu ? 'a' : '');
+  return MATS[k] || (MATS[k] = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, color: (WIN_COLOURS[col] || WIN_COLOURS.white)[1], roughness: alu ? 0.36 : 0.32, metalness: alu ? 0.45 : 0 }));
+}
 export function mats() {
   if (MATS.pvc) return MATS;
   const std = (o) => new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, ...o });
@@ -63,7 +70,9 @@ export function mats() {
   MATS.foam = std({ color: 0xe6cf78, roughness: 0.95 });
   MATS.tapeOut = std({ color: 0x4a4d52, roughness: 0.9 });
   MATS.tapeIn = std({ color: 0xc9ccd0, roughness: 0.4, metalness: 0.6 });
-  MATS.glass = new THREE.MeshPhysicalMaterial({ color: 0x6f8584, roughness: 0.02, metalness: 0, transparent: true, opacity: 0.1, ior: 1.7, specularIntensity: 1, envMapIntensity: 1.1, depthWrite: false, side: THREE.DoubleSide });   // (clear, a little green at its edge; the reflections make it)
+  // solar-control glazing: a little mirrored, ~35–40 % of the light through (two panes:
+  // ≈ 0,64² ≈ 0,4), the sky and the site in it
+  MATS.glass = new THREE.MeshPhysicalMaterial({ color: 0x6f838d, roughness: 0.03, metalness: 0.6, transparent: true, opacity: 0.36, ior: 1.6, specularIntensity: 1, envMapIntensity: 1.6, depthWrite: false, side: THREE.DoubleSide });
   return MATS;
 }
 
@@ -105,7 +114,7 @@ export function glazing(G, x0, y0, x1, y1, z, gap = 16) {
 
 // The window `key` for an opening w × h (mm) in a wall t thick: a THREE.Group in the model's
 // scale, its origin at the middle of the bottom of the opening, in the middle of the wall
-export function buildWindow(key, w, h, t = 300) {
+export function buildWindow(key, w, h, t = 300, col = 'white') {
   const P = WINDOWS[key], M = mats(), gap = 18;
   const G = { frame: [], inner: [], seal: [], bead: [], glass: [], spacer: [], chrome: [], board: [], foam: [], tapeOut: [], tapeIn: [] };
   const X0 = -w / 2 + gap, X1 = w / 2 - gap, Y0 = (P.sill ? 30 : 10) + gap, Y1 = h - gap;   // the frame's outside (a sill support profile under a PVC frame)
@@ -192,13 +201,14 @@ export function buildWindow(key, w, h, t = 300) {
   const g = new THREE.Group();
   for (const [k, list] of Object.entries(G)) {
     if (!list.length) continue;
-    const mat = k === 'frame' ? M[P.mat] : k === 'inner' ? M.pvc : k === 'bead' ? M[P.mat] : k === 'board' ? (P.mat === 'pvc' || P.mat === 'anth' ? M.pvc : M.board) : M[k];
+    const fm = frameMat(col, P.mat === 'alu');
+    const mat = k === 'frame' ? fm : k === 'inner' ? M.pvc : k === 'bead' ? fm : k === 'board' ? (P.mat === 'pvc' || P.mat === 'anth' ? M.pvc : M.board) : M[k];
     const mesh = new THREE.Mesh(mergeGeometries(list.map((q) => (q.index ? q.toNonIndexed() : q)), false), mat);
     mesh.castShadow = k !== 'glass'; mesh.receiveShadow = k !== 'glass';
     if (k === 'glass') mesh.renderOrder = 2;
     g.add(mesh);
   }
   g.scale.setScalar(S);
-  g.userData.window = { key, w, h };
+  g.userData.window = { key, w, h, col };
   return g;
 }
