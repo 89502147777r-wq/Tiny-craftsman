@@ -80,6 +80,8 @@ export class BlindChannel {
     this.spilt = 0;
   }
   has(t) { return !!t && t.id === this.b.id; }
+  // (from the hose it heaps up 40 mm over the mark under it: it runs out from there)
+  brim(n) { return this.caps[n] + 40; }
   get full() { return this.h.every((v, n) => !this.ok[n] || v >= this.caps[n] - 3); }
   at(x, z) {
     const [a, d] = this.P.frame(x, z), k = this.P.cellAt(a, d), n = k < 0 ? undefined : this.CL.index.get(k);
@@ -119,9 +121,10 @@ export class BlindChannel {
   }
   step(dt) {
     let moved = 0;
-    const subs = Math.max(1, Math.ceil(dt * 20 / 0.2)), d = dt / subs;
+    // (from the pump it runs: the mound under the hose spreads out over the gravel)
+    const subs = Math.min(40, Math.max(1, Math.ceil(dt * 60 / 0.2))), d = dt / subs;
     for (let s = 0; s < subs; s++) {
-      moved += this._flow(d, 2.5, 20);
+      moved += this._flow(d, 2.5, 60);
     }
     return moved;
   }

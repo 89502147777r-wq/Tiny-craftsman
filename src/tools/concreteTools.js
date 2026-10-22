@@ -183,7 +183,7 @@ export class HoseTool extends ConcreteTool {
     // (a ring beam takes the hose near its pump rate: 37 … 60 l/s; the narrow channel of the
     // U-blocks 8 l/s)
     const lps = isSlab(this.uT) || this.uT.type === 'blind' ? (app.settings.pump || PUMP[1]) * (this.uT.type === 'blind' ? 300 : 1000) : this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;   // (a slab: the pump's whole rate)
-    if (!ch.full && ch.h[i] < (ch.caps ? ch.caps[i] : ch.cap) - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
+    if (!ch.full && ch.h[i] < (ch.brim ? ch.brim(i) : ch.cap) - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
     else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT.type === 'blind' ? 'Здесь отмостка полна — ведите шланг дальше вдоль дома' : isSlab(this.uT) ? 'Здесь уже 200 мм — ведите шланг дальше по перекрытию' : this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
     else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast(this.uT.type === 'blind' ? 'Отмостка залита — отпустите; потом вибратор, правило по доскам (уклон от стен) и кельма' : isSlab(this.uT) ? 'Перекрытие залито — отпустите; потом вибратор и правило по доскам' : this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
@@ -293,7 +293,7 @@ export class PailTool extends ConcreteTool {
     const app = this.app, ch = this.ch;
     // tipping: on until it runs, then further as it empties
     // (where the channel is full already it is held back: lead it on along the run)
-    const brim = ch.h[this.i] >= (ch.caps ? ch.caps[this.i] : ch.cap) - 2;
+    const brim = ch.h[this.i] >= (ch.brim ? ch.brim(this.i) : ch.cap) - 2;
     if (brim && !ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT?.type === 'blind' ? 'Здесь отмостка полна — ведите ведро дальше' : 'Здесь лоток полон — ведите ведро дальше вдоль ряда'); }
     const want = this.left > 0 && !brim ? 1.25 + 0.75 * (1 - this.left / PAIL_L) : 0.6;
     this.tilt += (want - this.tilt) * (1 - Math.exp(-dt * 4));
