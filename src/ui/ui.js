@@ -506,6 +506,7 @@ export class UI {
         hid(G('win', 'Окна и двери', [
           G('wins', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window'), () => lay({ wallKind: 'window' }))),
           G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'), () => lay({ wallKind: 'door' }))),
+          G('garage', 'Гаражные ворота', pick([['gar1', '1 · Секционные'], ['gar2', '2 · Рулонные'], ['gar3', '3 · Распашные, дерево']], 'doorKey', 'door', 'gar1'), null, C('', has('door') && String(s.doorKey).startsWith('gar'), () => lay({ wallKind: 'door', doorKey: 'gar1' }))),
           del(),
         ], null, C('', has('window', 'door')))),
         hid(G('roofs', 'Кровля', [
