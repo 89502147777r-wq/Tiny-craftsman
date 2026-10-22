@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { boxOf } from './freeBrick.js';
+import { plan as beltPlan, toWorld as beltWorld } from './belt.js';
 import { wingShape, roofTop, planeAt, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
@@ -53,6 +54,30 @@ export function findHouse(app) {
       const dx = x - b.x, dz = z - b.z;
       if (Math.abs(dx * b.ux + dz * b.uz) <= b.hl + C * 0.5 && Math.abs(-dx * b.uz + dz * b.ux) <= b.hw + C * 0.5) grid[j * ni + i] = 1;
     }
+  }
+  // what spans the openings closes the outline too: the lintels, the ring beams / cast
+  // lintels (not units of the walls); and an opening left up to the top with nothing over it
+  // yet — a gap ≤ 3,2 m along a wall between runs longer than it is thick
+  const mark = (x, z) => { const pa = toA(x, z), pd = toD(x, z), i = Math.floor((pa - a0) / C), j = Math.floor((pd - d0) / C); if (i >= 0 && j >= 0 && i < ni && j < nj) grid[j * ni + i] = 1; };
+  for (const b of app.objects.all('unit').filter((u) => u.lintel && u.p && u.s && u.q).map(boxOf)) {
+    for (let s = -b.hl; s <= b.hl; s += C * 0.5) for (let t = -b.hw; t <= b.hw; t += C * 0.5) mark(b.x + b.ux * s - b.uz * t, b.z + b.uz * s + b.ux * t);
+  }
+  for (const b of app.objects.all('belt')) {
+    if (b.kind === 'slab') continue;
+    const P = beltPlan(b);
+    for (const [i, j] of P.cells) { const [x, z] = beltWorld(b, (i + 0.5) * b.c, (j + 0.5) * b.c); mark(x, z); }
+  }
+  {
+    const longRun = Math.ceil(MM(360) / C), maxGap = Math.round(MM(3200) / C), add = [];
+    const scan = (n, m, at) => {
+      for (let a = 0; a < m; a++) {
+        const runs = []; let st = -1;
+        for (let b = 0; b <= n; b++) { const on = b < n && grid[at(a, b)]; if (on && st < 0) st = b; if (!on && st >= 0) { runs.push([st, b]); st = -1; } }
+        for (let k = 1; k < runs.length; k++) { const [p0, p1] = runs[k - 1], [q0, q1] = runs[k]; if (q0 - p1 <= maxGap && p1 - p0 >= longRun && q1 - q0 >= longRun) for (let b = p1; b < q0; b++) add.push(at(a, b)); }
+      }
+    };
+    scan(ni, nj, (j, i) => j * ni + i); scan(nj, ni, (i, j) => j * ni + i);
+    for (const k of add) grid[k] = 1;
   }
   // filled in: what the outside cannot reach
   const out = new Uint8Array(ni * nj), st = [];
@@ -276,15 +301,19 @@ export class PitchedWork {
   // ---- the wall plate and the trims: from the tray ----
   carryMove(p, e) {
     const app = this.app, L = this.stage, r = this.rec;
-    this.place = null;
+    this.place = null; this.why = null;
     if (L === 'plate') {
-      if (r?.done?.plate) { this._live(null); return { ok: false, why: 'Мауэрлат уже лежит' }; }
+      if (r?.done?.plate) { this._live(null); this.why = 'Мауэрлат уже лежит — дальше «Стропила» (снять — «Удалить»)'; return { ok: false, why: this.why }; }
       const key = app.objects.all('unit').length + ':' + app.objects.all('belt').length;
       if (this._hk !== key) { this._hk = key; this._house = findHouse(app); }
       const H = this._house;
-      if (!H) { this._live(null); return { ok: false, why: 'Нет дома: сначала стены (крыша встаёт на верх стен)' }; }
-      // the finger on the top of the walls (near it)
-      if (p && Math.abs(p.y - H.y0) > MM(1500)) { this._live(null); return { ok: false, why: 'Поднесите к верху стен' }; }
+      if (!H) { this._live(null); this.why = 'Не нахожу дом: нужны стены не меньше 2 × 2 м, замкнутые по контуру (крыша встаёт на их верх)'; return { ok: false, why: this.why }; }
+      // the finger over the house (on its walls, over the inside of it — the point there is
+      // the ground or the far wall — or near it): there is one roof, it goes on the house
+      if (p) {
+        const near = H.wings.some((w) => { const dx = p.x - w.cx, dz = p.z - w.cz, a = dx * w.ux + dz * w.uz, d = -dx * w.uz + dz * w.ux; return Math.abs(a) < w.A + MM(4000) && Math.abs(d) < w.B + MM(4000); });
+        if (!near) { this._live(null); this.why = 'Поднесите мауэрлат к дому — к верху стен'; return { ok: false, why: this.why }; }
+      }
       const o = this.opts(), rec = { ...H, ...o, wings: this._ends(H.wings, o.style), done: { plate: true } };
       this.place = { rec };
       this._live({ ghost: rec });
@@ -304,7 +333,7 @@ export class PitchedWork {
   carryDrop() {
     const app = this.app, P = this.place;
     this.place = null; this._live(null);
-    if (!P) { app.ui.toast(this.stage === 'plate' ? 'Мауэрлат — на верх стен' : 'Конёк и планки — на крышу с покрытием'); return; }
+    if (!P) { app.ui.toast(this.why || (this.stage === 'plate' ? 'Мауэрлат — на верх стен' : 'Конёк и планки — на крышу с покрытием')); this.why = null; return; }
     if (P.rec) {
       this._save(P.rec, 'proof-plate');
       const n = P.rec.wings.length, t = ROOF_TYPES[P.rec.style].toLowerCase();
