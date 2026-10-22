@@ -23,7 +23,7 @@ export class Pile {
   // l litres onto cell n: 1 l over a 100 × 100 cell is 100 mm; the shovel's load lands ~200 mm round
   pour(n, l) {
     const ks = [n, ...this.CL.nb[n].filter((q) => q >= 0)], w = [0.4, ...ks.slice(1).map(() => 0.6 / (ks.length - 1))];
-    ks.forEach((q, i) => { this.h[q] = Math.min(400, this.h[q] + l * w[i] * 100); });
+    ks.forEach((q, i) => { this.h[q] += l * w[i] * 100; });
   }
   // it runs down where the slope is steeper than it holds
   step(iter = 6) {
@@ -40,15 +40,15 @@ export class Pile {
     }
     return moved;
   }
-  // the rake at cell n, drawn along (da, dd): over its width (~700 mm) what is above the
+  // the rake at cell n, drawn along (da, dd): across the area (it is worked stroke by stroke) what is above the
   // thickness goes on ahead of it, the hollows under it are filled from the heap it pushes
   rake(n, da, dd) {
     if (n < 0) return;
-    const P = this.P, c = P.cells.get(this.CL.keys[n]), near = [], R = MM(340);
+    const P = this.P, c = P.cells.get(this.CL.keys[n]), near = [], R = this.rec.W + P.C;   // (stroke by stroke across: the whole width)
     const len = Math.hypot(da, dd) || 1, ua = da / len, ud = dd / len;
     for (const [q, k] of this.CL.keys.entries()) {
       const e = P.cells.get(k), ea = e.a - c.a, ed = e.d - c.d;
-      if (Math.abs(ea) > MM(450) || Math.abs(ed) > MM(450)) continue;
+      if (Math.abs(ea) > R + P.C || Math.abs(ed) > R + P.C) continue;
       const al = ea * ua + ed * ud, ac = -ea * ud + ed * ua;
       if (Math.abs(ac) <= R && al > -P.C && al <= P.C * 0.6) near.push(q);
     }
