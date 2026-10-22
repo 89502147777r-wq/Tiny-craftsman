@@ -393,21 +393,13 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
         varying vec3 vCWNrm;
         float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         ${CONC_NOISE_GLSL}
-        // set concrete as on the foundation: matt light grey, cloudy, the fine grain of the
-        // cement and the sand, small round pores (cq: real size)
-        vec3 tcConcSet(vec2 cq, float big, float sm) {
-          vec3 c = vec3(0.19, 0.187, 0.178) * mix(0.88, 1.05, mix(big, 0.6, sm * 0.6));
-          c *= 0.94 + 0.09 * tcSNoise(cq * 650.0) + 0.05 * tcSNoise(cq * 2300.0 + 11.0);
-          vec2 pc = cq * 1100.0;
-          float pr = step(0.982, tcHash(floor(pc))) * (1.0 - smoothstep(0.12, 0.32, length(fract(pc) - 0.5)));
-          return c * (1.0 - pr * 0.35 * (1.0 - 0.7 * sm));
-        }`)
-      .replace('#include <map_fragment>', `#include <map_fragment>
-        float cure = clamp((uClock - vPour) / uCure, 0.0, 1.0);
-        {
-          vec2 cq = vCWPos.xz * ${RESCALE.toFixed(5)};
+        #define TCFB(p) (tcSNoise(p) * 0.5 + tcSNoise((p) * 2.13 + 5.0) * 0.3 + tcSNoise((p) * 4.7 + 9.0) * 0.2)
+        // the concrete of the foundation over a plane (p: model units on it — the top: x, z;
+        // a side: along it, y): fresh — dark wet paste, the stones of the aggregate showing;
+        // set — matt light grey, cloudy, small pores; sm — how much it was worked
+        vec3 tcConcCol(vec2 p, float sm, float cure) {
+          vec2 cq = p * ${RESCALE.toFixed(5)};
           float big = tcSNoise(cq * 7.0) * 0.6 + tcSNoise(cq * 19.0 + 3.0) * 0.4;
-          float sm = vSm;   // how much it was worked: vibrator, rule, trowel (0.3 as poured from a bucket)
           vec3 st = tcStones(cq * 240.0), st2 = tcStones(cq * 115.0 + 17.0);
           float sink = 0.45 + 0.5 * sm;
           float stone = max(smoothstep(sink, sink + 0.2, st.x) * step(0.45, tcHash(floor(cq * 240.0))),
@@ -416,57 +408,48 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
           vec3 paste = vec3(0.062, 0.062, 0.06) * mix(0.92, 1.05, big) * mix(1.0, 0.82, smoothstep(0.2, 1.0, sm));
           vec3 rock = vec3(0.092, 0.09, 0.086) * mix(0.8, 1.25, shade);
           vec3 fresh = mix(paste, rock, stone * 0.8);
-          vec3 setC = tcConcSet(cq, big, sm);
-          vec3 cc = mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2));
-          // a side cast against the boards (seen once the formwork is off): smooth, the joints
-          // and the grain of the 150 mm boards printed in it, a few blowholes — as the foundation
-          float cside = 1.0 - smoothstep(0.35, 0.7, abs(normalize(vCWNrm).y));
+          vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.88, 1.05, mix(big, 0.6, sm * 0.6));
+          float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * sm);
+          setC *= 1.0 - pore * 0.35;
+          return mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2));
+        }
+        // its relief: the lumps as poured, the stones, the fine grit (d/dp of a height)
+        vec2 tcConcGrad(vec2 p, float sm) {
+          float rough = pow(1.0 - sm, 1.5);
+          vec2 cq = p * (55.0 * ${RESCALE.toFixed(5)});
+          float e = 0.3, f0 = TCFB(cq), fx = TCFB(cq + vec2(e, 0.0)), fz = TCFB(cq + vec2(0.0, e));
+          vec2 sq = p * ${RESCALE.toFixed(5)};
+          vec3 st = tcStones(sq * 240.0), st2 = tcStones(sq * 115.0 + 17.0);
+          float sink = 0.45 + 0.5 * sm;
+          float w1 = smoothstep(sink - 0.1, sink + 0.25, st.x) * step(0.45, tcHash(floor(sq * 240.0)));
+          float w2 = smoothstep(sink - 0.05, sink + 0.3, st2.x) * step(0.55, tcHash(floor(sq * 115.0 + 17.0)));
+          vec2 rq = p * (700.0 * ${RESCALE.toFixed(5)});
+          float r0 = tcSNoise(rq), rx = tcSNoise(rq + vec2(0.4, 0.0)), rz = tcSNoise(rq + vec2(0.0, 0.4));
+          return vec2(f0 - fx, f0 - fz) * rough * 1.6 - st.yz * w1 * 0.12 - st2.yz * w2 * 0.06 + vec2(r0 - rx, r0 - rz) * (1.0 - 0.85 * sm) * 0.25;
+        }`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        float cure = clamp((uClock - vPour) / uCure, 0.0, 1.0);
+        {
+          vec3 wn = normalize(vCWNrm);
+          float cside = 1.0 - smoothstep(0.35, 0.7, abs(wn.y));
+          vec3 cc = tcConcCol(vCWPos.xz, vSm, cure);
+          // a side (against the boards / the mould): the same concrete over its plane${steel ? '' : ', the joints of the 150 mm boards printed faintly'}
           if (cside > 0.001) {
-            vec3 wn = normalize(vCWNrm);
-            float along = (abs(wn.x) > abs(wn.z) ? vCWPos.z : vCWPos.x) * ${RESCALE.toFixed(5)}, wy = vCWPos.y * ${RESCALE.toFixed(5)};
+            float along = abs(wn.x) > abs(wn.z) ? vCWPos.z : vCWPos.x;
             float by = fract(vCWPos.y / ${(0.15 / MODEL_SCALE).toFixed(6)});
             float joint = ${steel ? '0.0' : '1.0 - smoothstep(0.0, 0.035, min(by, 1.0 - by))'};
-            float grain = (tcSNoise(vec2(along * 40.0, wy * 1400.0)) * 0.6 + tcSNoise(vec2(along * 9.0, wy * 300.0)) * 0.4) * ${steel ? '0.3' : '1.0'};
-            // the face: the same concrete as the top (its grain, its pores), the boards printed faintly
-            vec2 sq2 = vec2(along, wy);
-            float bigS = tcSNoise(sq2 * 7.0) * 0.6 + tcSNoise(sq2 * 19.0 + 3.0) * 0.4;
-            vec3 face = mix(vec3(0.07, 0.07, 0.067) * mix(0.92, 1.05, bigS), tcConcSet(sq2, bigS, 0.5), smoothstep(0.05, 1.0, cure + (bigS - 0.5) * 0.2)) * (0.97 + 0.06 * grain) * (1.0 - 0.12 * joint);
-            cc = mix(cc, face, cside);
+            cc = mix(cc, tcConcCol(vec2(along, vCWPos.y) + 3.7, vSm, cure) * (1.0 - 0.12 * joint), cside);
           }
           diffuseColor.rgb *= cc * vColor;
         }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {
-          // the top as poured: lumps and the stones of the aggregate standing out of the paste;
-          // worked (vibrator, rule, trowel) — finer, then almost flat (as the foundation)
-          float up = smoothstep(0.35, 0.7, normalize(vCWNrm).y);
-          if (up > 0.001) {
-            float rough = pow(1.0 - vSm, 1.5);
-            vec2 cq = vCWPos.xz * (55.0 * ${RESCALE.toFixed(5)});
-            float e = 0.3;
-            #define TCFB(p) (tcSNoise(p) * 0.5 + tcSNoise((p) * 2.13 + 5.0) * 0.3 + tcSNoise((p) * 4.7 + 9.0) * 0.2)
-            float f0 = TCFB(cq), fx = TCFB(cq + vec2(e, 0.0)), fz = TCFB(cq + vec2(0.0, e));
-            vec2 sq = vCWPos.xz * ${RESCALE.toFixed(5)};
-            vec3 st = tcStones(sq * 240.0), st2 = tcStones(sq * 115.0 + 17.0);
-            float sink = 0.45 + 0.5 * vSm;
-            float w1 = smoothstep(sink - 0.1, sink + 0.25, st.x) * step(0.45, tcHash(floor(sq * 240.0)));
-            float w2 = smoothstep(sink - 0.05, sink + 0.3, st2.x) * step(0.55, tcHash(floor(sq * 115.0 + 17.0)));
-            // and the fine grit of the surface (the paste, the sand in it) — gone only under the trowel, as on the foundation
-            vec2 rq = vCWPos.xz * (700.0 * ${RESCALE.toFixed(5)});
-            float r0 = tcSNoise(rq), rx = tcSNoise(rq + vec2(0.4, 0.0)), rz = tcSNoise(rq + vec2(0.0, 0.4));
-            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 1.6 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06
-                   + vec3(r0 - rx, 0.0, r0 - rz) * (1.0 - 0.85 * vSm) * 0.25;
-            normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz * up);
-          }
-          // the sides: the fine grit of the cast face (as the top, a little smoother)
-          float sd = 1.0 - up;
-          if (sd > 0.001) {
-            vec3 wn = normalize(vCWNrm), ta = abs(wn.x) > abs(wn.z) ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
-            vec2 rq = vec2(dot(vCWPos, ta), vCWPos.y) * (700.0 * ${RESCALE.toFixed(5)});
-            float r0 = tcSNoise(rq), ra = tcSNoise(rq + vec2(0.4, 0.0)), rb = tcSNoise(rq + vec2(0.0, 0.4));
-            vec3 g = (ta * (r0 - ra) + vec3(0.0, 1.0, 0.0) * (r0 - rb)) * 0.16;
-            normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz * sd);
-          }
+          vec3 wn = normalize(vCWNrm);
+          float up = smoothstep(0.35, 0.7, abs(wn.y));
+          vec3 g;   // (a side: a cast face, smoother than a top)
+          if (up > 0.5) { vec2 d = tcConcGrad(vCWPos.xz, vSm); g = vec3(d.x, 0.0, d.y); }
+          else { vec3 ta = abs(wn.x) > abs(wn.z) ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0); vec2 d = tcConcGrad(vec2(dot(vCWPos, ta), vCWPos.y) + 3.7, max(vSm, 0.6)); g = ta * d.x + vec3(0.0, 1.0, 0.0) * d.y; }
+          normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz);
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(mix(0.8, 0.32, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));   // (as the foundation)`);
