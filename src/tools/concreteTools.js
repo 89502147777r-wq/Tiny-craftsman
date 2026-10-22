@@ -4,7 +4,7 @@ import { Channel } from './uPour.js';
 import { BeltChannel, beltContains } from './belt.js';
 import { isSlab } from './slab.js';
 import { BlindChannel } from './blindPour.js';
-import { BLIND } from '../world/blind.js';
+import { BLIND, layerSet } from '../world/blind.js';
 
 // the concrete cast in place on the walls: a run of U-blocks or a ring beam
 const makeChannel = (app, t) => (t.type === 'belt' ? new BeltChannel(app, t) : t.type === 'blind' ? new BlindChannel(app, t) : new Channel(app, t));
@@ -65,7 +65,7 @@ class ConcreteTool {
     if (r?.type === 'belt') return r;
     // the blind area: once its gravel is down (under the mesh) and it is not paved
     if (r?.type === 'blind') {
-      if (!r.grav?.length) { if (!this._bSaid) { this._bSaid = true; app.ui?.toast('Отмостка: бетон — по щебню и сетке, сначала их'); } return null; }
+      if (!layerSet(r, 'grav').size) { if (!this._bSaid) { this._bSaid = true; app.ui?.toast('Отмостка: бетон — по щебню и сетке, сначала их'); } return null; }
       if (r.finKind === 'tile') { if (!this._bSaid) { this._bSaid = true; app.ui?.toast('Здесь отмостка из плитки — бетон не нужен'); } return null; }
       return r;
     }
