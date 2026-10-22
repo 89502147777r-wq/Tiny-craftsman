@@ -437,7 +437,8 @@ export class WallView {
     // the blind area round the house (blind.js)
     this.blinds = new THREE.Group(); this.group.add(this.blinds);
     this.liveBlind = null; this.blindDirty = true;
-    GROUND.at = (x, z) => blindTopAt(objects.all('blind'), x, z);
+    GROUND.at = (x, z) => blindTopAt(objects.all('blind'), x, z) ?? (this.terrain ? this.terrain.heightAt(x, z) : null);
+    GROUND.normal = (x, z) => (blindTopAt(objects.all('blind'), x, z) == null && this.terrain ? this.terrain.normalAt(x, z, new THREE.Vector3()) : new THREE.Vector3(0, 1, 0));
     this.liveProof = null; this.proofDirty = true;
     for (const m of [this.blocks, this.bricks, this.cinders]) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3), 3);
     this.owner = { blocks: [], bricks: [], cinders: [], lintels: [], frames: [], ublocks: [], fill: [], wood: [], beltBoards: [] };
