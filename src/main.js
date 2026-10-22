@@ -559,6 +559,7 @@ function applyProject(p) {
   app.rig.setState(p.camera);
   j.pending = null;
   j.done = p.journal?.done || []; j.undone = p.journal?.undone || []; j.nextId = p.journal?.nextId || j.done.length + 1;
+  if (j.trim()) app.migrated = 'Проект стал слишком тяжёлым для телефона — старая история отмен сокращена (сам проект цел)';
   app.recorder.load(fitTrack(p.track));
 }
 
