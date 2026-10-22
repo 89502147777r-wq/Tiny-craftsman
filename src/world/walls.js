@@ -898,7 +898,7 @@ export class WallView {
     for (const F of this.facadeFaces()) {
       const r = recOf(recs, F), lv = live && live.key === F.key ? live : null;
       if (!r && !lv) continue;
-      const g = buildFacade(F, r || {}, lv);
+      const g = buildFacade(F, r || {}, lv, (G) => recOf(recs, G));
       g.traverse((o) => { if (o.isMesh && !o.userData.noPick) o.userData.uOwner = r?.id ?? null; });
       this.facades.add(g);
     }
