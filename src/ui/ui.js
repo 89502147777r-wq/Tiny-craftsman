@@ -17,16 +17,18 @@ const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
 // (the tool buttons themselves are in index.html, #toolrow, with data-group)
 const GROUPS = [
   { id: 'camera', label: 'Камера', icon: 'camera' },
-  { id: 'earth', label: 'Земля', icon: 'shovel' },
   { id: 'mark', label: 'Разметка', icon: 'mark' },
+  { id: 'earth', label: 'Земля', icon: 'shovel' },
   { id: 'materials', label: 'Материалы', icon: 'sand' },
   { id: 'found', label: 'Фундамент', icon: 'form' },
   { id: 'concrete', label: 'Бетон', icon: 'hose' },
-  { id: 'backfill', label: 'Засыпка', icon: 'plate' },
   { id: 'walls', label: 'Стены', icon: 'wall' },
-  // (of the walls' tool, but on the top row of their own: straight to their chips)
-  { id: 'facadeG', label: 'Фасад', svg: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M4 9h16M4 14h16M9 4v5M15 9v5M9 14v6"/><path d="M2 20h20"/></svg>', virt: { kind: 'facade', path: ['facade'] } },
-  { id: 'winG', label: 'Окна', svg: '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="17"/><path d="M12 3v17M5 11h14"/><path d="M3 21h18"/></svg>', virt: { kind: 'window', path: ['win'] } },
+  // (of the walls' tool, but on the top row of their own: straight to their chips; kinds: the
+  // work under it, the first the one it opens on)
+  { id: 'winG', label: 'Окна и двери', svg: '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="17"/><path d="M12 3v17M5 11h14"/><path d="M3 21h18"/></svg>', virt: { kinds: ['window', 'door'], path: ['win'] } },
+  { id: 'roofG', label: 'Кровля', svg: '<svg viewBox="0 0 24 24"><path d="M2 12L12 4l10 8"/><path d="M5 10v10h14V10"/><rect x="13" y="8" width="3" height="3"/></svg>', virt: { kinds: ['proof', 'roof', 'rwin'], path: ['roofs'] } },
+  { id: 'facadeG', label: 'Фасад', svg: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M4 9h16M4 14h16M9 4v5M15 9v5M9 14v6"/><path d="M2 20h20"/></svg>', virt: { kinds: ['facade'], path: ['facade'] } },
+  { id: 'blindG', label: 'Отмостка', svg: '<svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="13"/><path d="M2 16h20l-2 4H4z"/><path d="M7 18h.01M12 18h.01M17 18h.01"/></svg>', virt: { kinds: ['blind'], path: ['blind'] } },
   { id: 'machines', label: 'Техника', icon: 'machine' },
 ];
 const m3 = (v) => `${String(v).replace('.', ',')} м³`;
@@ -212,7 +214,8 @@ export class UI {
   // the group on the top row the current work is under (the facade, the windows: their own)
   curGroup() {
     const app = this.app, k = app.settings.wallKind;
-    if (app.tool === 'wall' && app.wallTool.mode === 'lay') { const v = GROUPS.find((g) => g.virt && g.virt.kind === k); if (v) return v.id; }
+    if (app.tool === 'wall' && this.virt) return this.virt.id;   // (its «Удалить» too)
+    if (app.tool === 'wall' && app.wallTool.mode === 'lay') { const v = GROUPS.find((g) => g.virt && g.virt.kinds.includes(k)); if (v) return v.id; }
     return this.groupOf(app.tool);
   }
   openGroup(gid) {
@@ -221,7 +224,8 @@ export class UI {
       // the walls' tool with this kind, straight to its chips
       const app = this.app;
       app.setTool('wall'); if (app.wallTool.mode !== 'lay') app.wallTool.setMode('lay');
-      app.settings.wallKind = vg.virt.kind; app.applySettings();
+      if (!vg.virt.kinds.includes(app.settings.wallKind)) app.settings.wallKind = vg.virt.kinds[0];
+      app.applySettings();
       this._navTool = 'wall'; this.virt = vg;
       this.navPath = [...vg.virt.path]; this.navLevel = 'chips';
       this.refresh();
@@ -229,7 +233,8 @@ export class UI {
     }
     this.virt = null;
     // (back to the walls from the facade / the windows: the masonry again)
-    if (gid === 'walls' && ['facade', 'window'].includes(this.app.settings.wallKind)) { this.app.settings.wallKind = 'block'; this.app.applySettings(); }
+    if (gid === 'walls' && GROUPS.some((g) => g.virt?.kinds.includes(this.app.settings.wallKind))) { this.app.settings.wallKind = 'block'; this.app.applySettings(); }
+    if (gid === 'walls' && this.app.wallTool && !['lay', 'delete'].includes(this.app.wallTool.mode)) this.app.wallTool.setMode('lay');
     const tools = this.groupTools(gid).filter((b) => b.dataset.tool);
     const last = this.lastTool[gid];
     const pick = tools.find((b) => b.dataset.tool === last) || tools[0];
@@ -491,26 +496,27 @@ export class UI {
         ...Object.entries(RWIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.rwinCol || 'graphite') === k, () => lay({ wallKind: 'rwin', rwinCol: k }))),
       ];
       const pick = (list, key, kind, def) => list.map(([k, l]) => C(l, has(kind) && (s[key] || def) === k, () => lay({ wallKind: kind, [key]: k })));
-      const mats = [
+      const del = () => C('Удалить', wt.mode === 'delete', () => wt.setMode('delete'), 'warn');
+      const hid = (n) => ({ ...n, hidden: true });
+      // the top row's own groups (hidden here: opened from there), then the walls themselves
+      return [
+        hid(G('facade', 'Фасад', [...facade, del()], null, C('', has('facade'), () => lay({ wallKind: 'facade' })))),
+        hid(G('win', 'Окна и двери', [
+          G('wins', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window'), () => lay({ wallKind: 'window' }))),
+          G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'), () => lay({ wallKind: 'door' }))),
+          del(),
+        ], null, C('', has('window', 'door')))),
+        hid(G('roofs', 'Кровля', [
+          G('proof', 'Скатная крыша', proof, null, C('', has('proof'), () => lay({ wallKind: 'proof' }))),
+          G('roof', 'Плоская кровля', roof, null, C('', has('roof'), () => lay({ wallKind: 'roof' }))),
+          G('rwin', 'Окна в крышу', rwin, null, C('', has('rwin'), () => lay({ wallKind: 'rwin' }))),
+          del(),
+        ], null, C('', has('proof', 'roof', 'rwin')))),
+        hid(G('blind', 'Отмостка', [...blind, del()], null, C('', has('blind'), () => lay({ wallKind: 'blind' })))),
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
-        G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'))),
-        G('roof', 'Плоская кровля', roof, 'Кровля', C('', has('roof'), () => lay({ wallKind: 'roof' }))),
-        G('proof', 'Скатная крыша', proof, null, C('', has('proof'), () => lay({ wallKind: 'proof' }))),
-        G('rwin', 'Окна в крышу', rwin, null, C('', has('rwin'), () => lay({ wallKind: 'rwin' }))),
-        G('blind', 'Отмостка', blind, null, C('', has('blind'), () => lay({ wallKind: 'blind' }))),
-      ];
-      const lineKids = [C('Газоблок', wk === 'block', () => set({ wallKind: 'block' })), C('Кирпич', wk !== 'block', () => set({ wallKind: 'brick' }))];
-      if (wk === 'block') lineKids.push(...[[500, '↕ 0,5 м'], [1000, '1 м'], [1500, '1,5 м'], [2700, '2,7 м'], [3000, '3 м']].map(([v, l]) => C(l, (s.wallHeight || 1500) === v, () => set({ wallHeight: v }))));
-      const hid = (n) => ({ ...n, hidden: true });
-      return [
-        hid(G('facade', 'Фасад', facade, null, C('', has('facade'), () => lay({ wallKind: 'facade' })))),
-        hid(G('win', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window')))),
-        G('lay', 'Стройматериалы', mats, null, C('', L, () => wt.setMode('lay'))),
-        G('opening', 'Проём', [['window', 'Окно'], ['door', 'Дверь']].map(([k, l]) => C(l, wt.mode === 'opening' && (s.openKind || 'window') === k, () => { wt.setMode('opening'); set({ openKind: k }); })), null, C('', wt.mode === 'opening', () => wt.setMode('opening'))),
-        G('line', 'Линия', lineKids, null, C('', wt.mode === 'line', () => wt.setMode('line'))),
-        C('Удалить', wt.mode === 'delete', () => wt.setMode('delete'), 'warn'),
+        del(),
       ];
     }
     if (t === 'form' || t === 'rebar') {
