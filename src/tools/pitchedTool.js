@@ -67,9 +67,24 @@ export function findHouse(app) {
     for (let j = best.j0; j < best.j1; j++) for (let i = best.i0; i < best.i1; i++) left[j * ni + i] = 0;
   }
   if (!rects.length) return null;
-  // the wings: the ridge along the longer side; an end touching another rectangle joins it
+  // the wings: the ridge along the longer side; an end touching another rectangle joins it.
+  // Each side of a rectangle (on the 100 mm grid) goes onto the true outer face of the
+  // walls along it (the wall plate, the studs in the ring beam, the blind area line up)
+  const corners = units.flatMap((b) => [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => { const x = b.x + b.ux * b.hl * sx - b.uz * b.hw * sz, z = b.z + b.uz * b.hl * sx + b.ux * b.hw * sz; return [toA(x, z), toD(x, z)]; }));
+  const face = (v, lo, hi, isA, out) => {
+    let best = null;
+    for (const [pa, pd] of corners) {
+      const q = isA ? pa : pd, r = isA ? pd : pa;
+      if (Math.abs(q - v) > C * 1.2 || r < lo + C || r > hi - C) continue;
+      if (best == null || (out > 0 ? q > best : q < best)) best = q;
+    }
+    return best ?? v;
+  };
   const wings = rects.map((r) => {
-    const ra = [a0 + r.i0 * C, a0 + r.i1 * C], rd = [d0 + r.j0 * C, d0 + r.j1 * C], along = ra[1] - ra[0] >= rd[1] - rd[0];
+    let ra = [a0 + r.i0 * C, a0 + r.i1 * C], rd = [d0 + r.j0 * C, d0 + r.j1 * C];
+    ra = [face(ra[0], rd[0], rd[1], true, -1), face(ra[1], rd[0], rd[1], true, 1)];
+    rd = [face(rd[0], ra[0], ra[1], false, -1), face(rd[1], ra[0], ra[1], false, 1)];
+    const along = ra[1] - ra[0] >= rd[1] - rd[0];
     const ca = (ra[0] + ra[1]) / 2, cd = (rd[0] + rd[1]) / 2;
     return { r, ra, rd, cx: ca * ux - cd * uz, cz: ca * uz + cd * ux, ux: along ? ux : -uz, uz: along ? uz : ux, A: (along ? ra[1] - ra[0] : rd[1] - rd[0]) / 2, B: (along ? rd[1] - rd[0] : ra[1] - ra[0]) / 2, along };
   });
@@ -272,7 +287,8 @@ export class PitchedWork {
     if (P.rec) {
       this._save(P.rec, 'proof-plate');
       const n = P.rec.wings.length, t = ROOF_TYPES[P.rec.style].toLowerCase();
-      app.ui.toast(`Мауэрлат 150×150 на шпильках по всему дому${P.rec.style !== 'hip' ? ', фронтоны из блоков' : ''} — крыша ${t}${n > 1 ? `, ${n} крыла с ендовами` : ''}, ${P.rec.pitch}°. Дальше — стропила пальцем вдоль конька`);
+      const studs = app.objects.all('belt').some((b) => b.studs?.length);
+      app.ui.toast(`Мауэрлат 150×150 ${studs ? 'на шпильках армопояса, шайбы и гайки' : 'на анкерах'} по всему дому${P.rec.style !== 'hip' ? ', фронтоны из блоков' : ''} — крыша ${t}${n > 1 ? `, ${n} крыла с ендовами` : ''}, ${P.rec.pitch}°. Дальше — стропила пальцем вдоль конька`);
       return;
     }
     const r = this.rec;

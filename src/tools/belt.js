@@ -333,3 +333,15 @@ export class BeltChannel {
     if (app.wallView.beltLive) app.wallView.beltLive.delete(b.id);
   }
 }
+
+// the anchor studs for the wall plate (шпильки М12): on the middle line of every wall of the
+// ring, 300 mm in from its ends and every ≤ 1 m between — [s, t] in the frame
+export function beltStuds(b) {
+  const out = [], e = MM(300);
+  for (const [a0, a1, l, , par] of b.segs || []) {
+    if (a1 - a0 < MM(700)) continue;
+    const n = Math.max(1, Math.ceil((a1 - a0 - 2 * e) / MM(1000)));
+    for (let k = 0; k <= n; k++) { const a = a0 + e + (a1 - a0 - 2 * e) * k / n; out.push((par ? [a, l] : [l, a]).map((v) => +v.toFixed(6))); }
+  }
+  return out;
+}

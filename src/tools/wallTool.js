@@ -5,7 +5,7 @@ import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt, beltTopAt, boxOf, dims } from './freeBrick.js';
 import { placeLintel, placeProp, placeLintelForm, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
-import { findBelt, beltContains, beltCage, beltsOverlap, toWorld } from './belt.js';
+import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds } from './belt.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
 import { findOpenings, openingAt } from './windowFit.js';
 import { WINDOWS, windowFits } from '../world/windows.js';
@@ -743,6 +743,17 @@ export class WallTool {
       v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
       app.ui.refresh();
       return;
+    } else if (c.kind === 'studs') {
+      // the anchor studs: into the ring beam under the finger (its formwork, before the
+      // concrete or while it is fresh)
+      const b = app.objects.all('belt').find((q) => !isSlab(q) && !q.lform && beltContains(q, p.x, p.z) && p.y > q.top - 0.003 && p.y < q.top + q.H + MM(80)) || null;
+      c.studBelt = b; c.free = undefined; c.snap = null; v.live = null; v.liveBed = null;
+      if (b) {
+        const L = b.ni * b.c, W = b.nj * b.c, [cx, cz] = toWorld(b, L / 2, W / 2);
+        v.hl = { p: [cx, b.top + b.H + MM(100), cz], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-b.u[1], b.u[0])).toArray(), s: [L, MM(10), W], ok: !b.studs?.length && !(b.fill >= 0.95 && uStrength(b, app.clock) > 0.25) };
+      } else v.hl = null;
+      v.dirty = true; app.ui.refresh();
+      return;
     } else if (c.kind === 'lform') {
       // the formwork of a lintel cast in place: over the opening under the finger
       const F = placeLintelForm(app, p, scr, fing);
@@ -879,7 +890,7 @@ export class WallTool {
     this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');
     this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
+    const NAMES = { studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
     if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
     if (lab && kind === 'blind') { lab.textContent = this.app.settings.blindLayer === 'drain' ? 'Лоток' : 'Опалубка'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель' }[this.app.settings.facLayer || 'eps']; return; }
@@ -896,8 +907,17 @@ export class WallTool {
   }
 
   _carryDrop() {
-    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage, belt = this.carry.belt, bc = this.carry.beltCage, win = this.carry.win, lf = this.carry.lform;
+    const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage, belt = this.carry.belt, bc = this.carry.beltCage, win = this.carry.win, lf = this.carry.lform, sb = this.carry.studBelt;
     this._carryCancel();
+    if (ck === 'studs') {
+      if (!sb) { app.ui.toast('Шпильки — в армопояс: поднесите их к опалубке пояса на верху стен'); return; }
+      if (sb.studs?.length) { app.ui.toast('В этом поясе шпильки уже стоят'); return; }
+      if (sb.fill >= 0.95 && uStrength(sb, app.clock) > 0.25) { app.ui.toast('Бетон уже схватился — шпильки ставят в каркас до заливки или в свежий бетон'); return; }
+      const st = beltStuds(sb);
+      app.journal.act('belt-studs', {}, app.clock, () => app.objects.update(sb.id, { studs: st }));
+      app.ui.toast(`Шпильки М12 под мауэрлат: ${st.length} шт. по оси стен — через ≤ 1 м и по 300 мм от углов, загнутым концом в бетон, 200 мм над поясом (мауэрлат 150 + шайба и гайка)`);
+      return;
+    }
     if (ck === 'lform') {
       if (!lf) { app.ui.toast('Опалубку перемычки — к проёму: промежутку 300…4000 мм между блоками одного ряда'); return; }
       if (!lf.ok) { app.ui.toast(lformWhy(lf)); return; }
@@ -994,6 +1014,7 @@ export class WallTool {
   status() {
     const app = this.app, walls = app.objects.all('wall');
     const c = this.carry;
+    if (c?.kind === 'studs') return c.studBelt ? (c.studBelt.studs?.length ? 'Красный — шпильки здесь уже стоят' : (c.studBelt.fill >= 0.95 && uStrength(c.studBelt, this.app.clock) > 0.25) ? 'Красный — бетон уже схватился' : `Шпильки в пояс: ${beltStuds(c.studBelt).length} шт. — отпустите`) : 'Поднесите шпильки к армопоясу';
     if (c?.kind === 'lform') return c.lform ? (c.lform.ok ? `Опалубка перемычки над проёмом ${c.lform.gapMm} мм, длина ${c.lform.lenMm} мм — отпустите` : 'Красный — ' + lformWhy(c.lform)) : 'Поднесите опалубку к проёму в кладке';
     if (c?.kind === 'belt') return c.belt ? (c.belt.exists ? 'Здесь опалубка пояса уже стоит' : `Опалубка по верху стен: ${c.belt.lenM.toFixed(1).replace('.', ',')} м — отпустите`) : 'Поднесите к верхнему ряду кладки — опалубка встанет по всему его контуру';
     if (c?.kind === 'roof') return this.roof.status(true);
@@ -1011,7 +1032,8 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : c.kind === 'cinder' ? 'Шлакоблок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform', 'studs'].includes(this.kind)) return {
+      studs: 'Шпильки под мауэрлат: тяните из лотка к опалубке армопояса — до заливки (или в свежий бетон) встанут шпильки М12 по оси стен через ≤ 1 м; на них потом ляжет мауэрлат на шайбах и гайках',
       lform: 'Монолитная перемычка: тяните опалубку из лотка к проёму — днище на стойках и доски по бокам встанут над ним с опорой по 250 мм; потом «Каркас», бетон (ведро / шланг), вибратор, правило; когда наберёт прочность — «Удалить» снимет опалубку',
       blind: this.blind.status(false),
       roof: this.roof.status(false),
