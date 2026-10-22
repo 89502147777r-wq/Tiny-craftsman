@@ -7,6 +7,7 @@ import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
 import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES } from '../world/facade.js';
+import { RWIN_TYPES } from '../world/roofWindows.js';
 import { ROOF_TYPES, PITCHES, PITCH_RANGE, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 const $ = (id) => document.getElementById(id);
@@ -485,6 +486,7 @@ export class UI {
       ];
       // the windows in the roof (a slope or a flat roof): the size, the colour of the frame
       const rwin = [
+        ...Object.entries(RWIN_TYPES).map(([k, [l]]) => C(l, has('rwin') && (s.rwinType || 'pivot') === k, () => lay({ wallKind: 'rwin', rwinType: k }))),
         ...Object.entries(RWIN).map(([k, [l]]) => C(l, has('rwin') && (s.rwinKey || 's2') === k, () => lay({ wallKind: 'rwin', rwinKey: k }))),
         ...Object.entries(RWIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.rwinCol || 'graphite') === k, () => lay({ wallKind: 'rwin', rwinCol: k }))),
       ];

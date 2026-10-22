@@ -115,10 +115,77 @@ function noiseTex(base, spread, n = 256, dots = 2600, k = 1) {
   for (let i = 0; i < dots; i++) { const v = Math.random(); g.fillStyle = `rgba(${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${Math.random() * spread})`; g.fillRect(Math.random() * n, Math.random() * n, 1 + Math.random() * 2 * k, 1 + Math.random() * 2 * k); }
   return cv;
 }
+// the photo textures (set by walls.js once they are loaded)
+export const BLIND_TEX = { tex: null };
+// the geotextile: white nonwoven polypropylene — a felt of fine fibres, the name printed along
+// the roll in blue every 0,5 m («GEOTEXTILE · NONWOVEN 200 g/m²»), a line along each edge
+let _geo = null;
+function geoTex() {
+  if (_geo) return _geo;
+  const n = 1024, cv = canvas(n), g = cv.getContext('2d'), hc = canvas(512), h = hc.getContext('2d');
+  g.fillStyle = '#e6e6e1'; g.fillRect(0, 0, n, n); h.fillStyle = '#808080'; h.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 9000; i++) {
+    const x = Math.random() * n, y = Math.random() * n, a = Math.random() * Math.PI, L = 8 + Math.random() * 40, v = Math.random();
+    g.strokeStyle = v > 0.5 ? `rgba(255,255,255,${0.25 + Math.random() * 0.4})` : `rgba(150,150,140,${0.08 + Math.random() * 0.16})`;
+    g.lineWidth = 0.6 + Math.random() * 0.8; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a + 0.6) * L / 2, y + Math.sin(a + 0.6) * L / 2, x + Math.cos(a) * L, y + Math.sin(a) * L); g.stroke();
+    if (i % 2) { h.strokeStyle = v > 0.5 ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)'; h.lineWidth = 0.8; h.beginPath(); h.moveTo(x / 2, y / 2); h.lineTo(x / 2 + Math.cos(a) * L / 2, y / 2 + Math.sin(a) * L / 2); h.stroke(); }
+  }
+  // the print: two rows, staggered; the edge lines
+  g.fillStyle = 'rgba(28,72,160,0.85)'; g.textBaseline = 'middle';
+  // (mirrored: the uv of the area runs the other way to the picture)
+  g.save(); g.translate(n, 0); g.scale(-1, 1);
+  for (const [y, x0] of [[n * 0.25, 40], [n * 0.75, n / 2 + 40]]) for (const x of [x0, x0 - n]) {
+    g.font = 'bold 54px Arial, Helvetica, sans-serif'; g.fillText('GEOTEXTILE', x, y - 18);
+    g.font = '26px Arial, Helvetica, sans-serif'; g.fillText('NONWOVEN PP · 200 g/m²', x + 4, y + 26);
+  }
+  g.restore();
+  g.fillStyle = 'rgba(28,72,160,0.55)'; g.fillRect(0, 6, n, 5); g.fillRect(0, n - 11, n, 5);
+  const t = asTex(cv); t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace;
+  return (_geo = { map: t, nor: normalOf(hc, 1.2) });
+}
+// uv in world millimetres (the boards: along them on the sides, across on the tops)
+function worldUV(geo, mm) {
+  const p = geo.attributes.position, nr = geo.attributes.normal, uv = new Float32Array(p.count * 2), k = 1 / MM(mm);
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i), nx = nr.getX(i), ny = nr.getY(i), nz = nr.getZ(i);
+    if (Math.abs(ny) > 0.7) { uv[i * 2] = (Math.abs(nx) > Math.abs(nz) ? z : x) * k; uv[i * 2 + 1] = (Math.abs(nx) > Math.abs(nz) ? x : z) * k * 0.2; }
+    else { const tl = Math.hypot(nx, nz) || 1; uv[i * 2] = (x * -nz / tl + z * nx / tl) * k; uv[i * 2 + 1] = y * k; }
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return geo;
+}
+// the roll of geotextile being rolled out: across the way it goes, turning as it goes
+export function geoRoll(P, roll, y, len) {
+  const g = new THREE.Group(), R = MM(70), r0 = MM(25), [x, z] = P.W2(roll.a, roll.d), [ex, ez] = P.W2(Math.cos(roll.ang), Math.sin(roll.ang));
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(R, R, len, 32, 1, true), M.geo());
+  const cap = new THREE.RingGeometry(r0, R, 32), ends = [];
+  for (const s of [-1, 1]) { const c = new THREE.Mesh(cap, mat('geoEnd', () => new THREE.MeshStandardMaterial({ map: spiralTex(), roughness: 0.9 }))); c.position.y = s * len / 2; c.rotation.x = s * -Math.PI / 2; ends.push(c); }
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(r0, r0, len + MM(20), 20, 1, true), M.core()); core.material.side = THREE.DoubleSide;
+  const spin = new THREE.Group(); spin.add(body, core, ...ends); spin.rotation.y = roll.spin || 0;
+  const axis = new THREE.Group(); axis.add(spin); axis.rotation.z = Math.PI / 2;   // (the axis along x)
+  g.add(axis); g.position.set(x, y + R, z); g.rotation.y = Math.atan2(-ez, ex) + Math.PI / 2;
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+let _spiral = null;
+function spiralTex() {
+  if (_spiral) return _spiral;
+  const n = 256, cv = canvas(n), g = cv.getContext('2d');
+  g.fillStyle = '#d8d8d2'; g.fillRect(0, 0, n, n); g.strokeStyle = 'rgba(120,120,110,0.5)'; g.lineWidth = 1.2; g.beginPath();
+  for (let t = 0; t < 60 * Math.PI; t += 0.05) { const r = 34 + t * 0.5; g.lineTo(n / 2 + Math.cos(t) * r * 0.97, n / 2 + Math.sin(t) * r * 0.97); }
+  g.stroke();
+  return (_spiral = asTex(cv));
+}
 const M = {
-  wood: () => mat('wood', () => { const cv = canvas(64, 256), g = cv.getContext('2d'); g.fillStyle = '#b48d5c'; g.fillRect(0, 0, 64, 256); for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(90,60,30,${Math.random() * 0.25})`; g.fillRect(Math.random() * 64, 0, 1 + Math.random() * 2, 256); } return new THREE.MeshStandardMaterial({ map: asTex(cv), roughness: 0.85 }); }),
-  geo: () => mat('geo', () => { const cv = noiseTex('#d9d9d4', 0.25, 128, 3000); const g = cv.getContext('2d'); for (let i = 0; i < 300; i++) { g.strokeStyle = `rgba(255,255,255,${Math.random() * 0.4})`; g.beginPath(); const x = Math.random() * 128, y = Math.random() * 128; g.moveTo(x, y); g.lineTo(x + Math.random() * 20 - 10, y + Math.random() * 20 - 10); g.stroke(); } const t = asTex(cv); return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }); }),
-  sand: () => mat('sand', () => { const t = new THREE.TextureLoader().load('assets/textures/dense_sand/diff.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshStandardMaterial({ map: t, roughness: 0.95 }); }),
+  // the boards: the photo of sawn planks (formwork.js) when it is loaded, uv in world mm
+  wood: () => mat('wood' + !!BLIND_TEX.tex, () => { const T = BLIND_TEX.tex?.plank; if (T) return new THREE.MeshStandardMaterial({ map: T.diff, normalMap: T.nor, roughnessMap: T.arm, roughness: 1, color: 0xf0dcc0 }); const cv = canvas(64, 256), g = cv.getContext('2d'); g.fillStyle = '#b48d5c'; g.fillRect(0, 0, 64, 256); for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(90,60,30,${Math.random() * 0.25})`; g.fillRect(Math.random() * 64, 0, 1 + Math.random() * 2, 256); } return new THREE.MeshStandardMaterial({ map: asTex(cv), roughness: 0.85 }); }),
+  geo: () => mat('geo', () => { const T = geoTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.nor, normalScale: new THREE.Vector2(0.7, 0.7), roughness: 0.92, side: THREE.DoubleSide }); }),
+  core: () => mat('core', () => new THREE.MeshStandardMaterial({ color: 0x8a6a45, roughness: 0.9 })),
+  // the sand: the photo with its relief, sharp at a slant (anisotropy), a little lighter (dry)
+  sand: () => mat('sand', () => {
+    const L = new THREE.TextureLoader(), ld = (f, srgb) => { const t = L.load('assets/textures/dense_sand/' + f); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
+    return new THREE.MeshStandardMaterial({ map: ld('diff.jpg', true), normalMap: ld('nor_gl.jpg', false), normalScale: new THREE.Vector2(0.9, 0.9), color: 0xfff6ea, roughness: 0.96 });
+  }),
   grav: () => mat('grav', () => { const T = gravelTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.normalMap, color: 0x8d8984, roughness: 0.9 }); }),
   mesh: () => mat('mesh', () => { const cv = canvas(128), g = cv.getContext('2d'); g.clearRect(0, 0, 128, 128); g.strokeStyle = '#5b5d60'; g.lineWidth = 4; for (const p of [2, 66]) { g.beginPath(); g.moveTo(p, 0); g.lineTo(p, 128); g.moveTo(0, p); g.lineTo(128, p); g.stroke(); } return new THREE.MeshStandardMaterial({ map: asTex(cv), alphaTest: 0.5, transparent: false, metalness: 0.6, roughness: 0.5, side: THREE.DoubleSide }); }),
   conc: () => mat('conc', () => { const cv = noiseTex('#a7a49d', 0.12, 256, 6000); const t = asTex(cv); return new THREE.MeshStandardMaterial({ map: t, normalMap: normalOf(noiseTex('#808080', 0.5, 128, 3000), 0.6), roughness: 0.88 }); }),
@@ -150,7 +217,7 @@ function tileMat(col) {
 // where the next cell is not in it; uv in metres / tile
 function slab(P, set, top, bottom, tile) {
   const { C, W2, A0, D0, ni } = P, pos = [], uv = [], idx = [];
-  const v = (a, d, y) => { const [x, z] = W2(a, d); pos.push(x, y, z); uv.push(a / tile, d / tile); return pos.length / 3 - 1; };
+  const v = (a, d, y, side) => { const [x, z] = W2(a, d); pos.push(x, y, z); if (side) uv.push((side === 1 ? a : d) / tile, y / tile); else uv.push(a / tile, d / tile); return pos.length / 3 - 1; };
   for (const k of set) {
     const c = P.cells.get(k); if (!c) continue;
     const a0 = A0 + c.i * C, a1 = a0 + C, d0 = D0 + c.j * C, d1 = d0 + C;
@@ -159,7 +226,7 @@ function slab(P, set, top, bottom, tile) {
     // the sides
     for (const [di, dj, A, B] of [[0, -1, [a0, d0], [a1, d0]], [1, 0, [a1, d0], [a1, d1]], [0, 1, [a1, d1], [a0, d1]], [-1, 0, [a0, d1], [a0, d0]]]) {
       if (set.has(k + di + dj * ni) && P.cells.has(k + di + dj * ni)) continue;
-      const q = [v(A[0], A[1], top(A[0], A[1])), v(B[0], B[1], top(B[0], B[1])), v(B[0], B[1], bottom), v(A[0], A[1], bottom)];
+      const sd = dj ? 1 : 2, q = [v(A[0], A[1], top(A[0], A[1]), sd), v(B[0], B[1], top(B[0], B[1]), sd), v(B[0], B[1], bottom, sd), v(A[0], A[1], bottom, sd)];
       idx.push(q[0], q[1], q[2], q[0], q[2], q[3]);
     }
   }
@@ -185,7 +252,8 @@ export function buildBlind(rec, live) {
   const flat = (L) => () => layerTop(rec, L), lv = live?.layer, lc = live?.cells ? new Set(live.cells) : null;
   const cellsOfL = (L) => { const s = setOf(rec[L]); if (lv === L && lc) for (const k of lc) s.add(k); return s; };
   // the layers
-  add(slab(P, cellsOfL('geo'), flat('geo'), g0 - MM(40), MM(600)), M.geo(), false);
+  add(slab(P, cellsOfL('geo'), flat('geo'), g0 - MM(40), MM(1000)), M.geo(), false);
+  if (lv === 'geo' && live.roll) G.add(geoRoll(P, live.roll, layerTop(rec, 'geo'), Math.min(MM(1000), rec.W + MM(100))));
   add(slab(P, cellsOfL('sand'), flat('sand'), g0 - MM(40), MM(1500)), M.sand(), false);
   add(slab(P, cellsOfL('grav'), flat('grav'), g0 + MM(TOP.sand) - MM(2), MM(800)), M.grav(), false);
   const fin = cellsOfL('fin'), kind = rec.finKind || (lv === 'fin' ? live.kind : null) || 'conc';
@@ -216,7 +284,7 @@ export function buildBlind(rec, live) {
       B.push(segBox(P, sg, sg.s0 - (T * 2), sg.s1 + T * 2, sg.at, sg.at + sg.n * T, g0 - MM(40), outerTop + MM(10)));
       for (let s = sg.s0 + MM(150); s < sg.s1; s += MM(1000)) stakes.push(segBox(P, sg, s - MM(20), s + MM(20), sg.at + sg.n * T, sg.at + sg.n * (T + MM(40)), g0 - MM(60), outerTop + MM(60)));
     }
-    add(merge([...B, ...stakes]), M.wood());
+    add(worldUV(merge([...B, ...stakes]), 1360), M.wood());
   }
   if (kind === 'tile' && fin.size) {
     const K = [];

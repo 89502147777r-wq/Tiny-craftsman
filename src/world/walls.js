@@ -7,7 +7,7 @@ import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
-import { buildBlind, blindTopAt } from './blind.js';
+import { buildBlind, blindTopAt, BLIND_TEX } from './blind.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -398,6 +398,7 @@ export class WallView {
     this.max.beltBoards = 3000;
     this.beltBoards = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), tex ? makeBoardMaterial(tex) : this.wood.material, this.max.beltBoards);
     this.beltBoards.geometry.setAttribute('aBoard', new THREE.InstancedBufferAttribute(new Float32Array(this.max.beltBoards * 3), 3));
+    BLIND_TEX.tex = tex;
     if (tex) this.wood.material = new THREE.MeshStandardMaterial({ map: variant(tex.plank.diff, 0.12, 0.6), normalMap: variant(tex.plank.nor, 0.12, 0.6), roughness: 0.85, color: 0xd8c0a0 });
     this.beltBoards.castShadow = this.beltBoards.receiveShadow = true; this.beltBoards.frustumCulled = false; this.beltBoards.count = 0; this.group.add(this.beltBoards);
     // the formwork under a floor slab: deck, beams, props (slabForm.js)

@@ -3,6 +3,7 @@ import { MODEL_SCALE } from '../config.js';
 import { canvas, asTex, normalOf, gravelTex } from './roof.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { aeratedTexture } from './walls.js';
+import { buildRoofWindow, rwinSpan } from './roofWindows.js';
 
 // A pitched roof (скатная крыша) over the house, built up layer by layer:
 //   plate   – the wall plate (мауэрлат) 150 × 150 on the top of the walls, and the masonry
@@ -303,11 +304,6 @@ export function valleys(roof, shapes) {
 
 const MATS = {};
 const mat = (k, make) => MATS[k] || (MATS[k] = make());
-const winMats = (col) => ({
-  frame: mat('rwF' + col, () => new THREE.MeshStandardMaterial({ color: (RWIN_COLOURS[col] || RWIN_COLOURS.graphite)[1], metalness: 0.5, roughness: 0.4 })),
-  glass: mat('rwG', () => new THREE.MeshStandardMaterial({ color: 0x2a3a44, metalness: 0.2, roughness: 0.04, transparent: true, opacity: 0.55, envMapIntensity: 1.6 })),
-  inner: mat('rwI', () => new THREE.MeshStandardMaterial({ color: 0xd9d4ca, roughness: 0.8 })),
-});
 
 // the roof, built to its stages (live: a stage being laid now — { stage, w, a0, a1 } or
 // { stage, all }); wins: the windows in it ({ wi, plane, x, t, key, col })
@@ -326,7 +322,7 @@ export function buildPitched(roof, live = null, wins = []) {
   roof.wings.forEach((w, wi) => {
     const f = shapes[wi], ctx = { f, wi, roof, shapes }, PL = planes(roof, w, f);
     const under = (a, d) => { const p = f.W(a, d, 0); return roofTop(roof, shapes, p[0], p[2], wi) > f.top(a, d) + MM(5); };   // (inside another wing's roof)
-    const holesOf = (P) => wins.filter((q) => q.wi === wi && q.plane === P.key).map((q) => { const [, W2, H2] = RWIN[q.key] || RWIN.s2; return [q.x - MM(W2 / 2 + 40), q.x + MM(W2 / 2 + 40), q.t - MM(H2 / 2 + 40), q.t + MM(H2 / 2 + 40)]; });
+    const holesOf = (P) => wins.filter((q) => q.wi === wi && q.plane === P.key).map((q) => { const [, W1, H1] = RWIN[q.key] || RWIN.s2, [W2, H2] = rwinSpan(q.wtype, W1, H1); return [q.x - MM(W2 / 2 + 75), q.x + MM(W2 / 2 + 75), q.t - MM(H2 / 2 + 60), q.t + MM(H2 / 2 + 80)]; });
     // the wall plate on the middle of the walls (not across where a wing joins on); the masonry under the roof
     if (has('plate')) {
       const ya = roof.y0 + MM(75), ia = w.A - roof.T / 2, ib = w.B - roof.T / 2, pl = MM(PITCHED.plate);
@@ -434,7 +430,7 @@ export function buildPitched(roof, live = null, wins = []) {
         }
       }
       // the windows in this plane
-      for (const q of wins.filter((q2) => q2.wi === wi && q2.plane === P.key)) G.add(slopeWindow(F, q, coff, has('cover')));
+      for (const q of wins.filter((q2) => q2.wi === wi && q2.plane === P.key)) G.add(slopeWindow(F, q, coff, has('cover'), kind));
     }
     if (has('trim')) trims(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat);
     if (has('gutter')) gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat);
@@ -702,32 +698,21 @@ function waterMat() {
   return (_water = new THREE.MeshStandardMaterial({ map: t, color: 0xdde8f0, transparent: true, opacity: 0, roughness: 0.08, metalness: 0.1, depthWrite: false }));
 }
 
-// a window in a slope: the flashing collar over the covering round it, the frame, the glass
-function slopeWindow(F, q, coff, covered) {
-  const [, Wm, Hm] = RWIN[q.key] || RWIN.s2, W = MM(Wm), H = MM(Hm), M = winMats(q.col || 'graphite'), b = new Beams(), g = new Beams(), inn = new Beams();
-  const P = (x, t, o) => F.pt(q.x + x, q.t + t, o).toArray();
-  const base = covered ? coff : MM(30);
-  // the collar (flashing) round it, the frame (60 wide, 90 high), the glass on it, the lining under
-  b.add(P(-W / 2 - MM(70), 0, base + MM(6)), P(W / 2 + MM(70), 0, base + MM(6)), H + MM(140), MM(8), F.n);
-  for (const s of [-1, 1]) {
-    b.add(P(s * (W / 2 - MM(30)), -H / 2, base + MM(50)), P(s * (W / 2 - MM(30)), H / 2, base + MM(50)), MM(60), MM(90), F.n);
-    b.add(P(-W / 2, s * (H / 2 - MM(30)), base + MM(50)), P(W / 2, s * (H / 2 - MM(30)), base + MM(50)), MM(60), MM(90), F.n);
-  }
-  g.add(P(-W / 2 + MM(60), 0, base + MM(92)), P(W / 2 - MM(60), 0, base + MM(92)), H - MM(120), MM(6), F.n);
-  inn.add(P(-W / 2 + MM(40), 0, base - MM(120)), P(W / 2 - MM(40), 0, base - MM(120)), H - MM(80), MM(10), F.n);
-  const grp = new THREE.Group();
-  for (const [bb, m] of [[b, M.frame], [g, M.glass], [inn, M.inner]]) { const mm = bb.mesh(m); if (mm) { mm.castShadow = m !== M.glass; grp.add(mm); } }
+// a window in a slope (the model in roofWindows.js): x across the slope, y up it, z out of it,
+// standing on the covering (or on the battens / counter-battens while there is none)
+const _bx = new THREE.Vector3(), _bm = new THREE.Matrix4();
+function slopeWindow(F, q, coff, covered, kind) {
+  const lift = covered ? { metal: 35, seam: 4, shingle: 3 }[kind] || 0 : 0;
+  const [, Wm, Hm] = RWIN[q.key] || RWIN.s2, grp = buildRoofWindow(q, Wm, Hm, (RWIN_COLOURS[q.col] || RWIN_COLOURS.graphite)[1], false, lift);
+  const o = F.pt(q.x, q.t, covered ? coff + MM(lift) : MM(30)), up = F.pt(q.x, q.t + 1e-3, 0).sub(F.pt(q.x, q.t, 0)).normalize();
+  _bx.crossVectors(up, F.n).normalize();
+  _bm.makeBasis(_bx, up, F.n).setPosition(o); grp.applyMatrix4(_bm);
   return grp;
 }
-// a window on a flat roof: on a kerb 150 high, the membrane turned up it, the frame, the glass
+// a window on a flat roof: on a kerb 150 high, the membrane turned up it
 export function flatWindow(q) {
-  const [, Wm, Hm] = RWIN[q.key] || RWIN.s2, W = MM(Wm), H = MM(Hm), M = winMats(q.col || 'graphite'), grp = new THREE.Group();
-  const kerb = new THREE.Mesh(new THREE.BoxGeometry(W + MM(200), MM(150), H + MM(200)), mat('kerb', () => new THREE.MeshStandardMaterial({ color: 0x9fa3a6, roughness: 0.6 })));
-  kerb.position.y = MM(75);
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(W + MM(60), MM(70), H + MM(60)), M.frame); frame.position.y = MM(185);
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(W - MM(60), MM(10), H - MM(60)), M.glass); glass.position.y = MM(225);
-  for (const m of [kerb, frame]) { m.castShadow = m.receiveShadow = true; }
-  grp.add(kerb, frame, glass);
+  const [, Wm, Hm] = RWIN[q.key] || RWIN.s2, inner = buildRoofWindow(q, Wm, Hm, (RWIN_COLOURS[q.col] || RWIN_COLOURS.graphite)[1], true), grp = new THREE.Group();
+  inner.rotation.x = -Math.PI / 2; grp.add(inner);
   grp.position.set(q.x, q.y, q.z); grp.rotation.y = q.yaw || 0;
   return grp;
 }
