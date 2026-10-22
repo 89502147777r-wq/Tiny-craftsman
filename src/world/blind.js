@@ -149,6 +149,8 @@ function noiseTex(base, spread, n = 256, dots = 2600, k = 1) {
 }
 // the photo textures (set by walls.js once they are loaded)
 export const BLIND_TEX = { tex: null };
+// the terrain under it (set by walls.js): the boards and the edges of the layers go down to it
+export const BLIND_GROUND = { at: null };
 // the geotextile: white nonwoven polypropylene — a felt of fine fibres, the name printed along
 // the roll in blue every 0,5 m («GEOTEXTILE · NONWOVEN 200 g/m²»), a line along each edge
 let _geo = null;
@@ -250,7 +252,7 @@ function tileMat(col) {
 // a layer over cells: the top (its height from top(a, d)) and the sides down to the ground
 // where the next cell is not in it; uv in metres / tile
 function slab(P, set, top, bottom, tile) {
-  const { C, W2, A0, D0, ni } = P, pos = [], uv = [], idx = [];
+  const { C, W2, A0, D0, ni } = P, pos = [], uv = [], idx = [], bot = typeof bottom === 'function' ? bottom : () => bottom;
   const v = (a, d, y, side) => { const [x, z] = W2(a, d); pos.push(x, y, z); if (side) uv.push((side === 1 ? a : d) / tile, y / tile); else uv.push(a / tile, d / tile); return pos.length / 3 - 1; };
   for (const k of set) {
     const c = P.cells.get(k); if (!c) continue;
@@ -260,7 +262,7 @@ function slab(P, set, top, bottom, tile) {
     // the sides
     for (const [di, dj, A, B] of [[0, -1, [a0, d0], [a1, d0]], [1, 0, [a1, d0], [a1, d1]], [0, 1, [a1, d1], [a0, d1]], [-1, 0, [a0, d1], [a0, d0]]]) {
       if (set.has(k + di + dj * ni) && P.cells.has(k + di + dj * ni)) continue;
-      const sd = dj ? 1 : 2, q = [v(A[0], A[1], top(A[0], A[1]), sd), v(B[0], B[1], top(B[0], B[1]), sd), v(B[0], B[1], bottom, sd), v(A[0], A[1], bottom, sd)];
+      const sd = dj ? 1 : 2, q = [v(A[0], A[1], top(A[0], A[1]), sd), v(B[0], B[1], top(B[0], B[1]), sd), v(B[0], B[1], bot(B[0], B[1]), sd), v(A[0], A[1], bot(A[0], A[1]), sd)];
       idx.push(q[0], q[1], q[2], q[0], q[2], q[3]);
     }
   }
@@ -359,7 +361,8 @@ export function buildBlind(rec, live) {
   const flat = (L) => () => layerTop(rec, L), lv = live?.layer, lc = live?.cells ? new Set(live.cells) : null;
   const cellsOfL = (L) => { const s = setOf(rec[L]); if (lv === L && lc) for (const k of lc) s.add(k); return s; };
   // the layers
-  add(slab(P, cellsOfL('geo'), flat('geo'), g0 - MM(40), MM(1000)), M.geo(), false);
+  const down = (a, d) => { const [x, z] = P.W2(a, d), h = BLIND_GROUND.at?.(x, z); return Math.min(g0, h ?? g0) - MM(40); };
+  add(slab(P, cellsOfL('geo'), flat('geo'), down, MM(1000)), M.geo(), false);
   if (lv === 'geo' && live.roll) G.add(geoRoll(P, live.roll, layerTop(rec, 'geo'), Math.min(MM(1000), rec.W + MM(100))));
   // the sand and the gravel: heaps as poured, levelled where raked (the gravel on the sand)
   const hs = lv === 'sand' && live.H ? live.H : heights(rec, 'sand'), hg = lv === 'grav' && live.H ? live.H : heights(rec, 'grav');
@@ -394,8 +397,14 @@ export function buildBlind(rec, live) {
   if (rec.form && !rec.stripped) {
     const B = [], T = MM(25), stakes = [];
     for (const sg of P.segs) {
-      B.push(segBox(P, sg, sg.s0 - (T * 2), sg.s1 + T * 2, sg.at, sg.at + sg.n * T, g0 - MM(40), outerTop + MM(10)));
-      for (let s = sg.s0 + MM(150); s < sg.s1; s += MM(1000)) stakes.push(segBox(P, sg, s - MM(20), s + MM(20), sg.at + sg.n * T, sg.at + sg.n * (T + MM(40)), g0 - MM(60), outerTop + MM(60)));
+      // (down into the ground where it falls away: a wider board there, the stakes driven deeper)
+      const gAt = (q) => { const [x, z] = sg.axis === 'a' ? P.W2(q, sg.at) : P.W2(sg.at, q), h = BLIND_GROUND.at?.(x, z); return h == null ? g0 : h; };
+      const s0 = sg.s0 - T * 2, s1 = sg.s1 + T * 2, n = Math.max(1, Math.ceil((s1 - s0) / MM(400)));
+      for (let k = 0; k < n; k++) {
+        const q0 = s0 + (s1 - s0) * k / n, q1 = s0 + (s1 - s0) * (k + 1) / n, low = Math.min(gAt(q0), gAt(q1), gAt((q0 + q1) / 2));
+        B.push(segBox(P, sg, q0, q1, sg.at, sg.at + sg.n * T, Math.min(g0, low) - MM(40), outerTop + MM(10)));
+      }
+      for (let q = sg.s0 + MM(150); q < sg.s1; q += MM(1000)) stakes.push(segBox(P, sg, q - MM(20), q + MM(20), sg.at + sg.n * T, sg.at + sg.n * (T + MM(40)), Math.min(g0, gAt(q)) - MM(80), outerTop + MM(60)));
     }
     add(worldUV(merge([...B, ...stakes]), 1360), M.wood());
   }

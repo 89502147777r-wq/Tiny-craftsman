@@ -67,7 +67,8 @@ export class BlindWork {
     if (under && !under.has(k)) { app.ui.toast(`Здесь ещё нет слоя «${NAME[need]}»`); return true; }
     if (L === 'sand' || L === 'grav') {
       const pile = new Pile(r, L), n = pile.at(h.a, h.d);
-      const mode = pile.h[n] >= pile.t * 0.6 ? 'rake' : 'pour';
+      const mode = this.app.settings.blindAct === 'rake' ? 'rake' : 'pour';
+      if (mode === 'rake' && !pile.h.some((v) => v > 5)) { app.ui.toast(`Разравнивать нечего — сначала «Сыпать лопатой»${L === 'sand' ? ' (или лопатой с кучи песка)' : ' (или лопатой с кучи щебня)'}`); return true; }
       this.drag = { r, y, L, pile, n, a: h.a, d: h.d, mode, t: 0 };
       app.ui.toast(mode === 'pour' ? (L === 'sand' ? 'Сыплем песок лопатой — держите палец, куча растёт; потом ведите по куче — разровняете' : 'Сыплем щебень — держите палец; потом ведите по куче граблями') : 'Грабли: ведите по куче — разравниваете до 60 мм');
     } else if (L === 'geo' || L === 'mesh') {
@@ -156,7 +157,7 @@ export class BlindWork {
       const patch = d.pile.patch();
       this._save(d.r, patch, 'blind-' + L);
       const left = Math.round(leftOf({ ...d.r, ...patch }, L) * 100), nm = L === 'sand' ? 'Песок' : 'Щебень';
-      app.ui.toast(d.mode === 'pour' ? `${nm}: куча насыпана — ведите пальцем по ней, грабли разровняют слой 60 мм` : `${nm} разровняли граблями${L === 'sand' ? ' и пролили водой' : ''}` + (left > 1 ? ` — ровным слоем ещё не покрыто ${left} %` : ' — по всему дому'));
+      app.ui.toast(d.mode === 'pour' ? `${nm}: куча насыпана — выберите «Грабли — разровнять» и ведите по ней вдоль стены` : `${nm} разровняли граблями${L === 'sand' ? ' и пролили водой' : ''}` + (left > 1 ? ` — ровным слоем ещё не покрыто ${left} %` : ' — по всему дому'));
       return;
     }
     if (!d.cells.size) { app.ui.toast(`Здесь ${L === 'geo' ? 'нечего застилать' : 'уже готово или нет слоя под ним'}`); return; }
@@ -166,6 +167,25 @@ export class BlindWork {
     const left = Math.round(leftOf({ ...d.r, ...patch }, L) * 100);
     const what = { geo: 'Геотекстиль раскатали полосой вдоль стены', mesh: 'Сетка 150 × 150 из прутка Ø5 на стульчиках — листы внахлёст', fin: `Плитка «кирпичик» (${TILE_COLOURS[d.r.finCol || this.col][0].toLowerCase()}) на сухую смесь, уклон 3 % от стен` }[L];
     app.ui.toast(what + (left > 1 ? ` — осталось ${left} %` : ' — по всему дому'));
+  }
+  // the shovel (or the bucket) tipped over the area: sand / gravel into its layer (or null:
+  // it goes onto the ground as anywhere) — mat: what is on the blade (1 sand, 2–3 gravel)
+  dumpAt(p, mat) {
+    const r = this.rec, L = mat === 1 ? 'sand' : mat === 2 || mat === 3 ? 'grav' : null;
+    if (!r || !L || r.fin?.length) return null;
+    const P = planOf(r), [a, d] = P.frame(p.x, p.z), k = P.cellAt(a, d);
+    if (k < 0 || !P.cells.has(k)) return null;
+    const need = L === 'sand' ? 'geo' : 'sand';
+    if (!setOf(r[need]).has(k)) { this.app.ui.toast(`Сначала «${NAME[need]}» — здесь его нет`); return null; }
+    const pile = new Pile(r, L);
+    return { r, L, pile, n: pile.at(a, d) };
+  }
+  // the load (litres) into it: a heap where it was tipped
+  dumpIn(t, litres) {
+    const app = this.app, { pile, n } = t;
+    for (let i = 0; i < 6; i++) { pile.pour(n, litres / 6); pile.step(4); }
+    for (let i = 0; i < 60 && pile.step(4) > 1; i++);   // (it runs down to its slope)
+    app.objects.update(t.r.id, pile.patch());
   }
   // the boards come off (the top is all done)
   _strip(r) {
@@ -244,8 +264,8 @@ export class BlindWork {
     return {
       form: `Опалубка: выберите ширину и тяните из лотка к дому — доски на колышках встанут вокруг стен (${this.app.settings.blindW || 1000} мм от стены)`,
       geo: 'Геотекстиль: ведите пальцем вдоль стены — рулон раскатывается ровной полосой на всю ширину отмостки',
-      sand: 'Песок: держите палец — сыплется с лопаты кучей; ведите по куче — грабли разровняют подушку 60 мм',
-      grav: 'Щебень: держите палец — куча с лопаты; ведите по куче граблями — 60 мм фракции 20–40 по песку',
+      sand: this.app.settings.blindAct === 'rake' ? 'Грабли: ведите вдоль стены по песку — ровный слой 60 мм' : 'Песок: держите палец — сыплется кучей (или «Земля» → лопата: наберите с кучи песка и высыпьте сюда); потом «Грабли»',
+      grav: this.app.settings.blindAct === 'rake' ? 'Грабли: ведите вдоль стены по щебню — ровный слой 60 мм' : 'Щебень: держите палец — сыплется кучей (или лопатой с кучи щебня); потом «Грабли»',
       mesh: 'Сетка: ведите пальцем вдоль стены — листы сетки 150 × 150 из прутка Ø5 на стульчиках (под бетон)',
       fin: this.fin === 'tile' ? 'Плитка: выберите цвет и ведите пальцем по щебню — «кирпичик» на сухую смесь с уклоном от стен, по краю бордюр' : 'Бетон: «Бетон» → шланг или ведро по сетке — 80 мм; правило по доскам даст уклон 3 % от стен, потом кельма',
       strip: 'Снять опалубку: коснитесь отмостки — когда верх готов по всему периметру',
