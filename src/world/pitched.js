@@ -8,8 +8,9 @@ import { aeratedTexture } from './walls.js';
 //   plate   – the wall plate (мауэрлат) 150 × 150 on the top of the walls, and the masonry
 //             the roof needs under it: the gables (фронтоны), on a mono-pitch roof its high
 //             wall and the slopes of its ends,
-//   ridge   – the ridge purlin 150 × 200 on posts 100 × 100 (≤ 3 m apart) standing on beams
-//             across the house on the wall plate; the gables carry its ends,
+//   joists  – the ceiling joists 50 × 200 every 600 across the house, from plate to plate,
+//   ridge   – the ridge purlin 150 × 200 on posts 100 × 100 (≤ 3 m apart) standing on the
+//             joists; the gables carry its ends,
 //   frame   – the rafters 50 × 200 every 600 off the purlin, the collar ties; the hip
 //             rafters and the jack rafters; the valley rafters where two wings meet,
 //   memb    – the membrane on the rafters,
@@ -41,7 +42,7 @@ export const COVER_COLOURS = {
   seam: { ral7024: ['Графит', 0x45484d], ral7016: ['Антрацит', 0x383e42], ral9005: ['Чёрный', 0x17181a], zinc: ['Титан-цинк', 0x8d9295], copper: ['Медь', 0xa8653f] },
   shingle: { brown: ['Коричневая', ['#5e3b28', '#4a2c1e', '#6f4a33']], red: ['Красная', ['#7d2b22', '#65221b', '#8f3a2c']], grey: ['Серая', ['#5d6064', '#4b4e52', '#70737a']], green: ['Зелёная', ['#34463a', '#2a3a2f', '#43574a']] },
 };
-export const STAGES = [['plate', 'Мауэрлат и фронтоны'], ['ridge', 'Коньковый прогон'], ['frame', 'Стропила'], ['memb', 'Мембрана'], ['battens', 'Обрешётка'], ['cover', 'Покрытие'], ['trim', 'Конёк и планки'], ['gutter', 'Водосток']];
+export const STAGES = [['plate', 'Мауэрлат и фронтоны'], ['joists', 'Лаги перекрытия'], ['ridge', 'Коньковый прогон'], ['frame', 'Стропила'], ['memb', 'Мембрана'], ['battens', 'Обрешётка'], ['cover', 'Покрытие'], ['trim', 'Конёк и планки'], ['gutter', 'Водосток']];
 // the windows in the roof (мансардные окна): the same windows go into a slope (between the
 // rafters, the covering cut round them, a flashing collar) or onto a flat roof (on a kerb)
 export const RWIN = { s1: ['55 × 78', 550, 780], s2: ['78 × 118', 780, 1180], s3: ['78 × 140', 780, 1400], s4: ['114 × 118', 1140, 1180] };
@@ -335,17 +336,22 @@ export function buildPitched(roof, live = null, wins = []) {
       }
       walls(G, roof, w, f);
     }
-    // the ridge purlin first (as on site): beams across the house on the plate, posts on them,
-    // the purlin on the posts and on the gables; the rafters rest on it
+    // the ceiling joists across the house on the plate, every 600 (not inside another wing)
+    const yL = roof.y0 + MM(PITCHED.plate) + MM(100), ib = w.B - roof.T / 2, jA = w.A - roof.T, joistAt = [];
+    for (let a = -jA + MM(50); a <= jA - MM(50) + 1e-7; a += step) joistAt.push(a);
+    if (has('joists')) for (const a of joistAt) { if (under(a, 0)) continue; beams.add(f.W(a, -ib - MM(60), yL), f.W(a, ib + MM(60), yL), rw, MM(200)); }
+    // the ridge purlin (as on site): posts on the joists, the purlin on the posts and on the
+    // gables; the rafters rest on it
     if ((has('ridge') || has('frame')) && !f.mono) {
-      const [r0, r1] = f.ridgeA, yR = f.ridge - tie / f.cs - MM(100), yL = roof.y0 + MM(PITCHED.plate) + MM(100), ib = w.B - roof.T / 2;
+      const [r0, r1] = f.ridgeA, yR = f.ridge - tie / f.cs - MM(100);
       for (const [b0, b1] of runs(r0, r1, (a) => under(a, 0))) if (b1 - b0 > MM(200)) beams.add(f.W(b0, 0, yR), f.W(b1, 0, yR), MM(150), MM(200));
       const in0 = Math.max(r0, -(w.A - roof.T)), in1 = Math.min(r1, w.A - roof.T), n = Math.max(1, Math.ceil((in1 - in0) / MM(3000)));
       for (let i = 0; i <= n; i++) {
         if ((i === 0 && f.ends[0] !== 'hip') || (i === n && f.ends[1] !== 'hip')) continue;   // (a gable / a joined wing carries the end)
-        const a = in0 + (in1 - in0) * i / n;
+        let a = in0 + (in1 - in0) * i / n;
+        if (has('joists')) a = joistAt.reduce((p, q) => (Math.abs(q - a) < Math.abs(p - a) ? q : p), joistAt[0]) + rw / 2 + MM(50);   // (beside a joist, nailed to it)
         if (under(a, 0) || yR - MM(100) - (yL + MM(100)) < MM(150)) continue;
-        beams.add(f.W(a, -ib, yL), f.W(a, ib, yL), MM(100), MM(200));
+        if (!has('joists')) beams.add(f.W(a, -ib, yL), f.W(a, ib, yL), MM(100), MM(200));   // (a roof begun before the joists: a beam under the post)
         beams.add(f.W(a, 0, yL + MM(100)), f.W(a, 0, yR - MM(100)), MM(100), MM(100));
       }
     }

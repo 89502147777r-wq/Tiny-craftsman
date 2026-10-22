@@ -901,7 +901,7 @@ export class WallTool {
     this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
     const NAMES = { studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
-    if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', ridge: 'Прогон', trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
+    if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', joists: 'Лаги', ridge: 'Прогон', trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
     if (lab && kind === 'blind') { lab.textContent = this.app.settings.blindLayer === 'drain' ? 'Лоток' : 'Опалубка'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель' }[this.app.settings.facLayer || 'eps']; return; }
     if (lab && kind === 'roof') { lab.textContent = { vap: 'Рулон пароизоляции', xps: 'Лист XPS', wedge: 'Клиновидная плита', mem: 'Рулон мембраны', cop: 'Отлив 2 м', grav: 'Гравий' }[this.app.settings.roofLayer || 'vap']; return; }

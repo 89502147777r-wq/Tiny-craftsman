@@ -17,7 +17,7 @@ const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 const _ray = new THREE.Raycaster();
 const NAME = Object.fromEntries(STAGES);
 const STEP = { frame: PITCHED.step, memb: 1000, battens: PITCHED.step };
-const PREV = { ridge: 'plate', frame: 'ridge', memb: 'frame', battens: 'memb', cover: 'battens', trim: 'cover', gutter: 'trim' };
+const PREV = { joists: 'plate', ridge: 'joists', frame: 'ridge', memb: 'frame', battens: 'memb', cover: 'battens', trim: 'cover', gutter: 'trim' };
 
 // the house under the roof: the plan of the masonry in a grid along its walls, filled in,
 // cut into rectangles → the wings; the top of the walls (or of the ring beam on them)
@@ -324,7 +324,13 @@ export class PitchedWork {
       if (r.done.gutter) return { ok: false, why: 'Водосток уже висит' };
       this.place = { gutter: true }; this._live({ stage: 'gutter', all: true }); return { ok: true };
     }
+    if (L === 'joists') {
+      if (!r?.done?.plate) { this._live(null); this.why = 'Лаги — на мауэрлат: сначала этап 1'; return { ok: false, why: this.why }; }
+      if (r.done.joists) { this.why = 'Лаги уже лежат — дальше «Коньковый прогон»'; return { ok: false, why: this.why }; }
+      this.place = { joists: true }; this._live({ stage: 'joists', all: true }); return { ok: true };
+    }
     if (L === 'ridge') {
+      if (!r?.done?.joists && !r?.done?.ridge) { this._live(null); this.why = 'Сначала лаги перекрытия (этап 2): стойки конька встают на них'; return { ok: false, why: this.why }; }
       if (!r?.done?.plate) { this._live(null); this.why = 'Коньковый прогон — на мауэрлат: сначала этап 1'; return { ok: false, why: this.why }; }
       if (r.done.ridge || r.done.frame) { this.why = 'Коньковый прогон уже стоит — дальше «Стропила»'; return { ok: false, why: this.why }; }
       this.place = { ridge: true }; this._live({ stage: 'ridge', all: true }); return { ok: true };
@@ -343,22 +349,24 @@ export class PitchedWork {
       this._save(P.rec, 'proof-plate');
       const n = P.rec.wings.length, t = ROOF_TYPES[P.rec.style].toLowerCase();
       const studs = app.objects.all('belt').some((b) => b.studs?.length);
-      app.ui.toast(`Мауэрлат 150×150 ${studs ? 'на шпильках армопояса, шайбы и гайки' : 'на анкерах'} по всему дому${P.rec.style !== 'hip' ? ', фронтоны из блоков' : ''} — крыша ${t}${n > 1 ? `, ${n} крыла с ендовами` : ''}, ${P.rec.pitch}°. Дальше — коньковый прогон на стойках, потом стропила`);
+      app.ui.toast(`Мауэрлат 150×150 ${studs ? 'на шпильках армопояса, шайбы и гайки' : 'на анкерах'} по всему дому${P.rec.style !== 'hip' ? ', фронтоны из блоков' : ''} — крыша ${t}${n > 1 ? `, ${n} крыла с ендовами` : ''}, ${P.rec.pitch}°. Дальше — лаги перекрытия, коньковый прогон, стропила`);
       return;
     }
     const r = this.rec;
-    if (P.ridge) { this._save({ done: { ...r.done, ridge: true } }, 'proof-ridge'); app.ui.toast(r.wings.every((w) => (w.style || r.style) === 'mono') ? 'У односкатной крыши конька нет — стропила ложатся на мауэрлат высокой стены: дальше «Стропила»' : 'Коньковый прогон 150×200 на стойках 100×100 (через ≤ 3 м, на балках поперёк дома), концы — на фронтонах. Дальше — стропила пальцем вдоль конька: верхом на прогон, низом на мауэрлат'); return; }
+    if (P.joists) { this._save({ done: { ...r.done, joists: true } }, 'proof-joists'); app.ui.toast('Лаги перекрытия 50×200 через 600 мм поперёк дома, с мауэрлата на мауэрлат — дальше «Коньковый прогон»: стойки встанут на лаги'); return; }
+    if (P.ridge) { this._save({ done: { ...r.done, ridge: true } }, 'proof-ridge'); app.ui.toast(r.wings.every((w) => (w.style || r.style) === 'mono') ? 'У односкатной крыши конька нет — стропила ложатся на мауэрлат высокой стены: дальше «Стропила»' : 'Коньковый прогон 150×200 на стойках 100×100 (через ≤ 3 м, на лагах), концы — на фронтонах. Дальше — стропила пальцем вдоль конька: верхом на прогон, низом на мауэрлат'); return; }
     if (P.gutter) { this._save({ done: { ...r.done, gutter: true }, gut: this.opts().gut }, 'proof-gutter'); app.ui.toast('Водосток: желоба на крюках под карнизами, трубы по углам до земли — в дождь из них течёт вода'); return; }
     this._save({ done: { ...r.done, trim: true } }, 'proof-trim');
     app.ui.toast('Конёк, рёбра, лобовая доска, ветровые планки и софиты — дальше водосток');
   }
   status(carry) {
     const L = this.stage, r = this.rec;
-    if (carry) return this.place ? 'Отпустите' : (L === 'plate' ? 'Поднесите мауэрлат к верху стен' : L === 'gutter' ? 'Поднесите водосток к крыше' : L === 'ridge' ? 'Поднесите прогон к дому' : 'Поднесите конёк к крыше');
+    if (carry) return this.place ? 'Отпустите' : (L === 'plate' ? 'Поднесите мауэрлат к верху стен' : L === 'gutter' ? 'Поднесите водосток к крыше' : L === 'ridge' ? 'Поднесите прогон к дому' : L === 'joists' ? 'Поднесите лаги к дому' : 'Поднесите конёк к крыше');
     const left = r ? this.left(r, L) : 1;
     return {
-      plate: r ? 'Мауэрлат лежит — дальше «Коньковый прогон»' : 'Скатная крыша: выберите тип, уклон и покрытие, потом тяните мауэрлат из лотка на верх стен — крыша встанет по дому (Г-, Т-образный — крыльями с ендовами)',
-      ridge: r?.done?.ridge ? 'Прогон стоит — дальше «Стропила»' : 'Коньковый прогон: тяните из лотка на дом — балки поперёк на мауэрлат, стойки через ≤ 3 м, прогон по коньку (концы на фронтонах)',
+      plate: r ? 'Мауэрлат лежит — дальше «Лаги перекрытия»' : 'Скатная крыша: выберите тип, уклон и покрытие, потом тяните мауэрлат из лотка на верх стен — крыша встанет по дому (Г-, Т-образный — крыльями с ендовами)',
+      joists: r?.done?.joists ? 'Лаги лежат — дальше «Коньковый прогон»' : 'Лаги перекрытия: тяните из лотка на дом — брусья 50×200 через 600 мм поперёк, с мауэрлата на мауэрлат',
+      ridge: r?.done?.ridge ? 'Прогон стоит — дальше «Стропила»' : 'Коньковый прогон: тяните из лотка на дом — стойки на лаги через ≤ 3 м, прогон по коньку (концы на фронтонах)',
       frame: `Стропила: ведите пальцем по крыше вдоль конька — пары встают через 600 мм${left < 1 ? `; осталось ${Math.round(left * 100)} %` : ''}`,
       memb: 'Мембрана: ведите пальцем вдоль ската — рулон раскатывается внахлёст по стропилам',
       battens: 'Обрешётка: ведите пальцем — контробрешётка по стропилам и рейки поперёк (под мягкую черепицу — OSB)',
