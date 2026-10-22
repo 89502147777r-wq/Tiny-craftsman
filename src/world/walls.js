@@ -601,10 +601,13 @@ export class WallView {
       const th = BELT.board * S, over = BELT.over * S, h = over + b.H, yc = b.top - over + h / 2, yaw = Math.atan2(-b.u[1], b.u[0]);
       let seed = (b.id || 7) * 9301;
       const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      // (a lintel's end against a block: no board across it, the side boards stop at it)
+      const cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0;
       for (const [s0, t0, s1, t1, ns, nt] of boardsOf(b)) {
         if (nw >= this.max.wood - 40 || nbb >= this.max.beltBoards - 4) break;
-        const along = ns === 0, L = Math.hypot(s1 - s0, t1 - t0) + 2 * th;
-        const cs = (s0 + s1) / 2 + ns * th / 2, ct = (t0 + t1) / 2 + nt * th / 2, [x, z] = toWorld(b, cs, ct);
+        if ((ns < 0 && cl[0]) || (ns > 0 && cl[1])) continue;
+        const along = ns === 0, L = Math.hypot(s1 - s0, t1 - t0) + (along ? (2 - c0 - c1) : 2) * th;
+        const cs = (s0 + s1) / 2 + ns * th / 2 + (along ? (c0 - c1) * th / 2 : 0), ct = (t0 + t1) / 2 + nt * th / 2, [x, z] = toWorld(b, cs, ct);
         Q.setFromAxisAngle(_Y, along ? yaw : yaw + Math.PI / 2);
         // boards 150 mm tall from the bottom up, the top one ripped to what is left
         const bh = 150 * S, aB = this.beltBoards.geometry.attributes.aBoard;
