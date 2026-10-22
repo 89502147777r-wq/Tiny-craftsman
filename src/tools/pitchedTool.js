@@ -21,6 +21,10 @@ const PREV = { joists: 'plate', ridge: 'joists', frame: 'ridge', memb: 'frame', 
 
 // the house under the roof: the plan of the masonry in a grid along its walls, filled in,
 // cut into rectangles → the wings; the top of the walls (or of the ring beam on them)
+let _outside = null;
+// the outside of the house (the plot reached from its edge, round the walls): (x, z) → true
+// outside, false inside, null on a wall — or null when there is no house
+export function houseOutside(app) { _outside = null; findHouse(app); return _outside; }
 export function findHouse(app) {
   const all = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel).map(boxOf);
   if (all.length < 8) return null;
@@ -84,6 +88,8 @@ export function findHouse(app) {
   for (let i = 0; i < ni; i++) st.push([i, 0], [i, nj - 1]); for (let j = 0; j < nj; j++) st.push([0, j], [ni - 1, j]);
   while (st.length) { const [i, j] = st.pop(); if (i < 0 || j < 0 || i >= ni || j >= nj) continue; const k = j * ni + i; if (out[k] || grid[k]) continue; out[k] = 1; st.push([i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]); }
   const fill = new Uint8Array(ni * nj); for (let k = 0; k < fill.length; k++) fill[k] = out[k] ? 0 : 1;
+  // (for the facade: is a point outside the house — reached from the edge of the plot)
+  _outside = (x, z) => { const i = Math.floor((toA(x, z) - a0) / C), j = Math.floor((toD(x, z) - d0) / C); if (i < 0 || j < 0 || i >= ni || j >= nj) return true; const k = j * ni + i; return grid[k] ? null : !!out[k]; };
   // the rectangles: the largest first (histograms), down to 2 × 2 m
   const rects = [], left = fill.slice(), minC = Math.round(2000 / 100);
   for (let guard = 0; guard < 5; guard++) {

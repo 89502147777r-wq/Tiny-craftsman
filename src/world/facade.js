@@ -4,6 +4,7 @@ import { canvas, asTex, normalOf } from './roof.js';
 import { wallLines, masonry, findOpenings } from '../tools/windowFit.js';
 import { beltContains } from '../tools/belt.js';
 import { gableWalls } from './pitched.js';
+import { houseOutside } from '../tools/pitchedTool.js';
 
 // The facade (мокрый фасад / навесные панели), laid piece by piece as on site:
 //   eps  – the insulation: facade EPS boards 1000 × 500 × 100 on glue, staggered, cut at the
@@ -254,7 +255,7 @@ export function facadeFaces(objects) {
   const app = { objects }, units = masonry(app);
   if (!units.length) return [];
   let cx = 0, cz = 0; for (const b of units) { cx += b.x; cz += b.z; } cx /= units.length; cz /= units.length;
-  const lines = wallLines(units), opens = findOpenings(app), faces = [];
+  const lines = wallLines(units), opens = findOpenings(app), faces = [], isOut = houseOutside(app);
   for (const L of lines) {
     if (L.units.length < 3) continue;
     const nx = -L.uz, nz = L.ux;
@@ -273,12 +274,29 @@ export function facadeFaces(objects) {
       const wgt = (b.hl + b.hw) / (1 + Math.abs(c) / MM(3000));
       if (c > 0) wp += wgt; else wn += wgt;
     }
-    const sg = Math.abs(wp - wn) > 0.15 * (wp + wn) && wp + wn > 0 ? (wp < wn ? 1 : -1) : (L.ux * am + nx * md - cx) * nx + (L.uz * am + nz * md - cz) * nz >= 0 ? 1 : -1;
+    let sg = Math.abs(wp - wn) > 0.15 * (wp + wn) && wp + wn > 0 ? (wp < wn ? 1 : -1) : (L.ux * am + nx * md - cx) * nx + (L.uz * am + nz * md - cz) * nz >= 0 ? 1 : -1;
+    // the outline of the house decides first: the side the plot's edge reaches round the walls
+    // (points along the line, a little off each face)
+    if (isOut) {
+      let vp = 0, vn = 0;
+      for (const f of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+        const a = a0 + (a1 - a0) * f;
+        for (const [sgn, c] of [[1, hi + MM(250)], [-1, lo - MM(250)]]) { const o = isOut(L.ux * a + nx * c, L.uz * a + nz * c); if (o === true) { if (sgn > 0) vp++; else vn++; } }
+      }
+      if (vp !== vn) sg = vp > vn ? 1 : -1;
+    }
     // its tiers by their outer faces: a plinth standing out of the wall over it (or a wall
     // set back) is a face of its own — the wall's facade starts over the plinth
     const outer = (u) => { const c = u.b.x * nx + u.b.z * nz, h = across(u.b, nx, nz); return sg > 0 ? c + h : -(c - h); };
+    // (one material within 60 mm is one wall: courses laid a little in or out by hand — the glue
+    // under the boards makes it up, they go on flat over the outermost; another material standing
+    // out — a brick plinth under the blocks — or a step over 60 mm is a tier of its own)
+    const mat = (u) => (u.b.kind === 'brick' ? 'brick' : u.b.kind === 'cinder' ? 'cinder' : 'block');
     const sorted = [...L.units].sort((p, q) => outer(p) - outer(q)), tiers = [];
-    for (const u of sorted) { const f = outer(u), T = tiers.at(-1); if (T && f - T.f0 < MM(25)) { T.us.push(u); T.f = Math.max(T.f, f); } else tiers.push({ f, f0: f, us: [u] }); }   // (each tier within 25 mm: a few mm off by hand, not a plinth)
+    for (const u of sorted) {
+      const f = outer(u), m = mat(u), T = tiers.find((q) => q.m === m && f - q.f0 < MM(60)) || tiers.find((q) => q.m !== m && Math.abs(f - q.f) < MM(10));
+      if (T) { T.us.push(u); T.f = Math.max(T.f, f); } else tiers.push({ f, f0: f, m, us: [u] });
+    }
     const big = tiers.filter((T) => T.us.length >= 3);
     for (const T of big) {
       const mine = new Set(T.us.map((u) => u.b));
