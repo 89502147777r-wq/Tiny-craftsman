@@ -375,7 +375,7 @@ export class WallView {
     // (the precast lintels: the concrete of the foundation, set, smooth from the steel mould)
     const lg = new THREE.BoxGeometry(1, 1, 1), nv = lg.attributes.position.count;
     lg.setAttribute('aPour', new THREE.Float32BufferAttribute(new Float32Array(nv).fill(-1e9), 1));
-    lg.setAttribute('aSm', new THREE.Float32BufferAttribute(new Float32Array(nv).fill(0.85), 1));
+    lg.setAttribute('aSm', new THREE.Float32BufferAttribute(new Float32Array(nv).fill(0.6), 1));   // (vibrated, not trowelled: the grain shows)
     lg.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(nv * 3).fill(1), 3));
     this.lintels = new THREE.InstancedMesh(lg, makeCastConcreteMaterial({ uClock: { value: 0 }, uCure: { value: 1 } }, { steel: true }), this.max.lintel);
     this.frames = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xff6a1c, roughness: 0.6, emissive: 0x401000 }), this.max.frame);

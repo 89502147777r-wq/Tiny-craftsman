@@ -318,7 +318,12 @@ function edgeNear(t, p) {
 export function mortarOf(units) {
   const out = [], list = units.filter((u) => u.free && u.p && u.s && u.q && u.kind !== 'prop').map(boxOf);
   const cell = 0.07, grid = new Map(), key = (x, z) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;   // (a cell longer than a block: the neighbours are in the 3 × 3 round it)
-  list.forEach((b, i) => { const k = key(b.x, b.z); (grid.get(k) || grid.set(k, []).get(k)).push(i); });
+  // (a long one — a lintel — in every cell along it: the units at its ends find it)
+  list.forEach((b, i) => {
+    const R = Math.max(b.hl, b.hw);
+    for (let gx = Math.floor((b.x - R) / cell); gx <= Math.floor((b.x + R) / cell); gx++) for (let gz = Math.floor((b.z - R) / cell); gz <= Math.floor((b.z + R) / cell); gz++) { const k = `${gx},${gz}`; (grid.get(k) || grid.set(k, []).get(k)).push(i); }
+  });
+  const done = new Set();
   // the half size of a box along a direction
   const half = (b, ax, az) => Math.abs(b.hl * (b.ux * ax + b.uz * az)) + Math.abs(b.hw * (-b.uz * ax + b.ux * az));
   for (const [i, b] of list.entries()) {
@@ -341,7 +346,8 @@ export function mortarOf(units) {
     // of the course face each other a joint apart, over the length they share
     const cx = Math.floor(b.x / cell), cz = Math.floor(b.z / cell);
     for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gz = cz - 1; gz <= cz + 1; gz++) for (const j of grid.get(`${gx},${gz}`) || []) {
-      if (j <= i) continue;
+      if (j === i || done.has(i < j ? i * 100003 + j : j * 100003 + i)) continue;
+      done.add(i < j ? i * 100003 + j : j * 100003 + i);
       const o = list[j];
       // (one course: side by side over most of their height — a lintel two bricks high beside
       // its course, a jamb a few mm off: the joint over the height they share)
