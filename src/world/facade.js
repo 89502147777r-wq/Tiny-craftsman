@@ -530,6 +530,7 @@ export function buildFacade(F, rec, live) {
     for (const [da, dy] of DOWELS) {
       const a = F.ru > 0 ? s[0] + MM(da) : s[2] - MM(da), y = s[1] + MM(dy);
       if (!cutPiece(F, s, OFF.eps).some((r) => inR(r, a, y))) continue;
+      if (F.topAt && y > F.topAt(a) - MM(40)) continue;   // (a board cut along a gable's slope: not in the part cut off)
       if (glue.has(ck(Math.floor(a / CELL), Math.floor(y / CELL)))) continue;
       gd.push(W(F, a, y, OFF.eps + MM(2)));
     }
