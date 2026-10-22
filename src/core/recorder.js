@@ -16,6 +16,8 @@ export const TRACK_FIELDS = [
   'rk_px', 'rk_py', 'rk_pz', 'rk_qx', 'rk_qy', 'rk_qz', 'rk_qw', 'rk_lift',
 ];
 const F = TRACK_FIELDS.length;
+// (kept: the last ~34 minutes of motion — older goes, the saved project stays small on a phone)
+export const TRACK_MAX = 40 * 1024;
 
 export class Recorder {
   constructor() {
@@ -44,7 +46,7 @@ export class Recorder {
     }
     this.last = row;
     this.lastT = clock;
-    if (this.len === 1024) { this.chunks.push(this.cur); this.cur = new Float32Array(F * 1024); this.len = 0; }
+    if (this.len === 1024) { this.chunks.push(this.cur); this.cur = new Float32Array(F * 1024); this.len = 0; this._trim(); }
     this.cur.set(row, this.len * F);
     this.len++;
   }
@@ -64,7 +66,8 @@ export class Recorder {
     this.len = 0;
     this.last = null;
     if (!arr || !arr.length) return;
-    this.chunks.push(arr.slice());
     this.lastT = arr[arr.length - F];
+    this.chunks.push(arr.length > TRACK_MAX * F ? arr.slice(arr.length - TRACK_MAX * F) : arr.slice());
   }
+  _trim() { while (this.chunks.length > 1 && this.samples > TRACK_MAX) this.chunks.shift(); }
 }

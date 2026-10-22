@@ -2,6 +2,16 @@
 // it caused (sparse before/after) and the objects it added/changed/removed,
 // plus undo/redo. The same records feed the Blender export, so the film can
 // be rebuilt step by step.
+export const JOURNAL_MAX = 24 * 1024 * 1024;
+// the size of an entry (bytes, about): its ground diff and its objects
+function sizeOf(r) {
+  if (r._size) return r._size;
+  let b = 200;
+  if (r.diff) for (const v of Object.values(r.diff)) if (v && v.byteLength) b += v.byteLength;
+  if (r.objs) { try { b += JSON.stringify(r.objs).length; } catch { b += 1e5; } }
+  Object.defineProperty(r, '_size', { value: b, enumerable: false });
+  return b;
+}
 export class Journal {
   constructor(terrain, objects) {
     this.terrain = terrain;
@@ -33,8 +43,24 @@ export class Journal {
     const rec = { id: this.nextId++, type: p.type, t0: p.t0, t1: clock, meta: p.meta, diff: diff.idx.length ? diff : null, objs };
     this.done.push(rec);
     this.undone.length = 0;
+    this.trim();
     this.onChange?.('commit', rec);
     return rec;
+  }
+
+  // The undo history is kept within a budget (the ground's changes are big: a rake stroke
+  // over the blind area, a level under the geotextile): the oldest entries go first. The
+  // project itself (the ground, the objects) is saved as it is — only how far back undo goes
+  // gets shorter. (A phone's tab is killed when a save copies hundreds of MB.)
+  trim(maxBytes = JOURNAL_MAX) {
+    let total = 0;
+    for (const r of this.undone) total += sizeOf(r);
+    if (total > maxBytes / 4) { this.undone.length = 0; total = 0; }
+    for (const r of this.done) total += sizeOf(r);
+    let k = 0;
+    while (k < this.done.length - 1 && total > maxBytes) total -= sizeOf(this.done[k++]);
+    if (k) this.done.splice(0, k);
+    return k;
   }
 
   cancel() {
