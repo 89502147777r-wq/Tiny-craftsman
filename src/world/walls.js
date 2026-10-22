@@ -406,6 +406,11 @@ export class WallView {
     this.ucut = new THREE.Group(); this.group.add(this.ucut);
     this._uGeo = new Map();
     this.ublocks.count = 0;
+    // the anchor studs in the ring beams (М12, a hook at the foot), the washers and the nuts
+    // on the wall plate over them
+    this.max.studs = 1500;
+    this.studs = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 8), new THREE.MeshStandardMaterial({ color: 0x8c8f93, metalness: 0.8, roughness: 0.38 }), this.max.studs);
+    this.studs.castShadow = true; this.studs.frustumCulled = false; this.studs.count = 0; this.group.add(this.studs);
     this.wood.castShadow = this.wood.receiveShadow = true; this.wood.frustumCulled = false; this.wood.count = 0; this.group.add(this.wood);
     this.lintels.castShadow = this.lintels.receiveShadow = true;
     for (const m of [this.lintels, this.frames]) { m.frustumCulled = false; m.count = 0; this.group.add(m); }
@@ -442,7 +447,7 @@ export class WallView {
     this.marks = false;    // planned openings shown (while working on walls)
     objects.on((id, rec) => {
       if (rec?.type === 'blind' || this._blindIds?.has(id)) { this.blindDirty = true; this.proofDirty = true; return; }
-      if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; return; }
+      if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; if (rec?.type === 'proof' || !rec) this.dirty = true; return; }   // (the nuts on the studs follow the wall plate)
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
     });
@@ -625,6 +630,28 @@ export class WallView {
         }
       }
     }
+    // the studs: from 40 mm over the bottom of the beam to 200 mm over its top (150 the wall
+    // plate, 50 for the washer and the nut); a hook at the foot; the nut once the plate is on
+    let ns = 0;
+    const plated = this.objects.all('proof').filter((r) => r.done?.plate);
+    for (const b of O.all('belt')) {
+      if (!b.studs?.length) continue;
+      const yTop = b.top + b.H, nut = plated.some((r) => Math.abs(r.y0 - yTop) < 40 * S), r6 = 6 * S;
+      for (const [s, t] of b.studs) {
+        if (ns >= this.max.studs - 4) break;
+        const [x, z] = toWorld(b, s, t), y0 = b.top + 40 * S, y1 = yTop + 200 * S;
+        Q.identity();
+        this.studs.setMatrixAt(ns++, m.compose(P.set(x, (y0 + y1) / 2, z), Q, Sv.set(r6, y1 - y0, r6)));
+        Q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+        this.studs.setMatrixAt(ns++, m.compose(P.set(x + 30 * S * b.u[0], y0, z + 30 * S * b.u[1]), Q.premultiply(new THREE.Quaternion().setFromAxisAngle(_Y, Math.atan2(-b.u[1], b.u[0]))), Sv.set(r6, 60 * S, r6)));
+        if (nut) {
+          const yp = yTop + 150 * S; Q.identity();
+          this.studs.setMatrixAt(ns++, m.compose(P.set(x, yp + 2 * S, z), Q, Sv.set(25 * S, 4 * S, 25 * S)));   // the washer
+          this.studs.setMatrixAt(ns++, m.compose(P.set(x, yp + 14 * S, z), Q, Sv.set(11 * S, 18 * S, 11 * S)));   // the nut
+        }
+      }
+    }
+    this.studs.count = ns; this.studs.instanceMatrix.needsUpdate = true; this.studs.computeBoundingSphere();
     // a lintel cast in place: under it over the opening the deck (plywood), the beams across
     // and the posts down to the floor; clamps (studs) round the side boards
     for (const b of [...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])]) {

@@ -458,7 +458,7 @@ export class UI {
       const mats = [
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
-        G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'slab'))),
+        G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
         G('win', 'Окна', pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · Антрацит 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), null, C('', has('window'))),
         G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'))),
         G('roof', 'Плоская кровля', roof, 'Кровля', C('', has('roof'), () => lay({ wallKind: 'roof' }))),
