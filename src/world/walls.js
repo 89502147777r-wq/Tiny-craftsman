@@ -7,7 +7,7 @@ import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
-import { buildBlind, blindTopAt, BLIND_TEX } from './blind.js';
+import { buildBlind, blindTopAt, BLIND_TEX, planOf as blindPlan, cellList, concLevels, CONC as BCONC } from './blind.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -448,7 +448,7 @@ export class WallView {
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
     objects.on((id, rec) => {
-      if (rec?.type === 'blind' || this._blindIds?.has(id)) { this.blindDirty = true; this.proofDirty = true; return; }
+      if (rec?.type === 'blind' || this._blindIds?.has(id)) { this.blindDirty = true; this.proofDirty = true; this.fillDirty = true; return; }
       if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; if (rec?.type === 'proof' || !rec) { this.dirty = true; this._faces = null; this.facadeDirty = true; } return; }   // (the nuts on the studs follow the wall plate)
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
@@ -795,6 +795,34 @@ export class WallView {
         }
       });
     }
+    // the blind area's concrete: over the gravel, its surface at the levels of the cells, its
+    // sides down at the edge (seen once the boards are off)
+    for (const r of this.objects.all('blind')) {
+      const live = this.blindLive?.get(r.id), lv = live?.lv ?? concLevels(r), sw = live?.sm ?? r.sm ?? [];
+      if (!lv.some((h) => h > 0.3)) continue;
+      const P = blindPlan(r), CL = cellList(P), base = r.g + BCONC.base * S, C = P.C, tw = Math.max(r.wetT ?? -1e9, r.pourT ?? -1e9, r.castT ?? -1e9), tp = r.set ? -1e6 : tw > -1e9 ? tw : 1e9;
+      const vh = new Map();
+      const corner = (i, j) => {
+        const key = j * (P.ni + 1) + i;
+        if (!vh.has(key)) {
+          let sh = 0, ss = 0, n = 0;
+          for (const [a, d] of [[i, j], [i - 1, j], [i, j - 1], [i - 1, j - 1]]) { if (a < 0 || d < 0 || a >= P.ni || d >= P.nj) continue; const q = CL.index.get(d * P.ni + a); if (q === undefined) continue; sh += lv[q]; ss += sw[q] ?? 0.3; n++; }   // (its front runs out thin over the gravel)
+          vh.set(key, [n ? sh / n : 0, n ? ss / n : 0.3]);
+        }
+        return vh.get(key);
+      };
+      const vert = (i, j, flat) => { const [h, w] = corner(i, j), [x, z] = P.W2(P.A0 + i * C, P.D0 + j * C); pos.push(x, base + (flat ? -2 : h) * S, z); col.push(1, 1, 1); pt.push(tp); ws.push(w); return pos.length / 3 - 1; };
+      CL.keys.forEach((k, n) => {
+        if (!(lv[n] > 0.3) && !CL.nb[n].some((q) => q >= 0 && lv[q] > 0.3)) return;
+        const c = P.cells.get(k), a = vert(c.i, c.j), b2 = vert(c.i + 1, c.j), c2 = vert(c.i + 1, c.j + 1), d = vert(c.i, c.j + 1);
+        idx.push(a, c2, b2, a, d, c2); own.push(r.id, r.id);
+        for (const [q, e0, e1] of [[CL.nb[n][0], [c.i + 1, c.j + 1], [c.i + 1, c.j]], [CL.nb[n][1], [c.i, c.j], [c.i, c.j + 1]], [CL.nb[n][2], [c.i, c.j + 1], [c.i + 1, c.j + 1]], [CL.nb[n][3], [c.i + 1, c.j], [c.i, c.j]]]) {
+          if (q >= 0 || !(lv[n] > 0.3)) continue;   // (sides only at the boards and the walls)
+          const t0 = vert(...e0), t1 = vert(...e1), b0 = vert(...e0, true), b1 = vert(...e1, true);
+          idx.push(t0, b0, t1, t1, b0, b1); own.push(r.id, r.id);
+        }
+      });
+    }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -838,7 +866,7 @@ export class WallView {
       if (!b) continue;
       const g = buildRoof(b, units, r, live && live.slab === r.slab ? live : null);
       if (!g) continue;
-      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = o.userData.rwin ?? r.id ?? null; });
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
       this.roofs.add(g);
     }
   }
@@ -882,7 +910,7 @@ export class WallView {
     const list = live?.form ? [{ ...live.form, id: null }] : recs;
     for (const r of list) {
       const g = buildBlind(r, live?.form ? null : live);
-      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = o.userData.rwin ?? r.id ?? null; });
+      g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
       this.blinds.add(g);
     }
   }
