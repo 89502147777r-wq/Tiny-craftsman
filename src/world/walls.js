@@ -7,7 +7,7 @@ import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
-import { buildBlind, blindTopAt, BLIND_TEX, BLIND_GROUND, planOf as blindPlan, cellList, concLevels, gravTop } from './blind.js';
+import { buildBlind, blindTopAt, BLIND_TEX, BLIND_GROUND, BLIND, planOf as blindPlan, cellList, concLevels, gravTop } from './blind.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -914,7 +914,9 @@ export class WallView {
     if (this.terrain) {
       if (zr) {
         const P = blindPlan(zr), cs = [[P.A0, P.D0], [P.A0 + P.ni * P.C, P.D0], [P.A0, P.D0 + P.nj * P.C], [P.A0 + P.ni * P.C, P.D0 + P.nj * P.C]].map(([a, d]) => P.W2(a, d));
-        this.terrain.setZone((x, z) => { const k = P.cellAt(...P.frame(x, z)); return k >= 0 && P.cells.has(k); }, [Math.min(...cs.map((c) => c[0])), Math.min(...cs.map((c) => c[1])), Math.max(...cs.map((c) => c[0])), Math.max(...cs.map((c) => c[1]))]);
+        // (by the boards: their top — what heaps over it runs out; by the walls: held)
+        const bTop = zr.g + BLIND.top * S - BLIND.slope * zr.W + 10 * S;
+        this.terrain.setZone((x, z) => { const k = P.cellAt(...P.frame(x, z)); return k >= 0 && P.cells.has(k); }, [Math.min(...cs.map((c) => c[0])), Math.min(...cs.map((c) => c[1])), Math.max(...cs.map((c) => c[0])), Math.max(...cs.map((c) => c[1]))], (x, z) => (P.distAt(...P.frame(x, z)) > zr.W - P.C * 1.5 ? bTop : 0));
       } else this.terrain.setZone(null, null);
     }
     const list = live?.form ? [{ ...live.form, id: null }] : recs;
