@@ -3,10 +3,12 @@ import { PUMP, MODEL_SCALE, CONCRETE } from '../config.js';
 import { Channel } from './uPour.js';
 import { BeltChannel, beltContains } from './belt.js';
 import { isSlab } from './slab.js';
+import { BlindChannel } from './blindPour.js';
+import { BLIND } from '../world/blind.js';
 
 // the concrete cast in place on the walls: a run of U-blocks or a ring beam
-const makeChannel = (app, t) => (t.type === 'belt' ? new BeltChannel(app, t) : new Channel(app, t));
-const topOf = (t) => (t.type === 'belt' ? t.top + t.H : t.p[1] + t.s[1] / 2);
+const makeChannel = (app, t) => (t.type === 'belt' ? new BeltChannel(app, t) : t.type === 'blind' ? new BlindChannel(app, t) : new Channel(app, t));
+const topOf = (t) => (t.type === 'belt' ? t.top + t.H : t.type === 'blind' ? t.g + BLIND.top / 1000 / MODEL_SCALE : t.p[1] + t.s[1] / 2);
 const _ray = new THREE.Raycaster();
 
 // Concrete work, as on a real slab:
@@ -56,11 +58,17 @@ class ConcreteTool {
     const app = this.app, v = app.wallView;
     if (!e || !v || e.clientX === undefined) return null;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
-    const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.blocks, v.bricks, v.cinders, v.lintels], false)[0];
+    const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.blocks, v.bricks, v.cinders, v.lintels, v.blinds], true)[0];
     if (!hit) return null;
     this._uHit = hit.point;
     const id = v.ownerOf(hit), r = id && app.objects.get(id);
     if (r?.type === 'belt') return r;
+    // the blind area: once its gravel is down (under the mesh) and it is not paved
+    if (r?.type === 'blind') {
+      if (!r.grav?.length) { if (!this._bSaid) { this._bSaid = true; app.ui?.toast('Отмостка: бетон — по щебню и сетке, сначала их'); } return null; }
+      if (r.finKind === 'tile') { if (!this._bSaid) { this._bSaid = true; app.ui?.toast('Здесь отмостка из плитки — бетон не нужен'); } return null; }
+      return r;
+    }
     if (r?.kind === 'ublock') return r;
     // (between the boards of a ring beam: on the masonry under it)
     return app.objects.all('belt').find((b) => beltContains(b, hit.point.x, hit.point.z) && hit.point.y > b.top - 0.002 && hit.point.y < b.top + b.H + 0.004) || null;
@@ -68,9 +76,9 @@ class ConcreteTool {
   _uBegin(e, type) {
     const u = this._uAt(e);
     if (!u) return false;
-    if (!(u.fill > 0.05)) { this.app.ui?.toast(u.type === 'belt' ? 'В опалубке пояса ещё нет бетона — сначала залейте (ведро или шланг)' : 'В лотке U-блоков ещё нет бетона — сначала залейте (Бетон → Ведро)'); return true; }
+    if (!(u.fill > 0.05)) { this.app.ui?.toast(u.type === 'blind' ? 'В отмостке ещё нет бетона — сначала залейте (ведро или шланг)' : u.type === 'belt' ? 'В опалубке пояса ещё нет бетона — сначала залейте (ведро или шланг)' : 'В лотке U-блоков ещё нет бетона — сначала залейте (Бетон → Ведро)'); return true; }
     const t0 = u.wetT ?? u.pourT ?? u.castT;   // (from the last fresh concrete)
-    if (u.set || (t0 != null && this.app.clock - t0 > 0.75 * CONCRETE.cure)) { this.app.ui?.toast(u.type === 'belt' ? 'Бетон пояса уже схватился — его не провибрировать и не загладить' : 'Бетон в лотке уже схватился — его не провибрировать и не загладить'); return true; }
+    if (u.set || (t0 != null && this.app.clock - t0 > 0.75 * CONCRETE.cure)) { this.app.ui?.toast(u.type === 'blind' ? 'Бетон отмостки уже схватился — его не провибрировать и не загладить' : u.type === 'belt' ? 'Бетон пояса уже схватился — его не провибрировать и не загладить' : 'Бетон в лотке уже схватился — его не провибрировать и не загладить'); return true; }
     this.begin(type, { u: u.id }, this._uHit.clone());
     const ch = makeChannel(this.app, u);
     this.uw = { ch, top: topOf(u), i: ch.at(this._uHit.x, this._uHit.z) };
@@ -84,7 +92,7 @@ class ConcreteTool {
     return u && this.uw.ch.has(u) ? this.uw.ch.at(this._uHit.x, this._uHit.z) : null;
   }
 
-  up() { if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; this.app.sfx.scrapeStop(); this.gear.pump.setStream(false); } }
+  up() { this._bSaid = false; if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; this.app.sfx.scrapeStop(); this.gear.pump.setStream(false); } }
   interrupt() { this.up(); }
 
   update(dt) {
@@ -105,7 +113,7 @@ class ConcreteTool {
       // (the channel: into its records; the ground is not touched)
       app.sfx.scrapeStop();
       this.uw.ch.settle(); this.uw.ch.write(app); this.uw = null;
-      app.wallView.fillLive = app.wallView.fillLiveSm = app.wallView.beltLive = null; app.wallView.fillDirty = true;
+      app.wallView.fillLive = app.wallView.fillLiveSm = app.wallView.beltLive = app.wallView.blindLive = null; app.wallView.fillDirty = true;
       app.journal.commit(app.clock);
       this.state = 'idle';
       app.ui?.refresh();
@@ -125,7 +133,7 @@ class ConcreteTool {
 
   abort() {
     if (this.state === 'idle') return false;
-    if (this.uw) { this.uw = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = null; this.app.wallView.fillDirty = true; }
+    if (this.uw) { this.uw = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = this.app.wallView.blindLive = null; this.app.wallView.fillDirty = true; }
     this.app.sfx.scrapeStop();
     this.app.particles.flush();
     this.app.journal.cancel();
@@ -174,17 +182,17 @@ export class HoseTool extends ConcreteTool {
     const ch = this.ch, i = ch.at(this.p.x, this.p.z);
     // (a ring beam takes the hose near its pump rate: 37 … 60 l/s; the narrow channel of the
     // U-blocks 8 l/s)
-    const lps = isSlab(this.uT) ? (app.settings.pump || PUMP[1]) * 1000 : this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;   // (a slab: the pump's whole rate)
-    if (!ch.full && ch.h[i] < ch.cap - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
-    else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(isSlab(this.uT) ? 'Здесь уже 200 мм — ведите шланг дальше по перекрытию' : this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
-    else if (!this.warned) { this.warned = true; app.ui?.toast(isSlab(this.uT) ? 'Перекрытие залито — отпустите; потом вибратор и правило по доскам' : this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
+    const lps = isSlab(this.uT) || this.uT.type === 'blind' ? (app.settings.pump || PUMP[1]) * (this.uT.type === 'blind' ? 300 : 1000) : this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;   // (a slab: the pump's whole rate)
+    if (!ch.full && ch.h[i] < (ch.brim ? ch.brim(i) : ch.cap) - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
+    else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT.type === 'blind' ? 'Здесь отмостка полна — ведите шланг дальше вдоль дома' : isSlab(this.uT) ? 'Здесь уже 200 мм — ведите шланг дальше по перекрытию' : this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
+    else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast(this.uT.type === 'blind' ? 'Отмостка залита — отпустите; потом вибратор, правило по доскам (уклон от стен) и кельма' : isSlab(this.uT) ? 'Перекрытие залито — отпустите; потом вибратор и правило по доскам' : this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
     ch.show(app.wallView);
     return ch.point(i);
   }
-  abort() { this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = null; this.app.wallView.fillDirty = true; return super.abort(); }
+  abort() { this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = this.app.wallView.blindLive = null; this.app.wallView.fillDirty = true; return super.abort(); }
   finish() {
-    if (this.state !== 'idle' && this.ch) { this.ch.settle(); this.ch.write(this.app); this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = null; this.app.wallView.fillDirty = true; }
+    if (this.state !== 'idle' && this.ch) { this.ch.settle(); this.ch.write(this.app); this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = this.app.wallView.blindLive = null; this.app.wallView.fillDirty = true; }
     super.finish();
   }
 
@@ -244,7 +252,7 @@ export class PailTool extends ConcreteTool {
   down(p, e) {
     if (this.state !== 'idle') return true;
     const u = this._uAt(e);
-    if (!u) { this.app.ui?.toast('Ведро — для U-блоков и пояса: коснитесь лотка U-блоков или опалубки пояса'); return true; }
+    if (!u) { this.app.ui?.toast('Ведро — для U-блоков, пояса и отмостки: коснитесь лотка, опалубки пояса или щебня отмостки'); return true; }
     this.uT = u;
     this.begin('u-pour', {}, p);
     this.ch = makeChannel(this.app, u);
@@ -285,8 +293,8 @@ export class PailTool extends ConcreteTool {
     const app = this.app, ch = this.ch;
     // tipping: on until it runs, then further as it empties
     // (where the channel is full already it is held back: lead it on along the run)
-    const brim = ch.h[this.i] >= ch.cap - 2;
-    if (brim && !ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast('Здесь лоток полон — ведите ведро дальше вдоль ряда'); }
+    const brim = ch.h[this.i] >= (ch.brim ? ch.brim(this.i) : ch.cap) - 2;
+    if (brim && !ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT?.type === 'blind' ? 'Здесь отмостка полна — ведите ведро дальше' : 'Здесь лоток полон — ведите ведро дальше вдоль ряда'); }
     const want = this.left > 0 && !brim ? 1.25 + 0.75 * (1 - this.left / PAIL_L) : 0.6;
     this.tilt += (want - this.tilt) * (1 - Math.exp(-dt * 4));
     const run = this.left > 0 && this.tilt > 1.1 ? Math.min(1, (this.tilt - 1.1) / 0.15) : 0;
@@ -295,7 +303,7 @@ export class PailTool extends ConcreteTool {
       const l = Math.min(this.left, 3.5 * run * dt);
       ch.pour(this.i, l); this.left -= l; this.poured += l / 1000 / MODEL_SCALE ** 3;
       if (this.left <= 0) app.ui?.toast('Ведро пустое — отпустите и наберите ещё');
-    } else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast('U-блоки залиты доверху — отпустите'); }
+    } else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast(this.uT?.type === 'blind' ? 'Отмостка залита — отпустите' : 'U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
     if (run > 0 && Math.random() < 0.3) {
       const p = ch.point(this.i), a = Math.random() * Math.PI * 2;
@@ -305,7 +313,7 @@ export class PailTool extends ConcreteTool {
     this._pose();
   }
 
-  up() { if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; } }
+  up() { this._bSaid = false; if (this.state === 'work') { this.state = 'settle'; this.settleT = 0; } }
 
   update(dt) {
     if (this.state === 'work') this.work(dt);
@@ -324,7 +332,7 @@ export class PailTool extends ConcreteTool {
     const app = this.app;
     if (this.state === 'idle') return;
     this.ch.settle(); this.ch.write(app);
-    app.wallView.fillLive = app.wallView.fillLiveSm = app.wallView.beltLive = null; app.wallView.fillDirty = true;
+    app.wallView.fillLive = app.wallView.fillLiveSm = app.wallView.beltLive = app.wallView.blindLive = null; app.wallView.fillDirty = true;
     const m = app.journal.pending;
     if (m) m.meta.litres = +((PAIL_L - this.left)).toFixed(1);
     app.journal.commit(app.clock);
@@ -337,7 +345,7 @@ export class PailTool extends ConcreteTool {
 
   abort() {
     if (this.state === 'idle') return false;
-    this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = null; this.app.wallView.fillDirty = true;
+    this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = this.app.wallView.blindLive = null; this.app.wallView.fillDirty = true;
     this.gear.pailStream = null;
     this.app.journal.cancel();
     this.state = 'idle';

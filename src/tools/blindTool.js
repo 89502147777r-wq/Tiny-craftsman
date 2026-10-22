@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { findHouse } from './pitchedTool.js';
+import { Pile } from './blindPour.js';
+import { uStrength } from './lintels.js';
 import { BLIND, BLIND_LAYERS, BLIND_FIN, TILE_COLOURS, planOf, newBlind, layerTop, leftOf, runsOf, setOf } from '../world/blind.js';
 
 // The blind area done by hand (blind.js): the boards and the channels are carried from the
@@ -40,23 +42,46 @@ export class BlindWork {
     return H;
   }
 
-  // ---- the layers spread by the finger ----
+  // ---- the layers by the finger ----
+  //   geo, mesh – a strip off the roll / a run of sheets along the wall the finger starts at,
+  //               the whole width of the area, as far as it is drawn;
+  //   sand, grav – the finger tips the shovel: a heap grows under it (Pile, blindPour.js);
+  //               started on a heap, the finger is the rake: it spreads it level;
+  //   fin        – concrete from the hose or the bucket («Бетон»); paving by the finger.
   down(p, e) {
     const app = this.app, L = this.layer, r = this.rec;
     if (this.isCarry) { app.ui.toast(this.status(false)); return true; }
     if (!r) { app.ui.toast('Отмостка: сначала опалубка — тяните её из лотка к дому'); return true; }
     if (L === 'strip') { this._strip(r); return true; }
     if (L === 'mesh' && (r.finKind || this.fin) === 'tile') { app.ui.toast('Под плитку сетка не нужна: плитка ложится на щебень с песком — выберите «Бетон / плитка»'); return true; }
-    const need = L === 'fin' ? (this.fin === 'tile' ? 'grav' : 'mesh') : UNDER[L];
-    if (need !== 'form' && !r[need]?.length) { app.ui.toast(`Сначала «${NAME[need === 'mesh' ? 'mesh' : need]}»`); return true; }
+    if (L === 'fin' && this.fin === 'conc') { app.ui.toast(r.mesh?.length ? 'Бетон отмостки — как в любую опалубку: «Бетон» → шланг или ведро по щебню и сетке, потом вибратор, правило по доскам и кельма' : 'Сначала сетка'); return true; }
+    const need = L === 'fin' ? 'grav' : UNDER[L];
+    if (need !== 'form' && !r[need]?.length) { app.ui.toast(`Сначала «${NAME[need]}»`); return true; }
     if (L === 'fin' && r.finKind && r.finKind !== this.fin) { app.ui.toast(`Здесь уже ${r.finKind === 'tile' ? 'плитка' : 'бетон'} — продолжайте им (или снимите «Удалить»)`); return true; }
-    const y = layerTop(r, L === 'fin' ? 'mesh' : L);
+    const y = layerTop(r, L === 'fin' ? 'grav' : need === 'form' ? 'geo' : need);
     const h = this._at(e, r, y);
     if (!h) return true;
-    const under = need === 'form' ? null : setOf(r[need]), done = setOf(r[L]);
-    this.drag = { r, y, cells: new Set(), ok: (k) => !done.has(k) && (!under || under.has(k)) };
-    this._dab(h.a, h.d);
-    if (L === 'geo') this.drag.roll = { a: h.a, d: h.d, ang: 0, spin: 0 };
+    const P = planOf(r), k = P.cellAt(h.a, h.d), c = k >= 0 ? P.cells.get(k) : null;
+    if (!c) { app.ui.toast('Ведите по отмостке — между стеной и досками'); return true; }
+    const under = need === 'form' ? null : setOf(r[need]);
+    if (under && !under.has(k)) { app.ui.toast(`Здесь ещё нет слоя «${NAME[need]}»`); return true; }
+    if (L === 'sand' || L === 'grav') {
+      const pile = new Pile(r, L), n = pile.at(h.a, h.d);
+      const mode = pile.h[n] >= pile.t * 0.6 ? 'rake' : 'pour';
+      this.drag = { r, y, L, pile, n, a: h.a, d: h.d, mode, t: 0 };
+      app.ui.toast(mode === 'pour' ? (L === 'sand' ? 'Сыплем песок лопатой — держите палец, куча растёт; потом ведите по куче — разровняете' : 'Сыплем щебень — держите палец; потом ведите по куче граблями') : 'Грабли: ведите по куче — разравниваете до 60 мм');
+    } else if (L === 'geo' || L === 'mesh') {
+      // (the side of the house it is on: the strip runs along that wall)
+      const along = c.dx > c.dy ? 'd' : 'a', R = c.r, sg = along === 'd' ? (c.a < R[0] ? -1 : 1) : (c.d < R[1] ? -1 : 1);
+      const edge = along === 'd' ? (sg < 0 ? R[0] : R[2]) : (sg < 0 ? R[1] : R[3]);
+      const done = setOf(r[L]);
+      this.drag = { r, y, L, along, sg, edge, R, s0: along === 'd' ? h.d : h.a, s1: along === 'd' ? h.d : h.a, cells: new Set(), done, under };
+      this._band();
+    } else {
+      const done = setOf(r[L]);
+      this.drag = { r, y, L, cells: new Set(), ok: (q) => !done.has(q) && (!under || under.has(q)) };
+      this._dab(h.a, h.d);
+    }
     this._show();
     app.sfx?.stab?.();
     return true;
@@ -64,35 +89,82 @@ export class BlindWork {
   move(p, e) {
     const d = this.drag; if (!d) return;
     const h = this._at(e, d.r, d.y); if (!h) return;
+    if (d.pile) {
+      const n = d.pile.at(h.a, h.d);
+      if (n < 0) return;
+      if (d.mode === 'rake') { const da = h.a - d.a, dd = h.d - d.d, L = Math.hypot(da, dd); if (L > MM(40)) { for (let s = MM(60); s <= L; s += MM(60)) d.pile.rake(d.pile.at(d.a + da * s / L, d.d + dd * s / L), da, dd); d.pile.rake(n, da, dd); d.pile.step(3); d.a = h.a; d.d = h.d; d.dir = [da, dd]; } }
+      else { d.a = h.a; d.d = h.d; }
+      d.n = n;
+      this._show();
+      return;
+    }
+    if (d.along) { d.s1 = d.along === 'd' ? h.d : h.a; this._band(); this._show(); return; }
     if (d.last) { const n = Math.ceil(Math.hypot(h.a - d.last[0], h.d - d.last[1]) / (BRUSH * 0.5)); for (let k = 1; k < n; k++) this._dab(d.last[0] + (h.a - d.last[0]) * k / n, d.last[1] + (h.d - d.last[1]) * k / n); }
-    // (the roll of geotextile: across the way the finger goes, turning as it rolls)
-    if (this.layer === 'geo' && d.last) { const da = h.a - d.last[0], dd = h.d - d.last[1], L = Math.hypot(da, dd); if (L > 1e-6) { const ang = Math.atan2(dd, da); d.roll = { a: h.a, d: h.d, ang: d.roll && L < MM(15) ? d.roll.ang : ang, spin: (d.roll?.spin || 0) + L / MM(70) }; } }
     this._dab(h.a, h.d);
     this._show();
   }
+  // the shovel tips while the finger is held (sand / gravel)
+  update(dt) {
+    const d = this.drag;
+    if (!d?.pile || d.mode !== 'pour') return;
+    d.t += dt;
+    d.pile.pour(d.n, (d.L === 'sand' ? 60 : 50) * dt);
+    d.pile.step(6);
+    if ((d.f = (d.f || 0) + 1) % 2 === 0) this._show();
+  }
+  // the strip along the wall: across the whole width, from where the finger began to where it is
+  _band() {
+    const d = this.drag, P = planOf(d.r), C = P.C, W = d.r.W;
+    let lo = Math.min(d.s0, d.s1) - C / 2, hi = Math.max(d.s0, d.s1) + C / 2;
+    // (near the end of the wall it runs on out to the boards at the corner)
+    const e0 = d.along === 'd' ? d.R[1] : d.R[0], e1 = d.along === 'd' ? d.R[3] : d.R[2];
+    if (lo < e0 + W * 0.6) lo = Math.min(lo, e0 - W - C); if (hi > e1 - W * 0.6) hi = Math.max(hi, e1 + W + C);
+    d.cells.clear();
+    for (const [k, c] of P.cells) {
+      const s = d.along === 'd' ? c.d : c.a, q = d.along === 'd' ? c.a : c.d;
+      if (s < lo || s > hi || (d.sg < 0 ? q > d.edge : q < d.edge) || Math.abs(q - d.edge) > d.r.W + C) continue;
+      if (d.done.has(k) || (d.under && !d.under.has(k))) continue;
+      d.cells.add(k);
+    }
+    // (the roll: at the end being drawn, across the strip)
+    const mid = d.edge + d.sg * d.r.W / 2, s = d.s1, dir = Math.sign(d.s1 - d.s0) || 1;
+    d.roll = d.along === 'd' ? { a: mid, d: s, ang: dir > 0 ? Math.PI / 2 : -Math.PI / 2 } : { a: s, d: mid, ang: dir > 0 ? 0 : Math.PI };
+    d.roll.spin = Math.abs(d.s1 - d.s0) / MM(70);
+  }
   _dab(a, dd) {
-    // (the geotextile comes off the roll the whole width of the area)
-    const d = this.drag, P = planOf(d.r), C = P.C, Rb = this.layer === 'geo' ? Math.max(BRUSH, d.r.W * 0.6 + C) : BRUSH, n = Math.ceil(Rb / C);
+    const d = this.drag, P = planOf(d.r), C = P.C, n = Math.ceil(BRUSH / C);
     d.last = [a, dd];
     const i0 = Math.floor((a - P.A0) / C), j0 = Math.floor((dd - P.D0) / C);
     for (let j = j0 - n; j <= j0 + n; j++) for (let i = i0 - n; i <= i0 + n; i++) {
       if (i < 0 || j < 0 || i >= P.ni || j >= P.nj) continue;
       const k = j * P.ni + i, c = P.cells.get(k);
-      if (!c || Math.hypot(c.a - a, c.d - dd) > Rb || !d.ok(k)) continue;
+      if (!c || Math.hypot(c.a - a, c.d - dd) > BRUSH || !d.ok(k)) continue;
       d.cells.add(k);
     }
   }
-  _show() { const d = this.drag; this._live({ layer: this.layer, cells: [...d.cells], kind: this.fin, col: this.col, roll: d.roll || null }); }
+  _show() {
+    const d = this.drag;
+    if (d.pile) { this._live({ layer: d.L, H: d.pile.h, stream: d.mode === 'pour' ? { a: d.a, d: d.d, n: d.n, t: d.t } : null }); return; }
+    this._live({ layer: d.L, cells: [...d.cells], kind: this.fin, col: this.col, roll: d.L === 'geo' ? d.roll : null });
+  }
   up() {
-    const d = this.drag, app = this.app, L = this.layer;
+    const d = this.drag, app = this.app, L = d?.L;
     this.drag = null; this._live(null);
     if (!d) return;
+    if (d.pile) {
+      d.pile.step(40);
+      const patch = d.pile.patch();
+      this._save(d.r, patch, 'blind-' + L);
+      const left = Math.round(leftOf({ ...d.r, ...patch }, L) * 100), nm = L === 'sand' ? 'Песок' : 'Щебень';
+      app.ui.toast(d.mode === 'pour' ? `${nm}: куча насыпана — ведите пальцем по ней, грабли разровняют слой 60 мм` : `${nm} разровняли граблями${L === 'sand' ? ' и пролили водой' : ''}` + (left > 1 ? ` — ровным слоем ещё не покрыто ${left} %` : ' — по всему дому'));
+      return;
+    }
     if (!d.cells.size) { app.ui.toast(`Здесь ${L === 'geo' ? 'нечего застилать' : 'уже готово или нет слоя под ним'}`); return; }
     const patch = { [L]: runsOf(new Set([...setOf(d.r[L]), ...d.cells])) };
     if (L === 'fin' && !d.r.finKind) { patch.finKind = this.fin; patch.finCol = this.col; }
     this._save(d.r, patch, 'blind-' + L);
     const left = Math.round(leftOf({ ...d.r, ...patch }, L) * 100);
-    const what = { geo: 'Геотекстиль раскатали с рулона', sand: 'Песок насыпали и пролили водой — 60 мм', grav: 'Щебень 60 мм разровняли', mesh: 'Сетка 150 × 150 на стульчиках', fin: (patch.finKind || d.r.finKind) === 'tile' ? `Плитка «кирпичик» (${TILE_COLOURS[d.r.finCol || this.col][0].toLowerCase()}) на сухую смесь, уклон 3 % от стен` : 'Бетон 80 мм, уклон 3 % от стен, швы на углах и через 2 м' }[L];
+    const what = { geo: 'Геотекстиль раскатали полосой вдоль стены', mesh: 'Сетка 150 × 150 из прутка Ø5 на стульчиках — листы внахлёст', fin: `Плитка «кирпичик» (${TILE_COLOURS[d.r.finCol || this.col][0].toLowerCase()}) на сухую смесь, уклон 3 % от стен` }[L];
     app.ui.toast(what + (left > 1 ? ` — осталось ${left} %` : ' — по всему дому'));
   }
   // the boards come off (the top is all done)
@@ -100,7 +172,8 @@ export class BlindWork {
     const app = this.app;
     if (r.stripped) { app.ui.toast('Опалубку уже сняли'); return; }
     if (!r.fin?.length || leftOf(r, 'fin') > 0.05) { app.ui.toast('Сначала закончите верх — бетон или плитку по всему периметру'); return; }
-    this._save(r, { stripped: true }, 'blind-strip');
+    if (r.finKind === 'conc') { const k = uStrength(r, app.clock); if (k < 1) { app.ui.toast(`Бетон набирает прочность: ${Math.round(k * 100)} % — доски рано снимать`); return; } }
+    this._save(r, { stripped: true, ...(r.finKind === 'conc' ? { set: true } : {}) }, 'blind-strip');
     app.ui.toast(r.finKind === 'tile' ? 'Доски сняли — по краю остался бордюр' : 'Бетон набрал прочность — доски и колышки сняли');
   }
 
@@ -170,11 +243,11 @@ export class BlindWork {
     }
     return {
       form: `Опалубка: выберите ширину и тяните из лотка к дому — доски на колышках встанут вокруг стен (${this.app.settings.blindW || 1000} мм от стены)`,
-      geo: 'Геотекстиль: ведите пальцем по отмостке — полотно ляжет на грунт, чтобы песок не уходил в землю',
-      sand: 'Песок: ведите пальцем — подушка 60 мм, проливается водой и трамбуется',
-      grav: 'Щебень: ведите пальцем — 60 мм фракции 20–40 по песку',
-      mesh: 'Сетка: ведите пальцем — кладочная сетка 150 × 150 на стульчиках (под бетон)',
-      fin: this.fin === 'tile' ? 'Плитка: выберите цвет и ведите пальцем по щебню — «кирпичик» на сухую смесь с уклоном от стен, по краю бордюр' : 'Бетон: ведите пальцем по сетке — 80 мм с уклоном 3 % от стен, деформационные швы на углах и через 2 м',
+      geo: 'Геотекстиль: ведите пальцем вдоль стены — рулон раскатывается ровной полосой на всю ширину отмостки',
+      sand: 'Песок: держите палец — сыплется с лопаты кучей; ведите по куче — грабли разровняют подушку 60 мм',
+      grav: 'Щебень: держите палец — куча с лопаты; ведите по куче граблями — 60 мм фракции 20–40 по песку',
+      mesh: 'Сетка: ведите пальцем вдоль стены — листы сетки 150 × 150 из прутка Ø5 на стульчиках (под бетон)',
+      fin: this.fin === 'tile' ? 'Плитка: выберите цвет и ведите пальцем по щебню — «кирпичик» на сухую смесь с уклоном от стен, по краю бордюр' : 'Бетон: «Бетон» → шланг или ведро по сетке — 80 мм; правило по доскам даст уклон 3 % от стен, потом кельма',
       strip: 'Снять опалубку: коснитесь отмостки — когда верх готов по всему периметру',
       drain: 'Лотки: тяните из лотка к наружному краю отмостки — лоток с решёткой ляжет вдоль всей стороны',
     }[L];
@@ -187,7 +260,7 @@ export class BlindWork {
     for (const [k, nm] of steps) {
       if (k === 'stripped') { if (r.stripped) { this._save(r, { stripped: false }, 'blind-unstrip'); app.ui.toast('Опалубку поставили обратно'); return; } continue; }
       if (!r[k]?.length) continue;
-      const patch = { [k]: [] }; if (k === 'fin') { patch.finKind = null; patch.finCol = null; }
+      const patch = { [k]: [] }; if (k === 'fin') Object.assign(patch, { finKind: null, finCol: null, lv: null, sm: null, fill: 0, castT: null, pourT: null, wetT: null, set: false }); if (k === 'sand' || k === 'grav') patch[k + 'H'] = null;
       this._save(r, patch, 'blind-remove');
       app.ui.toast(`Сняли ${nm}`);
       return;

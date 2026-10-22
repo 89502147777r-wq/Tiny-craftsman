@@ -286,7 +286,7 @@ export class WallTool {
 
   interrupt() { this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
 
-  update() { if (this.rowJob) this._rowStep(); }
+  update(dt) { if (this.rowJob) this._rowStep(); this.blind.update(dt); }
 
   // ---- a course along a line: the «Ряд» button under the tray, then a finger drawn along
   // where the course goes — the units go down one after another (each set as by hand:

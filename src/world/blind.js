@@ -88,6 +88,38 @@ export function planOf(rec) {
   _plans.set(rec, P);
   return P;
 }
+// the cells of the plan as a list (the loose layers and the concrete keep a value per cell in
+// this order): index by cell key, the four neighbours (+a, −a, +d, −d; −1 off the area)
+const _lists = new WeakMap();
+export function cellList(P) {
+  let L = _lists.get(P);
+  if (L) return L;
+  const keys = [...P.cells.keys()], index = new Map(keys.map((k, n) => [k, n]));
+  const nb = keys.map((k) => { const c = P.cells.get(k); return [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([di, dj]) => { const i = c.i + di, j = c.j + dj; return i < 0 || j < 0 || i >= P.ni || j >= P.nj ? -1 : index.get(j * P.ni + i) ?? -1; }); });
+  L = { keys, index, nb, n: keys.length };
+  _lists.set(P, L);
+  return L;
+}
+// the loose layers: sand 60 mm, gravel 60 mm; how steep a heap of it stands (mm of height
+// between two cells 100 mm apart: the angle of repose, ~31° and ~37°)
+export const LOOSE = { sand: { t: 60, rep: 60 }, grav: { t: 60, rep: 75 } };
+// the heights (mm) of a loose layer per cell: as stored, or (older records) full where done
+export function heights(rec, L) {
+  const CL = cellList(planOf(rec)), h = new Float32Array(CL.n), st = rec[L + 'H'];
+  if (Array.isArray(st) && st.length === CL.n) { for (let n = 0; n < CL.n; n++) h[n] = st[n]; return h; }
+  const done = setOf(rec[L]);
+  if (done.size) CL.keys.forEach((k, n) => { if (done.has(k)) h[n] = LOOSE[L].t; });
+  return h;
+}
+// the concrete: mm over the gravel per cell (lv), how worked (sm); where it is full
+export const CONC = { base: 120 };
+export function concCap(rec, c) { return Math.max(20, (finTop(rec, c.dist) - rec.g) / S - CONC.base); }
+export function concLevels(rec) {
+  const CL = cellList(planOf(rec)), h = new Float32Array(CL.n);
+  if (Array.isArray(rec.lv) && rec.lv.length === CL.n) for (let n = 0; n < CL.n; n++) h[n] = rec.lv[n];
+  return h;
+}
+
 // the plan of a house (pitchedTool.findHouse): the frame of its first wing, its rectangles
 export function newBlind(H, Wmm) {
   const w0 = H.wings[0], ux = w0.ux, uz = w0.uz, W = MM(Wmm), C = MM(BLIND.cell);
@@ -193,6 +225,8 @@ const M = {
   kerb: () => mat('kerb', () => new THREE.MeshStandardMaterial({ map: asTex(noiseTex('#9d9a94', 0.15, 128, 2000)), roughness: 0.85 })),
   chan: () => mat('chan', () => new THREE.MeshStandardMaterial({ color: 0x8c8a85, roughness: 0.85 })),
   grate: () => mat('grate', () => { const cv = canvas(64, 64), g = cv.getContext('2d'); g.clearRect(0, 0, 64, 64); g.fillStyle = '#2f3134'; g.fillRect(0, 0, 64, 6); g.fillRect(0, 58, 64, 6); for (let x = 0; x < 64; x += 8) g.fillRect(x, 0, 3, 64); return new THREE.MeshStandardMaterial({ map: asTex(cv), alphaTest: 0.5, metalness: 0.7, roughness: 0.45, side: THREE.DoubleSide }); }),
+  rod: () => mat('rod', () => new THREE.MeshStandardMaterial({ color: 0x5e5a55, metalness: 0.7, roughness: 0.55 })),
+  chair: () => mat('chair', () => new THREE.MeshStandardMaterial({ color: 0x2b2d30, roughness: 0.6 })),
   dark: () => mat('dark', () => new THREE.MeshStandardMaterial({ color: 0x1c1b1a, roughness: 1 })),
   live: (ok) => mat('live' + ok, () => new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe8402a, transparent: true, opacity: 0.35, depthWrite: false })),
 };
@@ -235,6 +269,70 @@ function slab(P, set, top, bottom, tile) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
   return g;
 }
+// a loose layer as it lies: a surface over the cells at their heights (the corners: the mean of
+// the cells round them, so a heap runs out to nothing at its foot), on its base (per cell)
+function looseSurf(P, h, base, tile) {
+  const CL = cellList(P), pos = [], uv = [], idx = [], vid = new Map(), C = P.C;
+  const corner = (i, j) => {
+    const key = j * (P.ni + 1) + i;
+    let v = vid.get(key);
+    if (v !== undefined) return v;
+    let sh = 0, sb = 0, n = 0;
+    for (const [a, d] of [[i, j], [i - 1, j], [i, j - 1], [i - 1, j - 1]]) { if (a < 0 || d < 0 || a >= P.ni || d >= P.nj) continue; const q = CL.index.get(d * P.ni + a); if (q === undefined) continue; sh += h[q]; sb += base(q); n++; }
+    const A = P.A0 + i * C, D = P.D0 + j * C, [x, z] = P.W2(A, D);
+    pos.push(x, sb / n + MM(sh / n) + MM(0.3), z); uv.push(A / tile, D / tile);
+    vid.set(key, (v = pos.length / 3 - 1));
+    return v;
+  };
+  CL.keys.forEach((k, n) => {
+    const c = P.cells.get(k);
+    if (!(h[n] > 0.4) && !CL.nb[n].some((q) => q >= 0 && h[q] > 0.4)) return;
+    const a = corner(c.i, c.j), b = corner(c.i + 1, c.j), cc = corner(c.i + 1, c.j + 1), d = corner(c.i, c.j + 1);
+    idx.push(a, cc, b, a, d, cc);
+  });
+  if (!idx.length) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+// the welded mesh: rods Ø5 every 150 mm both ways over the cells it is laid on (the rods
+// across on top of the rods along), on plastic chairs every 600 mm
+function meshRods(P, set, y) {
+  const C = P.C, step = MM(150), r = MM(2.5), rods = [], chairs = [], cov = MM(30);
+  const has = (i, j) => i >= 0 && j >= 0 && i < P.ni && j < P.nj && set.has(j * P.ni + i) && P.cells.has(j * P.ni + i);
+  const rod = (a0, d0, a1, d1, yy) => {
+    const L = Math.hypot(a1 - a0, d1 - d0); if (L < MM(60)) return;
+    const g = new THREE.CylinderGeometry(r, r, L, 6, 1, true);
+    g.rotateZ(Math.PI / 2); if (Math.abs(d1 - d0) > Math.abs(a1 - a0)) g.rotateY(-Math.PI / 2);
+    const [x, z] = P.W2((a0 + a1) / 2, (d0 + d1) / 2); g.rotateY(Math.atan2(-P.W2(1, 0)[1], P.W2(1, 0)[0])); g.translate(x, yy, z);
+    rods.push(g);
+  };
+  // (the lines on the grid of the area: rods along a at constant d, then along d)
+  for (const [along, n0, n1, m0, m1] of [['a', P.D0, P.D0 + P.nj * C, P.A0, P.A0 + P.ni * C], ['d', P.A0, P.A0 + P.ni * C, P.D0, P.D0 + P.nj * C]]) {
+    for (let q = n0 + step / 2; q < n1; q += step) {
+      const lane = Math.floor((q - n0) / C);
+      let run = null;
+      for (let m = 0; m <= Math.round((m1 - m0) / C); m++) {
+        const on = along === 'a' ? has(m, lane) : has(lane, m);
+        if (on && run == null) run = m;
+        if (!on && run != null) {
+          const s0 = m0 + run * C + cov, s1 = m0 + m * C - cov, yy = y + (along === 'a' ? -r : r);
+          if (along === 'a') rod(s0, q, s1, q, yy); else rod(q, s0, q, s1, yy);
+          if (along === 'a') for (let s = s0 + MM(150); s < s1; s += MM(600)) chairs.push([s, q]);
+          run = null;
+        }
+      }
+    }
+  }
+  const cg = [];
+  let n = 0;
+  for (const [a, d] of chairs) {
+    if (n++ % 2) continue;
+    const g = new THREE.CylinderGeometry(MM(12), MM(22), MM(30), 6), [x, z] = P.W2(a, d);
+    g.translate(x, y - r - MM(15), z); cg.push(g);
+  }
+  return { rods: merge(rods), chairs: merge(cg) };
+}
 // a box along a segment: from s0 to s1, across from c0 to c1 (in the frame), y0…y1
 function segBox(P, sg, s0, s1, c0, c1, y0, y1) {
   const [a0, a1, d0, d1] = sg.axis === 'a' ? [s0, s1, c0, c1] : [c0, c1, s0, s1];
@@ -242,6 +340,15 @@ function segBox(P, sg, s0, s1, c0, c1, y0, y1) {
   const g = new THREE.BoxGeometry(B - A, y1 - y0, E - D), [x, z] = P.W2((A + B) / 2, (D + E) / 2);
   g.rotateY(Math.atan2(-P.W2(1, 0)[1], P.W2(1, 0)[0])); g.translate(x, (y0 + y1) / 2, z);
   return g;
+}
+// the stream of sand / gravel off the shovel: grains falling onto the heap under the finger
+function stream(P, st, m, y) {
+  const g = [], [x, z] = P.W2(st.a, st.d), rnd = (k) => { const v = Math.sin(k * 127.1 + st.t * 311.7) * 43758.5; return v - Math.floor(v); };
+  for (let k = 0; k < 70; k++) {
+    const f = rnd(k), r = MM(15 + 40 * rnd(k + 99)) * (0.3 + f), an = rnd(k + 7) * Math.PI * 2, sz = MM(6 + 10 * rnd(k + 3));
+    const b = new THREE.BoxGeometry(sz, sz, sz); b.translate(x + Math.cos(an) * r, y + MM(20) + f * MM(450), z + Math.sin(an) * r); g.push(b);
+  }
+  const o = new THREE.Mesh(merge(g), m); o.castShadow = true; return o;
 }
 const merge = (gs) => { const ok = gs.filter(Boolean).map((g) => (g.index ? g.toNonIndexed() : g)); if (!ok.length) return null; const n = ok.reduce((s, g) => s + g.attributes.position.count, 0), pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2); let o = 0; for (const g of ok) { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2); o += g.attributes.position.count; } const m = new THREE.BufferGeometry(); m.setAttribute('position', new THREE.BufferAttribute(pos, 3)); m.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); m.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); return m; };
 
@@ -254,13 +361,19 @@ export function buildBlind(rec, live) {
   // the layers
   add(slab(P, cellsOfL('geo'), flat('geo'), g0 - MM(40), MM(1000)), M.geo(), false);
   if (lv === 'geo' && live.roll) G.add(geoRoll(P, live.roll, layerTop(rec, 'geo'), Math.min(MM(1000), rec.W + MM(100))));
-  add(slab(P, cellsOfL('sand'), flat('sand'), g0 - MM(40), MM(1500)), M.sand(), false);
-  add(slab(P, cellsOfL('grav'), flat('grav'), g0 + MM(TOP.sand) - MM(2), MM(800)), M.grav(), false);
+  // the sand and the gravel: heaps as poured, levelled where raked (the gravel on the sand)
+  const hs = lv === 'sand' && live.H ? live.H : heights(rec, 'sand'), hg = lv === 'grav' && live.H ? live.H : heights(rec, 'grav');
+  const geoTop = g0 + MM(TOP.geo);
+  add(looseSurf(P, hs, () => geoTop - MM(0.6), MM(1500)), M.sand());
+  add(looseSurf(P, hg, (q) => geoTop + MM(hs[q]), MM(800)), M.grav());
+  if (live?.stream) G.add(stream(P, live.stream, lv === 'grav' ? M.grav() : M.sand(), geoTop + MM((lv === 'grav' ? hg : hs)[live.stream.n] || 0) + (lv === 'grav' ? MM(hs[live.stream.n] || 0) : 0)));
   const fin = cellsOfL('fin'), kind = rec.finKind || (lv === 'fin' ? live.kind : null) || 'conc';
   const top = (a, d) => finTop(rec, P.distAt(a, d));
-  const meshCells = cellsOfL('mesh'); for (const k of fin) meshCells.delete(k);   // (under the concrete: not seen)
-  if (meshCells.size) { const geo = slab(P, meshCells, flat('mesh'), layerTop(rec, 'mesh') - MM(1), MM(300)); if (geo) { const o = add(geo, M.mesh(), false); o.castShadow = true; } }
-  add(slab(P, fin, top, g0 + MM(TOP.grav) - MM(2), kind === 'tile' ? MM(800) : MM(1500)), kind === 'tile' ? tileMat(rec.finCol || live?.col || 'grey') : M.conc());
+  // the mesh: rods on chairs (in the concrete too: it is drawn over them)
+  const meshCells = cellsOfL('mesh');
+  if (meshCells.size && !(kind === 'conc' && rec.stripped)) { const R = meshRods(P, meshCells, layerTop(rec, 'mesh') - MM(5)); add(R.rods, M.rod()); add(R.chairs, M.chair()); }
+  // (the concrete is cast in place: drawn with the other cast concrete, walls.js)
+  if (kind === 'tile') add(slab(P, fin, top, g0 + MM(TOP.grav) - MM(2), MM(800)), tileMat(rec.finCol || live?.col || 'grey'));
   // the joints in the concrete: at the corners of the house and every 2 m along the walls
   if (kind === 'conc' && fin.size) {
     const J = [], C = P.C, w = MM(12);
