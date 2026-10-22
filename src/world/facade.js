@@ -357,10 +357,11 @@ export function facadeFaces(objects) {
         if (q.some(([, , c]) => Math.abs(c - F.P) > MM(80))) continue;
         q.sort((p, o) => p[0] - o[0]);
         const topAt = (a) => { for (let i = 1; i < q.length; i++) if (a <= q[i][0]) { const t = (a - q[i - 1][0]) / Math.max(1e-9, q[i][0] - q[i - 1][0]); return q[i - 1][1] + (q[i][1] - q[i - 1][1]) * Math.max(0, Math.min(1, t)); } return q.at(-1)[1]; };
-        const Y = Math.max(...q.map((p) => p[1])), st = MM(100);
+        const Y = Math.max(...q.map((p) => p[1]));
         if (Y <= F.y1) continue;
         F.y1 = Y;
-        for (let a = F.a0 - MM(200); a < F.a1 + MM(200); a += st) { const yt = Math.min(topAt(a), topAt(a + st)); if (yt < Y - MM(1)) F.holes.push([a, yt, a + st, Y + MM(10)]); }
+        // the top follows the slopes (the boards, the coats, the panels cut along them)
+        F.top = q.map(([a, y]) => [a, y]); F.topAt = topAt;
         F.gable = true;
       }
     }
@@ -391,7 +392,28 @@ export function minus(rects, h) {
 }
 const clip = (r, e) => { const q = [Math.max(r[0], e[0]), Math.max(r[1], e[1]), Math.min(r[2], e[2]), Math.min(r[3], e[3])]; return q[2] - q[0] > 1e-7 && q[3] - q[1] > 1e-7 ? q : null; };
 // a piece as it is on the wall: its rect cut to the face and round the openings
-export function cutPiece(F, r, off) { const q = clip(r, ext(F, off)); if (!q) return []; let out = [q]; for (const h of F.holes) out = minus(out, h); return out; }
+export function cutPiece(F, r, off) {
+  const q = clip(r, ext(F, off)); if (!q) return [];
+  let out = [q]; for (const h of F.holes) out = minus(out, h);
+  // a gable: what is over its slopes is off (the rest is cut along them when it is drawn)
+  if (F.topAt) out = out.filter((p) => Math.max(F.topAt(p[0]), F.topAt(p[2]), ...F.top.filter(([a]) => a > p[0] && a < p[2]).map(([, y]) => y)) > p[1] + MM(5));
+  return out;
+}
+// a rect under the top of the face: pieces [a0, a1, y0, top at a0, top at a1] (split where the
+// top line bends; a flat top: the rect as it is)
+function slant(F, r) {
+  if (!F.topAt) return [[r[0], r[2], r[1], r[3], r[3]]];
+  const xs = [r[0], ...F.top.map(([a]) => a).filter((a) => a > r[0] && a < r[2]), r[2]], out = [];
+  for (let i = 0; i + 1 < xs.length; i++) {
+    const a0 = xs[i], a1 = xs[i + 1], t0 = Math.min(r[3], F.topAt(a0)), t1 = Math.min(r[3], F.topAt(a1));
+    if (t0 <= r[1] + 1e-7 && t1 <= r[1] + 1e-7) continue;
+    if (t0 <= r[1] || t1 <= r[1]) {   // (the line crosses the bottom: up to where it does)
+      const f = (r[1] - t0) / (t1 - t0), ac = a0 + (a1 - a0) * f;
+      if (t0 > r[1]) out.push([a0, ac, r[1], t0, r[1]]); else out.push([ac, a1, r[1], r[1], t1]);
+    } else out.push([a0, a1, r[1], t0, t1]);
+  }
+  return out;
+}
 export const area = (rs) => rs.reduce((s, r) => s + (r[2] - r[0]) * (r[3] - r[1]), 0);
 // the cells: a Set of keys; stored as runs [j, i0, i1] (i1 past the end)
 export const ck = (i, j) => (j + 30000) * 60000 + (i + 30000);
@@ -461,8 +483,8 @@ function stdMat(t, extra = {}, po = 0) {
 // a sheet on the face over rects at `off`, the uv: (a, y) / the tile (mm), from an origin
 function sheet(geo, F, rects, off, tile, o = [0, 0], rot = false) {
   const n = [F.sg * F.nx, 0, F.sg * F.nz];
-  for (const r of rects) {
-    const cs = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]];
+  for (const r of rects.flatMap((q) => slant(F, q))) {
+    const cs = [[r[0], r[2]], [r[1], r[2]], [r[1], r[4]], [r[0], r[3]]];
     geo.quad(cs.map(([a, y]) => W(F, a, y, off)), cs.map(([a, y]) => { const u = F.ru * (a - o[0]) / MM(tile[0]), v = (y - o[1]) / MM(tile[1]); return rot ? [v, -u] : [u, v]; }), n);
   }
 }
@@ -470,12 +492,13 @@ function sheet(geo, F, rects, off, tile, o = [0, 0], rot = false) {
 function board(geo, F, rects, off0, off1, tile, o) {
   sheet(geo, F, rects, off1, tile, o);
   const u = [F.ux, 0, F.uz];
-  for (const r of rects) {
+  for (const r of rects.flatMap((q) => slant(F, q))) {
+    // [a0, a1, y0, top at a0, top at a1]: the bottom, the top (along a slope), the ends
     const e = (pts, n) => geo.quad(pts.map(([a, y, f]) => W(F, a, y, f)), [[0, 0], [1, 0], [1, 0.05], [0, 0.05]], n);
-    e([[r[0], r[1], off0], [r[2], r[1], off0], [r[2], r[1], off1], [r[0], r[1], off1]], [0, -1, 0]);
-    e([[r[0], r[3], off0], [r[2], r[3], off0], [r[2], r[3], off1], [r[0], r[3], off1]], [0, 1, 0]);
-    e([[r[0], r[1], off0], [r[0], r[3], off0], [r[0], r[3], off1], [r[0], r[1], off1]], u.map((v) => -v));
-    e([[r[2], r[1], off0], [r[2], r[3], off0], [r[2], r[3], off1], [r[2], r[1], off1]], u);
+    e([[r[0], r[2], off0], [r[1], r[2], off0], [r[1], r[2], off1], [r[0], r[2], off1]], [0, -1, 0]);
+    e([[r[0], r[3], off0], [r[1], r[4], off0], [r[1], r[4], off1], [r[0], r[3], off1]], [0, 1, 0]);
+    if (r[3] > r[2] + 1e-7) e([[r[0], r[2], off0], [r[0], r[3], off0], [r[0], r[3], off1], [r[0], r[2], off1]], u.map((v) => -v));
+    if (r[4] > r[2] + 1e-7) e([[r[1], r[2], off0], [r[1], r[4], off0], [r[1], r[4], off1], [r[1], r[2], off1]], u);
   }
 }
 // cells cut to the face and the openings

@@ -202,7 +202,9 @@ export class FacadeWork {
     else if ((rec?.[L] || []).some((s) => sameSlot(s, slot))) why = 'Это место уже закрыто';
     else if (L === 'pan') {
       // on the insulation, not over the plaster
-      const pts = piece.flatMap((r) => [[(r[0] + r[2]) / 2, (r[1] + r[3]) / 2], [r[0] + MM(60), r[1] + MM(60)], [r[2] - MM(60), r[3] - MM(60)]]);
+      // (its points under the face's top: by a gable's slope the panel is cut along it)
+      const pts = piece.flatMap((r) => [[(r[0] + r[2]) / 2, (r[1] + r[3]) / 2], [r[0] + MM(60), r[1] + MM(60)], [r[2] - MM(60), r[3] - MM(60)], [r[0] + MM(60), r[3] - MM(60)], [r[2] - MM(60), r[1] + MM(60)]])
+        .filter(([a, y]) => !F.topAt || y < F.topAt(a) - MM(20)).slice(0, 5);
       const eps = (rec?.eps || []).flatMap((s) => cutPiece(F, s, OFF.eps)), pl = Object.values(rec?.pl || {}).map(cellsOf);
       if (!pts.every(([a, y]) => eps.some((r) => inR(r, a, y)))) why = 'Панели вешают на утеплитель: сначала листы ППС';
       else if (pts.some(([a, y]) => pl.some((s) => s.has(ck(Math.floor(a / CELL), Math.floor(y / CELL)))))) why = 'Здесь уже штукатурка';
