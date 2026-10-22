@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { boxOf } from './freeBrick.js';
 import { plan as beltPlan, toWorld as beltWorld } from './belt.js';
+import { RWIN_TYPES, rwinSpan } from '../world/roofWindows.js';
 import { wingShape, roofTop, planeAt, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
@@ -401,8 +402,9 @@ export class RoofWindowWork {
   constructor(app) { this.app = app; this.place = null; }
   get key() { return this.app.settings.rwinKey || 's2'; }
   get col() { return this.app.settings.rwinCol || 'graphite'; }
+  get type() { return RWIN_TYPES[this.app.settings.rwinType] ? this.app.settings.rwinType : 'pivot'; }
   carryMove(p, e) {
-    const app = this.app, pw = app.wallTool.proof, r = pw.rec, [, Wm, Hm] = RWIN[this.key], W = MM(Wm), H = MM(Hm);
+    const app = this.app, pw = app.wallTool.proof, r = pw.rec, [, W0, H0] = RWIN[this.key], [Wm, Hm] = rwinSpan(this.type, W0, H0), W = MM(Wm), H = MM(Hm), ty = this.type;
     this.place = null;
     // a slope of the pitched roof under the finger
     const h = r && pw._hit(e);
@@ -413,15 +415,17 @@ export class RoofWindowWork {
       const P = pa.P;
       // between the rafters (in the middle of a bay), the height where the finger is
       const x0 = P.end || P.xd ? P.xa(0) : f.lo, step = MM(PITCHED.step);
-      let x = x0 + MM(PITCHED.rafterW) + (Math.floor((pa.x - x0) / step) + 0.5) * step;
+      // (the twin: over a rafter, a sash in the bay on each side of it)
+      let x = ty === 'twin' ? x0 + MM(PITCHED.rafterW) / 2 + Math.max(1, Math.round((pa.x - x0) / step)) * step : x0 + MM(PITCHED.rafterW) + (Math.floor((pa.x - x0) / step) + 0.5) * step;
       let t = Math.max(H / 2 + MM(300), Math.min(P.L - H / 2 - MM(300), pa.t));
       const corners = [[-W / 2, -H / 2], [W / 2, -H / 2], [-W / 2, H / 2], [W / 2, H / 2]];
       let why = null;
-      if (!(r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === h.wi))) why = 'Окно в скат — когда стоят стропила';
+      if (ty === 'dome') why = 'Купол — только на плоскую кровлю';
+      else if (!(r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === h.wi))) why = 'Окно в скат — когда стоят стропила';
       else if (corners.some(([dx, dt]) => x + dx < P.xa(t + dt) + MM(150) || x + dx > P.xb(t + dt) - MM(150))) why = 'Здесь окно не помещается — ближе к середине ската';
       else if (app.objects.all('rwin').some((q) => q.host === r.id && q.wi === h.wi && q.plane === P.key && Math.abs(q.x - x) < W && Math.abs(q.t - t) < H + MM(200))) why = 'Здесь уже окно';
       this.place = { host: r.id, wi: h.wi, plane: P.key, x: +x.toFixed(6), t: +t.toFixed(6), why };
-      this._live({ wi: h.wi, plane: P.key, x, t, key: this.key, col: this.col });
+      this._live({ wi: h.wi, plane: P.key, x, t, key: this.key, col: this.col, wtype: ty });
       return { ok: !why, why };
     }
     // a flat roof (its covering) under the finger
@@ -434,7 +438,7 @@ export class RoofWindowWork {
         const why = !rf || !(rf.memS?.length || rf.memS === 'all') ? 'Окно в плоскую крышу — на готовую мембрану' : null;
         const b = rf && app.objects.get(rf.slab), yaw = b ? Math.atan2(-b.u[1], b.u[0]) : 0;
         this.place = { flat: true, host: id, x: +hit.point.x.toFixed(6), y: +hit.point.y.toFixed(6), z: +hit.point.z.toFixed(6), yaw: +yaw.toFixed(5), why };
-        this._live({ flat: true, x: hit.point.x, y: hit.point.y, z: hit.point.z, yaw, key: this.key, col: this.col });
+        this._live({ flat: true, x: hit.point.x, y: hit.point.y, z: hit.point.z, yaw, key: this.key, col: this.col, wtype: ty });
         return { ok: !why, why };
       }
     }
@@ -448,8 +452,8 @@ export class RoofWindowWork {
     if (!P) { app.ui.toast('Окно — на скат крыши или на плоскую кровлю'); return; }
     if (P.why) { app.ui.toast(P.why); return; }
     const { why, ...rec } = P; void why;
-    app.journal.act('rwin', {}, app.clock, () => app.objects.add({ type: 'rwin', key: this.key, col: this.col, ...rec }));
-    app.ui.toast(P.flat ? `Окно ${RWIN[this.key][0]} на плоскую кровлю: стакан 150 мм, мембрана заведена на него, рама и стеклопакет` : `Мансардное окно ${RWIN[this.key][0]}: между стропилами, сверху и снизу ригели, вокруг — оклад, кровля подрезана`);
+    app.journal.act('rwin', {}, app.clock, () => app.objects.add({ type: 'rwin', key: this.key, col: this.col, wtype: this.type, ...rec }));
+    app.ui.toast(P.flat ? `${RWIN_TYPES[this.type][0]} ${RWIN[this.key][0]} на плоскую кровлю: стакан 150 мм, мембрана заведена на него, рама и стеклопакет` : `${RWIN_TYPES[this.type][0]} окно ${RWIN[this.key][0]}: между стропилами, сверху и снизу ригели, вокруг — оклад, кровля подрезана`);
   }
   status() { return this.place ? (this.place.why ? 'Красный — ' + this.place.why : 'Отпустите') : 'Окно в крышу: тяните из лотка на скат (встанет между стропилами) или на плоскую кровлю'; }
 }

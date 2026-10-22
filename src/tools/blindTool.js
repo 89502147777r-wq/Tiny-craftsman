@@ -56,6 +56,7 @@ export class BlindWork {
     const under = need === 'form' ? null : setOf(r[need]), done = setOf(r[L]);
     this.drag = { r, y, cells: new Set(), ok: (k) => !done.has(k) && (!under || under.has(k)) };
     this._dab(h.a, h.d);
+    if (L === 'geo') this.drag.roll = { a: h.a, d: h.d, ang: 0, spin: 0 };
     this._show();
     app.sfx?.stab?.();
     return true;
@@ -64,21 +65,24 @@ export class BlindWork {
     const d = this.drag; if (!d) return;
     const h = this._at(e, d.r, d.y); if (!h) return;
     if (d.last) { const n = Math.ceil(Math.hypot(h.a - d.last[0], h.d - d.last[1]) / (BRUSH * 0.5)); for (let k = 1; k < n; k++) this._dab(d.last[0] + (h.a - d.last[0]) * k / n, d.last[1] + (h.d - d.last[1]) * k / n); }
+    // (the roll of geotextile: across the way the finger goes, turning as it rolls)
+    if (this.layer === 'geo' && d.last) { const da = h.a - d.last[0], dd = h.d - d.last[1], L = Math.hypot(da, dd); if (L > 1e-6) { const ang = Math.atan2(dd, da); d.roll = { a: h.a, d: h.d, ang: d.roll && L < MM(15) ? d.roll.ang : ang, spin: (d.roll?.spin || 0) + L / MM(70) }; } }
     this._dab(h.a, h.d);
     this._show();
   }
   _dab(a, dd) {
-    const d = this.drag, P = planOf(d.r), C = P.C, n = Math.ceil(BRUSH / C);
+    // (the geotextile comes off the roll the whole width of the area)
+    const d = this.drag, P = planOf(d.r), C = P.C, Rb = this.layer === 'geo' ? Math.max(BRUSH, d.r.W * 0.6 + C) : BRUSH, n = Math.ceil(Rb / C);
     d.last = [a, dd];
     const i0 = Math.floor((a - P.A0) / C), j0 = Math.floor((dd - P.D0) / C);
     for (let j = j0 - n; j <= j0 + n; j++) for (let i = i0 - n; i <= i0 + n; i++) {
       if (i < 0 || j < 0 || i >= P.ni || j >= P.nj) continue;
       const k = j * P.ni + i, c = P.cells.get(k);
-      if (!c || Math.hypot(c.a - a, c.d - dd) > BRUSH || !d.ok(k)) continue;
+      if (!c || Math.hypot(c.a - a, c.d - dd) > Rb || !d.ok(k)) continue;
       d.cells.add(k);
     }
   }
-  _show() { const d = this.drag; this._live({ layer: this.layer, cells: [...d.cells], kind: this.fin, col: this.col }); }
+  _show() { const d = this.drag; this._live({ layer: this.layer, cells: [...d.cells], kind: this.fin, col: this.col, roll: d.roll || null }); }
   up() {
     const d = this.drag, app = this.app, L = this.layer;
     this.drag = null; this._live(null);
@@ -88,7 +92,7 @@ export class BlindWork {
     if (L === 'fin' && !d.r.finKind) { patch.finKind = this.fin; patch.finCol = this.col; }
     this._save(d.r, patch, 'blind-' + L);
     const left = Math.round(leftOf({ ...d.r, ...patch }, L) * 100);
-    const what = { geo: 'Геотекстиль расстелили', sand: 'Песок насыпали и пролили водой — 60 мм', grav: 'Щебень 60 мм разровняли', mesh: 'Сетка 150 × 150 на стульчиках', fin: (patch.finKind || d.r.finKind) === 'tile' ? `Плитка «кирпичик» (${TILE_COLOURS[d.r.finCol || this.col][0].toLowerCase()}) на сухую смесь, уклон 3 % от стен` : 'Бетон 80 мм, уклон 3 % от стен, швы на углах и через 2 м' }[L];
+    const what = { geo: 'Геотекстиль раскатали с рулона', sand: 'Песок насыпали и пролили водой — 60 мм', grav: 'Щебень 60 мм разровняли', mesh: 'Сетка 150 × 150 на стульчиках', fin: (patch.finKind || d.r.finKind) === 'tile' ? `Плитка «кирпичик» (${TILE_COLOURS[d.r.finCol || this.col][0].toLowerCase()}) на сухую смесь, уклон 3 % от стен` : 'Бетон 80 мм, уклон 3 % от стен, швы на углах и через 2 м' }[L];
     app.ui.toast(what + (left > 1 ? ` — осталось ${left} %` : ' — по всему дому'));
   }
   // the boards come off (the top is all done)
