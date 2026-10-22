@@ -485,6 +485,8 @@ export class UI {
         G('bw', `Ширина ${(s.blindW || 1000) / 1000} м`.replace('.', ','), BLIND_WIDTHS.map((v) => C(`${v / 1000} м`.replace('.', ','), (s.blindW || 1000) === v, () => bset({ blindW: v, blindLayer: 'form' }))), 'Ширина'),
         ...BLIND_LAYERS.map(([k, l], i) => {
           const c = C(`${i + 1} · ${k === 'fin' ? BLIND_FIN[s.blindFin || 'conc'] : l}`, has('blind') && BL === k, () => bset({ blindLayer: k }));
+          // (sand, gravel: tipped off the shovel, or the rake over it)
+          if (k === 'sand' || k === 'grav') return G('b' + k, c.label, [C('Сыпать лопатой', has('blind') && BL === k && (s.blindAct || 'pour') === 'pour', () => bset({ blindLayer: k, blindAct: 'pour' })), C('Грабли — разровнять', has('blind') && BL === k && s.blindAct === 'rake', () => bset({ blindLayer: k, blindAct: 'rake' }))], null, c);
           if (k !== 'fin') return c;
           return G('bfin', c.label, [C('Бетон', (s.blindFin || 'conc') === 'conc', () => bset({ blindLayer: 'fin', blindFin: 'conc' })), G('btile', 'Плитка', Object.entries(TILE_COLOURS).map(([q, [n]]) => C('◼ ' + n, s.blindFin === 'tile' && (s.blindCol || 'grey') === q, () => bset({ blindLayer: 'fin', blindFin: 'tile', blindCol: q }))), null, C('', s.blindFin === 'tile', () => bset({ blindLayer: 'fin', blindFin: 'tile' })))], null, c);
         }),

@@ -7,7 +7,7 @@ import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
-import { buildBlind, blindTopAt, BLIND_TEX, planOf as blindPlan, cellList, concLevels, CONC as BCONC } from './blind.js';
+import { buildBlind, blindTopAt, BLIND_TEX, BLIND_GROUND, planOf as blindPlan, cellList, concLevels, CONC as BCONC } from './blind.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -438,6 +438,7 @@ export class WallView {
     // the blind area round the house (blind.js)
     this.blinds = new THREE.Group(); this.group.add(this.blinds);
     this.liveBlind = null; this.blindDirty = true;
+    BLIND_GROUND.at = (x, z) => (this.terrain ? this.terrain.heightAt(x, z) : null);
     GROUND.at = (x, z) => blindTopAt(objects.all('blind'), x, z) ?? (this.terrain ? this.terrain.heightAt(x, z) : null);
     GROUND.normal = (x, z) => (blindTopAt(objects.all('blind'), x, z) == null && this.terrain ? this.terrain.normalAt(x, z, new THREE.Vector3()) : new THREE.Vector3(0, 1, 0));
     this.liveProof = null; this.proofDirty = true;
