@@ -14,10 +14,10 @@ import { rle } from './belt.js';
 //            concrete (HoseTool), which sets; then the prop may come out.
 const S = 1 / 1000 / MODEL_SCALE, _Y = new THREE.Vector3(0, 1, 0);
 export const LINTEL_LENGTHS = [1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3600, 3900];   // (3ПБ 36, 3ПБ 39 for the wide ones)
-export const MAX_GAP = 4000;   // (wider: no lintel — but a prop and U-blocks still span it)
+export const MAX_GAP = 6000;   // (over 3,4 m no precast lintel — a cast one in its formwork, or a prop and U-blocks; 6 m: the widest garage door)
 const BEAR = 250;
 
-// the opening nearest the finger: a gap 300 … 4000 mm between two units of one course,
+// the opening nearest the finger: a gap 300 … 6000 mm between two units of one course,
 // in one line — { ux, uz, nx, nz, yaw, c0, c1 (gap ends along), o (line point), top,
 // width, gap }. Hand-laid jambs are rarely exact: the two sides may differ in height by
 // up to a third of a course (an uneven footing) and stand off the line by up to a quarter
