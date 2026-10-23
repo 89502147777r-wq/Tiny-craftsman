@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE, M_SAND, M_G20 } from '../config.js';
 import { findHouse } from './pitchedTool.js';
 import { uStrength } from './lintels.js';
-import { BLIND, BLIND_LAYERS, BLIND_FIN, TILE_COLOURS, planOf, newBlind, layerTop, leftOf, runsOf, setOf, layerSet, heights } from '../world/blind.js';
+import { BLIND, BLIND_LAYERS, BLIND_FIN, TILE_COLOURS, planOf, newBlind, layerTop, leftOf, runsOf, setOf, layerSet, heights, LOOSE } from '../world/blind.js';
 
 // The blind area done by hand (blind.js): the boards and the channels are carried from the
 // tray; the geotextile, the sand, the gravel, the mesh and the top (concrete or paving) are
@@ -66,7 +66,16 @@ export class BlindWork {
     const under = need === 'form' ? null : layerSet(r, need);
     if (under && !under.has(k)) { app.ui.toast(`Здесь ещё нет слоя «${NAME[need]}»`); return true; }
     if (L === 'sand' || L === 'grav') {
-      const t = app.terrain, mode = app.settings.blindAct === 'rake' ? 'rake' : 'pour';
+      const t = app.terrain, mode = ['rake', 'rule'].includes(app.settings.blindAct) ? app.settings.blindAct : 'pour';
+      if (mode === 'rule') {
+        // the rule on the marks: the layer's top level all across, the surplus pushed on
+        app.journal.begin('blind-rule', { layer: L }, app.clock);
+        this.drag = { r, y, L, rule: true, a: h.a, d: h.d, carry: new Float64Array(4), top: r.g + MM(7 + LOOSE[L].t * (L === 'sand' ? 1 : 2)) };
+        this._ruleShow(this.drag, null, true);
+        app.ui.toast(`Правило: ведите вдоль стены — ${L === 'sand' ? 'песок' : 'щебень'} срезается ровно на ${L === 'sand' ? 60 : 120} мм от геотекстиля, лишнее тащится вперёд и засыпает ямки`);
+        return true;
+      }
+      void t;
       if (mode === 'rake') {
         // the rake of «Земля» (rakeTool.js): over the ground's cover, inside the boards
         this.drag = { r, y, L, rake: true };
@@ -98,11 +107,55 @@ export class BlindWork {
     const d = this.drag; if (!d) return;
     const h = this._at(e, d.r, d.y); if (!h) return;
     if (d.rake) { this.app.rakeTool.move(new THREE.Vector3(h.q.x, 0, h.q.z)); return; }
+    if (d.rule) {
+      const da = h.a - d.a, dd = h.d - d.d, L = Math.hypot(da, dd), step = this.app.terrain.cell * 0.7;
+      if (L < step) return;
+      const ua = da / L, ud = dd / L, n = Math.ceil(L / step);
+      for (let k = 1; k <= n; k++) this._ruleStep(d, d.a + da * k / n, d.d + dd * k / n, ua, ud);
+      d.a = h.a; d.d = h.d; d.u = [ua, ud];
+      this._ruleShow(d, d.u);
+      return;
+    }
     if (d.pour) { d.x = h.q.x; d.z = h.q.z; d.a = h.a; d.d = h.d; return; }
     if (d.along) { d.s1 = d.along === 'd' ? h.d : h.a; this._band(); this._show(); return; }
     if (d.last) { const n = Math.ceil(Math.hypot(h.a - d.last[0], h.d - d.last[1]) / (BRUSH * 0.5)); for (let k = 1; k < n; k++) this._dab(d.last[0] + (h.a - d.last[0]) * k / n, d.last[1] + (h.d - d.last[1]) * k / n); }
     this._dab(h.a, h.d);
     this._show();
+  }
+  // one position of the rule (a, dd; drawn along ua, ud): across the whole width of the area,
+  // what is over the top line taken off and carried, the hollows under it filled from it
+  // (dump: what is carried is all laid down here)
+  _ruleStep(d, a, dd, ua, ud, dump = false) {
+    const t = this.app.terrain, P = planOf(d.r), W = d.r.W + P.C, cell = t.cell, seg = (this._seg ||= { m: new Uint8Array(8), h: new Float64Array(8), n: 0 });
+    const order = d.L === 'sand' ? [1, 2, 3, 0] : [3, 2, 1, 0];
+    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1, total = 0;
+    const pts = [];
+    for (let q = -W; q <= W; q += cell * 0.7) {
+      const [x, z] = P.W2(a - ud * q, dd + ua * q), i = t.index(x, z);
+      if (t.zone[i] !== 1 || t.conc[i] > 1e-6 || pts.includes(i)) continue;
+      pts.push(i);
+    }
+    if (dump) { total = d.carry.reduce((s, v) => s + v, 0); if (!pts.length || total <= 0) return; }
+    for (const i of pts) {
+      const s = t.nat[i] + t.loose[i];
+      if (dump) { for (const m of order) if (d.carry[m] > 0) t._push(i, d.carry[m] / pts.length, m); }
+      else if (s > d.top + 1e-7) {
+        t._pop(i, s - d.top, seg);
+        for (let k = 0; k < seg.n; k++) d.carry[seg.m[k]] += seg.h[k];
+      } else if (s < d.top - 1e-7) {
+        let need = d.top - s;
+        for (const m of order) { if (need <= 0) break; const g = Math.min(need, d.carry[m]); if (g > 0) { t._push(i, g, m); d.carry[m] -= g; need -= g; } }
+      }
+      const ix = i % t.nx, iz = (i / t.nx) | 0;
+      if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
+    }
+    if (dump) d.carry.fill(0);
+    if (x1 >= 0) t._touch(x0, z0, x1, z1);
+  }
+  // the rule in the hands (concreteGear.js): on the top line, across the way it is drawn
+  _ruleShow(d, u, snap = false) {
+    const P = planOf(d.r), [x, z] = P.W2(d.a, d.d), [ex, ez] = u ? P.W2(u[0], u[1]) : [1, 0];
+    this.app.concreteGear.set('screed', new THREE.Vector3(x, d.top, z), Math.atan2(ex, ez), snap);
   }
   // the shovel tips while the finger is held (sand / gravel)
   update(dt) {
@@ -167,12 +220,23 @@ export class BlindWork {
     const d = this.drag, app = this.app, L = d?.L;
     this.drag = null; this._live(null);
     if (!d) return;
+    if (d.rule) {
+      // what the rule still carries: a windrow ahead of where it stopped
+      const t = app.terrain, [ua, ud] = d.u || [1, 0];
+      const left0 = d.carry.reduce((q, v) => q + v, 0);
+      if (left0 > 0) this._ruleStep(d, d.a + ua * MM(120), d.d + ud * MM(120), ua, ud, true);
+      for (let i = 0; i < 40000 && t.active; i++) t.relax(1);
+      app.journal.commit(app.clock); app.concreteGear.set(null);
+      const left = Math.round(leftOf(d.r, L) * 100), nm = L === 'sand' ? 'Песок' : 'Щебень';
+      app.ui.toast(`${nm} выровняли правилом` + (left > 1 ? ` — ровным слоем ещё не покрыто ${left} % (где не хватило — досыпьте и пройдите ещё раз)` : ' — по всему дому'));
+      return;
+    }
     if (d.rake || d.pour) {
       const t = app.terrain;
       if (d.rake) app.rakeTool.up();
       else { for (let i = 0; i < 40000 && t.active; i++) t.relax(1); app.journal.commit(app.clock); }
       const left = Math.round(leftOf(d.r, L) * 100), nm = L === 'sand' ? 'Песок' : 'Щебень';
-      app.ui.toast(d.pour ? `${nm}: куча насыпана — «Грабли — разровнять» и ведите вдоль стены` : `${nm} разровняли граблями` + (left > 1 ? ` — слоем 60 мм ещё не покрыто ${left} %` : ' — по всему дому'));
+      app.ui.toast(d.pour ? `${nm}: куча насыпана — «Правило — ровно» и ведите вдоль стены (или «Грабли»)` : `${nm} разровняли граблями` + (left > 1 ? ` — слоем 60 мм ещё не покрыто ${left} %` : ' — по всему дому'));
       return;
     }
     if (!d.cells.size) { app.ui.toast(`Здесь ${L === 'geo' ? 'нечего застилать' : 'уже готово или нет слоя под ним'}`); return; }
@@ -265,8 +329,8 @@ export class BlindWork {
     return {
       form: `Опалубка: выберите ширину и тяните из лотка к дому — доски на колышках встанут вокруг стен (${this.app.settings.blindW || 1000} мм от стены)`,
       geo: 'Геотекстиль: ведите пальцем вдоль стены — рулон раскатывается ровной полосой на всю ширину отмостки',
-      sand: this.app.settings.blindAct === 'rake' ? 'Грабли: ведите вдоль стены по песку — ровный слой 60 мм' : 'Песок: держите палец — сыплется кучей; или лопатой с кучи, или доставка из «Материалов» — всё ляжет на геотекстиль; потом «Грабли»',
-      grav: this.app.settings.blindAct === 'rake' ? 'Грабли: ведите вдоль стены по щебню — ровный слой 60 мм' : 'Щебень: держите палец — сыплется кучей (или лопатой с кучи щебня); потом «Грабли»',
+      sand: this.app.settings.blindAct === 'rule' ? 'Правило: ведите вдоль стены — песок ровно на 60 мм от геотекстиля, лишнее тащится вперёд в ямки' : this.app.settings.blindAct === 'rake' ? 'Грабли: ведите вдоль стены по песку — срезают кучи' : 'Песок: держите палец — сыплется кучей; или лопатой с кучи, или доставка из «Материалов» — всё ляжет на геотекстиль; потом «Правило — ровно 60 мм»',
+      grav: this.app.settings.blindAct === 'rule' ? 'Правило: ведите вдоль стены — щебень ровно на 120 мм от геотекстиля (60 мм по песку)' : this.app.settings.blindAct === 'rake' ? 'Грабли: ведите вдоль стены по щебню — срезают кучи' : 'Щебень: держите палец — сыплется кучей (или лопатой с кучи щебня); потом «Правило — ровно 120 мм»',
       mesh: 'Сетка: ведите пальцем вдоль стены — листы сетки 150 × 150 из прутка Ø5 на стульчиках (под бетон)',
       fin: this.fin === 'tile' ? 'Плитка: выберите цвет и ведите пальцем по щебню — «кирпичик» на сухую смесь с уклоном от стен, по краю бордюр' : 'Бетон: «Бетон» → шланг или ведро по сетке — 80 мм; правило по доскам даст уклон 3 % от стен, потом кельма',
       strip: 'Снять опалубку: коснитесь отмостки — когда верх готов по всему периметру',
