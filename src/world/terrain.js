@@ -677,6 +677,9 @@ export class Terrain {
     const lo = this._rowLo, hi = this._rowHi;
     if (this._rowsUsed && !this.aPos.updateRanges.length) { lo.fill(1e9); hi.fill(-1); }   // uploaded: start over
     this._rowsUsed = true;
+    // (the tiles' margins overlap: a sample is computed once per update)
+    this._pass = (this._pass + 1) >>> 0 || 1;
+    if (!this._done) this._done = new Uint32Array(this.nat.length);
     for (const b of rects) {
       const r = this._updateRect(b);
       for (let z = r.z0; z <= r.z1; z++) { if (r.x0 < lo[z]) lo[z] = r.x0; if (r.x1 > hi[z]) hi[z] = r.x1; }
@@ -708,8 +711,11 @@ export class Terrain {
       iz = iz < 0 ? 0 : iz > rz ? rz : iz;
       const i = iz * n + ix; return nat[i] + loose[i] + conc[i] + top[i];
     };
+    const done = this._done, pass = this._pass;
     for (let iz = oz0; iz <= oz1; iz++) for (let ix = ox0; ix <= ox1; ix++) {
       const i = iz * n + ix;
+      if (done && done[i] === pass) continue;
+      if (done) done[i] = pass;
       const h = nat[i] + loose[i] + conc[i] + top[i];
       pos[i * 3 + 1] = h;
       const hx = H(ix + 1, iz) - H(ix - 1, iz), hz = H(ix, iz + 1) - H(ix, iz - 1);
@@ -940,7 +946,7 @@ export class Terrain {
               const kk = h * D / (dx * S * dx * S);
               let m = ad * kk / (1 + 2 * kk) * (NB[k][2] ? 0.5 : 1);
               if (m > hs) m = hs;
-              if (m < 2e-8) continue;
+              if (m < 2e-7) continue;   // (under ~2 µm of the real concrete: it has come to rest — the tile may sleep)
               const ts = cTime[src], ss = cSm[src], ys = cY[src];
               conc[src] -= m;
               const c = conc[dst], tt = c + m;

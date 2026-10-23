@@ -230,6 +230,7 @@ function checkGpuMemory() {
   app.ui?.toast(q !== 'low' ? `Не хватило видеопамяти — качество снижено до «${next === 'medium' ? 'среднее' : 'низкое'}»` : 'Не хватает видеопамяти устройства');
 }
 
+let concAcc = 0;   // (the time since the concrete last flowed)
 function step(dt, time, render = true) {
   if (!document.hidden) app.clock += dt;
   const { terrain } = app;
@@ -247,8 +248,12 @@ function step(dt, time, render = true) {
   // fresh concrete creeps: a few passes per frame
   terrain.clock = app.clock;
   // (only while a concrete action is open: what it does to the concrete belongs to its journal entry)
-  if (Object.values(app.concreteTools).some((c) => c.busy) || (app.shovelTool.busy && terrain.cActive)) terrain.concStep(dt, 2);   // only the tiles where it moves
-  terrain.updateMesh();
+  // (30 times a second, with the time that has passed: the same flow, half the work at 60 fps)
+  // (30 times a second, with the time that has passed: the same flow, half the work at 60 fps;
+  // the surface redrawn with it — while pouring it would change every frame for nothing)
+  let concTick = true;
+  if (Object.values(app.concreteTools).some((c) => c.busy) || (app.shovelTool.busy && terrain.cActive)) { concAcc += dt; concTick = concAcc >= 1 / 31; if (concTick) { terrain.concStep(Math.min(concAcc, 0.1), 2); concAcc = 0; } } else concAcc = 0;   // only the tiles where it moves
+  if (concTick) terrain.updateMesh();
   app.grass.update();
   app.outlineView.update();
   app.formView.update();

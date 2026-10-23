@@ -118,10 +118,10 @@ export class PumpHose {
 
   _build() {
     const curve = new THREE.CatmullRomCurve3(this.p);
-    const geo = new THREE.TubeGeometry(curve, 60, R, 12, false);
+    const geo = new THREE.TubeGeometry(curve, 60, R, 12, false), old = this.mesh.geometry, same = old.attributes.position?.count === geo.attributes.position.count;
     // ribs every ~5 cm (real) and concrete splashed over the last metre
     const pos = geo.attributes.position, nor = geo.attributes.normal;
-    const col = new Float32Array(pos.count * 3);
+    const col = same ? null : new Float32Array(pos.count * 3);
     const rings = 61, radial = 13;
     for (let j = 0; j < rings; j++) {
       const u = j / (rings - 1), along = u * LEN / G;   // real metres from the boom
@@ -130,15 +130,23 @@ export class PumpHose {
       for (let k = 0; k < radial; k++) {
         const v = j * radial + k;
         pos.setXYZ(v, pos.getX(v) + nor.getX(v) * R * (rib - 1), pos.getY(v) + nor.getY(v) * R * (rib - 1), pos.getZ(v) + nor.getZ(v) * R * (rib - 1));
+        if (same) continue;   // (the colours stay: they go with the rings, not the shape)
         const n = hash(j * 31 + k * 7);
         const splash = dirt * dirt * (0.3 + 0.7 * n) * (nor.getY(v) > -0.2 ? 1 : 0.5) * 0.6;
         const base = 0.022 + 0.01 * n;   // black rubber
         col[v * 3] = base + splash * 0.2; col[v * 3 + 1] = base + splash * 0.195; col[v * 3 + 2] = base + splash * 0.185;
       }
     }
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    this.mesh.geometry.dispose();
-    this.mesh.geometry = geo;
+    if (same) {
+      // (the buffers on the GPU stay: only the positions and normals are sent)
+      old.attributes.position.array.set(pos.array); old.attributes.normal.array.set(nor.array);
+      old.attributes.position.needsUpdate = old.attributes.normal.needsUpdate = true;
+      old.computeBoundingSphere(); geo.dispose();
+    } else {
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      old.dispose();
+      this.mesh.geometry = geo;
+    }
     // the end coupling follows the last piece of hose
     const e = this.p[N - 1], d = new THREE.Vector3().subVectors(this.p[N - 1], this.p[N - 2]).normalize();
     this.end.position.copy(e);
