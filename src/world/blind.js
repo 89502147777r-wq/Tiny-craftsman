@@ -133,6 +133,23 @@ export function looseSet(rec, L) {
   }
   return (c[L] = out);
 }
+// the ground the geotextile lies on at a point: the native ground with the soil lying loose on
+// it (not the sand / gravel poured over the sheet) — the sheet follows it, so what is poured
+// on is always over it
+export function groundAt(rec, x, z) {
+  const t = BLIND_GROUND.t;
+  if (!t) return rec.g + MM(TOP.geo - 1);
+  // (the highest of the samples round the point: the sheet lies over the bumps between them)
+  const c = t.index(x, z), cx = c % t.nx, cz = (c / t.nx) | 0;
+  let top = -Infinity;
+  for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    const ix = Math.min(t.rx, Math.max(0, cx + dx)), iz = Math.min(t.rz, Math.max(0, cz + dz)), i = iz * t.nx + ix;
+    let h = t.nat[i];
+    for (let k = 0; k < t.lN[i]; k++) { if (t.lM[i * 3 + k] !== 0) break; h += t.lH[i * 3 + k]; }
+    if (h > top) top = h;
+  }
+  return top;
+}
 export const layerSet = (rec, L) => (L === 'sand' || L === 'grav' ? looseSet(rec, L) : setOf(rec[L]));
 export function concLevels(rec) {
   const CL = cellList(planOf(rec)), h = new Float32Array(CL.n);
@@ -355,9 +372,10 @@ export function buildBlind(rec, live) {
   const flat = (L) => () => layerTop(rec, L), lv = live?.layer, lc = live?.cells ? new Set(live.cells) : null;
   const cellsOfL = (L) => { const s = setOf(rec[L]); if (lv === L && lc) for (const k of lc) s.add(k); return s; };
   // the layers
-  const down = (a, d) => { const [x, z] = P.W2(a, d), h = BLIND_GROUND.at?.(x, z); return Math.min(g0, h ?? g0) - MM(40); };
-  add(slab(P, cellsOfL('geo'), flat('geo'), down, MM(1000)), M.geo(), false);
-  if (lv === 'geo' && live.roll) G.add(geoRoll(P, live.roll, layerTop(rec, 'geo'), Math.min(MM(1000), rec.W + MM(100))));
+  // the geotextile: a sheet 2 mm thick lying on the ground (over its bumps and dips)
+  const sheet = (a, d) => { const [x, z] = P.W2(a, d); return groundAt(rec, x, z) + MM(2); };
+  add(slab(P, cellsOfL('geo'), sheet, (a, d) => sheet(a, d) - MM(2), MM(1000)), M.geo(), false);
+  if (lv === 'geo' && live.roll) G.add(geoRoll(P, live.roll, sheet(live.roll.a, live.roll.d) - MM(2), Math.min(MM(1000), rec.W + MM(100))));
   // (the sand and the gravel are the ground's: drawn with it; here only the stream off the shovel)
   if (live?.stream) G.add(stream(P, live.stream, lv === 'grav' ? M.grav() : M.sand(), live.stream.y));
   const fin = cellsOfL('fin'), kind = rec.finKind || (lv === 'fin' ? live.kind : null) || 'conc';
