@@ -436,7 +436,8 @@ app.pickObject = (cx, cy, kind) => {
   _ray.setFromCamera(app.gestures.ndc(cx, cy), app.camera);
   const views = kind === 'form' ? [app.formView] : kind === 'wall' ? [app.wallView] : [app.rebarView];
   const hits = _ray.intersectObjects(views.map((v) => v.group), true);
-  for (const h of hits) for (const v of views) { const id = v.ownerOf(h); if (id) return id; }
+  app.lastPick = null;
+  for (const h of hits) for (const v of views) { const id = v.ownerOf(h); if (id) { app.lastPick = h; return id; } }   // (the hit: what part of it was touched)
   // thin bars are hard to hit: try a fat ray against the bar axes
   if (kind === 'rebar') return app.rebarView.near?.(_ray.ray) ?? null;
   return null;
