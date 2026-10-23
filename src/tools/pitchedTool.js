@@ -25,9 +25,49 @@ const PREV = { joists: 'plate', ridge: 'joists', frame: 'ridge', memb: 'frame', 
 let _outside = null;
 // the outside of the house (the plot reached from its edge, round the walls): (x, z) → true
 // outside, false inside, null on a wall — or null when there is no house
-export function houseOutside(app) { _outside = null; findHouse(app); return _outside; }
-export function findHouse(app) {
-  const all = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel).map(boxOf);
+export function houseOutside(app) { _outside = null; findHouse(app, null, true); return _outside; }
+// the buildings on the plot: the masonry in groups — units touching (within 100 mm) belong to one
+// (a garage beside the house is its own building, with its own roof); cached till units change
+let _bk = null, _bs = null;
+export function buildings(app) {
+  const us = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel), key = us.length + ':' + (us.at(-1)?.id ?? 0);
+  if (key === _bk) return _bs;
+  const bx = us.map(boxOf), n = bx.length, par = Int32Array.from({ length: n }, (_, i) => i), gap = MM(100);
+  const root = (i) => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
+  const rad = bx.map((b) => Math.hypot(b.hl, b.hw));
+  const apart = (a, b) => {
+    // (the boxes' gap along their sides — the axes of either)
+    for (const [ax, az] of [[a.ux, a.uz], [-a.uz, a.ux], [b.ux, b.uz], [-b.uz, b.ux]]) {
+      const ra = Math.abs(a.hl * (a.ux * ax + a.uz * az)) + Math.abs(a.hw * (-a.uz * ax + a.ux * az)), rb = Math.abs(b.hl * (b.ux * ax + b.uz * az)) + Math.abs(b.hw * (-b.uz * ax + b.ux * az));
+      if (Math.abs((b.x - a.x) * ax + (b.z - a.z) * az) - ra - rb > gap) return true;
+    }
+    return false;
+  };
+  const ord = [...bx.keys()].sort((i, j) => bx[i].x - bx[j].x);
+  for (let p = 0; p < n; p++) {
+    const i = ord[p], a = bx[i];
+    for (let q = p + 1; q < n; q++) {
+      const j = ord[q], b = bx[j];
+      if (b.x - a.x > rad[i] + 0.2 + gap) break;
+      if (Math.hypot(b.x - a.x, b.z - a.z) > rad[i] + rad[j] + gap || root(i) === root(j) || apart(a, b)) continue;
+      par[root(i)] = root(j);
+    }
+  }
+  const g = new Map(); bx.forEach((b, i) => { const r = root(i); if (!g.has(r)) g.set(r, []); g.get(r).push(b); });
+  _bk = key; _bs = [...g.values()].sort((p, q) => q.length - p.length);
+  return _bs;
+}
+// the building nearest a point (on the ground: to its masonry), or the biggest
+export function buildingAt(app, p) {
+  const bs = buildings(app);
+  if (!p || bs.length < 2) return bs[0] || null;
+  let best = null, bd = Infinity;
+  for (const B of bs) for (const b of B) { const d = Math.hypot(b.x - p.x, b.z - p.z) - Math.hypot(b.hl, b.hw); if (d < bd) bd = d, best = B; }
+  return best;
+}
+// near: the building the finger is at (else the biggest); whole: all the masonry as one
+export function findHouse(app, near = null, whole = false) {
+  const all = whole ? app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel).map(boxOf) : buildingAt(app, near) || [];
   if (all.length < 8) return null;
   // the walls the roof stands on: the upper courses (a plinth, a wider first tier under them
   // would push the outline out)
@@ -158,7 +198,22 @@ export class PitchedWork {
   constructor(app) { this.app = app; this.drag = null; this.place = null; }
   get stage() { return this.app.settings.proofStage || 'plate'; }
   get isCarry() { return !FINGER.has(this.stage); }
-  get rec() { return this.app.objects.all('proof')[0] || null; }
+  // the roof worked on: the one last under the finger (several buildings, each its own roof)
+  get rec() { const all = this.app.objects.all('proof'); return all.find((r) => r.id === this.sel) || all.at(-1) || null; }
+  // the roof under the finger (its surface first hit), else the one nearest the point
+  pick(e, p) {
+    const all = this.app.objects.all('proof');
+    if (all.length < 2) { this.sel = all[0]?.id; return; }
+    let best = null, bt = Infinity;
+    if (e) for (const r of all) { const h = this._hit(e, r); if (h && h.t < bt) bt = h.t, best = r; }
+    if (!best && p) {
+      for (const r of all) for (const w of r.wings) {
+        const dx = p.x - w.cx, dz = p.z - w.cz, a = Math.abs(dx * w.ux + dz * w.uz) - w.A, d = Math.abs(-dx * w.uz + dz * w.ux) - w.B, q = Math.hypot(Math.max(0, a), Math.max(0, d));
+        if (q < bt) bt = q, best = r;
+      }
+    }
+    if (best) this.sel = best.id;
+  }
   // the wing the type / the pitch / the slope go to (−1: all of them)
   get wing() { const r = this.rec, k = this.app.settings.proofWing ?? -1; return r && k >= 0 && k < r.wings.length ? k : -1; }
   opts() {
@@ -171,7 +226,7 @@ export class PitchedWork {
     return { style: type, pitch, cover: { kind, col }, gut: { kind: gk, col: gc }, md: w?.md || 0 };
   }
   _ends(wings) { return wings; }
-  _live(live) { const v = this.app.wallView; v.liveProof = live; v.proofDirty = true; }
+  _live(live) { const v = this.app.wallView; v.liveProof = live && !live.ghost ? { ...live, id: this.rec?.id ?? null } : live; v.proofDirty = true; }
   _save(patch, label) {
     const app = this.app, r = this.rec;
     app.journal.act(label, {}, app.clock, () => { if (r) app.objects.update(r.id, { ...patch }); else app.objects.add({ type: 'proof', ...patch }); });
@@ -219,8 +274,8 @@ export class PitchedWork {
   }
 
   // ---- the finger on the roof: the point of its surface (the top of the rafters) under it ----
-  _hit(e) {
-    const r = this.rec; if (!r || !e || e.clientX === undefined) return null;
+  _hit(e, r = this.rec) {
+    if (!r || !e || e.clientX === undefined) return null;
     _ray.setFromCamera(this.app.gestures.ndc(e.clientX, e.clientY), this.app.camera);
     const shapes = r.wings.map((w) => wingShape(r, w)), o = _ray.ray.origin, d = _ray.ray.direction;
     const above = (t) => { const x = o.x + d.x * t, z = o.z + d.z * t, h = roofTop(r, shapes, x, z); return !isFinite(h) || o.y + d.y * t > h; };
@@ -233,9 +288,10 @@ export class PitchedWork {
     shapes.forEach((f, i) => { const [a, dd] = f.L(x, z); if (f.inside(a, dd) && f.top(a, dd) > best) { best = f.top(a, dd); wi = i; } });
     if (wi < 0) return null;
     const [a, dd] = shapes[wi].L(x, z);
-    return { wi, a, d: dd, f: shapes[wi] };
+    return { wi, a, d: dd, f: shapes[wi], t: t1 };
   }
   down(p, e) {
+    if (!this.isCarry) this.pick(e, p);
     const app = this.app, L = this.stage, r = this.rec;
     if (this.isCarry) { app.ui.toast(`${NAME[L]}: тяните из лотка справа на ${L === 'plate' ? 'верх стен' : 'крышу'}`); return true; }
     if (!r) { app.ui.toast('Сначала мауэрлат: тяните его из лотка на верх стен — крыша встанет по дому'); return true; }
@@ -307,14 +363,17 @@ export class PitchedWork {
 
   // ---- the wall plate and the trims: from the tray ----
   carryMove(p, e) {
-    const app = this.app, L = this.stage, r = this.rec;
+    const app = this.app, L = this.stage;
     this.place = null; this.why = null;
     if (L === 'plate') {
-      if (r?.done?.plate) { this._live(null); this.why = 'Мауэрлат уже лежит — дальше «Стропила» (снять — «Удалить»)'; return { ok: false, why: this.why }; }
-      const key = app.objects.all('unit').length + ':' + app.objects.all('belt').length;
-      if (this._hk !== key) { this._hk = key; this._house = findHouse(app); }
+      // the building at the finger (a house, a garage beside it: each its own roof)
+      const B = buildingAt(app, p), key = app.objects.all('unit').length + ':' + app.objects.all('belt').length + ':' + (B?.[0]?.u.id ?? 0);
+      if (this._hk !== key) { this._hk = key; this._house = findHouse(app, p); }
       const H = this._house;
       if (!H) { this._live(null); this.why = 'Не нахожу дом: нужны стены не меньше 2 × 2 м, замкнутые по контуру (крыша встаёт на их верх)'; return { ok: false, why: this.why }; }
+      // (a roof already on this building)
+      const on = app.objects.all('proof').find((q) => q.wings.some((w) => H.wings.some((v) => Math.hypot(w.cx - v.cx, w.cz - v.cz) < Math.max(v.A, v.B))));
+      if (on) { this.sel = on.id; this._live(null); this.why = 'На этом здании мауэрлат уже лежит — дальше «Лаги» и «Стропила» (снять — «Удалить»)'; return { ok: false, why: this.why }; }
       // the finger over the house (on its walls, over the inside of it — the point there is
       // the ground or the far wall — or near it): there is one roof, it goes on the house
       if (p) {
@@ -326,6 +385,8 @@ export class PitchedWork {
       this._live({ ghost: rec });
       return { ok: true };
     }
+    this.pick(e, p);
+    const r = this.rec;
     if (L === 'gutter') {
       if (!r?.done?.trim) { this._live(null); return { ok: false, why: 'Водосток — когда стоят лобовые доски (этап «Конёк и планки»)' }; }
       if (r.done.gutter) return { ok: false, why: 'Водосток уже висит' };
@@ -353,7 +414,9 @@ export class PitchedWork {
     this.place = null; this._live(null);
     if (!P) { app.ui.toast(this.why || (this.stage === 'plate' ? 'Мауэрлат — на верх стен' : 'Конёк и планки — на крышу с покрытием')); this.why = null; return; }
     if (P.rec) {
-      this._save(P.rec, 'proof-plate');
+      // (a new roof: on the building it was carried to — the others keep theirs)
+      let id = null; app.journal.act('proof-plate', {}, app.clock, () => { id = app.objects.add({ type: 'proof', ...P.rec }); id = id?.id ?? id; });
+      if (id != null) this.sel = id;
       const n = P.rec.wings.length, t = ROOF_TYPES[P.rec.style].toLowerCase();
       const studs = app.objects.all('belt').some((b) => b.studs?.length);
       app.ui.toast(`Мауэрлат 150×150 ${studs ? 'на шпильках армопояса, шайбы и гайки' : 'на анкерах'} по всему дому${P.rec.style !== 'hip' ? ', фронтоны из блоков' : ''} — крыша ${t}${n > 1 ? `, ${n} крыла с ендовами` : ''}, ${P.rec.pitch}°. Дальше — лаги перекрытия, коньковый прогон, стропила`);
@@ -404,6 +467,7 @@ export class RoofWindowWork {
   get col() { return this.app.settings.rwinCol || 'graphite'; }
   get type() { return RWIN_TYPES[this.app.settings.rwinType] ? this.app.settings.rwinType : 'pivot'; }
   carryMove(p, e) {
+    this.app.wallTool.proof.pick(e, p);   // (the roof under the finger: each building its own)
     const app = this.app, pw = app.wallTool.proof, r = pw.rec, [, W0, H0] = RWIN[this.key], [Wm, Hm] = rwinSpan(this.type, W0, H0), W = MM(Wm), H = MM(Hm), ty = this.type;
     this.place = null;
     // a slope of the pitched roof under the finger

@@ -889,7 +889,7 @@ export class WallView {
     for (const g of [...this.proofs.children]) { this.proofs.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry?.dispose(); }); }
     const recs = this.objects.all('proof'), live = this.liveProof, lw = this.liveRwin, wins = this.objects.all('rwin');
     this._proofIds = new Set([...recs, ...wins].map((r) => r.id));
-    const list = recs.map((r) => [r, live && !live.ghost ? live : null]);
+    const list = recs.map((r) => [r, live && !live.ghost && (live.id == null || live.id === r.id) ? live : null]);
     if (live?.ghost) list.push([live.ghost, null]);
     for (const [r, lv] of list) {
       const ws = wins.filter((q) => q.host === r.id && !q.flat);
