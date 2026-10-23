@@ -56,7 +56,7 @@ export class CameraRig {
     this.yaw += (this.goal.yaw - this.yaw) * k;
     this.pitch += (this.goal.pitch - this.pitch) * k;
     this.dist += (this.goal.dist - this.dist) * k;
-    this.t += dt;
+    if (this.live !== false) this.t += dt;   // (still while the picture is drawn twice a second: it would jump)
     const cam = this.camera;
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     cam.position.set(
@@ -64,8 +64,10 @@ export class CameraRig {
       this.target.y + sp * this.dist,
       this.target.z + Math.cos(this.yaw) * cp * this.dist,
     );
-    // never dip below the table top
+    // never dip below the table top, never out of the panorama's sphere
     cam.position.y = Math.max(cam.position.y, 0.012);
+    const l = this.limits, R = Math.hypot(cam.position.x, cam.position.y, cam.position.z);
+    if (l.sphere && R > l.sphere) cam.position.multiplyScalar(l.sphere / R);
     const look = this.target.clone();
     if (this.shake) {
       const t = this.t, a = this.dist * 0.0028;

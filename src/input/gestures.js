@@ -26,6 +26,16 @@ export class Gestures {
     // iOS Safari page zoom / bounce
     for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault());
     document.addEventListener('touchmove', (e) => { if (e.target === el) e.preventDefault(); }, { passive: false });
+    // the page hidden or left: no finger is on it any more
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.reset(); });
+    window.addEventListener('blur', () => this.reset());
+  }
+
+  // all fingers off: a stroke in progress ends as if lifted
+  reset() {
+    if (this.mode === 'tool') { try { this.app.activeTool()?.up(null, {}); } catch { /* the tool needed the point */ } this.app.ui?.refresh(); }
+    this.ptrs.clear();
+    this.mode = 'none';
   }
 
   ndc(x, y) {
@@ -50,6 +60,9 @@ export class Gestures {
     const app = this.app;
     app.sfx.unlock();
     try { this.el.setPointerCapture?.(e.pointerId); } catch { /* synthetic or already released pointer */ }
+    // the first finger of a new touch: whatever is still held is stale (iOS loses a pointerup
+    // to a system gesture or an app switch — the next touch would be taken for a second finger)
+    if (e.pointerType === 'touch' && e.isPrimary && this.ptrs.size) this.reset();
     this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), button: e.button });
     if (this.ptrs.size === 2) {
       // second finger: always a camera gesture
