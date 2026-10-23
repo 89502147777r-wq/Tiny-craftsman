@@ -3,7 +3,7 @@ import { MODEL_SCALE } from '../config.js';
 import { boxOf } from './freeBrick.js';
 import { plan as beltPlan, toWorld as beltWorld } from './belt.js';
 import { RWIN_TYPES, rwinSpan } from '../world/roofWindows.js';
-import { wingShape, roofTop, planeAt, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
+import { wingShape, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
 //   plate – carried from the tray onto the top of the walls: the house is found (its plan
@@ -483,9 +483,9 @@ export class RoofWindowWork {
       if (!pa) { this._live(null); return { ok: false, why: 'Окно — на скат' }; }
       const P = pa.P;
       // between the rafters (in the middle of a bay), the height where the finger is
-      const x0 = P.end || P.xd ? P.xa(0) : f.lo, step = MM(PITCHED.step);
+      const RG = rafterGrid(w, P), x0 = RG.x0, step = RG.step;
       // (the twin: over a rafter, a sash in the bay on each side of it)
-      let x = ty === 'twin' ? x0 + MM(PITCHED.rafterW) / 2 + Math.max(1, Math.round((pa.x - x0) / step)) * step : x0 + MM(PITCHED.rafterW) + (Math.floor((pa.x - x0) / step) + 0.5) * step;
+      let x = ty === 'twin' ? x0 + Math.max(1, Math.min(RG.n - 1, Math.round((pa.x - x0) / step))) * step : x0 + (Math.max(0, Math.min(RG.n - 1, Math.floor((pa.x - x0) / step))) + 0.5) * step;
       let t = Math.max(H / 2 + MM(300), Math.min(P.L - H / 2 - MM(300), pa.t));
       const corners = [[-W / 2, -H / 2], [W / 2, -H / 2], [-W / 2, H / 2], [W / 2, H / 2]];
       let why = null;
