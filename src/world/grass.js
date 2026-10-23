@@ -41,16 +41,21 @@ export class Grass {
     if (t.version === this._seen) return;
     this._seen = t.version;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
+    let changed = false;
     for (let i = 0; i < this.tufts.length; i++) {
       const g = this.tufts[i];
       const k = t.index(g.x, g.z);
       const dug = t.orig[k] - t.nat[k] > 0.0006 || t.loose[k] > 0.0012 || t.conc[k] > 0.0002;   // dug, covered or concreted
+      // (the ground under it as it was: nothing to redo)
+      const hk = t.hAt(k);
+      if (g._h === hk && g._dug === dug) continue;
+      g._h = hk; g._dug = dug; changed = true;
       if (dug) { s.setScalar(0); } else s.setScalar(g.s);
       p.set(g.x, t.heightAt(g.x, g.z) - 0.0002, g.z);
       q.setFromEuler(e.set(g.tilt, g.rot, 0));
       this.mesh.setMatrixAt(i, m.compose(p, q, s));
     }
-    this.mesh.instanceMatrix.needsUpdate = true;
+    if (changed) this.mesh.instanceMatrix.needsUpdate = true;
   }
 }
 
