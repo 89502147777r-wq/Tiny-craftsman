@@ -510,6 +510,16 @@ function walls(G, roof, w, f) {
   }
 }
 
+// the end of a boxed eave at a verge: a board in the plane of the barge board (x = xe), from u0
+// (out, past the fascia) to u1 (in, along dIn — level) and from yb up to the barge board's underside
+function boxEnd(F, xe, t, dIn, u0, u1, yb, yTop, m) {
+  const E = F.pt(xe, t), ex = F.ex.clone().setY(0).normalize(), th = MM(28);
+  const shp = new THREE.Shape([new THREE.Vector2(u0, yb), new THREE.Vector2(u1, yb), new THREE.Vector2(u1, Math.max(yb + MM(5), yTop(u1))), new THREE.Vector2(u0, Math.max(yb + MM(5), yTop(u0)))]);
+  const g = new THREE.ExtrudeGeometry(shp, { depth: th, bevelEnabled: false }), pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) { const u = pos.getX(i), y = pos.getY(i), z = pos.getZ(i) - th / 2; pos.setXYZ(i, E.x + dIn.x * u + ex.x * z, y, E.z + dIn.z * u + ex.z * z); }
+  g.computeVertexNormals();
+  const o = new THREE.Mesh(g, m); o.castShadow = o.receiveShadow = true; return o;
+}
 function trims(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
   const tm = kind === 'shingle' ? mat('trimSh' + roof.cover.col, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(cc[1][0]).multiplyScalar(0.8), roughness: 0.9 })) : metalMat();
   const capR = MM(kind === 'shingle' ? 70 : 110), tie = MM(PITCHED.rafterH), Le = w.B + f.Oe;
@@ -527,7 +537,7 @@ function trims(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
   }
   const fas = new Beams(), sof = new Beams(), fh = tie / f.cs + MM(50);
   const trimM = mat('fascia' + kind + roof.cover.col, () => new THREE.MeshStandardMaterial({ color: kind === 'shingle' ? 0x6b4a33 : cc[1], roughness: 0.6, metalness: 0.2 }));
-  const sa = Math.sin(f.al), ca = Math.cos(f.al), Og = f.Og;
+  const sa = Math.sin(f.al), ca = Math.cos(f.al), Og = f.Og, endM = mat('fasciaDS' + kind + roof.cover.col, () => { const c = trimM.clone(); c.side = THREE.DoubleSide; return c; });
   for (const P of PL) {
     const F = frameOf(f, P), hidden = (x, t) => { const [a, d] = P.at(x, t); return !vis(a, d); };
     const up = F.et.clone().setY(0).normalize();   // (level, up the slope: the eave is the other way)
@@ -557,6 +567,10 @@ function trims(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
       for (const [t0, t1] of runs(0, P.L, (t) => hidden(xe, t))) if (t1 - t0 > MM(200)) {
         fas.add(F.pt(xe, t0, (top + bot) / 2).toArray(), F.pt(xe, t1, (top + bot) / 2).toArray(), MM(30), top - bot, F.n);
         sof.add(F.pt(xe + sx * Og / 2, t0, -tie - MM(5)).toArray(), F.pt(xe + sx * Og / 2, t1, -tie - MM(5)).toArray(), Og, MM(10), F.n);
+        // the corners closed: under the barge board's end, from the fascia's face back past the
+        // overhang, down to the soffit (a box end) — the ends of the boards no longer show
+        if (t0 < MM(1)) { const E = F.pt(xe, 0); G.add(boxEnd(F, xe, 0, up, -MM(27), f.Oe + MM(5), E.y + MM(20) - fh, (u) => F.pt(xe, u / f.cs, bot + MM(10)).y, endM)); }
+        if (P.hiEdge && t1 > P.L - MM(1)) { const H = F.pt(xe, P.L), ovH = P.xd ? Og : f.Oe; G.add(boxEnd(F, xe, P.L, up.clone().negate(), -(tie * sa + MM(31)), ovH + MM(5), H.y - tie * ca - MM(30), (u) => F.pt(xe, P.L - u / f.cs, bot + MM(10)).y, endM)); }
       }
     }
   }
