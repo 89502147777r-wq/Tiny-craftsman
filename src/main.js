@@ -28,7 +28,7 @@ import { saveLocal, loadLocal, clearLocal, toJSON, fromJSON, download } from './
 import { ScoopTool } from './tools/scoopTool.js';
 import { RakeTool } from './tools/rakeTool.js';
 import { MaterialTool } from './tools/materialTool.js';
-import { HoseTool, PailTool, ScreedTool, VibratorTool, TrowelTool, BitumenTool, PlateTool } from './tools/concreteTools.js';
+import { HoseTool, PailTool, ScreedTool, VibratorTool, TrowelTool, BitumenTool, PlateTool, BreakerTool } from './tools/concreteTools.js';
 import { ConcreteGear } from './world/concreteGear.js';
 import { MarkTool } from './tools/markTool.js';
 import { BuildTool } from './tools/buildTool.js';
@@ -116,7 +116,7 @@ async function main() {
   app.sfx = new Sfx();
   app.shovelTool = new ScoopTool(app, app.shovel);
   app.rakeTool = new RakeTool(app, app.rake);
-  app.concreteTools = { hose: new HoseTool(app), pail: new PailTool(app), screed: new ScreedTool(app), vibro: new VibratorTool(app), trowel: new TrowelTool(app), bitumen: new BitumenTool(app), plate: new PlateTool(app) };
+  app.concreteTools = { hose: new HoseTool(app), pail: new PailTool(app), screed: new ScreedTool(app), vibro: new VibratorTool(app), trowel: new TrowelTool(app), bitumen: new BitumenTool(app), plate: new PlateTool(app), breaker: new BreakerTool(app) };
   app.materialTools = { sand: new MaterialTool(app, M_SAND), g5: new MaterialTool(app, M_G5), g20: new MaterialTool(app, M_G20), soil: new MaterialTool(app, M_SOIL) };
   app.markTool = new MarkTool(app);
   app.formTool = new BuildTool(app, 'form');

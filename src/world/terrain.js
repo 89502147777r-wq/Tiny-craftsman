@@ -15,6 +15,7 @@ import { makeNoise2 } from '../core/rand.js';
 //           slides at its own angle of repose.
 // Loose soil slides at its angle of repose; native ground only collapses
 // when a wall is cut steeper than ~78°. Volume is conserved exactly.
+const MM_CHIP = 0.0005 / MODEL_SCALE;   // (a crust thinner than 0,5 mm: gone)
 export class Terrain {
   constructor() {
     // rectangular plot: rx × rz cells, (rx+1) × (rz+1) samples, row stride nx
@@ -798,13 +799,37 @@ export class Terrain {
   }
   // the ground levelled to y under what is laid on it (the geotextile): the loose cover gone,
   // the native ground cut or filled to it — over the samples where at(x, z) is true
-  levelTo(at, y, box) {
+  // set concrete chipped off (a crowbar, a breaker): within r of (x, z), up to `amount` deep this
+  // time; only where it is a thin crust (≤ maxH — what ran out of the forms, not a footing or a slab);
+  // the chips are carried off, what lay on it falls onto the ground → { got (m³), thick (samples) }
+  chipConc(x, z, r, amount, maxH) {
+    const cx = this.toCellX(x), cz = this.toCellZ(z), n = Math.ceil(r / this.cell);
+    const ix0 = Math.max(0, Math.floor(cx - n)), ix1 = Math.min(this.rx, Math.ceil(cx + n)), iz0 = Math.max(0, Math.floor(cz - n)), iz1 = Math.min(this.rz, Math.ceil(cz + n));
+    let got = 0, thick = 0, any = false;
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const i = iz * this.nx + ix, c = this.conc[i];
+      if (c <= 1e-6) continue;
+      const d = Math.hypot(ix - cx, iz - cz) * this.cell / r; if (d > 1) continue;
+      if (c > maxH) { thick++; continue; }
+      const take = Math.min(c, amount * (1 - d * d * 0.6));
+      this.conc[i] = c - take; got += take * this.cellArea; any = true;
+      if (this.conc[i] < MM_CHIP) {
+        got += this.conc[i] * this.cellArea; this.conc[i] = 0; this.cSm[i] = 0;
+        const tp = this.top[i]; if (tp > 0) { this.top[i] = 0; this._push(i, tp, this.topM[i]); }
+      }
+    }
+    if (any) this._touch(ix0, iz0, ix1, iz1);
+    return { got, thick };
+  }
+  levelTo(at, y, box, chip = 0) {
     const ix0 = Math.max(0, Math.floor(this.toCellX(box[0]))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(box[2])));
     const iz0 = Math.max(0, Math.floor(this.toCellZ(box[1]))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(box[3])));
     let any = false;
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
       if (!at(this.toWorldX(ix), this.toWorldZ(iz))) continue;
       const i = iz * this.nx + ix;
+      // (a thin crust of concrete that ran out of the forms: broken off and carried away first)
+      if (this.conc[i] > 1e-6 && this.conc[i] <= chip) { this.conc[i] = 0; this.cSm[i] = 0; }
       if (this.conc[i] > 1e-6) continue;
       this.nat[i] = y; this.loose[i] = 0; this.lN[i] = 0; this.ldep[i] = 0; this.top[i] = 0;
       for (let k = 0; k < LAYERS; k++) this.lH[i * LAYERS + k] = 0;

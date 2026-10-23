@@ -602,3 +602,45 @@ export class PlateTool extends ConcreteTool {
     this.app.ui?.toast(mm > 0 ? `Уплотнено: осадка до ${mm} мм за проход` : 'Виброплита уплотняет насыпанный грунт, песок или щебень (не нетронутую землю)');
   }
 }
+
+const MM = (v) => v / 1000 / MODEL_SCALE;
+// Crowbar (лом): hold the finger on the concrete that ran out of the forms and set — the bar
+// jabs, the crust breaks off in chips under it and is carried off (what lay on it falls on the
+// ground). Only a thin crust (≤ 100 mm): a footing, a slab is not touched.
+export class BreakerTool extends ConcreteTool {
+  constructor(app) { super(app, 'breaker'); }
+  _at(p) { return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z); }
+  _yaw(p) { const c = this.app.camera.position; return Math.atan2(c.x - p.x, c.z - p.z); }
+  down(p) {
+    if (this.state !== 'idle') return true;
+    if (!this.app.terrain.inside(p.x, p.z)) return false;
+    this.begin('break', {}, p);
+    this.got = 0; this.thick = 0; this.jab = 0;
+    this.gear.set('breaker', this._at(p), this._yaw(p), true);
+    return true;
+  }
+  move(p) { if (this.state === 'work') { this.p.copy(p); this.last.copy(p); } }
+  work(dt) {
+    const app = this.app, t = app.terrain, p = this.p;
+    this.jab += dt;
+    this.gear.barOn = true;
+    this.gear.set('breaker', this._at(p), this._yaw(p));
+    if (this.jab < 0.14) return;   // (a jab every 0.14 s)
+    this.jab = 0;
+    const r = t.chipConc(p.x, p.z, MM(170), MM(25), MM(100));
+    this.got += r.got; this.thick += r.thick;
+    if (r.got > 0) {
+      app.sfx.stab();
+      const q = this._at(p), V = THREE.Vector3;
+      for (let k = 0; k < 3; k++) app.particles.emit(q.clone().add(new V(0, MM(10), 0)), new V((Math.random() - 0.5) * 0.25, 0.25 + Math.random() * 0.2, (Math.random() - 0.5) * 0.25), 0, MM(14), 0, 0, 3);   // (chips fly up; they are carried off — nothing left on the ground)
+    }
+  }
+  up() {
+    if (this.state !== 'work') return;
+    this.gear.barOn = false;
+    const app = this.app, got = this.got, thick = this.thick;
+    this.finish();
+    if (got > 0) app.ui?.toast(`Наплыв бетона отбили ломом (${(got * MODEL_SCALE ** 3 * 1000).toFixed(0)} л в мусор) — ведите по нему дальше, пока не откроется земля`);
+    else app.ui?.toast(thick ? 'Здесь бетон толще 10 см — это фундамент или плита, ломом их не отбивают' : 'Здесь нет застывшего бетона — ведите лом по наплывам у фундамента и опалубок');
+  }
+}
