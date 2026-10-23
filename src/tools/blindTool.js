@@ -314,11 +314,12 @@ export class BlindWork {
     app.ui.toast(what + (left > 1 ? ` — осталось ${left} %` : ' — по всему дому'));
   }
   // the boards come off (the top is all done)
-  _strip(r) {
-    const app = this.app;
+  _strip(r, del = false) {
+    const app = this.app, more = del ? ' (а слои — «Удалить» по самой отмостке, сверху вниз)' : '';
     if (r.stripped) { app.ui.toast('Опалубку уже сняли'); return; }
-    if (!r.fin?.length || leftOf(r, 'fin') > 0.05) { app.ui.toast('Сначала закончите верх — бетон или плитку по всему периметру'); return; }
-    if (r.finKind === 'conc') { const k = uStrength(r, app.clock); if (k < 1) { app.ui.toast(`Бетон набирает прочность: ${Math.round(k * 100)} % — доски рано снимать`); return; } }
+    if (!r.fin?.length || leftOf(r, 'fin') > 0.05) { app.ui.toast('Доски снимают, когда верх готов — бетон или плитка по всему периметру' + more); return; }
+    // (its strength counts from the pour: or from the last concrete put in, if it never quite filled)
+    if (r.finKind === 'conc') { const k = uStrength({ pourT: r.pourT ?? r.wetT ?? r.castT }, app.clock); if (k < 1) { app.ui.toast(`Бетон набирает прочность: ${Math.round(k * 100)} % — доски рано снимать` + more); return; } }
     this._save(r, { stripped: true, ...(r.finKind === 'conc' ? { set: true } : {}) }, 'blind-strip');
     app.ui.toast(r.finKind === 'tile' ? 'Доски сняли — по краю остался бордюр' : 'Бетон набрал прочность — доски и колышки сняли');
   }
@@ -402,6 +403,8 @@ export class BlindWork {
   remove(id) {
     const app = this.app, r = app.objects.get(id);
     if (!r) return;
+    // (on the boards: they come off — the layers stay)
+    if (app.lastPick?.object?.userData?.part === 'form' && !r.stripped && (r.geo?.length || r.mesh?.length || r.fin?.length)) { this._strip(r, true); return; }
     const steps = [['drains', 'лотки'], ['stripped', null], ['fin', 'верх'], ['mesh', 'сетку'], ['geo', 'геотекстиль']];   // (the sand, the gravel: the shovel takes them off)
     for (const [k, nm] of steps) {
       if (k === 'stripped') { if (r.stripped) { this._save(r, { stripped: false }, 'blind-unstrip'); app.ui.toast('Опалубку поставили обратно'); return; } continue; }

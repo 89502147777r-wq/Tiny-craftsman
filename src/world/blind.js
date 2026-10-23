@@ -423,7 +423,7 @@ export function buildBlind(rec, live) {
       }
       for (let q = sg.s0 + MM(150); q < sg.s1; q += MM(1000)) stakes.push(segBox(P, sg, q - MM(20), q + MM(20), sg.at + sg.n * T, sg.at + sg.n * (T + MM(40)), Math.min(g0, gAt(q)) - MM(80), outerTop + MM(60)));
     }
-    add(worldUV(merge([...B, ...stakes]), 1360), M.wood());
+    const bo = add(worldUV(merge([...B, ...stakes]), 1360), M.wood()); if (bo) bo.userData.part = 'form';   // («Удалить» on them: they come off)
   }
   if (kind === 'tile' && fin.size) {
     const K = [];
