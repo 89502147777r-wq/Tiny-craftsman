@@ -111,6 +111,9 @@ export class BlindWork {
       const da = h.a - d.a, dd = h.d - d.d, L = Math.hypot(da, dd), step = this.app.terrain.cell * 0.7;
       if (L < step) return;
       const ua = da / L, ud = dd / L, n = Math.ceil(L / step);
+      // (the first move: the rule set down a little behind — it takes up the tail of the last
+      // windrow, which has run back over where the finger starts)
+      if (!d.u) { const back = MM(250), m = Math.ceil(back / step); for (let k = 0; k <= m; k++) this._ruleStep(d, d.a - ua * back * (1 - k / m), d.d - ud * back * (1 - k / m), ua, ud); }
       for (let k = 1; k <= n; k++) this._ruleStep(d, d.a + da * k / n, d.d + dd * k / n, ua, ud);
       d.a = h.a; d.d = h.d; d.u = [ua, ud];
       this._ruleShow(d, d.u);
