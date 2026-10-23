@@ -401,7 +401,7 @@ export class BlindWork {
       const r = this._of(H);
       if (r && (r.geo?.length || r.fin?.length)) { this._live(null); this.place = { why: 'Опалубка уже стоит и слои по ней уложены' }; return; }
       const W = this.app.settings.blindW || 1000;
-      const rec = { ...newBlind(H, W), g: +this._ground(H).toFixed(6), form: true, based: true };   // (the ground levelled under each strip as it is laid)
+      const rec0 = newBlind(H, W), rec = { ...rec0, g: +this._ground(H, { ...rec0, g: H.g }).toFixed(6), form: true, based: true };   // (the ground levelled under each strip as it is laid)
       this.place = { rec, W, old: r?.id ?? null };
       this._live({ form: rec, old: r?.id ?? null });
       return;
@@ -423,18 +423,21 @@ export class BlindWork {
     this.place = { seg: best.sg, why, has: (r.drains || []).includes(best.sg.key) };
     this._live({ seg: best.sg.key, ok: !why });
   }
-  // the ground round the house: its surface along it (the backfill of the trenches counts — it is
-  // ground now), in three rings out from the walls; the lower middle of it (40 %): the heaps of sand
-  // and soil about the site and a side dug out do not pull it up or down
-  _ground(H) {
-    const t = this.app.terrain, hs = [];
-    for (const w of H.wings) for (const o of [300, 700, 1200]) for (let k = 0; k < 32; k++) {
-      const th = k / 32 * Math.PI * 2, rA = w.A + MM(o), rB = w.B + MM(o), a = Math.cos(th) * rA, d = Math.sin(th) * rB;
-      const x = w.cx + w.ux * a - w.uz * d, z = w.cz + w.uz * a + w.ux * d;
+  // the ground the boards stand on: its surface (all of it — the soil, the sand, the gravel lying
+  // there) along the line of the boards every 100 mm. The level found over half the perimeter and
+  // more (within ±25 mm) — that one; if no level holds half of it, the mean of all
+  _ground(H, rec) {
+    const t = this.app.terrain, hs = [], P = planOf(rec);
+    for (const sg of P.segs) for (let q = sg.s0; q <= sg.s1; q += MM(100)) {
+      const [x, z] = sg.axis === 'a' ? P.W2(q, sg.at) : P.W2(sg.at, q);
       if (t.inside(x, z)) hs.push(t.heightAt(x, z));
     }
+    if (!hs.length) return H.g;
     hs.sort((p, q) => p - q);
-    return hs.length ? hs[Math.floor(hs.length * 0.4)] : H.g;
+    let best = 0, b0 = 0;
+    for (let i = 0, j = 0; i < hs.length; i++) { while (hs[i] - hs[j] > MM(50)) j++; if (i - j + 1 > best) best = i - j + 1, b0 = j; }
+    const pick = best >= hs.length * 0.5 ? hs.slice(b0, b0 + best) : hs;
+    return pick.reduce((a, v) => a + v, 0) / pick.length;
   }
   carryDrop() {
     const app = this.app, P = this.place, L = this.layer, r = this.rec;
