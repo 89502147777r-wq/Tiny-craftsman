@@ -67,7 +67,18 @@ export function findOpenings(app) {
       // the bottom: the top of the course under it, or the floor (the bed under the first course)
       // the storey: back down to the first course over a slab / the foundation
       let k0 = k; while (k0 > 0 && lv[k0].bot - lv[k0 - 1].top <= MM(60)) k0--;
-      const first = k === k0, y0 = !first ? lv[k - 1].top : lv[k].bot - (lv[k].us[0].b.u.bedT ?? MM(20)), yTop = lv[top].top;
+      const first = k === k0, yTop = lv[top].top;
+      let y0 = !first ? lv[k - 1].top : lv[k].bot - (lv[k].us[0].b.u.bedT ?? MM(20));
+      // nothing under it down to the bottom of the masonry beside it (any of it — a first course
+      // laid a little off this line, a slab cast in the gap): the opening goes on down there
+      const band = L.hw + MM(200), near = [];
+      for (const b of units) {
+        const ba = b.x * L.ux + b.z * L.uz, bd = -b.x * L.uz + b.z * L.ux, ext = Math.abs(b.hl * (b.ux * L.ux + b.uz * L.uz)) + Math.abs(b.hw * (-b.uz * L.ux + b.ux * L.uz));
+        if (Math.abs(bd - L.d) < band && ba + ext > a0 - MM(1500) && ba - ext < a1 + MM(1500) && b.top > lv[k0].bot - MM(150)) near.push({ b, ba, ext });   // (this storey's)
+      }
+      const under = near.some((q) => q.ba + q.ext > a0 + MM(20) && q.ba - q.ext < a1 - MM(20) && q.b.bot < y0 - MM(5));
+      const deep = Math.min(...near.map((q) => q.b.bot - (q.b.u.bedT ?? MM(20))));
+      if (!under && deep < y0 - MM(30)) y0 = deep;
       // the top: a lintel / U-blocks / the next course spanning it, or a ring beam / a slab on the walls
       const mid = (a0 + a1) / 2, x = L.ux * mid - L.uz * L.d, z = L.uz * mid + L.ux * L.d;
       let y1 = null, why = null;
@@ -90,7 +101,7 @@ export function findOpenings(app) {
       // the outside: away from the middle of the masonry
       const nx = -L.uz, nz = L.ux, outSign = (x - cx) * nx + (z - cz) * nz >= 0 ? 1 : -1;
       const yaw = Math.atan2(-L.uz, L.ux) + (outSign > 0 ? 0 : Math.PI);
-      const floor0 = lv[k0].bot - (lv[k0].us[0].b.u.bedT ?? MM(20));   // (a doorway: from the floor, or over the first course — a step; a brick plinth under it too: ≤ 450 mm)
+      const floor0 = Math.min(deep, lv[k0].bot - (lv[k0].us[0].b.u.bedT ?? MM(20)));   // (a doorway: from the floor, or over the first course — a step; a brick plinth under it too: ≤ 450 mm)
       out.push({ x, z, y0, y1, w: Math.round(w), h: Math.round(h), t: Math.round((L.hw * 2) / S), yaw, ok: !why, why, floor: y0 - floor0 < MM(450), line: L });
     });
   }
