@@ -5,7 +5,7 @@ import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt, beltTopAt, boxOf, dims } from './freeBrick.js';
 import { placeLintel, placeProp, placeLintelForm, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
-import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds } from './belt.js';
+import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds, rle } from './belt.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
 import { findOpenings, openingAt } from './windowFit.js';
 import { WINDOWS, windowFits, WIN_COLOURS } from '../world/windows.js';
@@ -815,11 +815,34 @@ export class WallTool {
       c.beltCage = app.objects.all('belt').find((b) => !b.stripped && beltContains(b, p.x, p.z) && p.y > b.top - 0.003 && p.y < b.top + b.H + MM(60)) || null;   // (in its formwork — not the walls standing on a slab)
       const R = c.beltCage ? null : uRun(app, p, scr, fing);
       c.cage = R; c.free = undefined; c.snap = null;
-      v.live = null;
+      v.live = null; v.hlMany = null;
+      const bc = c.beltCage;
       if (R) {
         const b = R.pick, mid = (R.s0 + R.s1) / 2, L = R.s1 - R.s0;
         v.hl = { p: [b.x + b.ux * mid, (b.bot + b.top) / 2, b.z + b.uz * mid], q: b.u.q, s: [L, b.top - b.bot, b.hw * 2], ok: !R.has };
+      } else if (bc) {
+        // the formwork lit up, side by side (a ring beam: each of its runs), green — it goes in
+        v.hl = null;
+        const ok = !app.objects.all('cage').some((r) => r.beltId === bc.id), q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-bc.u[1], bc.u[0])).toArray();
+        const box = (s, t, ls, lt, H) => { const [x, z] = toWorld(bc, s, t); return { p: [x, bc.top + H / 2, z], q, s: [ls, H, lt], ok }; };
+        v.hlMany = isSlab(bc) || !bc.segs?.length ? [box(bc.ni * bc.c / 2, bc.nj * bc.c / 2, bc.ni * bc.c, bc.nj * bc.c, isSlab(bc) ? MM(40) : bc.H)]
+          : bc.segs.map(([a0, a1, l, h, par]) => (par ? box((a0 + a1) / 2, l, a1 - a0, h * 2, bc.H) : box(l, (a0 + a1) / 2, h * 2, a1 - a0, bc.H)));
       } else v.hl = null;
+      // the cage itself, where it would lie (in the formwork / the U-blocks); none: under the finger
+      const key = R ? 'u' + R.run.map((b) => b.u.id).join(',') : bc ? 'b' + bc.id : 'f' + p.x.toFixed(3) + ',' + p.z.toFixed(3);
+      if (c.cageKey !== key) {
+        c.cageKey = key;
+        let bars = null;
+        try { bars = R ? cageRec(R, app).bars : bc ? (isSlab(bc) ? slabCage(bc).bars : beltCage(bc).bars) : null; } catch { bars = null; }
+        if (!bars) {
+          // a cage 1,2 m long in the hand, across the screen
+          const cam = app.camera.position, dx = p.x - cam.x, dz = p.z - cam.z, l = Math.hypot(dx, dz) || 1, ux = -dz / l, uz = dx / l, L = MM(1200), W = MM(300), cc = MM(50);
+          const fake = { o: [p.x - ux * L / 2 + uz * W / 2, p.z - uz * L / 2 - ux * W / 2], u: [ux, uz], c: cc, ni: Math.round(L / cc), nj: Math.round(W / cc), top: p.y + MM(60), H: MM(250), segs: [[0, L, W / 2, W / 2, 1]] };
+          fake.mask = rle(new Uint8Array(fake.ni * fake.nj).fill(1));
+          bars = beltCage(fake).bars;
+        }
+        app.rebarView.live = { rods: bars }; app.rebarView.dirty = true;
+      }
       v.liveBed = null; v.dirty = true; app.ui.refresh();
       return;
     } else if (c.kind !== 'block') free = placeUnit(app, c.kind === 'cinder' ? 'cinder' : 'brick', p, scr, fing, turn, { yaw: ref, half });
@@ -912,7 +935,8 @@ export class WallTool {
 
   _carryCancel() {
     const v = this.app.wallView;
-    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.liveBelt = null; v.liveWin = null; v.dirty = true; this.roof._live(null); this.facade._live(null); this.proof._live(null); this.rwin._live(null); this.blind._live(null);
+    if (this.carry?.kind === 'ucage') { this.app.rebarView.live = null; this.app.rebarView.dirty = true; }
+    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.hlMany = null; v.liveBelt = null; v.liveWin = null; v.dirty = true; this.roof._live(null); this.facade._live(null); this.proof._live(null); this.rwin._live(null); this.blind._live(null);
     this.app.ui.refresh();
   }
 

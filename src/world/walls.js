@@ -424,6 +424,8 @@ export class WallView {
     this.hlMesh = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x35d06a, transparent: true, opacity: 0.45, depthWrite: false }));
     this.hlMesh.renderOrder = 5; this.hlMesh.visible = false; this.group.add(this.hlMesh);
     this.hl = null;        // { p, q, s, ok }
+    // more of them (a ring beam's formwork, side by side): [{ p, q, s, ok }]
+    this.hlMore = new THREE.Group(); this.group.add(this.hlMore); this.hlMany = null; this._hlBox = box;
     // the windows set in the openings (windows.js), and the one in the hand
     this.windows = new THREE.Group(); this.group.add(this.windows);
     this._win = new Map();   // id → { key, group }
@@ -679,6 +681,9 @@ export class WallView {
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
     if (this.live) put(this.live, null);
     this.hlMesh.visible = !!this.hl;
+    { const L = this.hlMany || [], G = this.hlMore;
+      while (G.children.length < L.length) { const o = new THREE.Mesh(this._hlBox, this.hlMesh.material.clone()); o.renderOrder = 5; G.add(o); }
+      G.children.forEach((o, k) => { const h = L[k]; o.visible = !!h; if (!h) return; o.position.fromArray(h.p); o.quaternion.fromArray(h.q); o.scale.fromArray(h.s).multiplyScalar(1.03); o.material.color.setHex(h.ok ? 0x35d06a : 0xe8402a); }); }
     if (this.hl) {
       this.hlMesh.position.fromArray(this.hl.p); this.hlMesh.quaternion.fromArray(this.hl.q);
       this.hlMesh.scale.fromArray(this.hl.s).multiplyScalar(1.03);

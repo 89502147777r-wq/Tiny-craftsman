@@ -207,6 +207,7 @@ export class BlindWork {
   // the shovel tips while the finger is held (sand / gravel)
   update(dt) {
     this._migrate();
+    this._cover(dt);
     const d = this.drag;
     if (!d?.pour) return;
     // (into the ground's cover at the finger: it runs down with the rest, inside the boards)
@@ -214,6 +215,45 @@ export class BlindWork {
     d.t += dt;
     t.deposit(d.x, d.z, l / 1000 / MODEL_SCALE ** 3, MM(90), 0, d.mat);
     if ((d.f = (d.f || 0) + 1) % 2 === 0) this._show();
+  }
+  // the geotextile hides what came under it: the ground there held at its level (a hole filled,
+  // a bump cut), crumbs of soil that fell or ran onto it from the building round (up to 40 mm,
+  // under the sand / gravel laid on it) pressed under the sheet — it lies flat, a thin sheet
+  _cover(dt) {
+    const r = this.rec, t = this.app.terrain;
+    if (!r?.geo?.length || r.fin?.length || this.drag) return;
+    if ((this._covT = (this._covT || 0) + dt) < 0.25 || t.version === this._covV) return;
+    this._covT = 0;
+    const key = r.id + ':' + r.g + ':' + JSON.stringify(r.geo);
+    if (this._covK !== key) {
+      const P = planOf(r), geo = setOf(r.geo), cs = [...geo].map((k) => P.cells.get(k)).filter(Boolean).map((c) => P.W2(c.a, c.d)), out = [];
+      if (cs.length) {
+        const ix0 = Math.max(0, Math.floor(t.toCellX(Math.min(...cs.map((q) => q[0])) - P.C))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(Math.max(...cs.map((q) => q[0])) + P.C)));
+        const iz0 = Math.max(0, Math.floor(t.toCellZ(Math.min(...cs.map((q) => q[1])) - P.C))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(Math.max(...cs.map((q) => q[1])) + P.C)));
+        for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) if (geo.has(P.cellAt(...P.frame(t.toWorldX(ix), t.toWorldZ(iz))))) out.push(iz * t.nx + ix);
+      }
+      this._covI = Int32Array.from(out); this._covK = key;
+    }
+    const base = r.g + MM(7), cap = MM(40), L = 3, { nat, lN, lM, lH, loose, conc } = t;
+    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+    for (const i of this._covI) {
+      if (conc[i] > 1e-6) continue;
+      let ch = false;
+      if (Math.abs(nat[i] - base) > 1e-7) { nat[i] = base; ch = true; }
+      const n = lN[i], b = i * L;
+      let cut = 0, h = 0;
+      while (cut < n && lM[b + cut] === 0) h += lH[b + cut++];
+      if (cut && h <= cap) {
+        for (let k = cut; k < n; k++) { lH[b + k - cut] = lH[b + k]; lM[b + k - cut] = lM[b + k]; }
+        for (let k = n - cut; k < n; k++) lH[b + k] = 0;
+        lN[i] = n - cut; loose[i] = Math.max(0, loose[i] - h); ch = true;
+      }
+      if (!ch) continue;
+      const ix = i % t.nx, iz = (i / t.nx) | 0;
+      if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
+    }
+    if (x1 >= 0) t._touch(x0, z0, x1, z1);
+    this._covV = t.version;
   }
   // older areas kept their sand / gravel in themselves: onto the ground with it (once)
   _migrate() {
