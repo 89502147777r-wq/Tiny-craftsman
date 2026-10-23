@@ -812,6 +812,19 @@ export class Terrain {
     }
     if (any) this._touch(ix0, iz0, ix1, iz1);
   }
+  // the native ground set to y under what lies on it (its loose cover stays, moved with it)
+  setBase(at, y, box) {
+    const ix0 = Math.max(0, Math.floor(this.toCellX(box[0]))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(box[2])));
+    const iz0 = Math.max(0, Math.floor(this.toCellZ(box[1]))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(box[3])));
+    let any = false;
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      if (!at(this.toWorldX(ix), this.toWorldZ(iz))) continue;
+      const i = iz * this.nx + ix;
+      if (this.conc[i] > 1e-6 || this.nat[i] === y) continue;
+      this.nat[i] = y; any = true;
+    }
+    if (any) this._touch(ix0, iz0, ix1, iz1);
+  }
   // how thick each material lies loose at a sample (m): [soil, sand, 5–20, 20–40]
   looseOf(i, out = [0, 0, 0, 0]) {
     out.fill(0);

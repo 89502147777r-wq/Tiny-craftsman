@@ -111,6 +111,9 @@ export class BlindWork {
       const da = h.a - d.a, dd = h.d - d.d, L = Math.hypot(da, dd), step = this.app.terrain.cell * 0.7;
       if (L < step) return;
       const ua = da / L, ud = dd / L, n = Math.ceil(L / step);
+      // (the first move: the rule set down a little behind — it takes up the tail of the last
+      // windrow, which has run back over where the finger starts)
+      if (!d.u) { const back = MM(900), m = Math.ceil(back / step); for (let k = 0; k <= m; k++) this._ruleStep(d, d.a - ua * back * (1 - k / m), d.d - ud * back * (1 - k / m), ua, ud); }
       for (let k = 1; k <= n; k++) this._ruleStep(d, d.a + da * k / n, d.d + dd * k / n, ua, ud);
       d.a = h.a; d.d = h.d; d.u = [ua, ud];
       this._ruleShow(d, d.u);
@@ -152,6 +155,49 @@ export class BlindWork {
     if (dump) d.carry.fill(0);
     if (x1 >= 0) t._touch(x0, z0, x1, z1);
   }
+  // what the rule carries when it is lifted: into the hollows round where it stopped (nearest
+  // first, up to the mark, within 1,5 m) — only the rest is left as a windrow
+  _ruleFill(d) {
+    const t = this.app.terrain, P = planOf(d.r), [cx, cz] = P.W2(d.a, d.d), R = MM(1500), n = Math.ceil(R / t.cell);
+    const ci = Math.round(t.toCellX(cx)), cj = Math.round(t.toCellZ(cz)), list = [];
+    for (let iz = Math.max(0, cj - n); iz <= Math.min(t.rz, cj + n); iz++) for (let ix = Math.max(0, ci - n); ix <= Math.min(t.rx, ci + n); ix++) {
+      const i = iz * t.nx + ix, r2 = (ix - ci) ** 2 + (iz - cj) ** 2;
+      if (r2 > n * n || t.zone[i] !== 1 || t.conc[i] > 1e-6) continue;
+      const need = d.top - (t.nat[i] + t.loose[i]);
+      if (need > 1e-7) list.push([r2, i, need]);
+    }
+    list.sort((p, q) => p[0] - q[0]);
+    const order = d.L === 'sand' ? [1, 2, 3, 0] : [3, 2, 1, 0];
+    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+    for (const [, i, need0] of list) {
+      let need = need0;
+      for (const m of order) { if (need <= 0) break; const g = Math.min(need, d.carry[m]); if (g > 0) { t._push(i, g, m); d.carry[m] -= g; need -= g; } }
+      const ix = i % t.nx, iz = (i / t.nx) | 0;
+      if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
+      if (d.carry.every((v) => v <= 0)) break;
+    }
+    if (x1 >= 0) t._touch(x0, z0, x1, z1);
+  }
+  // what is still carried after that: laid on ahead as a low wedge (up to 40 mm over the mark
+  // where the rule stopped, thinning out to nothing 2 m on) — the next stroke takes it up
+  _ruleSpread(d, ua, ud) {
+    const t = this.app.terrain, P = planOf(d.r), W = d.r.W + P.C, cell = t.cell, len = MM(2000), order = d.L === 'sand' ? [1, 2, 3, 0] : [3, 2, 1, 0];
+    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+    const seen = new Set();
+    for (let s = 0; s <= len && d.carry.some((v) => v > 0); s += cell * 0.7) {
+      const cap = d.top + MM(40) * (1 - s / len), a = d.a + ua * s, dd = d.d + ud * s;
+      for (let q = -W; q <= W; q += cell * 0.7) {
+        const [x, z] = P.W2(a - ud * q, dd + ua * q), i = t.index(x, z);
+        if (seen.has(i) || t.zone[i] !== 1 || t.conc[i] > 1e-6) continue;
+        seen.add(i);
+        let room = cap - (t.nat[i] + t.loose[i]);
+        for (const m of order) { if (room <= 0) break; const g = Math.min(room, d.carry[m]); if (g > 0) { t._push(i, g, m); d.carry[m] -= g; room -= g; } }
+        const ix = i % t.nx, iz = (i / t.nx) | 0;
+        if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
+      }
+    }
+    if (x1 >= 0) t._touch(x0, z0, x1, z1);
+  }
   // the rule in the hands (concreteGear.js): on the top line, across the way it is drawn
   _ruleShow(d, u, snap = false) {
     const P = planOf(d.r), [x, z] = P.W2(d.a, d.d), [ex, ez] = u ? P.W2(u[0], u[1]) : [1, 0];
@@ -171,6 +217,16 @@ export class BlindWork {
   // older areas kept their sand / gravel in themselves: onto the ground with it (once)
   _migrate() {
     const r = this.rec, t = this.app.terrain;
+    // (a geotextile laid before the ground was levelled under it, BUILD 130: the ground under
+    // it set to its level once — what lies on it stays, the cushion's marks hold)
+    if (r && !this.app.journal.pending && r.geo?.length && !r.based && !r.fin?.length && !Array.isArray(r.sandH)) {
+      const P = planOf(r), geo = setOf(r.geo), cs = [...geo].map((k) => P.cells.get(k)).filter(Boolean).map((c) => P.W2(c.a, c.d));
+      if (cs.length) {
+        const box = [Math.min(...cs.map((q) => q[0])) - P.C, Math.min(...cs.map((q) => q[1])) - P.C, Math.max(...cs.map((q) => q[0])) + P.C, Math.max(...cs.map((q) => q[1])) + P.C];
+        this.app.journal.act('blind-base', {}, this.app.clock, () => { t.setBase((x, z) => geo.has(P.cellAt(...P.frame(x, z))), r.g + MM(7), box); this.app.objects.update(r.id, { based: true }); });
+        return;
+      }
+    }
     if (!r || this.app.journal.pending || !(Array.isArray(r.sandH) || Array.isArray(r.gravH) || (!r.fin?.length && (r.sand?.length || r.grav?.length)))) return;
     const P = planOf(r), A = P.C * P.C;
     this.app.journal.act('blind-migrate', {}, this.app.clock, () => {
@@ -224,7 +280,9 @@ export class BlindWork {
       // what the rule still carries: a windrow ahead of where it stopped
       const t = app.terrain, [ua, ud] = d.u || [1, 0];
       const left0 = d.carry.reduce((q, v) => q + v, 0);
-      if (left0 > 0) this._ruleStep(d, d.a + ua * MM(120), d.d + ud * MM(120), ua, ud, true);
+      if (left0 > 0) this._ruleFill(d);
+      if (d.carry.reduce((q, v) => q + v, 0) > 0) this._ruleSpread(d, ua, ud);
+      if (d.carry.reduce((q, v) => q + v, 0) > 0) this._ruleStep(d, d.a + ua * MM(2100), d.d + ud * MM(2100), ua, ud, true);
       for (let i = 0; i < 40000 && t.active; i++) t.relax(1);
       app.journal.commit(app.clock); app.concreteGear.set(null);
       const left = Math.round(leftOf(d.r, L) * 100), nm = L === 'sand' ? 'Песок' : 'Щебень';
