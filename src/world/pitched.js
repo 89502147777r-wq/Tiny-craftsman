@@ -486,7 +486,14 @@ export function gableWalls(roof) {
   return out;
 }
 function walls(G, roof, w, f) {
-  const gm = mat('gable', () => { const t = aeratedTexture(); t.wrapS = t.wrapT = THREE.RepeatWrapping; return new THREE.MeshStandardMaterial({ map: t, roughness: 0.92, side: THREE.DoubleSide }); });
+  // (the blocks in running bond: two courses to the texture, the upper one shifted half a block — the
+  // vertical joints of a course over the middle of the blocks under it, as laid)
+  const gm = mat('gable', () => {
+    const src = aeratedTexture().image, n = src.width, c = document.createElement('canvas'); c.width = n; c.height = n * 2;
+    const g = c.getContext('2d'); g.drawImage(src, 0, n); g.drawImage(src, -n / 2, 0); g.drawImage(src, n / 2, 0);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.92, side: THREE.DoubleSide });
+  });
   const T = roof.T, y0 = roof.y0, ub = (a, d) => Math.max(y0, f.top(a, d) - MM(PITCHED.rafterH) / f.cs - MM(5));
   const faces = [];
   for (const k of [0, 1]) if (f.ends[k] !== 'join') { const s = k ? 1 : -1; faces.push({ q0: -w.B, q1: w.B, at: (q, e) => [s * (w.A - e), q] }); }
@@ -497,7 +504,7 @@ function walls(G, roof, w, f) {
     if (Math.max(...top.map(([, y]) => y)) < y0 + MM(PITCHED.plate) + MM(150)) continue;   // (only where it stands clear: a gable, a high wall)
     const shp = new THREE.Shape([new THREE.Vector2(F.q0, y0), new THREE.Vector2(F.q1, y0), ...top.reverse().map(([q, y]) => new THREE.Vector2(q, y))]);
     const g = new THREE.ExtrudeGeometry(shp, { depth: T, bevelEnabled: false }), pos = g.attributes.position, uv = g.attributes.uv;
-    for (let i = 0; i < pos.count; i++) { const q = pos.getX(i), y = pos.getY(i), e = pos.getZ(i), [a, d] = F.at(q, e); uv.setXY(i, (q + e) / MM(600), (y - y0) / MM(253)); pos.setXYZ(i, ...f.W(a, d, y)); }
+    for (let i = 0; i < pos.count; i++) { const q = pos.getX(i), y = pos.getY(i), e = pos.getZ(i), [a, d] = F.at(q, e); uv.setXY(i, (q + e) / MM(603), (y - y0) / MM(506)); pos.setXYZ(i, ...f.W(a, d, y)); }
     g.computeVertexNormals();
     const m = new THREE.Mesh(g, gm); m.castShadow = m.receiveShadow = true; G.add(m);
   }
