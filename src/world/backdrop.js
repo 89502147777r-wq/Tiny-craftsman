@@ -123,7 +123,8 @@ export class Backdrop {
     const lim = app.rig?.limits;
     if (lim) {
       const Rm = pano ? PANOS[mode].R / MODEL_SCALE : Infinity;
-      lim.maxDist = Math.min(4, Rm * 0.6); lim.boxX = Math.min(1.5, Rm * 0.25); lim.boxZ = Math.min(1.2, Rm * 0.25);
+      // (in a panorama: out over its ground to 40 % of its radius, never out of its sphere)
+      lim.maxDist = pano ? Math.min(10, Rm * 0.7) : 4; lim.boxX = pano ? Rm * 0.4 : 1.5; lim.boxZ = pano ? Rm * 0.4 : 1.2; lim.sphere = pano ? Rm * 0.85 : 0;
       app.rig.goal.dist = Math.min(app.rig.goal.dist, lim.maxDist); app.rig.clampTarget();
     }
     if (pano) {

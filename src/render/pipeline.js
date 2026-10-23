@@ -42,12 +42,12 @@ export class Pipeline {
     this.dofMat = new THREE.ShaderMaterial({
       defines: { RAD_SCALE: '2.0' },
       uniforms: {
-        tCoc: { value: null }, uPixel: { value: new THREE.Vector2() }, uMaxCoc: { value: 14 },
+        tCoc: { value: null }, tNear: { value: null }, uPixel: { value: new THREE.Vector2() }, uMaxCoc: { value: 14 },
         uTime: { value: 0 }, uVignette: { value: 0.32 }, uGrain: { value: 0.035 }, uEnabled: { value: 1 },
       },
       vertexShader: VERT,
       fragmentShader: /* glsl */`
-        uniform sampler2D tCoc;
+        uniform sampler2D tCoc, tNear;
         uniform vec2 uPixel;
         uniform float uMaxCoc, uTime, uVignette, uGrain, uEnabled;
         varying vec2 vUv;
@@ -61,8 +61,11 @@ export class Pipeline {
             float tot = 1.0;
             float radius = RAD_SCALE;
             float ang = hash(vUv * 917.0 + uTime) * 6.2831;
+            // the biggest circle that can reach this pixel (its tile and the tiles round it):
+            // past it every sample only adds the mean so far — the same picture, less work
+            float reach = min(uMaxCoc, texture2D(tNear, vUv).r + 1.0);
             for (int i = 0; i < 200; i++) {
-              if (radius >= uMaxCoc) break;
+              if (radius >= reach) break;
               vec2 tc = vUv + vec2(cos(ang), sin(ang)) * uPixel * radius;
               vec4 s = texture2D(tCoc, tc);
               float sampleSize = abs(s.a);
@@ -90,6 +93,36 @@ export class Pipeline {
     });
     this.dofMat.toneMapped = true;
 
+    // the biggest circle of confusion per tile of 16 × 16 pixels, then over the tiles round it
+    this.tileMat = new THREE.ShaderMaterial({
+      uniforms: { tCoc: { value: null }, uPixel: { value: new THREE.Vector2() }, uTiles: { value: new THREE.Vector2() } },
+      vertexShader: VERT,
+      fragmentShader: /* glsl */`
+        uniform sampler2D tCoc;
+        uniform vec2 uPixel, uTiles;
+        varying vec2 vUv;
+        void main() {
+          vec2 base = floor(vUv * uTiles) * 16.0;
+          float m = 0.0;
+          for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) m = max(m, abs(texture2D(tCoc, (base + vec2(float(x) + 0.5, float(y) + 0.5)) * uPixel).a));
+          gl_FragColor = vec4(m, 0.0, 0.0, 1.0);
+        }`,
+      depthTest: false, depthWrite: false,
+    });
+    this.nearMat = new THREE.ShaderMaterial({
+      uniforms: { tTile: { value: null }, uTiles: { value: new THREE.Vector2() } },
+      vertexShader: VERT,
+      fragmentShader: /* glsl */`
+        uniform sampler2D tTile;
+        uniform vec2 uTiles;
+        varying vec2 vUv;
+        void main() {
+          float m = 0.0;
+          for (int y = -2; y <= 2; y++) for (int x = -2; x <= 2; x++) m = max(m, texture2D(tTile, vUv + vec2(float(x), float(y)) / uTiles).r);
+          gl_FragColor = vec4(m, 0.0, 0.0, 1.0);
+        }`,
+      depthTest: false, depthWrite: false,
+    });
     this.quad = new THREE.Mesh(tri, this.cocMat);
     this.quad.frustumCulled = false;
     this.quadScene = new THREE.Scene();
@@ -118,6 +151,12 @@ export class Pipeline {
     });
     this.cocTarget = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, depthBuffer: false });
     this.dofMat.uniforms.uPixel.value.set(1 / w, 1 / h);
+    const tw = Math.ceil(w / 16), th = Math.ceil(h / 16), lin = { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter };
+    this.tileTarget?.dispose(); this.nearTarget?.dispose();
+    this.tileTarget = new THREE.WebGLRenderTarget(tw, th, lin);
+    this.nearTarget = new THREE.WebGLRenderTarget(tw, th, lin);
+    this.tileMat.uniforms.uPixel.value.set(1 / w, 1 / h); this.tileMat.uniforms.uTiles.value.set(tw, th);
+    this.nearMat.uniforms.uTiles.value.set(tw, th);
   }
 
   render(scene, camera, time) {
@@ -130,16 +169,26 @@ export class Pipeline {
     // CoC scale: proportional to aperture and image height, tuned for a macro look
     const cocScale = 0.0105 * h * this.dofAmount;
     const maxCoc = Math.min(22, 0.0115 * h) * Math.min(1, this.dofAmount * 1.4 + 0.05);
-    const cu = this.cocMat.uniforms;
+    const cu = this.cocMat.uniforms, blur = this.dofAmount > 0.01;
     cu.tColor.value = this.target.texture; cu.tDepth.value = this.target.depthTexture;
     cu.uNear.value = camera.near; cu.uFar.value = camera.far; cu.uFocus.value = this.focus;
     cu.uCocScale.value = cocScale; cu.uMaxCoc.value = maxCoc;
-    this.quad.material = this.cocMat;
-    r.setRenderTarget(this.cocTarget);
-    r.render(this.quadScene, this.quadCam);
+    // (no blur — a 360° place: the picture goes straight to the tone mapping, no CoC pass)
+    if (blur) {
+      this.quad.material = this.cocMat;
+      r.setRenderTarget(this.cocTarget);
+      r.render(this.quadScene, this.quadCam);
+    }
 
+    if (blur) {
+      this.tileMat.uniforms.tCoc.value = this.cocTarget.texture;
+      this.quad.material = this.tileMat; r.setRenderTarget(this.tileTarget); r.render(this.quadScene, this.quadCam);
+      this.nearMat.uniforms.tTile.value = this.tileTarget.texture;
+      this.quad.material = this.nearMat; r.setRenderTarget(this.nearTarget); r.render(this.quadScene, this.quadCam);
+    }
     const du = this.dofMat.uniforms;
-    du.tCoc.value = this.cocTarget.texture; du.uMaxCoc.value = Math.max(1, maxCoc);
+    du.tNear.value = this.nearTarget.texture;
+    du.tCoc.value = blur ? this.cocTarget.texture : this.target.texture; du.uMaxCoc.value = Math.max(1, maxCoc);
     du.uTime.value = time % 100; du.uEnabled.value = this.dofAmount > 0.01 ? 1 : 0;
     this.quad.material = this.dofMat;
     r.setRenderTarget(null);

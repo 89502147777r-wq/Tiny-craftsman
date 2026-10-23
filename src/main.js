@@ -165,16 +165,21 @@ async function main() {
   app.lastInput = performance.now();
   app.poke = () => { app.lastInput = performance.now(); };
   for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown']) window.addEventListener(ev, app.poke, { passive: true, capture: true });
-  const moving = () => {
+  const moving = (rain = true) => {
     const r = app.rig, g = r.goal;
     return app.settings.orbit || !!app.physJob || app.terrain.active || app.particles.busy || app.shovelTool.busy || app.rakeTool.busy || app.wallTool.busy
-      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy() || app.sky?.busy
+      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy() || (rain && app.sky?.busy)
       || Math.abs(r.dist - g.dist) > 1e-4 || r.target.distanceToSquared(g.target) > 1e-9 || Math.abs(r.yaw - g.yaw) > 1e-4 || Math.abs(r.pitch - g.pitch) > 1e-4 || Math.abs(r.focus - r.focusGoal) > 1e-3;
   };
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    const due = now - app.lastInput < 1500 || (now - lastDraw > (moving() ? 30 : 480));
+    const recent = now - app.lastInput < 1500, mv = moving();
+    const due = recent || (now - lastDraw > (mv ? 30 : 480));
+    // (the hand-held sway runs only while drawn smoothly; the shadows are drawn again only when
+    // something but the rain moves — else twice a second, for the sun)
+    app.rig.live = recent || mv;
+    app.shadowLive = recent || (mv && moving(false));
     if (due) {
       const fd = (now - lastDraw) / 1000;
       lastDraw = now;
@@ -230,7 +235,7 @@ function checkGpuMemory() {
   app.ui?.toast(q !== 'low' ? `Не хватило видеопамяти — качество снижено до «${next === 'medium' ? 'среднее' : 'низкое'}»` : 'Не хватает видеопамяти устройства');
 }
 
-let concAcc = 0;   // (the time since the concrete last flowed)
+let concAcc = 0, shadowT = 0;   // (the time since the concrete last flowed / the shadows were drawn)
 function step(dt, time, render = true) {
   if (!document.hidden) app.clock += dt;
   const { terrain } = app;
@@ -273,7 +278,13 @@ function step(dt, time, render = true) {
   app.terrainMat.userData.uniforms.uClock.value = app.clock;
   if (app.wallView) app.wallView.concU.uClock.value = app.clock;
   app.pipeline.focus = app.rig.focus;
-  if (render) app.pipeline.render(app.scene, app.camera, time);
+  if (render) {
+    const sm = app.renderer.shadowMap;
+    sm.autoUpdate = false;
+    shadowT += dt;
+    if (app.shadowLive !== false || shadowT > 0.5) { sm.needsUpdate = true; shadowT = 0; }
+    app.pipeline.render(app.scene, app.camera, time);
+  }
   if (render && (shaderCheckT += dt) > 1) { shaderCheckT = 0; checkTerrainShader(); checkGpuMemory(); }
   app.recorder.sample(app.clock, dt, trackRow);
   app.ui.tick(dt);
