@@ -216,8 +216,11 @@ export class PitchedWork {
   }
   // the wing the type / the pitch / the slope go to (−1: all of them)
   get wing() { const r = this.rec, k = this.app.settings.proofWing ?? -1; return r && k >= 0 && k < r.wings.length ? k : -1; }
-  opts() {
-    const s = this.app.settings, r = this.rec, w = this.wing >= 0 ? r.wings[this.wing] : null;
+  // what the menu's type / pitch / slope go to: the roof worked on while its rafters are not all up
+  // — once they are, the next roof (the menu then shows and keeps what is chosen for it)
+  get target() { const r = this.rec; if (!r) return null; const f = r.done?.frame; return f === true || (Array.isArray(f) && r.wings.every((_, i) => f.some((q) => q[0] === i))) ? null : r; }
+  opts(r = this.target) {
+    const s = this.app.settings, w = r && this.wing >= 0 ? r.wings[this.wing] : null;
     const type = w?.style || (r ? r.style : s.proofType) || s.proofType || 'gable', kind = s.proofCover || 'metal';
     const p0 = w?.pitch || (r ? r.pitch : s.proofPitch) || s.proofPitch;
     const [plo, phi] = PITCH_RANGE[type], pitch = p0 >= plo && p0 <= phi ? p0 : PITCHES[type][type === 'mono' ? 1 : 2];
@@ -234,7 +237,9 @@ export class PitchedWork {
   // the settings changed (o: what changed): the roof follows while it can — the type, the pitch,
   // the slope of a wing till its rafters are up; the covering till it is laid
   applyOpts(o = {}) {
-    const r = this.rec; if (!r) return;
+    if (!this.rec) return;
+    if (!this.target && (o.style || o.pitch || o.md != null)) { this.app.ui.toast(`${o.style ? `Тип «${ROOF_TYPES[o.style]}»` : 'Уклон'} — для следующей крыши: поднесите мауэрлат к зданию без крыши (на той крыше стропила уже стоят)`); return; }
+    const r = this.target || this.rec;   // (the gutters, the covering: on the roof worked on)
     const k = this.wing, framed = (wi) => r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === wi);
     const patch = {};
     if (o.style || o.pitch || o.md != null) {
@@ -255,15 +260,15 @@ export class PitchedWork {
       }
     }
     if (o.gut) patch.gut = this.opts().gut;   // (the gutters can be changed any time: taken down, others hung)
-    if (o.cover) { if (r.done?.cover) this.app.ui.toast('Покрытие уже уложено — цвет не меняется'); else patch.cover = this.opts().cover; }
+    if (o.cover) { if (r.done?.cover) this.app.ui.toast(this.target ? 'Покрытие уже уложено — цвет не меняется' : 'Покрытие — для следующей крыши: на этой оно уже уложено'); else patch.cover = this.opts().cover; }
     if (Object.keys(patch).length) this._save(patch, 'proof-opts');
   }
   // the slope of a mono-pitch wing: which way it rises (round the four sides)
-  turnSlope() { const r = this.rec; if (!r) return; const k = this.wing, w = r.wings[k >= 0 ? k : 0]; this.applyOpts({ md: ((w.md || 0) + 1) % 4 }); }
+  turnSlope() { const r = this.target; if (!r) return; const k = this.wing, w = r.wings[k >= 0 ? k : 0]; this.applyOpts({ md: ((w.md || 0) + 1) % 4 }); }
   // the ridge of a wing turned 90° (along the other side): a wing on its own (not joined to
   // another), till its rafters are up
   turnRidge() {
-    const r = this.rec, app = this.app; if (!r) return;
+    const r = this.target, app = this.app; if (!r) return;
     const k = this.wing, list = k >= 0 ? [k] : r.wings.map((_, i) => i);
     const framed = (wi) => r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === wi);
     if (list.some(framed)) { app.ui.toast('Стропила уже стоят — конёк не повернуть (снимите стропила «Удалить»)'); return; }
@@ -380,7 +385,7 @@ export class PitchedWork {
         const near = H.wings.some((w) => { const dx = p.x - w.cx, dz = p.z - w.cz, a = dx * w.ux + dz * w.uz, d = -dx * w.uz + dz * w.ux; return Math.abs(a) < w.A + MM(4000) && Math.abs(d) < w.B + MM(4000); });
         if (!near) { this._live(null); this.why = 'Поднесите мауэрлат к дому — к верху стен'; return { ok: false, why: this.why }; }
       }
-      const o = this.opts(), rec = { ...H, ...o, wings: this._ends(H.wings, o.style), done: { plate: true } };
+      const o = this.opts(null), rec = { ...H, ...o, wings: this._ends(H.wings, o.style), done: { plate: true } };   // (a new roof: as chosen in the menu)
       this.place = { rec };
       this._live({ ghost: rec });
       return { ok: true };

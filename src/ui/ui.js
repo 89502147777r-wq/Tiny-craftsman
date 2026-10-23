@@ -462,7 +462,7 @@ export class UI {
         return c;
       });
       // the pitched roof: its type, pitch, covering (and colour), then the stages
-      const po = wt.proof.opts(), pr = wt.proof.rec, wsel = wt.proof.wing;
+      const po = wt.proof.opts(), pr = wt.proof.target, wsel = wt.proof.wing;   // (a roof with its rafters up: the menu is for the next one)
       const pset = (o, ch) => { lay({ wallKind: 'proof', ...o }); wt.proof.applyOpts(ch); };
       const wingName = (w, i) => `Крыло ${i + 1} · ${(2 * w.A / (1 / 1000 / (9000 / 860)) / 1000).toFixed(1).replace('.', ',')}×${(2 * w.B / (1 / 1000 / (9000 / 860)) / 1000).toFixed(1).replace('.', ',')} м`;
       const proof = [
