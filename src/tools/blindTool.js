@@ -283,7 +283,10 @@ export class BlindWork {
     const r = this.rec, t = this.app.terrain;
     // (a geotextile laid before the ground was levelled under it, BUILD 130: the ground under
     // it set to its level once — what lies on it stays, the cushion's marks hold)
-    if (r && !this.app.journal.pending && r.geo?.length && !r.based && !r.fin?.length && !Array.isArray(r.sandH)) {
+    // (once a session for each area: undone, it is not done again over the user's «Отменить»)
+    const once = (this._migrated ||= new Set());
+    if (r && !this.app.journal.pending && r.geo?.length && !r.based && !r.fin?.length && !Array.isArray(r.sandH) && !once.has(r.id)) {
+      once.add(r.id);
       const P = planOf(r), geo = setOf(r.geo), cs = [...geo].map((k) => P.cells.get(k)).filter(Boolean).map((c) => P.W2(c.a, c.d));
       if (cs.length) {
         const box = [Math.min(...cs.map((q) => q[0])) - P.C, Math.min(...cs.map((q) => q[1])) - P.C, Math.max(...cs.map((q) => q[0])) + P.C, Math.max(...cs.map((q) => q[1])) + P.C];
@@ -398,7 +401,7 @@ export class BlindWork {
       const r = this._of(H);
       if (r && (r.geo?.length || r.fin?.length)) { this._live(null); this.place = { why: 'Опалубка уже стоит и слои по ней уложены' }; return; }
       const W = this.app.settings.blindW || 1000;
-      const rec = { ...newBlind(H, W), g: +this._ground(H).toFixed(6), form: true };
+      const rec = { ...newBlind(H, W), g: +this._ground(H).toFixed(6), form: true, based: true };   // (the ground levelled under each strip as it is laid)
       this.place = { rec, W, old: r?.id ?? null };
       this._live({ form: rec, old: r?.id ?? null });
       return;
@@ -420,16 +423,17 @@ export class BlindWork {
     this.place = { seg: best.sg, why, has: (r.drains || []).includes(best.sg.key) };
     this._live({ seg: best.sg.key, ok: !why });
   }
-  // the ground round the house: the level of the terrain along it (over most of it)
+  // the ground round the house: the native ground along it (the middle of it — not the heaps of
+  // sand and soil lying about the site), never over the bottom of the walls
   _ground(H) {
     const t = this.app.terrain, hs = [];
-    for (const w of H.wings) for (let k = 0; k < 16; k++) {
-      const th = k / 16 * Math.PI * 2, rA = w.A + MM(500), rB = w.B + MM(500), a = Math.cos(th) * rA, d = Math.sin(th) * rB;
+    for (const w of H.wings) for (let k = 0; k < 32; k++) {
+      const th = k / 32 * Math.PI * 2, rA = w.A + MM(500), rB = w.B + MM(500), a = Math.cos(th) * rA, d = Math.sin(th) * rB;
       const x = w.cx + w.ux * a - w.uz * d, z = w.cz + w.uz * a + w.ux * d;
-      if (t.inside(x, z)) hs.push(t.heightAt(x, z));
+      if (t.inside(x, z)) hs.push(t.nat[t.index(x, z)]);
     }
     hs.sort((p, q) => p - q);
-    return hs.length ? hs[Math.floor(hs.length * 0.85)] : H.g;   // (on the ground: over its bumps)
+    return hs.length ? Math.min(H.g + MM(20), hs[Math.floor(hs.length * 0.5)]) : H.g;
   }
   carryDrop() {
     const app = this.app, P = this.place, L = this.layer, r = this.rec;
