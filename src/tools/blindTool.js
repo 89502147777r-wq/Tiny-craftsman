@@ -19,9 +19,27 @@ export class BlindWork {
   get isCarry() { return this.layer === 'form' || this.layer === 'drain'; }
   get fin() { return BLIND_FIN[this.app.settings.blindFin] ? this.app.settings.blindFin : 'conc'; }
   get col() { return TILE_COLOURS[this.app.settings.blindCol] ? this.app.settings.blindCol : 'grey'; }
-  get rec() { return this.app.objects.all('blind')[0] || null; }
+  // the area worked on: the one last under the finger (each building its own)
+  get rec() { const all = this.app.objects.all('blind'); return all.find((r) => r.id === this.sel) || all.at(-1) || null; }
+  // the area at a point: the one it lies in, else the one whose house is nearest
+  pick(p) {
+    const all = this.app.objects.all('blind');
+    if (!p || all.length < 2) { this.sel = all[0]?.id; return; }
+    let best = null, bd = Infinity;
+    for (const r of all) {
+      const P = planOf(r), [a, d] = P.frame(p.x, p.z), k = P.cellAt(a, d);
+      if (k >= 0 && P.cells.has(k)) { best = r; break; }
+      for (const R of r.rects) { const q = Math.hypot(Math.max(0, R[0] - a, a - R[2]), Math.max(0, R[1] - d, d - R[3])); if (q < bd) bd = q, best = r; }
+    }
+    if (best) this.sel = best.id;
+  }
+  // the area of a house already there (its first wing's middle inside the area's walls)
+  _of(H) {
+    const w = H.wings[0];
+    return this.app.objects.all('blind').find((r) => { const a = w.cx * r.ux + w.cz * r.uz, d = -w.cx * r.uz + w.cz * r.ux; return r.rects.some((R) => a > R[0] && a < R[2] && d > R[1] && d < R[3]); }) || null;
+  }
   // (nothing was shown over the area: nothing to take off — it is not rebuilt for that)
-  _live(live) { const v = this.app.wallView; if (!live && !v.liveBlind) return; v.liveBlind = live; v.blindDirty = true; }
+  _live(live) { const v = this.app.wallView; if (!live && !v.liveBlind) return; v.liveBlind = live && !live.form ? { ...live, id: this.rec?.id ?? null } : live; v.blindDirty = true; }
   _save(rec, patch, label) {
     const app = this.app;
     app.journal.act(label, {}, app.clock, () => { if (rec?.id) app.objects.update(rec.id, { ...patch }); else app.objects.add({ type: 'blind', ...patch }); });
@@ -36,8 +54,8 @@ export class BlindWork {
     return { a, d, q };
   }
   // the house with the ground it stands on
-  _house() {
-    const app = this.app, H = findHouse(app);
+  _house(p) {
+    const app = this.app, H = findHouse(app, p);
     if (!H) return null;
     return H;
   }
@@ -50,6 +68,7 @@ export class BlindWork {
   //               shovel brings it from a heap too; the boards hold it in;
   //   fin        – concrete from the hose or the bucket («Бетон»); paving by the finger.
   down(p, e) {
+    if (!this.isCarry) this.pick(p);
     const app = this.app, L = this.layer, r = this.rec;
     if (this.isCarry) { app.ui.toast(this.status(false)); return true; }
     if (!r) { app.ui.toast('Отмостка: сначала опалубка — тяните её из лотка к дому'); return true; }
@@ -220,23 +239,28 @@ export class BlindWork {
   // a bump cut), crumbs of soil that fell or ran onto it from the building round (up to 40 mm,
   // under the sand / gravel laid on it) pressed under the sheet — it lies flat, a thin sheet
   _cover(dt) {
-    const r = this.rec, t = this.app.terrain;
-    if (!r?.geo?.length || r.fin?.length || this.drag) return;
+    const t = this.app.terrain;
+    if (this.drag) return;
     if ((this._covT = (this._covT || 0) + dt) < 0.25 || t.version === this._covV) return;
     this._covT = 0;
-    const key = r.id + ':' + r.g + ':' + JSON.stringify(r.geo);
-    if (this._covK !== key) {
+    for (const r of this.app.objects.all('blind')) if (r.geo?.length && !r.fin?.length) this._coverOne(r);
+    this._covV = t.version;
+  }
+  _coverOne(r) {
+    const t = this.app.terrain, c = ((this._cov ||= new Map()).get(r.id) || this._cov.set(r.id, {}).get(r.id));
+    const key = r.g + ':' + JSON.stringify(r.geo);
+    if (c.k !== key) {
       const P = planOf(r), geo = setOf(r.geo), cs = [...geo].map((k) => P.cells.get(k)).filter(Boolean).map((c) => P.W2(c.a, c.d)), out = [];
       if (cs.length) {
         const ix0 = Math.max(0, Math.floor(t.toCellX(Math.min(...cs.map((q) => q[0])) - P.C))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(Math.max(...cs.map((q) => q[0])) + P.C)));
         const iz0 = Math.max(0, Math.floor(t.toCellZ(Math.min(...cs.map((q) => q[1])) - P.C))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(Math.max(...cs.map((q) => q[1])) + P.C)));
         for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) if (geo.has(P.cellAt(...P.frame(t.toWorldX(ix), t.toWorldZ(iz))))) out.push(iz * t.nx + ix);
       }
-      this._covI = Int32Array.from(out); this._covK = key;
+      c.i = Int32Array.from(out); c.k = key;
     }
     const base = r.g + MM(7), cap = MM(40), L = 3, { nat, lN, lM, lH, loose, conc } = t;
     let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
-    for (const i of this._covI) {
+    for (const i of c.i) {
       if (conc[i] > 1e-6) continue;
       let ch = false;
       if (Math.abs(nat[i] - base) > 1e-7) { nat[i] = base; ch = true; }
@@ -253,7 +277,6 @@ export class BlindWork {
       if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
     }
     if (x1 >= 0) t._touch(x0, z0, x1, z1);
-    this._covV = t.version;
   }
   // older areas kept their sand / gravel in themselves: onto the ground with it (once)
   _migrate() {
@@ -366,18 +389,22 @@ export class BlindWork {
 
   // ---- the boards, the channels: carried from the tray ----
   carryMove(p, e) {
-    const app = this.app, L = this.layer, r = this.rec;
+    const app = this.app, L = this.layer;
     this.place = null;
     if (L === 'form') {
-      const H = this._house();
+      // (round the building at the finger: a house, a garage beside it — each its own area)
+      const H = this._house(p);
       if (!H) { this._live(null); this.place = { why: 'Нет дома: отмостку делают вокруг готовых стен' }; return; }
+      const r = this._of(H);
       if (r && (r.geo?.length || r.fin?.length)) { this._live(null); this.place = { why: 'Опалубка уже стоит и слои по ней уложены' }; return; }
       const W = this.app.settings.blindW || 1000;
       const rec = { ...newBlind(H, W), g: +this._ground(H).toFixed(6), form: true };
-      this.place = { rec, W };
-      this._live({ form: rec });
+      this.place = { rec, W, old: r?.id ?? null };
+      this._live({ form: rec, old: r?.id ?? null });
       return;
     }
+    this.pick(p);
+    const r = this.rec;
     // the channels: along the side under the finger
     if (!r) { this.place = { why: 'Сначала отмостка' }; return; }
     const h = this._at(e, r, r.g), P = planOf(r);
@@ -411,8 +438,9 @@ export class BlindWork {
     if (P.why) { app.ui.toast(P.why); return; }
     if (L === 'form') {
       const n = planOf(P.rec).segs.reduce((s, sg) => s + sg.s1 - sg.s0, 0) / S / 1000;
-      if (r) app.journal.act('blind-form', {}, app.clock, () => { app.objects.remove(r.id); app.objects.add({ type: 'blind', ...P.rec }); });
-      else this._save(null, P.rec, 'blind-form');
+      // (the boards of this house set again: the old ones off; another house: an area of its own)
+      let id = null; app.journal.act('blind-form', {}, app.clock, () => { if (P.old != null) app.objects.remove(P.old); const o = app.objects.add({ type: 'blind', ...P.rec }); id = o?.id ?? o; });
+      if (id != null) this.sel = id;
       app.ui.toast(`Опалубка отмостки: доски на колышках, ${n.toFixed(1).replace('.', ',')} м по периметру, ширина ${P.W} мм — дальше геотекстиль`);
       return;
     }

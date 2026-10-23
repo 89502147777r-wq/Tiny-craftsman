@@ -85,7 +85,12 @@ export function findBelt(app, p, screen, finger) {
   // nothing on it
   if (boxes.some((o) => o.bot > pick.top - MM(5) && o.bot < pick.top + MM(30) && Math.hypot(o.x - pick.x, o.z - pick.z) < o.hl + pick.hl)) return null;
   const T = pick.top, ux = pick.ux, uz = pick.uz;
-  const tops = boxes.filter((b) => Math.abs(b.top - T) < MM(15) && Math.abs(Math.sin(2 * (b.yaw - pick.yaw))) < 0.05);
+  // (the lintels cast in place over the openings, flush with the top course: the ring beam runs on over them)
+  const cast = app.objects.all('belt').filter((b) => b.lform && b.fill > 0.3).map((b) => {
+    const L = b.ni * b.c, W = b.nj * b.c, [x, z] = toWorld(b, L / 2, W / 2), yaw = Math.atan2(-b.u[1], b.u[0]);
+    return { x, z, ux: b.u[0], uz: b.u[1], hl: L / 2, hw: W / 2, bot: b.top, top: b.top + b.H, yaw };
+  });
+  const tops = [...boxes, ...cast].filter((b) => Math.abs(b.top - T) < MM(15) && Math.abs(Math.sin(2 * (b.yaw - pick.yaw))) < 0.05);
   // the frame: the walls' directions; its origin at the lowest corner of them all
   const fr = (b) => { const s = b.x * ux + b.z * uz, t = -b.x * uz + b.z * ux, par = Math.abs(Math.cos(b.yaw - pick.yaw)) > 0.7; return { s, t, hs: par ? b.hl : b.hw, ht: par ? b.hw : b.hl }; };
   const F = tops.map(fr);
