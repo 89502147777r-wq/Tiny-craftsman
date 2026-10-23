@@ -917,18 +917,23 @@ export class WallView {
     const recs = this.objects.all('blind'), live = this.liveBlind;
     this._blindIds = new Set(recs.map((r) => r.id));
     // the ground inside the boards: what is poured there stays there (terrain.js zones)
-    const zr = recs.find((r) => r.form && !r.stripped);
+    const zrs = recs.filter((r) => r.form && !r.stripped);
     if (this.terrain) {
-      if (zr) {
-        const P = blindPlan(zr), cs = [[P.A0, P.D0], [P.A0 + P.ni * P.C, P.D0], [P.A0, P.D0 + P.nj * P.C], [P.A0 + P.ni * P.C, P.D0 + P.nj * P.C]].map(([a, d]) => P.W2(a, d));
-        // (by the boards: their top — what heaps over it runs out; by the walls: held)
-        const bTop = zr.g + BLIND.top * S - BLIND.slope * zr.W + 10 * S;
-        this.terrain.setZone((x, z) => { const k = P.cellAt(...P.frame(x, z)); return k >= 0 && P.cells.has(k); }, [Math.min(...cs.map((c) => c[0])), Math.min(...cs.map((c) => c[1])), Math.max(...cs.map((c) => c[0])), Math.max(...cs.map((c) => c[1]))], (x, z) => (P.distAt(...P.frame(x, z)) > zr.W - P.C * 1.5 ? bTop : 0));
+      if (zrs.length) {
+        // (each building's area: its boards hold what is poured in it)
+        const Z = zrs.map((zr) => {
+          const P = blindPlan(zr), cs = [[P.A0, P.D0], [P.A0 + P.ni * P.C, P.D0], [P.A0, P.D0 + P.nj * P.C], [P.A0 + P.ni * P.C, P.D0 + P.nj * P.C]].map(([a, d]) => P.W2(a, d));
+          // (by the boards: their top — what heaps over it runs out; by the walls: held)
+          return { zr, P, bTop: zr.g + BLIND.top * S - BLIND.slope * zr.W + 10 * S, box: [Math.min(...cs.map((c) => c[0])), Math.min(...cs.map((c) => c[1])), Math.max(...cs.map((c) => c[0])), Math.max(...cs.map((c) => c[1]))] };
+        });
+        const at = (x, z) => Z.find((q) => { const k = q.P.cellAt(...q.P.frame(x, z)); return k >= 0 && q.P.cells.has(k); });
+        this.terrain.setZone((x, z) => !!at(x, z), [Math.min(...Z.map((q) => q.box[0])), Math.min(...Z.map((q) => q.box[1])), Math.max(...Z.map((q) => q.box[2])), Math.max(...Z.map((q) => q.box[3]))], (x, z) => { const q = at(x, z); return q && q.P.distAt(...q.P.frame(x, z)) > q.zr.W - q.P.C * 1.5 ? q.bTop : 0; });
       } else this.terrain.setZone(null, null);
     }
-    const list = live?.form ? [{ ...live.form, id: null }] : recs;
+    // (the boards carried: the other buildings' areas stay; what is being done: on its own area)
+    const list = live?.form ? [...recs.filter((r) => r.id !== live.old), { ...live.form, id: null }] : recs;
     for (const r of list) {
-      const g = buildBlind(r, live?.form ? null : live);
+      const g = buildBlind(r, live && !live.form && (live.id == null || live.id === r.id) ? live : null);
       g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id ?? null; });
       this.blinds.add(g);
     }
