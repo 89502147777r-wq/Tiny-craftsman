@@ -19,7 +19,7 @@ export const GARAGES = {
   gar2: { name: 'Гаражные рулонные', kind: 'roller' },
   gar3: { name: 'Гаражные распашные, дерево', kind: 'swing' },
 };
-export const GARAGE_SIZE = [1800, 6000, 1800, 3500];   // w from…to, h from…to (mm)
+export const GARAGE_SIZE = [1800, 6000, 1200, 3500];   // w from…to, h from…to (mm) (low ones: a shed, a store for the mower, a carport for a quad)
 
 const M = {};
 function mats(wood) {
