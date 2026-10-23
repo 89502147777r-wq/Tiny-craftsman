@@ -113,7 +113,7 @@ export class BlindWork {
       const ua = da / L, ud = dd / L, n = Math.ceil(L / step);
       // (the first move: the rule set down a little behind — it takes up the tail of the last
       // windrow, which has run back over where the finger starts)
-      if (!d.u) { const back = MM(250), m = Math.ceil(back / step); for (let k = 0; k <= m; k++) this._ruleStep(d, d.a - ua * back * (1 - k / m), d.d - ud * back * (1 - k / m), ua, ud); }
+      if (!d.u) { const back = MM(900), m = Math.ceil(back / step); for (let k = 0; k <= m; k++) this._ruleStep(d, d.a - ua * back * (1 - k / m), d.d - ud * back * (1 - k / m), ua, ud); }
       for (let k = 1; k <= n; k++) this._ruleStep(d, d.a + da * k / n, d.d + dd * k / n, ua, ud);
       d.a = h.a; d.d = h.d; d.u = [ua, ud];
       this._ruleShow(d, d.u);
@@ -175,6 +175,26 @@ export class BlindWork {
       const ix = i % t.nx, iz = (i / t.nx) | 0;
       if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
       if (d.carry.every((v) => v <= 0)) break;
+    }
+    if (x1 >= 0) t._touch(x0, z0, x1, z1);
+  }
+  // what is still carried after that: laid on ahead as a low wedge (up to 40 mm over the mark
+  // where the rule stopped, thinning out to nothing 2 m on) — the next stroke takes it up
+  _ruleSpread(d, ua, ud) {
+    const t = this.app.terrain, P = planOf(d.r), W = d.r.W + P.C, cell = t.cell, len = MM(2000), order = d.L === 'sand' ? [1, 2, 3, 0] : [3, 2, 1, 0];
+    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+    const seen = new Set();
+    for (let s = 0; s <= len && d.carry.some((v) => v > 0); s += cell * 0.7) {
+      const cap = d.top + MM(40) * (1 - s / len), a = d.a + ua * s, dd = d.d + ud * s;
+      for (let q = -W; q <= W; q += cell * 0.7) {
+        const [x, z] = P.W2(a - ud * q, dd + ua * q), i = t.index(x, z);
+        if (seen.has(i) || t.zone[i] !== 1 || t.conc[i] > 1e-6) continue;
+        seen.add(i);
+        let room = cap - (t.nat[i] + t.loose[i]);
+        for (const m of order) { if (room <= 0) break; const g = Math.min(room, d.carry[m]); if (g > 0) { t._push(i, g, m); d.carry[m] -= g; room -= g; } }
+        const ix = i % t.nx, iz = (i / t.nx) | 0;
+        if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
+      }
     }
     if (x1 >= 0) t._touch(x0, z0, x1, z1);
   }
@@ -261,7 +281,8 @@ export class BlindWork {
       const t = app.terrain, [ua, ud] = d.u || [1, 0];
       const left0 = d.carry.reduce((q, v) => q + v, 0);
       if (left0 > 0) this._ruleFill(d);
-      if (d.carry.reduce((q, v) => q + v, 0) > 0) this._ruleStep(d, d.a + ua * MM(120), d.d + ud * MM(120), ua, ud, true);
+      if (d.carry.reduce((q, v) => q + v, 0) > 0) this._ruleSpread(d, ua, ud);
+      if (d.carry.reduce((q, v) => q + v, 0) > 0) this._ruleStep(d, d.a + ua * MM(2100), d.d + ud * MM(2100), ua, ud, true);
       for (let i = 0; i < 40000 && t.active; i++) t.relax(1);
       app.journal.commit(app.clock); app.concreteGear.set(null);
       const left = Math.round(leftOf(d.r, L) * 100), nm = L === 'sand' ? 'Песок' : 'Щебень';
