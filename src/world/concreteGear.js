@@ -207,11 +207,24 @@ export class ConcreteGear {
         this.ktBlade.add(g);
       }).catch(() => {});
     }
+    // crowbar (лом): a steel bar Ø 28 × 1500 mm, a flat chisel at the foot, a point at the top;
+    // dull dark steel, the chisel end bright from the work. Local +y up the bar, the tip at 0
+    this.bar = new THREE.Group();
+    {
+      const R = 0.014 / MODEL_SCALE, Lb = 1.5 / MODEL_SCALE, dark = new THREE.MeshStandardMaterial({ color: 0x3a3b3d, roughness: 0.55, metalness: 0.8 });
+      const shiny = new THREE.MeshStandardMaterial({ color: 0xa8acb0, roughness: 0.3, metalness: 0.95 });
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(R, R, Lb - 0.12 / MODEL_SCALE, 10), dark); rod.position.y = 0.06 / MODEL_SCALE + (Lb - 0.12 / MODEL_SCALE) / 2;
+      const chisel = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 0.25, 0.06 / MODEL_SCALE, 10), shiny); chisel.scale.set(1.5, 1, 0.35); chisel.position.y = 0.03 / MODEL_SCALE;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.03 / MODEL_SCALE, 10), shiny); neck.position.y = 0.075 / MODEL_SCALE;
+      const point = new THREE.Mesh(new THREE.ConeGeometry(R, 0.06 / MODEL_SCALE, 10), dark); point.position.y = Lb - 0.03 / MODEL_SCALE;
+      this.bar.add(rod, chisel, neck, point);
+    }
+    this.barOn = false; this._bt = 0;
     // plate compactor: a detailed model in real sizes (plateCompactor.js)
     this.plate = makePlateCompactor();
     this.plateOn = false;
     this._t = 0;
-    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate, this.mallet, this.pail, this.ktrowel]) {
+    for (const o of [this.pump.group, this.rule, this.vib, this.cable, this.trowel, this.brush, this.plate, this.mallet, this.pail, this.ktrowel, this.bar]) {
       o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
       o.visible = false;
       this.root.add(o);
@@ -244,6 +257,7 @@ export class ConcreteGear {
     this.trowel.visible = w === 'trowel';
     this.brush.visible = w === 'brush';
     this.plate.visible = w === 'plate';
+    this.bar.visible = w === 'breaker';
     this.mallet.visible = w === 'mallet';
     this.pail.visible = w === 'pail';
     this.ktrowel.visible = w === 'ktrowel';
@@ -265,6 +279,15 @@ export class ConcreteGear {
     } else if (w === 'brush') {
       this.brush.position.copy(this.pos);
       this.brush.rotation.set(0, this.yaw, 0);
+    } else if (w === 'breaker') {
+      // leaning ~18° back towards the person; jabbing: lifted and driven down 6 cm, 7 times a second
+      this._bt += dt;
+      const lift = this.barOn ? (0.5 + 0.5 * Math.sin(this._bt * Math.PI * 2 * 7)) * 0.06 / MODEL_SCALE : 0.02 / MODEL_SCALE;
+      this.bar.rotation.set(0.32, this.yaw, 0, 'YXZ');
+      this.bar.position.copy(this.pos);
+      this.bar.updateMatrixWorld();
+      const ax = new THREE.Vector3(0, 1, 0).applyQuaternion(this.bar.quaternion);
+      this.bar.position.addScaledVector(ax, lift);
     } else if (w === 'plate') {
       this.plate.position.copy(this.pos);
       this.plate.rotation.set(0, this.yaw, 0);

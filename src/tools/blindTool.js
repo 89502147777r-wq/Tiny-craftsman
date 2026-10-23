@@ -373,7 +373,7 @@ export class BlindWork {
       // (the ground under the strip levelled to the sheet: what is poured on lies on it)
       const P = planOf(d.r), cs = [...d.cells].map((k) => P.cells.get(k)), pts = cs.map((c) => P.W2(c.a, c.d)), pad = P.C;
       const box = [Math.min(...pts.map((q) => q[0])) - pad, Math.min(...pts.map((q) => q[1])) - pad, Math.max(...pts.map((q) => q[0])) + pad, Math.max(...pts.map((q) => q[1])) + pad];
-      app.journal.act('blind-geo', {}, app.clock, () => { app.objects.update(d.r.id, patch); app.terrain.levelTo((x, z) => d.cells.has(P.cellAt(...P.frame(x, z))), d.r.g + MM(7), box); });
+      app.journal.act('blind-geo', {}, app.clock, () => { app.objects.update(d.r.id, patch); app.terrain.levelTo((x, z) => d.cells.has(P.cellAt(...P.frame(x, z))), d.r.g + MM(7), box, MM(100)); });   // (a thin crust of concrete run out of the forms: broken off under the strip)
     } else this._save(d.r, patch, 'blind-' + L);
     const left = Math.round(leftOf({ ...d.r, ...patch }, L) * 100);
     const what = { geo: 'Геотекстиль раскатали полосой вдоль стены', mesh: 'Сетка 150 × 150 из прутка Ø5 на стульчиках — листы внахлёст', fin: `Плитка «кирпичик» (${TILE_COLOURS[d.r.finCol || this.col][0].toLowerCase()}) на сухую смесь, уклон 3 % от стен` }[L];
@@ -399,7 +399,7 @@ export class BlindWork {
       const H = this._house(p);
       if (!H) { this._live(null); this.place = { why: 'Нет дома: отмостку делают вокруг готовых стен' }; return; }
       const r = this._of(H);
-      if (r && (r.geo?.length || r.fin?.length)) { this._live(null); this.place = { why: 'Опалубка уже стоит и слои по ней уложены' }; return; }
+      if (r && (r.geo?.length || r.fin?.length)) { this._live(null); this.place = { why: 'Опалубка уже стоит и по ней уложены слои — чтобы переставить её заново по земле, снимите слои: «Удалить» по отмостке (сверху вниз до геотекстиля включительно), потом поднесите опалубку ещё раз' }; return; }
       const W = this.app.settings.blindW || 1000;
       const rec0 = newBlind(H, W), rec = { ...rec0, g: +this._ground(H, { ...rec0, g: H.g }).toFixed(6), form: true, based: true };   // (the ground levelled under each strip as it is laid)
       this.place = { rec, W, old: r?.id ?? null };
