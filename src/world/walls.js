@@ -7,7 +7,7 @@ import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
-import { buildBlind, blindTopAt, BLIND_TEX, BLIND_GROUND, BLIND, planOf as blindPlan, cellList, concLevels, gravTop } from './blind.js';
+import { buildBlind, streamMesh, setStream, blindTopAt, BLIND_TEX, BLIND_GROUND, BLIND, planOf as blindPlan, cellList, concLevels, gravTop } from './blind.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
@@ -438,6 +438,7 @@ export class WallView {
     // the blind area round the house (blind.js)
     this.blinds = new THREE.Group(); this.group.add(this.blinds);
     this.liveBlind = null; this.blindDirty = true;
+    this.stream = streamMesh(); this.group.add(this.stream); this.blindStream = null; this._streamAt = null;
     BLIND_GROUND.at = (x, z) => (this.terrain ? this.terrain.heightAt(x, z) : null);
     Object.defineProperty(BLIND_GROUND, 't', { get: () => this.terrain || null, configurable: true });
     GROUND.at = (x, z) => blindTopAt(objects.all('blind'), x, z) ?? (this.terrain ? this.terrain.heightAt(x, z) : null);
@@ -458,6 +459,7 @@ export class WallView {
   }
 
   update() {
+    if (this.blindStream !== this._streamAt) { this._streamAt = this.blindStream; setStream(this.stream, this.blindStream?.r, this.blindStream); }
     if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); if (this.proofDirty) this._buildProofs(); if (this.blindDirty) this._buildBlinds(); return; }
     this.dirty = false;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();

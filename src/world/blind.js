@@ -355,13 +355,23 @@ function segBox(P, sg, s0, s1, c0, c1, y0, y1) {
   return g;
 }
 // the stream of sand / gravel off the shovel: grains falling onto the heap under the finger
-function stream(P, st, m, y) {
-  const g = [], [x, z] = P.W2(st.a, st.d), rnd = (k) => { const v = Math.sin(k * 127.1 + st.t * 311.7) * 43758.5; return v - Math.floor(v); };
-  for (let k = 0; k < 70; k++) {
+// (one instanced mesh kept by walls.js: only the grains move — the area is not rebuilt for it)
+const STREAM_N = 70, _sm = new THREE.Matrix4(), _sq = new THREE.Quaternion(), _sp = new THREE.Vector3(), _ss = new THREE.Vector3();
+export function streamMesh() {
+  const o = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), M.sand(), STREAM_N);
+  o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; o.visible = false;
+  o.raycast = () => {};   // (never under the finger)
+  return o;
+}
+export function setStream(o, rec, st) {
+  if (!st || !rec) { o.visible = false; return; }
+  const P = planOf(rec), [x, z] = P.W2(st.a, st.d), y = st.y, rnd = (k) => { const v = Math.sin(k * 127.1 + st.t * 311.7) * 43758.5; return v - Math.floor(v); };
+  for (let k = 0; k < STREAM_N; k++) {
     const f = rnd(k), r = MM(15 + 40 * rnd(k + 99)) * (0.3 + f), an = rnd(k + 7) * Math.PI * 2, sz = MM(6 + 10 * rnd(k + 3));
-    const b = new THREE.BoxGeometry(sz, sz, sz); b.translate(x + Math.cos(an) * r, y + MM(20) + f * MM(450), z + Math.sin(an) * r); g.push(b);
+    o.setMatrixAt(k, _sm.compose(_sp.set(x + Math.cos(an) * r, y + MM(20) + f * MM(450), z + Math.sin(an) * r), _sq, _ss.set(sz, sz, sz)));
   }
-  const o = new THREE.Mesh(merge(g), m); o.castShadow = true; return o;
+  o.material = st.L === 'grav' ? M.grav() : M.sand();
+  o.instanceMatrix.needsUpdate = true; o.visible = true;
 }
 const merge = (gs) => { const ok = gs.filter(Boolean).map((g) => (g.index ? g.toNonIndexed() : g)); if (!ok.length) return null; const n = ok.reduce((s, g) => s + g.attributes.position.count, 0), pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2); let o = 0; for (const g of ok) { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2); o += g.attributes.position.count; } const m = new THREE.BufferGeometry(); m.setAttribute('position', new THREE.BufferAttribute(pos, 3)); m.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); m.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); return m; };
 
@@ -376,8 +386,7 @@ export function buildBlind(rec, live) {
   const sheet = (a, d) => { const [x, z] = P.W2(a, d); return groundAt(rec, x, z) + MM(2); };
   add(slab(P, cellsOfL('geo'), sheet, (a, d) => sheet(a, d) - MM(2), MM(1000)), M.geo(), false);
   if (lv === 'geo' && live.roll) G.add(geoRoll(P, live.roll, sheet(live.roll.a, live.roll.d) - MM(2), Math.min(MM(1000), rec.W + MM(100))));
-  // (the sand and the gravel are the ground's: drawn with it; here only the stream off the shovel)
-  if (live?.stream) G.add(stream(P, live.stream, lv === 'grav' ? M.grav() : M.sand(), live.stream.y));
+  // (the sand and the gravel are the ground's: drawn with it; the stream off the shovel: setStream)
   const fin = cellsOfL('fin'), kind = rec.finKind || (lv === 'fin' ? live.kind : null) || 'conc';
   const top = (a, d) => finTop(rec, P.distAt(a, d));
   // the mesh: rods on chairs (in the concrete too: it is drawn over them)
