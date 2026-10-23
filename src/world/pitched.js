@@ -193,7 +193,19 @@ function planeSpans(P, sp, f) {
   return sp.map(([a0, a1]) => [a0, a1, 0, Infinity]);
 }
 // the normal of a plane, and its directions along x and up t (world)
-function frameOf(f, P) {
+// the rafters of a plane: evenly, ≤ 600 apart, from wall to wall at a gable (the first and the last
+// over the gable walls — the verge overhang is carried by the battens, no rafter out in the air),
+// as far as the plane goes at a hip / where it joins another wing → { x0, step, n } (x0 + k·step)
+export function rafterGrid(w, P) {
+  const rw = MM(PITCHED.rafterW);
+  let xs, xe;
+  if (P.end) { xs = P.xa(0); xe = P.xb(0); }
+  else if (P.xd) { xs = -w.B; xe = w.B; }
+  else { xs = P.ea === 'gable' ? -w.A : P.xa(0); xe = P.eb === 'gable' ? w.A : P.xb(0); }
+  const a = xs + rw / 2, b = xe - rw / 2, n = Math.max(1, Math.ceil((b - a) / MM(PITCHED.step) - 1e-6));
+  return { x0: a, step: (b - a) / n, n };
+}
+export function frameOf(f, P) {
   const xm = (P.xa(0) + P.xb(0)) / 2, p = (x, t) => { const [a, d] = P.at(x, t); return new THREE.Vector3(...f.W(a, d, f.top(a, d))); };
   const ex = p(xm + 1e-4, 1e-4).sub(p(xm, 1e-4)).normalize(), et = p(xm, 2e-4).sub(p(xm, 1e-4)).normalize();
   const n = new THREE.Vector3().crossVectors(ex, et).normalize(); if (n.y < 0) n.negate();
@@ -334,7 +346,10 @@ export function buildPitched(roof, live = null, wins = []) {
     }
     // the ceiling joists across the house on the plate, every 600 (not inside another wing)
     const yL = roof.y0 + MM(PITCHED.plate) + MM(100), ib = w.B - roof.T / 2, jA = w.A - roof.T, joistAt = [];
-    for (let a = -jA + MM(50); a <= jA - MM(50) + 1e-7; a += step) joistAt.push(a);
+    // (beside each rafter, nailed to it — where the rafters run across the house; else every 600)
+    const P0 = PL.find((q) => !q.end && !q.xd);
+    if (P0) { const RG = rafterGrid(w, P0); for (let k = 0; k <= RG.n; k++) { const a = RG.x0 + k * RG.step + rw; if (Math.abs(a) <= jA - MM(25)) joistAt.push(a); } }
+    else for (let a = -jA + MM(50); a <= jA - MM(50) + 1e-7; a += step) joistAt.push(a);
     if (has('joists')) for (const a of joistAt) { if (under(a, 0)) continue; beams.add(f.W(a, -ib - MM(60), yL), f.W(a, ib + MM(60), yL), rw, MM(200)); }
     // the ridge purlin (as on site): posts on the joists, the purlin on the posts and on the
     // gables; the rafters rest on it
@@ -355,9 +370,10 @@ export function buildPitched(roof, live = null, wins = []) {
     // the rafters on each plane, every 600 along it (a jack stops at the hip; under another
     // wing's roof — none; round a window — cut, with a header and a sill across)
     const rafterLines = (P, sp) => {
-      const out = [], hs = holesOf(P), x0 = P.end ? P.xa(0) : P.xd ? P.xa(0) : f.lo;
-      for (let x = x0 + rw; x <= P.xb(0) - rw + 1e-7; x += step) {
-        if (x < P.xa(0) + rw * 0.5) continue;
+      const out = [], hs = holesOf(P), RG = rafterGrid(w, P);
+      for (let k = 0; k <= RG.n; k++) {
+        const x = RG.x0 + k * RG.step;
+        if (x < P.xa(0) + rw * 0.5 - 1e-7 || x > P.xb(0) - rw * 0.5 + 1e-7) continue;
         let t1 = P.L; while (t1 > 0 && (x < P.xa(t1) - 1e-7 || x > P.xb(t1) + 1e-7)) t1 -= MM(40);
         if (t1 < MM(200)) continue;
         for (const [sx0, sx1, st0, st1] of planeSpans(P, sp, f)) {
@@ -504,23 +520,37 @@ function trims(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
   }
   const fas = new Beams(), sof = new Beams(), fh = tie / f.cs + MM(50);
   const trimM = mat('fascia' + kind + roof.cover.col, () => new THREE.MeshStandardMaterial({ color: kind === 'shingle' ? 0x6b4a33 : cc[1], roughness: 0.6, metalness: 0.2 }));
+  const sa = Math.sin(f.al), ca = Math.cos(f.al), Og = f.Og;
   for (const P of PL) {
     const F = frameOf(f, P), hidden = (x, t) => { const [a, d] = P.at(x, t); return !vis(a, d); };
-    // the eave: the fascia over the rafters' ends, the soffit under the overhang
-    const ov = (P.xd ? f.Oe : f.Oe), ts = ov / 2 / f.cs;
+    const up = F.et.clone().setY(0).normalize();   // (level, up the slope: the eave is the other way)
+    // the eave: the fascia just outside the rafters' ends (their top corners at the edge), the
+    // soffit under the overhang from it back to the wall
+    const ov = f.Oe, ts = ov / 2 / f.cs, oE = up.clone().multiplyScalar(-MM(14));
     for (const [x0, x1] of runs(P.xa(0), P.xb(0), (x) => hidden(x, 0))) {
       if (x1 - x0 < MM(100)) continue;
-      const e0 = F.pt(x0, 0), e1 = F.pt(x1, 0), yy = e0.y - fh / 2 + MM(20);
+      const e0 = F.pt(x0, 0).add(oE), e1 = F.pt(x1, 0).add(oE), yy = e0.y - fh / 2 + MM(20);
       fas.add([e0.x, yy, e0.z], [e1.x, yy, e1.z], MM(25), fh);
       const s0 = F.pt(x0, ts), s1 = F.pt(x1, ts); sof.add([s0.x, yy - fh / 2 + MM(6), s0.z], [s1.x, yy - fh / 2 + MM(6), s1.z], ov, MM(10));
     }
-    // the high edge of a mono-pitch roof
-    if (P.hiEdge) { const e0 = F.pt(P.xa(P.L), P.L, coff - MM(40)), e1 = F.pt(P.xb(P.L), P.L, coff - MM(40)); fas.add([e0.x, e0.y - MM(80), e0.z], [e1.x, e1.y - MM(80), e1.z], MM(30), MM(220)); }
-    // the verges up the gable's edges
+    // the high edge of a mono-pitch roof: the board outside the rafters' ends (their bottom corners
+    // stand out past the edge), from over the covering down below them; the soffit under it
+    if (P.hiEdge) {
+      const ovH = P.xd ? Og : f.Oe, o = up.clone().multiplyScalar(tie * sa + MM(16));
+      const h0 = F.pt(P.xa(P.L), P.L).add(o), h1 = F.pt(P.xb(P.L), P.L).add(o), yT = h0.y + coff / ca + MM(15), yB = h0.y - tie * ca - MM(30);
+      fas.add([h0.x, (yT + yB) / 2, h0.z], [h1.x, (yT + yB) / 2, h1.z], MM(30), yT - yB);
+      const wS = ovH + tie * sa + MM(16), b = up.clone().multiplyScalar(-wS / 2);
+      sof.add([h0.x + b.x, yB + MM(6), h0.z + b.z], [h1.x + b.x, yB + MM(6), h1.z + b.z], wS, MM(10));
+    }
+    // the verges up the gable's edges: the barge board down past the rafters' depth, the soffit
+    // under the overhang (sloping with the roof) from it back to the gable wall
     for (const [side, kindE] of [[0, P.ea], [1, P.eb]]) {
       if (kindE !== 'gable' || P.end) continue;
-      const xe = side ? P.xb(0) : P.xa(0);
-      for (const [t0, t1] of runs(0, P.L, (t) => hidden(xe, t))) if (t1 - t0 > MM(200)) fas.add(F.pt(xe, t0, coff - MM(60)).toArray(), F.pt(xe, t1, coff - MM(60)).toArray(), MM(30), MM(200), F.n);
+      const xe = side ? P.xb(0) : P.xa(0), sx = side ? -1 : 1, top = coff + MM(40), bot = -tie - MM(15);
+      for (const [t0, t1] of runs(0, P.L, (t) => hidden(xe, t))) if (t1 - t0 > MM(200)) {
+        fas.add(F.pt(xe, t0, (top + bot) / 2).toArray(), F.pt(xe, t1, (top + bot) / 2).toArray(), MM(30), top - bot, F.n);
+        sof.add(F.pt(xe + sx * Og / 2, t0, -tie - MM(5)).toArray(), F.pt(xe + sx * Og / 2, t1, -tie - MM(5)).toArray(), Og, MM(10), F.n);
+      }
     }
   }
   const m1 = fas.mesh(trimM); if (m1) G.add(m1);
