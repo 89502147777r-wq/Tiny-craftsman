@@ -423,17 +423,18 @@ export class BlindWork {
     this.place = { seg: best.sg, why, has: (r.drains || []).includes(best.sg.key) };
     this._live({ seg: best.sg.key, ok: !why });
   }
-  // the ground round the house: the native ground along it (the middle of it — not the heaps of
-  // sand and soil lying about the site), never over the bottom of the walls
+  // the ground round the house: its surface along it (the backfill of the trenches counts — it is
+  // ground now), in three rings out from the walls; the lower middle of it (40 %): the heaps of sand
+  // and soil about the site and a side dug out do not pull it up or down
   _ground(H) {
     const t = this.app.terrain, hs = [];
-    for (const w of H.wings) for (let k = 0; k < 32; k++) {
-      const th = k / 32 * Math.PI * 2, rA = w.A + MM(500), rB = w.B + MM(500), a = Math.cos(th) * rA, d = Math.sin(th) * rB;
+    for (const w of H.wings) for (const o of [300, 700, 1200]) for (let k = 0; k < 32; k++) {
+      const th = k / 32 * Math.PI * 2, rA = w.A + MM(o), rB = w.B + MM(o), a = Math.cos(th) * rA, d = Math.sin(th) * rB;
       const x = w.cx + w.ux * a - w.uz * d, z = w.cz + w.uz * a + w.ux * d;
-      if (t.inside(x, z)) hs.push(t.nat[t.index(x, z)]);
+      if (t.inside(x, z)) hs.push(t.heightAt(x, z));
     }
     hs.sort((p, q) => p - q);
-    return hs.length ? Math.min(H.g + MM(20), hs[Math.floor(hs.length * 0.5)]) : H.g;
+    return hs.length ? hs[Math.floor(hs.length * 0.4)] : H.g;
   }
   carryDrop() {
     const app = this.app, P = this.place, L = this.layer, r = this.rec;
