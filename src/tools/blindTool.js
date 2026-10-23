@@ -20,7 +20,8 @@ export class BlindWork {
   get fin() { return BLIND_FIN[this.app.settings.blindFin] ? this.app.settings.blindFin : 'conc'; }
   get col() { return TILE_COLOURS[this.app.settings.blindCol] ? this.app.settings.blindCol : 'grey'; }
   get rec() { return this.app.objects.all('blind')[0] || null; }
-  _live(live) { const v = this.app.wallView; v.liveBlind = live; v.blindDirty = true; }
+  // (nothing was shown over the area: nothing to take off — it is not rebuilt for that)
+  _live(live) { const v = this.app.wallView; if (!live && !v.liveBlind) return; v.liveBlind = live; v.blindDirty = true; }
   _save(rec, patch, label) {
     const app = this.app;
     app.journal.act(label, {}, app.clock, () => { if (rec?.id) app.objects.update(rec.id, { ...patch }); else app.objects.add({ type: 'blind', ...patch }); });
@@ -269,12 +270,14 @@ export class BlindWork {
   }
   _show() {
     const d = this.drag;
-    if (d.pour) { this._live({ layer: d.L, stream: { a: d.a, d: d.d, t: d.t, y: this.app.terrain.heightAt(d.x, d.z) } }); return; }
+    // (the stream alone: its grains moved, the area itself not rebuilt — walls.js)
+    if (d.pour) { this.app.wallView.blindStream = { r: d.r, L: d.L, a: d.a, d: d.d, t: d.t, y: this.app.terrain.heightAt(d.x, d.z) }; return; }
     this._live({ layer: d.L, cells: [...d.cells], kind: this.fin, col: this.col, roll: d.L === 'geo' ? d.roll : null });
   }
   up() {
     const d = this.drag, app = this.app, L = d?.L;
-    this.drag = null; this._live(null);
+    this.drag = null; this.app.wallView.blindStream = null;
+    this._live(null);
     if (!d) return;
     if (d.rule) {
       // what the rule still carries: a windrow ahead of where it stopped
