@@ -49,6 +49,10 @@ export class Loader {
     this.armP = pivot(arms, this.root.localToWorld(ha.c.clone()));
     this.bucketP = new THREE.Group();
     { const at = holder.worldToLocal(this.root.localToWorld(hb.c.clone())); this.bucketP.position.copy(this.armP.worldToLocal(holder.localToWorld(at.clone()))); this.armP.add(this.bucketP); this.bucketP.updateMatrixWorld(true); this.bucketP.attach(bucket); }
+    // its bottom: the points of it that can touch the ground (the edge; the bottom's middle; its back
+    // corner, lowest when it is curled back), in the bucket pivot's frame
+    { const bb = new THREE.Box3().setFromObject(bucket), zc = (bb.min.z + bb.max.z) / 2, H = bb.max.y - bb.min.y;
+      this.bottom = [[bb.max.x, bb.min.y], [(bb.min.x + bb.max.x) / 2, bb.min.y], [bb.min.x, bb.min.y], [bb.min.x, bb.min.y + H * 0.45]].map(([x, y]) => this.bucketP.worldToLocal(new THREE.Vector3(x, y, zc))); }
     // the cutting edge: the front bottom of the bucket, in the bucket pivot's frame
     { const bb = new THREE.Box3().setFromObject(bucket), e = new THREE.Vector3(bb.max.x, bb.min.y, (bb.min.z + bb.max.z) / 2); this.edge = this.bucketP.worldToLocal(e); this.bucketW = bb.max.z - bb.min.z; this.bucketBox = bb.clone(); }
     this.wheels = wheels.map((w) => { const b = new THREE.Box3().setFromObject(w), c = b.getCenter(new THREE.Vector3()); return { g: pivot(w, c), r: (b.max.y - b.min.y) / 2, at: holder.worldToLocal(c.clone()) }; });
@@ -59,10 +63,12 @@ export class Loader {
     // back, heaped in the middle, low at the lip and at the sides (shaped in update)
     const bb = this.bucketBox, inB = this.bucketP.worldToLocal(bb.getCenter(new THREE.Vector3()));
     const BL = bb.max.x - bb.min.x, BW = bb.max.z - bb.min.z, BH = bb.max.y - bb.min.y;
-    const g = new THREE.BoxGeometry(1, 1, 1, 12, 1, 8); g.translate(0, 0.5, 0);
-    this.soilTop = []; { const pos = g.attributes.position; for (let i = 0; i < pos.count; i++) if (pos.getY(i) > 0.5) this.soilTop.push(i); }
-    this.soil = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x6f5137, roughness: 1 }));
-    this.soil.position.set(inB.x - BL * 0.08, inB.y - BH * 0.32, inB.z); this.soil.scale.set(BL * 0.7, BH, BW * 0.9);
+    // (only its top: a sheet inside the walls — nothing of it shows through the bucket — with lumps)
+    const g = new THREE.PlaneGeometry(1, 1, 14, 10); g.rotateX(-Math.PI / 2);
+    this.soilTop = []; { const pos = g.attributes.position; for (let i = 0; i < pos.count; i++) this.soilTop.push(i); }
+    this.soilBump = new Float32Array(g.attributes.position.count).map(() => (Math.random() - 0.5) * 0.08);
+    this.soil = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x6f5137, roughness: 1, flatShading: true }));
+    this.soil.position.set(inB.x - BL * 0.1, inB.y - BH * 0.32, inB.z); this.soil.scale.set(BL * 0.6, BH, BW * 0.82);
     this.soil.castShadow = true; this.soil.visible = false; this._fill = -1;
     this.bucketP.add(this.soil);
     this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
@@ -72,6 +78,13 @@ export class Loader {
   soilColor(c) { this.soil?.material.color.copy(c); }
   // where the cutting edge is (world)
   edgeWorld(out = new THREE.Vector3()) { this.root.updateMatrixWorld(true); return this.bucketP ? out.copy(this.edge).applyMatrix4(this.bucketP.matrixWorld) : out.set(this.x, this.y, this.z); }
+  // the lowest point of the bucket (world)
+  lowWorld(out = new THREE.Vector3()) {
+    this.root.updateMatrixWorld(true);
+    let best = Infinity; const v = new THREE.Vector3();
+    for (const p of this.bottom) { v.copy(p).applyMatrix4(this.bucketP.matrixWorld); if (v.y < best) { best = v.y; out.copy(v); } }
+    return out;
+  }
   // stand on the ground at (x, z) facing yaw: height and tilt from under the four wheels
   place(terrain, x, z, yaw) {
     this.x = x; this.z = z; this.yaw = yaw;
@@ -101,7 +114,7 @@ export class Loader {
       for (const i of this.soilTop) {
         const u = pos.getX(i) + 0.5, w = pos.getZ(i) * 2;   // u: 0 at the back, 1 at the lip; w: −1…1 across
         const h = f * 0.75 * (1 - 0.55 * u * u) + Math.max(0, f - 0.4) * 0.6 * Math.sin(Math.PI * Math.min(1, u * 1.15)) * (1 - w * w * 0.8);
-        pos.setY(i, Math.max(0.02, h));
+        pos.setY(i, Math.max(0.02, h + this.soilBump[i] * Math.min(1, f * 2)));
       }
       pos.needsUpdate = true; this.soil.geometry.computeVertexNormals();
     }

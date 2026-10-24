@@ -63,6 +63,13 @@ export class SoilParticles {
     this.terrain.deposit(x, z, it.vol, Math.max(0.0012, it.size * 1.2), it.depth || 0, it.mat || 0);
     // soil clods and crushed stones stay visible on top (sand does not)
     if (it.keep && it.mat !== 1 && this.terrain.inside(x, z) && this.clodList.length < this.clodMax) {
+      // (a clod does not stay where it fell on a heap's side: it rolls down till the ground is gentle)
+      const t = this.terrain, d = Math.max(t.cell, it.size);
+      for (let k = 0; k < 40; k++) {
+        const gx = (t.heightAt(x + d, z) - t.heightAt(x - d, z)) / (2 * d), gz = (t.heightAt(x, z + d) - t.heightAt(x, z - d)) / (2 * d), gl = Math.hypot(gx, gz);
+        if (gl < 0.45) break;
+        x = t.clampX(x - gx / gl * d); z = t.clampZ(z - gz / gl * d);
+      }
       this.clodList.push({ x, z, size: it.size, rot: it.rot.clone(), sink: 0.35 + this.rnd() * 0.35, depth: it.depth || 0, mat: it.mat || 0 });
       this._seenVersion = -1;
     }
