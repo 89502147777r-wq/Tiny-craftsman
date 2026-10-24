@@ -415,7 +415,7 @@ export class MachineTool {
         if (q) app.journal.act('move-out', {}, app.clock, () => { M.place(app.terrain, q.x, q.z, q.yaw); if (kind === 'truck') this._saveTruck({}); else this._savePose(); });
       }
       this.state = 'drive'; this.drv = kind; this.stick = { l: [0, 0], r: [0, 0] };
-      this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0; this.view ??= 'cab';   // (from the cab's front: the bucket and the arms below, the way ahead)
+      this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0; this.holdY = null; this.armSet = null; this.view ??= 'cab';   // (from the cab's front: the bucket and the arms below, the way ahead)
       if (kind === 'loader') { this.loader.armGoal = 0; this.loader.tiltGoal = 0; }
       app.rig.goal.dist = R(kind === 'truck' ? 14 : 10); app.rig.goal.pitch = 0.5;
       app.sfx.scrapeStart(); app.sfx.scrapeLevel(0.15);
@@ -557,48 +557,60 @@ export class MachineTool {
       const yaw = L.yaw - lx * TURN * dt, f = [Math.cos(yaw), -Math.sin(yaw)];
       const nx = L.x + f[0] * this.v * dt, nz = L.z + f[1] * this.v * dt;
       if (this._fits('loader', nx, nz, yaw)) { moved = this.v * dt; L.place(t, nx, nz, yaw); } else { this.v = 0; if (lx && this._fits('loader', L.x, L.z, yaw)) L.place(t, L.x, L.z, yaw); }
-      L.armGoal = Math.max(-0.35, Math.min(1.0, L.armGoal - ry * 0.7 * dt));
+      // (armSet: where the stick has put the arms — what the ground does to the bucket for a while, lifting
+      // it where it bears on it, does not move that)
+      this.armSet = Math.max(-0.35, Math.min(1.0, (this.armSet ?? L.armGoal) - ry * 0.7 * dt));
+      L.armGoal = this.armSet;
       L.tiltGoal = Math.max(-1.0, Math.min(0.6, L.tiltGoal - rx * 1.4 * dt));
-      // the bucket rests on the ground: lowered on, it stops there
+      // the arms hold where they are set: going on, the edge goes at that height and takes all over it
+      // — no deeper unless lowered. Lowered, the bucket stops on what is under it; its nose tipped
+      // down it is pressed in up to ≈15 cm (along its edge only), else it stops on the top.
       const e = L.edgeWorld(new THREE.Vector3());
-      // (the ground: the plot as it was, or lower where it is dug — a heap tipped on it is gone into;
-      // a level bucket skims it, its nose tipped down cuts in up to ≈12 cm)
-      { const b = L.lowWorld(new THREE.Vector3()), i = t.index(b.x, b.z), floor = Math.min(t.heightAt(b.x, b.z), t.orig[i]) - R(0.12) * Math.min(1, Math.max(0, -L.tilt / 0.3)), lo = this._armFor(floor, true);
-        // (float: lowered onto the ground it stays on it — whatever the machine does under it — till lifted)
-        if (L.armGoal <= lo + 0.01 && ry >= 0) this.float = true; else if (ry < 0) this.float = false;
-        if (this.float) L.armGoal = L.arm = lo;
-        if (L.armGoal < lo) L.armGoal = lo; if (L.arm < lo) L.arm = lo; }
+      if (ry > 0) {
+        const b = L.lowWorld(new THREE.Vector3()), floor = t.heightAt(b.x, b.z) - R(0.15) * Math.min(1, Math.max(0, -L.tilt / 0.3)), lo = this._armFor(floor, true);
+        if (this.armSet < lo) this.armSet = L.armGoal = Math.min(L.arm, lo);
+      }
       L.update(0); L.edgeWorld(e);
+      // (the level it cuts at: where the edge was when the bucket was last set — the machine dipping
+      // into its own cut, nose down, does not take it any deeper; lowered again, it goes deeper)
+      // (only lowering the arms or tipping the nose down takes it lower; lifting or curling only higher —
+      // the machine pitching meanwhile does not move it)
+      if (this.holdY == null || ry > 0 || rx > 0) this.holdY = e.y;
+      else if (ry < 0 || rx < 0) this.holdY = Math.max(this.holdY, e.y);
+      const cutY = Math.max(e.y, this.holdY);
       const hw = Math.max(L.bucketW / 2, R(0.95));   // (a bucket is as wide as the wheels' track, or wider: they go where it has cut)
       // going on with the edge in the ground: it cuts at the edge's height into the bucket; a full bucket
       // pushes what stands over its edge on ahead of it (it runs off to the sides as a windrow)
       if (moved > 0 && L.tilt >= 0.15) {
         // (curled back it is shut: nothing goes in — its bottom pushes what stands over it on ahead)
         const b = L.lowWorld(new THREE.Vector3());
-        if (b.y < t.heightAt(b.x, b.z)) this._bulldoze(b.x, b.z, f, hw, b.y);
+        const by = Math.max(b.y, this.holdY - (e.y - b.y));
+        if (by < t.heightAt(b.x, b.z)) this._bulldoze(b.x, b.z, f, hw, by);
       }
       if (moved > 0 && L.tilt > -0.45 && L.tilt < 0.15) {
-        const keep = g.target; g.target = () => e.y;
+        const keep = g.target; g.target = () => cutY;
         const n = Math.max(1, Math.ceil(moved / (t.cell * 0.7)));
         for (let k = n - 1; k >= 0; k--) {
           const bx = e.x - f[0] * moved * k / n, bz = e.z - f[1] * moved * k / n;
           g.blade(bx, bz, f[0], f[1], hw, this.cap, true);
-          if (g.load >= this.cap * 0.98) this._bulldoze(bx, bz, f, hw, e.y);
+          if (g.load >= this.cap * 0.98) this._bulldoze(bx, bz, f, hw, cutY);
         }
         // (and the bucket is a wall: what has run back over the edge into its mouth since — the pile
         // ahead slumping — is taken again, so the wheels behind go on the cut ground)
-        for (let d = t.cell * 0.7; d < R(0.7); d += t.cell * 0.7) {
+        for (let d = t.cell * 0.7; d < R(1.8); d += t.cell * 0.7) {   // (under the bucket and on to the front wheels)
           const bx = e.x - f[0] * d, bz = e.z - f[1] * d;
           g.blade(bx, bz, f[0], f[1], hw, this.cap, true);
-          if (g.load >= this.cap * 0.98) this._bulldoze(bx, bz, f, hw, e.y, d);
+          if (g.load >= this.cap * 0.98) this._bulldoze(bx, bz, f, hw, cutY, d);
         }
         g.target = keep;
       }
       // curled back with the edge in the soil: what lies over it in the bucket's mouth goes in
-      if (rx < 0 && L.tilt < 0.35 && g.load < this.cap && e.y < t.heightAt(e.x, e.z)) {
-        const keep = g.target; g.target = () => e.y;
-        g.scoop(e.x - f[0] * R(0.35), e.z - f[1] * R(0.35), hw * 0.9, this.cap);
-        g.target = keep;
+      if (rx < 0 && L.tilt < 0.35 && g.load < this.cap && e.y < t.heightAt(e.x, e.z)) this._scoopStrip(e, f, L.bucketW / 2);
+      // (it lies on the ground it has cut: the machine dipping into the cut does not sink it through —
+      // only its nose, tipped down and pressed, goes in, ≈15 cm; a heap, soil run under it, is no floor)
+      if (ry <= 0) {
+        const b = L.lowWorld(new THREE.Vector3()), lim = Math.min(t.heightAt(b.x, b.z), t.orig[t.index(b.x, b.z)]) - R(0.02) - R(0.15) * Math.min(1, Math.max(0, -L.tilt / 0.3));
+        if (b.y < lim) { const lo = this._armFor(lim, true); if (L.arm < lo) { L.arm = lo; L.update(0); L.edgeWorld(e); } }
       }
       // tipped: it runs out over the lip as it tips — the more, the faster; into the body when it is
       // over it, else it falls and lands where it falls
@@ -631,6 +643,20 @@ export class MachineTool {
     rig.goal.target.set(M.x + Math.cos(M.yaw) * ahead, M.y + R(0.8), M.z - Math.sin(M.yaw) * ahead); rig.clampTarget();
   }
 
+  // curling back with the edge in the soil: the strip just ahead of the edge, as wide as the bucket,
+  // goes in down to the edge's height (a straight bite — not a round pit)
+  _scoopStrip(e, f, hw) {
+    const t = this.app.terrain, g = this.grader, st = t.cell * 0.7;
+    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+    for (let d = -R(0.05); d <= R(0.3) && g.load < this.cap; d += st) for (let q = -hw; q <= hw; q += st) {
+      const px = e.x + f[0] * d - f[1] * q, pz = e.z + f[1] * d + f[0] * q;
+      if (!t.inside(px, pz)) continue;
+      const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
+      const over = t.nat[i] + t.loose[i] - e.y;
+      if (over > 1e-7) { g.cut(i, Math.min(over, this.cap - g.load)); const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
+    }
+    if (x1 >= 0) t._touch(x0, z0, x1, z1);
+  }
   // what stands over the edge across the bucket, moved on ahead of it
   _bulldoze(x, z, f, hw, y, back = 0) {
     const t = this.app.terrain, g = this.grader, push = (this._pushC ||= new Float64Array(4));
@@ -646,7 +672,7 @@ export class MachineTool {
     if (!any) return;
     const ix = Math.round(t.toCellX(x)), iz = Math.round(t.toCellZ(z)), n = Math.ceil(hw / t.cell) + 1;
     t._touch(Math.max(0, ix - n), Math.max(0, iz - n), Math.min(t.rx, ix + n), Math.min(t.rz, iz + n));
-    const ax = x + f[0] * (R(0.75) + back), az = z + f[1] * (R(0.75) + back);   // (ahead, so it does not run back under the wheels)
+    const ax = x + f[0] * (R(0.9) + back), az = z + f[1] * (R(0.9) + back);   // (ahead, so it does not run back under the wheels)
     for (const m of [0, 1, 2, 3]) if (push[m] > 0) { if (t.inside(ax, az)) t.deposit(ax, az, push[m] * t.cellArea, hw * 0.8, 0, m); push[m] = 0; }
   }
   // a frame of pouring: a share of each material out over the lip, as falling crumbs (they land
