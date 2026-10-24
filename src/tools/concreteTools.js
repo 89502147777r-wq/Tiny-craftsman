@@ -3,7 +3,7 @@ import { PUMP, MODEL_SCALE, CONCRETE } from '../config.js';
 import { Channel } from './uPour.js';
 import { BeltChannel, beltContains } from './belt.js';
 import { isSlab } from './slab.js';
-import { houseOutside } from './pitchedTool.js';
+import { houseOutside, buildings, findHouse } from './pitchedTool.js';
 import { boxOf } from './freeBrick.js';
 import { BlindChannel } from './blindPour.js';
 import { BLIND, layerSet } from '../world/blind.js';
@@ -651,5 +651,140 @@ export class BreakerTool extends ConcreteTool {
     this.finish();
     if (got > 0) app.ui?.toast(`Наплыв бетона отбили ломом (${(got * MODEL_SCALE ** 3 * 1000).toFixed(0)} л в мусор) — ведите по нему дальше, пока не откроется земля`);
     else app.ui?.toast(thick ? 'Это фундамент или плита (бетон в траншее, внутри дома или под кладкой) — ломом их не отбивают' : 'Здесь нет застывшего бетона — ведите лом по наплывам у фундамента и опалубок');
+  }
+}
+
+// Grading the plot (планировка), as on site after the building:
+//   level – a 2 m rule dragged over the ground: what stands over the design level is cut off
+//           (the loose heaps, the native ground too) and carried along, the hollows under it
+//           filled from it; let go — the rest fills the hollows round where it stopped, then a
+//           low wedge ahead. The design level: the ground most of the plot lies at, falling away
+//           from the houses (settings.gradeSlope %, within 8 m of the walls)
+//   haul  – hold the finger on a heap: what stands over the design level round it is loaded
+//           and taken away (the volume is told)
+// Not touched: the houses, the blind areas (their boards hold what is in them), the concrete.
+export class GradeTool extends ConcreteTool {
+  constructor(app) { super(app, 'grade'); }
+  get mode() { return this.app.settings.gradeMode === 'haul' ? 'haul' : 'level'; }
+  // the design level over the plot (worked out as the stroke begins)
+  _design() {
+    const app = this.app, t = app.terrain, out = houseOutside(app), slope = (app.settings.gradeSlope ?? 1.5) / 100;
+    const wings = [];
+    for (const B of buildings(app)) { const H = findHouse(app, { x: B[0].x, z: B[0].z }); if (H) wings.push(...H.wings); }
+    const dist = (x, z) => { let m = Infinity; for (const w of wings) { const dx = x - w.cx, dz = z - w.cz, a = Math.abs(dx * w.ux + dz * w.uz) - w.A, d = Math.abs(-dx * w.uz + dz * w.ux) - w.B; m = Math.min(m, Math.hypot(Math.max(0, a), Math.max(0, d))); } return m; };
+    const free = (i, x, z) => t.zone[i] !== 1 && t.conc[i] <= 1e-6 && t.top[i] <= 0 && (!out || out(x, z) === true);
+    // (the level most of the open ground lies at: ±25 mm round the commonest; else the median)
+    const hs = [], st = MM(200);
+    for (let x = t.toWorldX(0); x <= t.toWorldX(t.rx); x += st) for (let z = t.toWorldZ(0); z <= t.toWorldZ(t.rz); z += st) {
+      const i = t.index(x, z); if (free(i, x, z)) hs.push(t.nat[i] + t.loose[i] + (wings.length ? slope * (Math.min(dist(x, z), MM(8000)) - MM(1500)) : 0));
+    }
+    hs.sort((a, b) => a - b);
+    let best = 0, b0 = 0;
+    for (let i = 0, j = 0; i < hs.length; i++) { while (hs[i] - hs[j] > MM(50)) j++; if (i - j + 1 > best) best = i - j + 1, b0 = j; }
+    const base = !hs.length ? t.heightAt(0, 0) : best >= hs.length * 0.3 ? hs.slice(b0, b0 + best).reduce((a, v) => a + v, 0) / best : hs[hs.length >> 1];
+    this.free = free;
+    this.target = (x, z) => base - (wings.length ? slope * (Math.min(dist(x, z), MM(8000)) - MM(1500)) : 0);
+  }
+  down(p) {
+    if (this.state !== 'idle') return true;
+    const t = this.app.terrain;
+    if (!t.inside(p.x, p.z)) return false;
+    this._design();
+    this.begin(this.mode === 'haul' ? 'haul' : 'grade', {}, p);
+    this.carry = new Float64Array(4); this.hauled = new Float64Array(4); this.jab = 0; this.moved = 0;
+    if (this.mode === 'level') this.gear.set('screed', new THREE.Vector3(p.x, this.target(p.x, p.z), p.z), this.gear.yawGoal, true);
+    this.app.sfx.scrapeStart(); this.app.sfx.scrapeLevel(0.35);
+    return true;
+  }
+  // a sample cut down to the level / filled up to it (what is cut goes into `into`)
+  _cut(i, h, into) {
+    const t = this.app.terrain, seg = (this._seg ||= { m: new Uint8Array(8), h: new Float64Array(8), n: 0 });
+    const got = t._pop(i, h, seg);
+    for (let k = 0; k < seg.n; k++) into[seg.m[k]] += seg.h[k];
+    if (h - got > 1e-9) { t.nat[i] -= h - got; into[0] += h - got; }
+  }
+  _fill(i, need) {
+    const t = this.app.terrain, c = this.carry;
+    for (const m of [0, 1, 2, 3]) { if (need <= 0) break; const g = Math.min(need, c[m]); if (g > 0) { t._push(i, g, m); c[m] -= g; need -= g; } }
+  }
+  // one position of the rule: across the way it is drawn, 2 m long
+  _step(x, z, ux, uz) {
+    const t = this.app.terrain, L = MM(1000), seen = this._seen || (this._seen = new Set());
+    seen.clear();
+    let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+    for (let q = -L; q <= L; q += t.cell * 0.7) {
+      const px = x - uz * q, pz = z + ux * q;
+      if (!t.inside(px, pz)) continue;
+      const i = t.index(px, pz);
+      if (seen.has(i)) continue; seen.add(i);
+      if (!this.free(i, px, pz)) continue;
+      const s = t.nat[i] + t.loose[i], tg = this.target(px, pz);
+      if (s > tg + 1e-7) this._cut(i, s - tg, this.carry);
+      else if (s < tg - 1e-7) this._fill(i, tg - s);
+      else continue;
+      const ix = i % t.nx, iz = (i / t.nx) | 0;
+      if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;
+    }
+    if (x1 >= 0) t._touch(x0, z0, x1, z1);
+  }
+  move(p) {
+    if (this.state !== 'work') return;
+    if (this.mode === 'haul') { this.p.copy(p); return; }
+    const t = this.app.terrain, a = this.last, dx = p.x - a.x, dz = p.z - a.z, L = Math.hypot(dx, dz), step = t.cell * 0.7;
+    if (L < step) return;
+    const ux = dx / L, uz = dz / L, n = Math.ceil(L / step);
+    for (let k = 1; k <= n; k++) this._step(a.x + dx * k / n, a.z + dz * k / n, ux, uz);
+    this.moved += L; this.dirU = [ux, uz];
+    this.last.copy(p); this.p.copy(p);
+    this.gear.set('screed', new THREE.Vector3(p.x, this.target(p.x, p.z), p.z), Math.atan2(ux, uz));
+  }
+  work(dt) {
+    if (this.mode !== 'haul') { this.app.sfx.scrapeLevel(0.25 + Math.min(0.4, this.carry.reduce((a, v) => a + v, 0) * 2e4)); return; }
+    // (loading: a spadeful round the finger every 0.15 s)
+    this.jab += dt; if (this.jab < 0.15) return; this.jab = 0;
+    const t = this.app.terrain, p = this.p, r = MM(700), n = Math.ceil(r / t.cell), cx = t.toCellX(p.x), cz = t.toCellZ(p.z);
+    let any = false;
+    for (let iz = Math.max(0, Math.floor(cz - n)); iz <= Math.min(t.rz, Math.ceil(cz + n)); iz++) for (let ix = Math.max(0, Math.floor(cx - n)); ix <= Math.min(t.rx, Math.ceil(cx + n)); ix++) {
+      if (Math.hypot(ix - cx, iz - cz) > n) continue;
+      const i = iz * t.nx + ix, x = t.toWorldX(ix), z = t.toWorldZ(iz);
+      if (!this.free(i, x, z)) continue;
+      const over = t.nat[i] + t.loose[i] - this.target(x, z);
+      if (over > 1e-7) { this._cut(i, Math.min(over, MM(60)), this.hauled); any = true; }
+    }
+    if (any) { t._touch(Math.floor(cx - n), Math.floor(cz - n), Math.ceil(cx + n), Math.ceil(cz + n)); this.app.sfx.stab(); }
+  }
+  // what the rule still carries: into the hollows round where it stopped (nearest first, 1,5 m),
+  // the rest a low wedge on ahead (≤ 40 mm over the level, out to 2 m), what is left a heap there
+  _drop() {
+    const t = this.app.terrain, c = this.carry, p = this.last;
+    if (c.reduce((a, v) => a + v, 0) <= 0) return;
+    const R = MM(1500), n = Math.ceil(R / t.cell), ci = Math.round(t.toCellX(p.x)), cj = Math.round(t.toCellZ(p.z)), list = [];
+    for (let iz = Math.max(0, cj - n); iz <= Math.min(t.rz, cj + n); iz++) for (let ix = Math.max(0, ci - n); ix <= Math.min(t.rx, ci + n); ix++) {
+      const r2 = (ix - ci) ** 2 + (iz - cj) ** 2; if (r2 > n * n) continue;
+      const i = iz * t.nx + ix, x = t.toWorldX(ix), z = t.toWorldZ(iz);
+      if (!this.free(i, x, z)) continue;
+      const need = this.target(x, z) - (t.nat[i] + t.loose[i]); if (need > 1e-7) list.push([r2, i, need]);
+    }
+    list.sort((a, b) => a[0] - b[0]);
+    for (const [, i, need] of list) { this._fill(i, need); if (c.every((v) => v <= 0)) break; }
+    const [ux, uz] = this.dirU || [0, 1];
+    for (let s = 0; s <= MM(2000) && c.some((v) => v > 0); s += t.cell * 0.7) for (let q = -MM(1000); q <= MM(1000); q += t.cell * 0.7) {
+      const x = p.x + ux * s - uz * q, z = p.z + uz * s + ux * q; if (!t.inside(x, z)) continue;
+      const i = t.index(x, z); if (!this.free(i, x, z)) continue;
+      const room = this.target(x, z) + MM(40) * (1 - s / MM(2000)) - (t.nat[i] + t.loose[i]); if (room > 0) this._fill(i, room);
+    }
+    for (const m of [0, 1, 2, 3]) if (c[m] > 0) { t.deposit(p.x + ux * MM(2100), p.z + uz * MM(2100), c[m] * t.cellArea, MM(400), 0, m); c[m] = 0; }
+    { const e = n + Math.ceil(MM(2600) / t.cell); t._touch(Math.max(0, ci - e), Math.max(0, cj - e), Math.min(t.rx, ci + e), Math.min(t.rz, cj + e)); }
+  }
+  up() {
+    if (this.state !== 'work') return;
+    const app = this.app, t = app.terrain, haul = this.mode === 'haul';
+    if (!haul) this._drop();
+    for (let i = 0; i < 40000 && t.active; i++) t.relax(1);
+    const v = (haul ? this.hauled : null), m3 = v ? v.reduce((a, x) => a + x, 0) * t.cellArea * MODEL_SCALE ** 3 : 0;
+    this.gear.set(null);
+    this.finish();
+    if (haul) app.ui?.toast(m3 > 0.005 ? `Вывезли ${m3.toFixed(2).replace('.', ',')} м³ (${['грунт', 'песок', 'щебень 5–20', 'щебень 20–40'].filter((_, k) => v[k] > 0).join(', ')}) — до проектной отметки` : 'Здесь нечего вывозить: всё ниже проектной отметки (или это отмостка, бетон, дом)');
+    else app.ui?.toast(this.moved > MM(300) ? 'Участок выровняли правилом по проектной отметке — бугры срезаны, ямы засыпаны, уклон от дома' : 'Ведите правило по участку — оно срезает бугры и засыпает ямы по проектной отметке');
   }
 }
