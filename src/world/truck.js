@@ -29,6 +29,23 @@ export class Truck {
     this.bed.position.copy(holder.worldToLocal(new THREE.Vector3(bb.min.x, bb.min.y, (bb.min.z + bb.max.z) / 2)));
     holder.add(this.bed); this.bed.updateMatrixWorld(true);
     for (const p of parts) this.bed.attach(p);
+    // the tailgate: the thin panel across the body's back, hung on a hinge along its top — as the body
+    // tips it hangs on plumb and opens at the bottom (what is in the body runs out under it)
+    {
+      this.bed.updateMatrixWorld(true);
+      const W0 = bb.max.z - bb.min.z, L0 = bb.max.x - bb.min.x;
+      const cand = parts.map((o) => ({ o, b: new THREE.Box3().setFromObject(o) }))
+        .filter(({ b }) => b.max.x - b.min.x < L0 * 0.12 && (b.min.x + b.max.x) / 2 < bb.min.x + L0 * 0.15 && b.max.z - b.min.z > W0 * 0.7)
+        .sort((p, q) => (p.b.min.x + p.b.max.x) - (q.b.min.x + q.b.max.x));
+      if (cand.length) {
+        const gate = cand.filter((c) => c.b.min.x < cand[0].b.max.x + L0 * 0.03), gb = new THREE.Box3();
+        for (const c of gate) gb.union(c.b);
+        this.gate = new THREE.Group();
+        this.gate.position.copy(this.bed.worldToLocal(new THREE.Vector3((gb.min.x + gb.max.x) / 2, gb.max.y, (gb.min.z + gb.max.z) / 2)));
+        this.bed.add(this.gate); this.gate.updateMatrixWorld(true);
+        for (const c of gate) this.gate.attach(c.o);
+      }
+    }
     // the soil in it: a mound over its floor, the floor ~12 % up the body's sides
     const L = bb.max.x - bb.min.x, W = bb.max.z - bb.min.z, H = bb.max.y - bb.min.y;
     const g = new THREE.BoxGeometry(1, 1, 1, 8, 1, 4); g.translate(0.5, 0.5, 0);
@@ -87,6 +104,7 @@ export class Truck {
     if (!this.bed) return;
     this.tip += (this.tipGoal - this.tip) * (1 - Math.exp(-dt * 1.5));
     this.bed.rotation.z = this.tip;   // (+: the front up, on the rear hinge)
+    if (this.gate) this.gate.rotation.z = -this.tip * 0.97;
     for (const w of this.wheels || []) w.g.rotation.z = -(this.spin || 0) / w.r;
     this.soil.visible = this.load > 0.01;
     if (this.soil.visible) this.soil.scale.y = this.soilH * Math.min(1, this.load);
