@@ -174,12 +174,14 @@ export class UI {
     const box = $('mbtns');
     box.hidden = !on; box.classList.toggle('up', on);
     if (!on) { this._mKey = null; return; }
-    if (this._mKey === mt.drv) return;
-    this._mKey = mt.drv;
+    if (this._mKey === mt.drv + mt.view) return;
+    this._mKey = mt.drv + mt.view;
     box.innerHTML = '';
+    const v = document.createElement('button'); v.textContent = mt.view === 'cab' ? 'Вид сзади' : 'Из кабины';
+    v.addEventListener('click', () => mt.setView(mt.view === 'cab' ? 'back' : 'cab'));
     const b = document.createElement('button'); b.textContent = 'Выйти';
     b.addEventListener('click', () => { mt.exit(); this.refresh(); });
-    box.append(b);
+    box.append(v, b);
   }
 
   bindSettings() {

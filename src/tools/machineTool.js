@@ -389,7 +389,7 @@ export class MachineTool {
         }
       }
       this.state = 'drive'; this.drv = kind; this.stick = { l: [0, 0], r: [0, 0] };
-      this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0;
+      this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0; this.view ??= 'cab';
       app.rig.goal.dist = R(kind === 'truck' ? 14 : 10); app.rig.goal.pitch = 0.5;
       app.sfx.scrapeStart(); app.sfx.scrapeLevel(0.15);
       app.ui?.toast(kind === 'truck' ? 'Вы в самосвале: левый джойстик — газ и руль, правый вверх/вниз — кузов' : 'Вы в погрузчике: левый джойстик — езда, правый: вверх/вниз — стрела, влево/вправо — ковш');
@@ -402,7 +402,14 @@ export class MachineTool {
     this._commitDrive();
     this.state = 'idle'; this.stick = { l: [0, 0], r: [0, 0] };
     app.sfx.scrapeStop();
+    if (app.rig.shakeKeep != null) { app.rig.shake = app.rig.shakeKeep; app.rig.shakeKeep = null; }
     app.rig.goal.dist = R(16); app.rig.goal.pitch = 0.6;
+    app.ui?.refresh();
+  }
+  setView(v) {
+    const app = this.app;
+    this.view = v; this._camYaw = null; this.camOff = 0;
+    if (v !== 'cab') { app.rig.goal.dist = R(this.drv === 'truck' ? 14 : 10); app.rig.goal.pitch = 0.5; }
     app.ui?.refresh();
   }
   joystick(side, x, y) { if (this.state === 'drive') this.stick[side] = [x, y]; }
@@ -483,8 +490,18 @@ export class MachineTool {
       app.sfx.scrapeLevel(0.15 + Math.min(0.5, Math.abs(this.v) / SPEED * 0.3 + L.load * 0.2));
       L.update(dt, moved);
     }
-    // the camera behind it (a finger turning it round keeps its turn)
     const M = this.drv === 'truck' ? T : L, rig = app.rig;
+    if (this.view === 'cab') {
+      // from the driver's seat: looking ahead and down at where the bucket works (held still, no lag)
+      const f = new THREE.Vector3(Math.cos(M.yaw), 0, -Math.sin(M.yaw)), seat = this.drv === 'truck' ? [1.55, 1.75] : [-0.15, 1.45];
+      const e = new THREE.Vector3(seat[0] * R(1), seat[1] * R(1), 0).applyMatrix4(M.root.matrixWorld);
+      const ahead = R(this.drv === 'truck' ? 8 : 4), drop = R(this.drv === 'truck' ? 1.2 : 1.5);
+      rig.setState({ target: [e.x + f.x * ahead, e.y - drop, e.z + f.z * ahead], yaw: M.yaw - Math.PI / 2, pitch: Math.atan2(drop, ahead), dist: Math.hypot(ahead, drop) }, true);
+      this._camYaw = null; rig.shakeKeep ??= rig.shake; rig.shake = false;
+      return;
+    }
+    if (rig.shakeKeep != null) { rig.shake = rig.shakeKeep; rig.shakeKeep = null; }
+    // the camera behind it (a finger turning it round keeps its turn)
     if (this._camYaw != null) this.camOff += rig.goal.yaw - this._camYaw;
     rig.goal.yaw = this._camYaw = M.yaw - Math.PI / 2 + this.camOff;
     const ahead = R(this.drv === 'truck' ? 1.5 : 2);   // (a little ahead of it: what it goes into is in sight)
