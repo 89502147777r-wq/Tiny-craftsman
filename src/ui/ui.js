@@ -171,6 +171,7 @@ export class UI {
   renderMachineControls() {
     const app = this.app, mt = app.machineTool, on = app.tool === 'machine' && mt.driving;
     $('joy').hidden = !on; $('joy2').hidden = !on;
+    $('ui').classList.toggle('driving', on);   // (the tools' row away: the bucket is low in the picture)
     const box = $('mbtns');
     box.hidden = !on; box.classList.toggle('up', on);
     if (!on) { this._mKey = null; return; }

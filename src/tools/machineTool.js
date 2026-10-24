@@ -403,8 +403,14 @@ export class MachineTool {
     this.state = 'idle'; this.stick = { l: [0, 0], r: [0, 0] };
     app.sfx.scrapeStop();
     if (app.rig.shakeKeep != null) { app.rig.shake = app.rig.shakeKeep; app.rig.shakeKeep = null; }
+    this._fov(null);
     app.rig.goal.dist = R(16); app.rig.goal.pitch = 0.6;
     app.ui?.refresh();
+  }
+  _fov(f) {
+    const c = this.app.camera;
+    if (f == null) { if (this.fov0 == null) return; f = this.fov0; this.fov0 = null; } else this.fov0 ??= c.fov;
+    if (c.fov !== f) { c.fov = f; c.updateProjectionMatrix(); }
   }
   setView(v) {
     const app = this.app;
@@ -493,14 +499,16 @@ export class MachineTool {
     const M = this.drv === 'truck' ? T : L, rig = app.rig;
     if (this.view === 'cab') {
       // from the driver's seat: looking ahead and down at where the bucket works (held still, no lag)
-      const f = new THREE.Vector3(Math.cos(M.yaw), 0, -Math.sin(M.yaw)), seat = this.drv === 'truck' ? [1.55, 1.75] : [-0.15, 1.45];
+      const f = new THREE.Vector3(Math.cos(M.yaw), 0, -Math.sin(M.yaw)), seat = this.seatAt || (this.drv === 'truck' ? [1.45, 1.6] : [0.62, 1.75]);
       const e = new THREE.Vector3(seat[0] * R(1), seat[1] * R(1), 0).applyMatrix4(M.root.matrixWorld);
-      const ahead = R(this.drv === 'truck' ? 8 : 4), drop = R(this.drv === 'truck' ? 1.2 : 1.5);
+      const ahead = R(this.drv === 'truck' ? 8 : this.lookAt?.[0] ?? 1.25), drop = R(this.drv === 'truck' ? 1.2 : this.lookAt?.[1] ?? 1.7);   // (the loader: steep down — the bucket in the middle of the picture)
       rig.setState({ target: [e.x + f.x * ahead, e.y - drop, e.z + f.z * ahead], yaw: M.yaw - Math.PI / 2, pitch: Math.atan2(drop, ahead), dist: Math.hypot(ahead, drop) }, true);
       this._camYaw = null; rig.shakeKeep ??= rig.shake; rig.shake = false;
+      this._fov(this.drv === 'truck' ? 62 : 75);   // (wide, as a camera in a cab: the bucket below and the way ahead both in sight)
       return;
     }
     if (rig.shakeKeep != null) { rig.shake = rig.shakeKeep; rig.shakeKeep = null; }
+    this._fov(null);
     // the camera behind it (a finger turning it round keeps its turn)
     if (this._camYaw != null) this.camOff += rig.goal.yaw - this._camYaw;
     rig.goal.yaw = this._camYaw = M.yaw - Math.PI / 2 + this.camOff;
