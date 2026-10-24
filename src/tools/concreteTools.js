@@ -3,6 +3,7 @@ import { PUMP, MODEL_SCALE, CONCRETE } from '../config.js';
 import { Channel } from './uPour.js';
 import { BeltChannel, beltContains } from './belt.js';
 import { isSlab } from './slab.js';
+import { houseOutside } from './pitchedTool.js';
 import { BlindChannel } from './blindPour.js';
 import { BLIND, layerSet } from '../world/blind.js';
 
@@ -605,8 +606,9 @@ export class PlateTool extends ConcreteTool {
 
 const MM = (v) => v / 1000 / MODEL_SCALE;
 // Crowbar (лом): hold the finger on the concrete that ran out of the forms and set — the bar
-// jabs, the crust breaks off in chips under it and is carried off (what lay on it falls on the
-// ground). Only a thin crust (≤ 100 mm): a footing, a slab is not touched.
+// jabs, it breaks off in chips under it and is carried off (what lay on it falls on the ground).
+// What ran out lies on the ground, outside the house: the concrete in a dug trench or pit (a
+// footing), inside the walls (a floor slab) or under them is not touched; up to 400 mm thick.
 export class BreakerTool extends ConcreteTool {
   constructor(app) { super(app, 'breaker'); }
   _at(p) { return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z); }
@@ -616,6 +618,9 @@ export class BreakerTool extends ConcreteTool {
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('break', {}, p);
     this.got = 0; this.thick = 0; this.jab = 0;
+    // (what is a spill: on the ground as it was dug (not down in a trench), outside the house)
+    const t = this.app.terrain, out = houseOutside(this.app);
+    this.ok = (i, x, z) => t.nat[i] + t.loose[i] > t.orig[i] - MM(50) && (!out || out(x, z) === true);
     this.gear.set('breaker', this._at(p), this._yaw(p), true);
     return true;
   }
@@ -627,7 +632,7 @@ export class BreakerTool extends ConcreteTool {
     this.gear.set('breaker', this._at(p), this._yaw(p));
     if (this.jab < 0.14) return;   // (a jab every 0.14 s)
     this.jab = 0;
-    const r = t.chipConc(p.x, p.z, MM(170), MM(25), MM(100));
+    const r = t.chipConc(p.x, p.z, MM(170), MM(25), MM(400), this.ok);
     this.got += r.got; this.thick += r.thick;
     if (r.got > 0) {
       app.sfx.stab();
@@ -641,6 +646,6 @@ export class BreakerTool extends ConcreteTool {
     const app = this.app, got = this.got, thick = this.thick;
     this.finish();
     if (got > 0) app.ui?.toast(`Наплыв бетона отбили ломом (${(got * MODEL_SCALE ** 3 * 1000).toFixed(0)} л в мусор) — ведите по нему дальше, пока не откроется земля`);
-    else app.ui?.toast(thick ? 'Здесь бетон толще 10 см — это фундамент или плита, ломом их не отбивают' : 'Здесь нет застывшего бетона — ведите лом по наплывам у фундамента и опалубок');
+    else app.ui?.toast(thick ? 'Это фундамент или плита (бетон в траншее, внутри дома или под стенами) — ломом их не отбивают' : 'Здесь нет застывшего бетона — ведите лом по наплывам у фундамента и опалубок');
   }
 }

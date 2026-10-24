@@ -800,9 +800,9 @@ export class Terrain {
   // the ground levelled to y under what is laid on it (the geotextile): the loose cover gone,
   // the native ground cut or filled to it — over the samples where at(x, z) is true
   // set concrete chipped off (a crowbar, a breaker): within r of (x, z), up to `amount` deep this
-  // time; only where it is a thin crust (≤ maxH — what ran out of the forms, not a footing or a slab);
+  // time; only up to maxH thick and where ok(i, x, z) (what ran out of the forms, not a footing or a slab);
   // the chips are carried off, what lay on it falls onto the ground → { got (m³), thick (samples) }
-  chipConc(x, z, r, amount, maxH) {
+  chipConc(x, z, r, amount, maxH, ok = null) {
     const cx = this.toCellX(x), cz = this.toCellZ(z), n = Math.ceil(r / this.cell);
     const ix0 = Math.max(0, Math.floor(cx - n)), ix1 = Math.min(this.rx, Math.ceil(cx + n)), iz0 = Math.max(0, Math.floor(cz - n)), iz1 = Math.min(this.rz, Math.ceil(cz + n));
     let got = 0, thick = 0, any = false;
@@ -810,7 +810,7 @@ export class Terrain {
       const i = iz * this.nx + ix, c = this.conc[i];
       if (c <= 1e-6) continue;
       const d = Math.hypot(ix - cx, iz - cz) * this.cell / r; if (d > 1) continue;
-      if (c > maxH) { thick++; continue; }
+      if (c > maxH || (ok && !ok(i, this.toWorldX(ix), this.toWorldZ(iz)))) { thick++; continue; }
       const take = Math.min(c, amount * (1 - d * d * 0.6));
       this.conc[i] = c - take; got += take * this.cellArea; any = true;
       if (this.conc[i] < MM_CHIP) {
