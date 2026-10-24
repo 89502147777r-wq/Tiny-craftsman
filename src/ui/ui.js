@@ -1,4 +1,4 @@
-import { BUILD, MODEL_SCALE, MACHINES_ENABLED, MATERIALS, DELIVERY, PUMP, CONCRETE } from '../config.js';
+import { BUILD, MODEL_SCALE, MATERIALS, DELIVERY, PUMP, CONCRETE } from '../config.js';
 import { bbox, contains } from '../world/outlines.js';
 import { PANOS } from '../world/backdrop.js';
 import { DAY_LENGTHS, WEATHER } from '../world/sky.js';
@@ -72,17 +72,7 @@ const HINTS = {
     tie: 'Коснитесь контура с каркасом — свяжем все пересечения проволокой',
     delete: 'Коснитесь стержня, сетки или стульчика, чтобы убрать',
   },
-  machine: {
-    none: 'Выберите машину — вся техника стоит на стоянке у дальнего края',
-    excavator: 'Джойстик — ехать. Проведите пальцем по земле от дальней точки к кабине — экскаватор сделает копок',
-    exHold: 'Ковш полон. Коснитесь места в зоне вылета стрелы — повернёт и высыплет',
-    exBusy: 'Экскаватор работает… (отмена — стрелка назад)',
-    exManual: 'Левый: ←→ поворот, ↑↓ рукоять. Правый: ↑↓ стрела, ←→ ковш (как в кабине, ISO)',
-    exTravel: 'Левый джойстик — ехать на гусеницах. Правый: ↑↓ стрела, ←→ ковш',
-    tractor: 'Джойстик — ехать. «Ковш вниз» — срезает грунт по пути, «Высыпать» — опрокинуть ковш',
-    mixer: 'Джойстик — ехать. Барабан: замес или выгрузка, лоток — поворот',
-    pump: 'Джойстик — перекатить прицепной бетононасос',
-  },
+  machine: 'Погрузчик: ведите пальцем по участку — он подъедет, опустит ковш и пройдёт по линии, срезая бугры и засыпая ямы по проектной отметке (уровень большей части участка, с уклоном от дома). Дом, отмостку и бетон не трогает',
 };
 
 export class UI {
@@ -90,7 +80,6 @@ export class UI {
     this.app = app;
     this.statT = 0;
     $('build').textContent = `BUILD ${BUILD}`;
-    if (!MACHINES_ENABLED) document.querySelector('[data-tool="machine"]')?.setAttribute('hidden', '');
     document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => {
       app.setTool(b.dataset.tool);
       this.navPath = []; this.navLevel = this.chips().length ? 'chips' : 'tools';
@@ -153,8 +142,6 @@ export class UI {
     this.bindSettings();
     showTouches(app);
     this.bindQuiet();
-    this.bindJoystick();
-    this.bindJoystick('joy2', 'joy2-knob', (x, y) => this.app.machineTool.manual('r', x, y));
     this.refresh();
   }
 
@@ -183,27 +170,6 @@ export class UI {
       el.checked = key === 'touches' ? s[key] !== false : !!s[key];
       el.addEventListener('change', () => { s[key] = el.checked; app.applySettings(); });
     }
-  }
-
-  // virtual joystick for the machines (its own pointer, so the canvas gestures stay free)
-  bindJoystick(elId = 'joy', knobId = 'joy-knob', cb = (x, y) => this.app.machineTool.joystick(x, y)) {
-    const el = $(elId), knob = $(knobId);
-    let id = null;
-    const set = (e) => {
-      const r = el.getBoundingClientRect();
-      let x = (e.clientX - (r.left + r.width / 2)) / (r.width / 2), y = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
-      const l = Math.hypot(x, y);
-      if (l > 1) { x /= l; y /= l; }
-      knob.style.transform = `translate(${x * 34}px, ${y * 34}px)`;
-      // small dead zone, then a soft curve for fine control
-      const f = (v) => Math.sign(v) * Math.max(0, Math.abs(v) - 0.12) / 0.88;
-      cb(f(x) * Math.abs(f(x)) ** 0.5, f(y));
-    };
-    el.addEventListener('pointerdown', (e) => { id = e.pointerId; el.setPointerCapture(id); this.app.sfx.unlock(); set(e); });
-    el.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });
-    const end = (e) => { if (e.pointerId !== id) return; id = null; knob.style.transform = ''; cb(0, 0); };
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
   }
 
   // ---- groups → tools ----------------------------------------------------------------------------
@@ -531,12 +497,10 @@ export class UI {
       return modes.map(([k, l]) => C(l, b.mode === k, () => b.setMode(k), k === 'delete' ? 'warn' : ''));
     }
     if (t === 'machine') {
-      const mt = app.machineTool;
+      const s = app.settings, set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
       return [
-        C('Экскаватор', mt.active === 'excavator', () => mt.select('excavator')),
-        C('Трактор', mt.active === 'tractor', () => mt.select('tractor')),
-        C('Миксер', mt.active === 'mixer', () => mt.select('mixer')),
-        C('Бетононасос', mt.active === 'pump', () => mt.select('pump')),
+        C('Погрузчик · планировка', true, () => {}),
+        G('gslope', `Уклон от дома ${s.gradeSlope ?? 1.5} %`.replace('.', ','), [0, 1, 1.5, 2].map((v) => C(`${v} %`.replace('.', ','), (s.gradeSlope ?? 1.5) === v, () => set({ gradeSlope: v }))), 'Уклон'),
       ];
     }
     return [];
@@ -595,41 +559,6 @@ export class UI {
     if (w) { if (document.activeElement !== w) w.value = Math.round(o.width * 1000); $('p-width').textContent = `${(o.width * 1000).toFixed(0)} мм · ${(o.width * MODEL_SCALE * 100).toFixed(0)} см`; }
   }
 
-  renderMachineControls() {
-    const app = this.app, mt = app.machineTool;
-    const show = app.tool === 'machine' && !!mt.machine;
-    const m = mt.machine;
-    const manual = show && m.kind === 'excavator' && m.mode === 'manual';
-    $('joy').hidden = !show;
-    $('joy2').hidden = !manual;
-    const box = $('mbtns');
-    box.hidden = !show;
-    box.classList.toggle('up', manual);
-    if (!show) { this._mKey = null; return; }
-    let btns = [];
-    if (m.kind === 'excavator') {
-      btns = [['Авто', () => mt.setExMode('auto'), m.mode === 'auto'], ['Ручное', () => mt.setExMode('manual'), m.mode === 'manual']];
-      if (manual) btns.push([m.manualTravel ? 'Левый: ход' : 'Левый: стрела', () => mt.toggleTravel(), !!m.manualTravel]);
-    } else if (m.kind === 'tractor') {
-      btns = [['Ковш вниз', () => mt.loader('dig'), m.mode === 'dig'], ['Везти', () => mt.loader('carry'), m.mode === 'carry'],
-        ['Поднять', () => mt.loader('raise'), m.mode === 'raise'], ['Высыпать', () => mt.loader('dump'), m.mode === 'dump']];
-    } else if (m.kind === 'mixer') {
-      btns = [['Замес', () => mt.drum(1), m.drumSpeed > 0], ['Выгрузка', () => mt.drum(-1), m.drumSpeed < 0],
-        ['Лоток ←', () => mt.chute(0.35), false], ['Лоток →', () => mt.chute(-0.35), false]];
-    }
-    const key = JSON.stringify(btns.map((b) => [b[0], b[2]]));
-    if (key === this._mKey) return;
-    this._mKey = key;
-    box.innerHTML = '';
-    for (const [label, fn, on] of btns) {
-      const b = document.createElement('button');
-      b.textContent = label;
-      if (on) b.className = 'on';
-      b.addEventListener('click', () => { fn(); this.refresh(); });
-      box.appendChild(b);
-    }
-  }
-
   refresh() {
     const app = this.app;
     document.querySelectorAll('[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === app.tool));
@@ -652,23 +581,11 @@ export class UI {
     if (t === 'rebar') hint = HINTS.rebar[app.rebarTool.mode];
     app.wallTool?.syncTray();
     if (t === 'wall') hint = app.wallTool.mode === 'lay' ? (app.wallTool.status() || HINTS.wall.lay) : app.wallTool.busy || app.physJob ? '' : HINTS.wall[app.wallTool.mode];
-    if (t === 'machine') {
-      const mt = app.machineTool;
-      hint = HINTS.machine[mt.active || 'none'];
-      const ex = mt.machines.excavator;
-      if (mt.active === 'excavator' && ex) {
-        if (!ex.nodes) hint = 'Загружаю модель экскаватора…';
-        else if (ex.mode === 'manual') hint = ex.manualTravel ? HINTS.machine.exTravel : HINTS.machine.exManual;
-        else if (mt.excavatorState === 'hold') hint = HINTS.machine.exHold;
-        else if (mt.excavatorState !== 'idle') hint = HINTS.machine.exBusy;
-      }
-    }
+    if (t === 'machine') hint = app.machineTool.busy() ? '' : app.machineTool.loader?.loaded ? HINTS.machine : 'Погрузчик заезжает на участок…';
     if (this._hint !== hint) { $('hint').textContent = hint; this._hint = hint; }
-    $('hint').classList.toggle('top', t === 'machine');
     this.renderGroups();
     this.renderChips();
     this.renderParams();
-    this.renderMachineControls();
     this.renderFan();
     // quiet mode: an unfinished trench keeps its «Готово» visible
     $('ui').classList.toggle('pending-trench', !!app.markTool.trench);
