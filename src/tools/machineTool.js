@@ -5,6 +5,7 @@ import { Truck, TRUCK_LOAD } from '../world/truck.js';
 import { Grader } from './grade.js';
 import { houseOutside } from './pitchedTool.js';
 import { boxOf } from './freeBrick.js';
+import { makeLoadMaterial } from '../world/terrainMaterial.js';
 
 // The site machines, driven by the finger (no joysticks):
 //   grade – draw a line over the plot: the skid-steer loader drives to its start, lowers its bucket
@@ -50,6 +51,7 @@ export class MachineTool {
     const app = this.app, t = app.terrain, L = (this.loader = new Loader());
     return L.ready.then(() => {
       app.scene.add(L.root);
+      L.soil.material = makeLoadMaterial(app.terrainMat); L.soil.material.objScale.copy(L.soil.scale);
       const r = this.rec, x0 = t.toWorldX(0) + R(2.5), z0 = t.toWorldZ(t.rz) - R(2.5);
       L.place(t, r?.x ?? x0, r?.z ?? z0, r?.yaw ?? 0);
       app.ui?.refresh();
@@ -60,6 +62,7 @@ export class MachineTool {
     const app = this.app, T = (this.truck = new Truck());
     return T.ready.then(() => {
       app.scene.add(T.root);
+      T.soil.material = makeLoadMaterial(app.terrainMat); T.soil.material.objScale.set(T.soil.scale.x, 1, T.soil.scale.z); T.mix = [1, 0, 0, 0];
       const r = this.recOf('truck');
       if (r) { T.place(app.terrain, r.x, r.z, r.yaw); T.load = r.load || 0; T.root.visible = !r.away; } else T.root.visible = false;
     });
@@ -139,6 +142,7 @@ export class MachineTool {
     if (this.state === 'drive') { this._driveStep(dt); this.truck?.update(dt); return; }
     if (this.state === 'work') moved = this._gradeStep(dt);
     else if (this.state === 'haul') moved = this._haulStep(dt);
+    L.soil.material.setMix?.(this._mixW());
     L.update(dt, moved);
     this.truck?.update(dt);
   }
@@ -600,7 +604,7 @@ export class MachineTool {
       // over it, else it falls and lands where it falls
       if (L.tilt < -0.45 && g.load > 1e-9) this._pour(dt, e, f, hw);
       else if (this._intoTruck && g.load <= 1e-9) { this._intoTruck = false; app.ui?.toast(`В кузове ${(T.load * TRUCK_LOAD).toFixed(1).replace('.', ',')} из ${TRUCK_LOAD} м³`); }
-      L.soilColor(this._mix());
+      L.soil.material.setMix?.(this._mixW());
       L.load = Math.min(1, g.load / this.cap);
       app.sfx.scrapeLevel(0.15 + Math.min(0.5, Math.abs(this.v) / SPEED * 0.3 + L.load * 0.2));
       L.update(dt, moved);
@@ -657,7 +661,7 @@ export class MachineTool {
       const a = g.carry[m] * k; if (a <= 0) continue;
       g.carry[m] -= a;
       const vol = a * t.cellArea;
-      if (truck) { T.load = Math.min(1, T.load + vol * MODEL_SCALE ** 3 / TRUCK_LOAD); this._intoTruck = true; }
+      if (truck) { if (T.load < 0.02) T.mix = [0, 0, 0, 0]; T.mix[m] += vol; T.soil.material.setMix?.(T.mix); T.load = Math.min(1, T.load + vol * MODEL_SCALE ** 3 / TRUCK_LOAD); this._intoTruck = true; }
       for (let j = 0; j < N; j++) {
         const w = (r() * 2 - 1) * hw * 0.9, pos = new THREE.Vector3(e.x - f[1] * w + f[0] * R(0.05), e.y + R(0.05), e.z + f[0] * w + f[1] * R(0.05));
         const vel = new THREE.Vector3(f[0] * R(0.4) * (0.5 + r()), -R(0.3) * r(), f[1] * R(0.4) * (0.5 + r()));
@@ -665,6 +669,12 @@ export class MachineTool {
       }
     }
     if (g.load < 1e-7) g.carry.fill(0);
+  }
+  // the shares of the materials in the bucket (soil, sand, g5, g20)
+  _mixW() {
+    const c = this.grader.carry, tot = c[0] + c[1] + c[2] + c[3], w = (this._mw ||= [1, 0, 0, 0]);
+    if (tot > 0) for (let k = 0; k < 4; k++) w[k] = c[k] / tot;
+    return w;
   }
   // the colour of what is in the bucket (the materials mixed as they are in it)
   _mix() {
