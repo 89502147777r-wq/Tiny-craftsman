@@ -1,261 +1,161 @@
 import * as THREE from 'three';
-import { Excavator } from '../world/machines/excavator.js';
-import { Tractor, MixerTruck, ConcretePump, SiteMixer } from '../world/machines/vehicles.js';
-import { PARKING, MACHINES_ENABLED } from '../config.js';
-import { R } from '../world/machines/parts.js';
+import { MODEL_SCALE } from '../config.js';
+import { Loader } from '../world/loader.js';
+import { Grader } from './grade.js';
+import { houseOutside } from './pitchedTool.js';
 
-const CLASSES = { excavator: Excavator, tractor: Tractor, mixer: MixerTruck, pump: ConcretePump, siteMixer: SiteMixer };
-export const DRIVABLE = ['excavator', 'tractor', 'mixer', 'pump'];
+// The site machines, driven by the finger (no joysticks):
+//   loader, grade – draw a line over the plot: the skid-steer loader drives to its start, lowers
+//                   its bucket and goes along it; the bucket's edge is held at the design level —
+//                   what stands over it is cut off into the bucket, the hollows are filled from it
+//                   (grade.js); at the end what is left in the bucket is spread there. Another line
+//                   while it works: it goes on along that one too.
+// Each pass (down to the loader standing still) is one journal action; the loader's place is a
+// record (`vehicle`), so undo puts it back where it was.
+const R = (m) => m / MODEL_SCALE;
+const SPEED = R(2.2), TURN = 1.4;                 // m/s, rad/s (a skid steer turns on the spot)
+const BUCKET = 0.45;                               // m³ the bucket holds
 
-// Machines on the plot. They stand parked along the far edge; the chosen one
-// is driven with the left joystick.
-//   excavator, auto:   finger stroke on the ground = one dig cycle along it
-//                      (reach out → teeth in → drag to the cab → curl → lift),
-//                      tap while the bucket is full = swing there and dump
-//   excavator, manual: two ISO joysticks like in the cab
-//   tractor:           loader buttons; the bucket cuts what its edge meets
-//   truck mixer:       drum mixing / discharge, chute swing
-// Every dig cycle and every drive (first input → standstill) is one journal action.
 export class MachineTool {
   constructor(app) {
     this.app = app;
-    this.machines = {};      // kind → Machine
-    this.active = null;      // kind
-    this.idle = 0;
-    this.syncing = false;
-    this.stroke = null;      // finger stroke for the excavator
-    app.objects.on((id, rec) => {
-      if (this.syncing) return;
-      if (rec?.type === 'machine') { if (MACHINES_ENABLED) this._ensure(rec.kind, rec.id).apply(rec); }
-      else if (!rec) for (const [k, m] of Object.entries(this.machines)) if (m.id === id) this._despawn(k);
+    this.grader = new Grader(app);
+    this.loader = null;
+    this.state = 'idle';     // idle | work
+    this.path = [];
+    this.finger = false;
+    app.objects.on((id, rec) => { if (rec?.type === 'vehicle' && rec.kind === 'loader' && this.loader?.loaded && this.state === 'idle') this.loader.place(app.terrain, rec.x, rec.z, rec.yaw); });
+  }
+  get machine() { return this.loader; }
+  busy() { return this.state !== 'idle'; }
+  get rec() { return this.app.objects.all('vehicle').find((r) => r.kind === 'loader') || null; }
+
+  // the loader on the plot: where it was left, else parked at the near left corner
+  ensure() {
+    if (this.loader) return this.loader.ready;
+    const app = this.app, t = app.terrain, L = (this.loader = new Loader());
+    return L.ready.then(() => {
+      app.scene.add(L.root);
+      const r = this.rec, x0 = t.toWorldX(0) + R(2.5), z0 = t.toWorldZ(t.rz) - R(2.5);
+      L.place(t, r?.x ?? x0, r?.z ?? z0, r?.yaw ?? 0);
+      app.ui?.refresh();
     });
   }
+  // the tool chosen / put away: the loader is shown while the machines are in use, and stays parked
+  show(on) { if (on) this.ensure(); }
 
-  get machine() { return this.active ? this.machines[this.active] : null; }
-
-  _ensure(kind, id) {
-    let m = this.machines[kind];
-    if (!m) {
-      m = new CLASSES[kind](this.app);
-      this.machines[kind] = m;
-      this.app.scene.add(m.root);
-      // the model arrives later: re-apply the stored pose once it is built
-      m.ready.then(() => {
-        if (this.machines[kind] !== m) return;
-        const r = m.id && this.app.objects.get(m.id);
-        if (r) m.apply(r);
-        this.app.ui?.refresh();
-      }).catch((e) => console.error('machine model', kind, e));
-    }
-    if (id) m.id = id;
-    return m;
-  }
-
-  _despawn(kind) {
-    const m = this.machines[kind];
-    if (!m) return;
-    this.app.scene.remove(m.root);
-    delete this.machines[kind];
-    if (this.active === kind) this.active = null;
-  }
-
-  // records for the parked fleet of a fresh plot
-  static parkedRecords() {
-    return Object.entries(PARKING).map(([kind, [x, z, yaw]]) => ({ type: 'machine', kind, x, z, yaw, load: 0 }));
-  }
-
-  select(kind) {
-    const { app } = this;
-    // the machine left behind stops where it is (and is saved there)
-    const prev = this.machine;
-    if (prev) { prev.throttle = 0; prev.steer = 0; prev.v = 0; prev.yawRate = 0; }
-    if (this._driving()) app.journal.commit(app.clock);
-    this.active = kind;
-    if (!this.machines[kind] || !this.machines[kind].id) {
-      const [x, z, yaw] = PARKING[kind];
-      app.journal.act('machine-add', { kind }, app.clock, () => app.objects.add({ type: 'machine', kind, x, z, yaw, load: 0 }));
-    }
-    const m = this.machine;
-    app.focusPoint = null;
-    app.rig.lookAtPoint(new THREE.Vector3(m.x, m.y + R(1.2), m.z));
-    if (app.rig.goal.dist > 1.1) app.rig.goal.dist = 0.75;
-    app.ui.refresh();
-  }
-
-  // ---- input ---------------------------------------------------------------------------------
-  joystick(x, y) {
-    const m = this.machine;
-    if (!m) return;
-    if (m.kind === 'excavator' && m.mode === 'manual') { this.manual('l', x, y); return; }
-    if ((x || y) && !this._driving()) this._beginDrive();
-    m.throttle = -y; m.steer = x;
-    this.idle = 0;
-  }
-
-  // ISO manual control: 'l' / 'r' stick
-  manual(side, x, y) {
-    const m = this.machines.excavator;
-    if (!m || this.active !== 'excavator') return;
-    if ((x || y) && !this._driving()) this._beginDrive();
-    if (side === 'l') { m.manual.lx = x; m.manual.ly = y; } else { m.manual.rx = x; m.manual.ry = y; }
-    this.idle = 0;
-  }
-
-  setExMode(mode) {
-    const m = this.machines.excavator;
-    if (!m || m.busy) return;
-    m.mode = mode;
-    m.manual = { lx: 0, ly: 0, rx: 0, ry: 0 };
-    this.app.ui.refresh();
-  }
-
-  toggleTravel() {
-    const m = this.machines.excavator;
-    if (!m) return;
-    m.manualTravel = !m.manualTravel;
-    m.manual.lx = m.manual.ly = 0;
-    this.app.ui.refresh();
-  }
-
-  loader(mode) {
-    const m = this.machine;
-    if (!m || m.kind !== 'tractor') return;
-    if (!this._driving()) this._beginDrive({ loader: mode });
-    m.setBucket(mode);
-    this.idle = 0;
-    this.app.ui.refresh();
-  }
-
-  drum(dir) {
-    const m = this.machine;
-    if (!m || m.kind !== 'mixer') return;
-    m.drumSpeed = dir > 0 ? 0.9 : -1.6;
-    this.app.ui.refresh();
-  }
-
-  chute(d) {
-    const m = this.machine;
-    if (!m || m.kind !== 'mixer') return;
-    if (!this._driving()) this._beginDrive({ chute: true });
-    m.t.chute = Math.max(-1.4, Math.min(1.4, m.t.chute + d));
-    this.idle = 0;
-    this.app.ui.refresh();
-  }
-
-  _beginDrive(meta = {}) { this.app.journal.begin('drive', { kind: this.active, ...meta }, this.app.clock); }
-  _driving() { return this.app.journal.pending?.type === 'drive'; }
-  _digging() { return this.app.journal.pending?.type === 'excavate'; }
-
-  // ---- ground gestures: the excavator in auto mode digs along a finger stroke ------------------
   down(p) {
-    const m = this.machines.excavator;
-    if (this.active !== 'excavator' || !m || !m.nodes || m.mode !== 'auto') return false;
-    if (m.cycle && m.cycle.phase !== 'hold') return false;  // busy: the finger orbits instead
-    this.stroke = { a: p.clone(), b: p.clone(), t0: performance.now() };
-    this.app.ui.showMeasure?.('');
+    const app = this.app;
+    if (!this.loader?.loaded) { this.ensure(); app.ui?.toast('Погрузчик заезжает на участок…'); return true; }
+    if (!app.terrain.inside(p.x, p.z)) return false;
+    if (this.state === 'idle') {
+      app.journal.begin('grade', { machine: 'loader' }, app.clock);
+      this.grader.design(app.settings.gradeSlope ?? 1.5);
+      this.out = houseOutside(app);
+      this.start = { x: this.loader.x, z: this.loader.z, yaw: this.loader.yaw };
+      this.state = 'work'; this.cutting = false; this.moved = 0; this._said = false;
+      this.path = [];
+      app.sfx.scrapeStart(); app.sfx.scrapeLevel(0.3);
+    }
+    this.finger = true;
+    this._add(p);
     return true;
   }
+  _add(p) {
+    const q = this.path.at(-1);
+    if (q && Math.hypot(p.x - q.x, p.z - q.z) < R(0.25)) return;
+    if (this.out && this.out(p.x, p.z) !== true) return;   // (not into a house)
+    this.path.push({ x: p.x, z: p.z });
+  }
+  move(p) { if (this.state === 'work' && this.finger) this._add(p); }
+  up() { this.finger = false; }
+  interrupt() { this.finger = false; }
 
-  move(p) {
-    if (!this.stroke) return;
-    this.stroke.b.copy(p);
-    const d = Math.hypot(p.x - this.stroke.a.x, p.z - this.stroke.a.z) * 12;
-    this.app.ui.showMeasure?.(`${d.toFixed(1)} м`);
+  // the bucket's arm set so its edge is at height y (bisection over the lift)
+  _armFor(y) {
+    const L = this.loader, e = new THREE.Vector3();
+    let lo = -0.35, hi = 1.0;
+    const keep = L.arm;
+    for (let k = 0; k < 10; k++) { const m = (lo + hi) / 2; L.arm = m; L.update(0); L.edgeWorld(e); if (e.y > y) hi = m; else lo = m; }
+    L.arm = keep; L.update(0);
+    return (lo + hi) / 2;
   }
 
-  up(p) {
-    const s = this.stroke, m = this.machines.excavator;
-    this.stroke = null;
-    this.app.ui.hideMeasure?.();
-    if (!s || !m) return;
-    if (p) s.b.copy(p);
-    const { app } = this;
-    if (m.cycle && m.cycle.phase === 'hold') { m.dumpAt(s.b); app.ui.refresh(); return; }
-    if (this._driving()) app.journal.commit(app.clock);
-    app.journal.begin('excavate', { a: [+s.a.x.toFixed(4), +s.a.z.toFixed(4)], b: [+s.b.x.toFixed(4), +s.b.z.toFixed(4)] }, app.clock);
-    // stroke drawn towards the cab: a = far end; drawn away from it: reverse
-    const c = m.slewCenter();
-    const da = Math.hypot(s.a.x - c.x, s.a.z - c.z), db = Math.hypot(s.b.x - c.x, s.b.z - c.z);
-    const [far, near] = da >= db ? [s.a, s.b] : [s.b, s.a];
-    m.startDig(far, near, R(0.25));
-    this.settle = 0;
-    app.ui.refresh();
-  }
-
-  interrupt() { this.stroke = null; this.app.ui.hideMeasure?.(); }
-
-  // undo during a cycle: stop and roll it back
-  abort() {
-    const m = this.machines.excavator;
-    if (!this._digging()) return false;
-    if (m) { m.cycle = null; m.bucketPhys.load = 0; m.travelPose(); }
-    this.app.particles.items.length = 0;
-    this.app.particles.mesh.count = 0;
-    this.app.journal.cancel();
-    return true;
-  }
-
-  // finish what is running (tool switch / redo): the soil drops where it is
-  finish() {
-    const m = this.machines.excavator;
-    if (m && m.cycle) {
-      if (m.bucketPhys.load > 0) {
-        const tip = m.tipWorld();
-        this.app.terrain.deposit(tip.x, tip.z, m.bucketPhys.load, R(0.4));
-        m.bucketPhys.load = 0;
-      }
-      m.cycle = null;
-      m.travelPose();
-      m.applyJoints(1, true);
-    }
-    for (const k of Object.keys(this.machines)) { const mm = this.machines[k]; mm.throttle = 0; mm.steer = 0; mm.v = 0; if (mm.manual) mm.manual = { lx: 0, ly: 0, rx: 0, ry: 0 }; }
-    if (this._digging() || this._driving()) {
-      this.app.particles.flush();
-      for (let i = 0; i < 3000 && this.app.terrain.active; i++) this.app.terrain.relax(1);
-      this.app.journal.commit(this.app.clock);
-    }
-  }
-
-  // ---- per frame -------------------------------------------------------------------------------
   update(dt) {
-    for (const m of Object.values(this.machines)) m.update(dt);
-    const { app } = this;
-    const settled = !app.terrain.active && !app.particles.busy;
-    if (this._digging()) {
-      const m = this.machines.excavator;
-      if (!m || !m.cycle) {
-        this.settle = settled ? (this.settle || 0) + dt : 0;
-        if (this.settle > 0.4) app.journal.commit(app.clock);
-      }
+    if (!this.loader && this.rec) this.ensure();   // (a project with the loader on its plot)
+    const L = this.loader;
+    if (!L?.loaded) return;
+    let moved = 0;
+    if (this.state === 'work') {
+      const app = this.app, t = app.terrain, g = this.grader, cap = R(1) ** 3 * BUCKET / t.cellArea;
+      const tg = this.path[0];
+      if (tg) {
+        const dx = tg.x - L.x, dz = tg.z - L.z, d = Math.hypot(dx, dz);
+        if (d < R(0.15)) { this.path.shift(); this.cutting = true; }
+        else {
+          let want = Math.atan2(-dz, dx), err = want - L.yaw;
+          while (err > Math.PI) err -= Math.PI * 2; while (err < -Math.PI) err += Math.PI * 2;
+          const turn = Math.sign(err) * Math.min(Math.abs(err), TURN * dt);
+          let yaw = L.yaw + turn, step = 0;
+          if (Math.abs(err) < 0.6) step = Math.min(d, SPEED * dt * (1 - Math.abs(err) / 0.6 * 0.7));
+          const fx = Math.cos(yaw), fz = -Math.sin(yaw);
+          // (a house in the way — under the bucket or the machine: that point is given up)
+          const nx = L.x + fx * step, nz = L.z + fz * step, clear = (x, z) => !this.out || this.out(x, z) === true;
+          const at = (a, b) => clear(nx + fx * R(a) - fz * R(b), nz + fz * R(a) + fx * R(b));   // (a: ahead, b: to the side)
+          if (step > 0 && !(at(0, 0) && at(2.0, 0) && at(2.0, 0.95) && at(2.0, -0.95) && at(0, 1) && at(0, -1) && at(-1.5, 0.9) && at(-1.5, -0.9))) {
+            this.path.shift(); if (!this._said) { this._said = true; app.ui?.toast('Дом на пути — погрузчик туда не едет, ведите в обход'); }
+            step = 0;
+          }
+          L.place(t, L.x + fx * step, L.z + fz * step, yaw);
+          moved = step;
+          if (this.cutting && step > 0) {
+            // (the edge along the way it moved: the cut and the fill under it, in short steps)
+            const e = L.edgeWorld(new THREE.Vector3()), n = Math.max(1, Math.ceil(step / (t.cell * 0.7)));
+            // (a full bucket goes on cutting: what does not go in is pushed on ahead of it, a windrow)
+            for (let k = n - 1; k >= 0; k--) g.blade(e.x - fx * step * k / n, e.z - fz * step * k / n, fx, fz, L.bucketW / 2);
+            this.moved += step;
+          }
+        }
+      } else if (!this.finger) this.finish();
+      // the bucket: down on the level while it cuts, carried up off the ground on the way there
+      const e = L.edgeWorld(new THREE.Vector3());
+      L.armGoal = this.cutting ? this._armFor(g.target(e.x, e.z)) : 0.25;
+      L.tiltGoal = this.cutting ? 0 : 0.35;
+      L.load = Math.min(1, g.load / cap);
+      app.sfx.scrapeLevel(0.25 + 0.4 * L.load);
     }
-    // close the drive action once everything has come to rest
-    if (this._driving()) {
-      const m = this.machine;
-      const mi = m?.manual;
-      const input = m && (Math.abs(m.throttle) > 1e-3 || Math.abs(m.steer) > 1e-3 || (mi && (mi.lx || mi.ly || mi.rx || mi.ry)));
-      const moving = m && (Math.abs(m.v) > 1e-4 || (m.jointsReached && !m.jointsReached(0.01)) || m.mode === 'dump' || (m.bucketPhys && m.bucketPhys.spilling > 0));
-      this.idle = !input && !moving && settled ? this.idle + dt : 0;
-      if (this.idle > 0.6) app.journal.commit(app.clock);
-    }
+    L.update(dt, moved);
   }
 
-  // write live machine poses into the object store (called before each commit)
-  sync() {
-    this.syncing = true;
-    try {
-      for (const m of Object.values(this.machines)) {
-        if (!m.id || !this.app.objects.get(m.id)) continue;
-        const r = m.record();
-        const cur = this.app.objects.get(m.id);
-        if (JSON.stringify({ ...cur, id: 0 }) !== JSON.stringify({ ...cur, ...r, id: 0 })) this.app.objects.update(m.id, r);
-      }
-    } finally { this.syncing = false; }
+  // the pass is over: what is left in the bucket spread, the loader's place recorded, committed
+  finish() {
+    const app = this.app, L = this.loader, t = app.terrain;
+    if (this.state !== 'work') return;
+    this.state = 'idle'; this.path = []; this.finger = false;
+    app.sfx.scrapeStop();
+    const e = L.edgeWorld(new THREE.Vector3()), fx = Math.cos(L.yaw), fz = -Math.sin(L.yaw);
+    this.grader.drop(e.x, e.z, fx, fz, L.bucketW / 2);
+    for (let i = 0; i < 40000 && t.active; i++) t.relax(1);
+    L.load = 0; L.armGoal = 0.25; L.tiltGoal = 0.35;
+    const pose = { x: +L.x.toFixed(5), z: +L.z.toFixed(5), yaw: +L.yaw.toFixed(4) }, r = this.rec;
+    if (r) app.objects.update(r.id, pose); else app.objects.add({ type: 'vehicle', kind: 'loader', ...pose });
+    app.journal.commit(app.clock);
+    app.ui?.toast(this.moved > R(0.5) ? 'Погрузчик выровнял полосу по проектной отметке — бугры срезаны, ямы засыпаны, уклон от дома' : 'Погрузчик на месте — ведите пальцем по участку, где ровнять');
+    app.ui?.refresh();
   }
-
-  get excavatorState() {
-    const m = this.machines.excavator;
-    return m?.cycle ? m.cycle.phase : 'idle';
+  // undo while it works: everything it did is taken back, it goes back where it stood
+  abort() {
+    if (this.state !== 'work') return false;
+    const app = this.app, L = this.loader;
+    this.state = 'idle'; this.path = []; this.finger = false;
+    app.sfx.scrapeStop();
+    this.grader.carry.fill(0); L.load = 0;
+    app.journal.cancel();
+    L.place(app.terrain, this.start.x, this.start.z, this.start.yaw);
+    app.ui?.refresh();
+    return true;
   }
-
-  busy() { return this._driving() || this._digging() || !!this.stroke; }
+  sync() {}
+  // where the camera's focus goes while it works
+  focus(out) { const L = this.loader; return L?.loaded ? out.set(L.x, L.y + R(1), L.z) : null; }
 }

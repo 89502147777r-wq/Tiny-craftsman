@@ -52,6 +52,9 @@ export class Loader {
     // the cutting edge: the front bottom of the bucket, in the bucket pivot's frame
     { const bb = new THREE.Box3().setFromObject(bucket), e = new THREE.Vector3(bb.max.x, bb.min.y, (bb.min.z + bb.max.z) / 2); this.edge = this.bucketP.worldToLocal(e); this.bucketW = bb.max.z - bb.min.z; this.bucketBox = bb.clone(); }
     this.wheels = wheels.map((w) => { const b = new THREE.Box3().setFromObject(w), c = b.getCenter(new THREE.Vector3()); return { g: pivot(w, c), r: (b.max.y - b.min.y) / 2, at: holder.worldToLocal(c.clone()) }; });
+    // (it stands on its wheels: the bucket in the model's rest pose may hang lower)
+    const low = Math.min(...this.wheels.map((w) => w.at.y - w.r));
+    holder.position.y -= low; for (const w of this.wheels) w.at.y -= low;
     // the soil in the bucket: a heap shown when it carries
     const bb = this.bucketBox, inB = this.bucketP.worldToLocal(bb.getCenter(new THREE.Vector3()));
     this.soil = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x7a5a3c, roughness: 1 }));

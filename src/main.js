@@ -299,16 +299,7 @@ function trackRow(clock) {
   const c = app.camera, s = app.shovel;
   const p = c.position, q = c.quaternion, sp = s.root.position, sq = s.root.quaternion;
   const row = [clock, p.x, p.y, p.z, q.x, q.y, q.z, q.w, c.fov, app.rig.focus, sp.x, sp.y, sp.z, sq.x, sq.y, sq.z, sq.w, s.fill, s.type === 'scoop' ? 1 : 0];
-  const M = app.machineTool.machines, ex = M.excavator, tr = M.tractor, mx = M.mixer, pu = M.pump;
-  const pose = (m) => [1, m.x, m.y, m.z, m.yaw, m.pitch, m.roll];
-  if (ex) row.push(...pose(ex), ex.j.slew, ex.j.boom, ex.j.stick, ex.j.bucket, ex.trackPhase[0], ex.trackPhase[1], ex.bucketPhys ? ex.bucketPhys.fill : 0);
-  else row.push(...new Array(14).fill(0));
-  if (tr) row.push(...pose(tr), tr.steerAngle, tr.j.lift, tr.j.tilt, tr.wheelRot, tr.load);
-  else row.push(...new Array(12).fill(0));
-  if (mx) row.push(...pose(mx), mx.steerAngle, mx.wheelRot, mx.drumSpin ? mx.drumSpin.rotation.y : 0, mx.chute);
-  else row.push(...new Array(11).fill(0));
-  if (pu) row.push(...pose(pu));
-  else row.push(...new Array(7).fill(0));
+  row.push(...new Array(44).fill(0));   // (the columns of the old machines, kept: the recorded tracks keep their layout)
   const rp = app.rake.root.position, rq = app.rake.root.quaternion;
   row.push(rp.x, rp.y, rp.z, rq.x, rq.y, rq.z, rq.w, app.rake.lift);
   return row;
@@ -323,10 +314,8 @@ function updateFocus() {
   else if (app.tool === 'rake' && app.rakeTool.busy) _f.copy(app.rake.root.position);
   else if (app.materialTools[app.tool]?.busy) _f.copy(app.materialTools[app.tool].p);
   else if (app.concreteTools[app.tool]?.busy) _f.copy(app.concreteGear.pos);
-  else if (app.tool === 'machine' && mt.machine) {
-    if (mt.active === 'excavator' && mt.machine.busy) mt.machine.bucketWorld(_f);
-    else _f.copy(mt.machine.root.position).setY(mt.machine.y + 0.08);
-  } else if (app.focusPoint) _f.copy(app.focusPoint);
+  else if (app.tool === 'machine' && mt.focus(_f)) { /* the loader */ }
+  else if (app.focusPoint) _f.copy(app.focusPoint);
   else _f.copy(app.rig.target);
   cam.getWorldDirection(_fwd);
   app.rig.focusGoal = Math.max(0.03, _f.sub(cam.position).dot(_fwd));
@@ -392,7 +381,7 @@ function setTool(t) {
     // the rake is put down along the front edge: tines in the soil, handle on the ground
     app.rakeTool.putDown();
   }
-  if (t === 'machine' && !app.machineTool.active) app.machineTool.active = 'excavator';
+  if (t === 'machine') app.machineTool.show(true);
   // the next course of a wall (ghosts, cord) only while working on walls
   if (t === 'wall') app.wallTool._focus(); else { app.wallView.focus = null; app.wallView.marks = false; app.wallView.dirty = true; }
   app.ui?.refresh();
@@ -482,7 +471,6 @@ function freshPlot() {
   app.terrain.active = null;
   app.objects.load({ nextId: 1, items: [] });
   for (const o of DEFAULT_OUTLINES) app.objects.add({ type: 'outline', ...o, id: undefined });
-  if (MACHINES_ENABLED) for (const r of MachineTool.parkedRecords()) app.objects.add(r);
 }
 
 function buildProject() {
@@ -635,7 +623,6 @@ function migrateGrid(p) {
     const r = p.mark || DEFAULT_OUTLINES[0];
     app.objects.add({ type: 'outline', kind: 'rect', x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, depth: p.settings?.target || 15 });
   }
-  if (MACHINES_ENABLED && (!app.migratedSame || !p.objects?.items)) for (const r of MachineTool.parkedRecords()) app.objects.add(r);
 }
 
 let saveTimer = 0;

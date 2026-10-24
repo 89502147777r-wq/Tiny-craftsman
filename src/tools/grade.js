@@ -67,7 +67,7 @@ export class Grader {
     if (x1 >= 0) t._touch(x0, z0, x1, z1);
   }
   // what is still carried, let go of at (x, z) going (ux, uz): into the hollows round it (nearest
-  // first, 1,5 m), then a low wedge ahead (≤ 40 mm over the level, out to 2 m), the rest a heap
+  // first, 1,5 m), then a low wedge ahead (≤ 40 mm over the level, out to 2 m), the rest a heap there
   drop(x, z, ux, uz, hw) {
     const t = this.app.terrain, c = this.carry;
     if (this.load <= 0) return;
@@ -85,7 +85,8 @@ export class Grader {
       const i = t.index(px, pz); if (!this.free(i, px, pz)) continue;
       const room = this.target(px, pz) + MM(40) * (1 - s / MM(2000)) - (t.nat[i] + t.loose[i]); if (room > 0) this.fill(i, room);
     }
-    for (const m of [0, 1, 2, 3]) if (c[m] > 0) { t.deposit(x + ux * MM(2100), z + uz * MM(2100), c[m] * t.cellArea, MM(400), 0, m); c[m] = 0; }
+    // (the rest: a heap where it stopped, just ahead of the blade — for the truck to take away)
+    for (const m of [0, 1, 2, 3]) if (c[m] > 0) { t.deposit(x + ux * MM(500), z + uz * MM(500), c[m] * t.cellArea, MM(500), 0, m); c[m] = 0; }
     const e = n + Math.ceil(MM(2600) / t.cell);
     t._touch(Math.max(0, ci - e), Math.max(0, cj - e), Math.min(t.rx, ci + e), Math.min(t.rz, cj + e));
   }

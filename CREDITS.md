@@ -32,18 +32,15 @@
 
 ## 3D-модели техники (Sketchfab, CC BY 4.0)
 
-Модели взяты из открытого набора Objaverse (только файлы с лицензией CC BY 4.0) и **изменены**: оптимизированы
-glTF-Transform (текстуры WebP ≤ 512 px, геометрия meshopt), приведены к масштабу 1:12; у КАМАЗа скрыт кузов-тент,
-вместо него кодом добавлены барабан миксера, лоток, бак, лестница и рама; к трактору кодом добавлен фронтальный погрузчик;
-у экскаватора детали стрелы, рукояти и ковша управляются кинематикой игры; ведро масштабировано до Ø 300 мм; кельма, киянка и лопаты (скачаны с Sketchfab) ужаты так же и приведены к реальным размерам.
+Модели **изменены**: оптимизированы glTF-Transform (текстуры WebP ≤ 1024 px, геометрия meshopt, упрощение сетки),
+приведены к масштабу игры (тот же, что у газоблока); у мини-погрузчика стрела и ковш поворачиваются на шарнирах,
+найденных по геометрии; ведро масштабировано до Ø 300 мм; кельма, киянка и лопаты (скачаны с Sketchfab) ужаты так же
+и приведены к реальным размерам.
 
 | Файл | Модель | Автор | Лицензия | Источник |
 |---|---|---|---|---|
-| `assets/models/excavator.glb` | Excavator animation | tori1243 | CC BY 4.0 | https://sketchfab.com/3d-models/940258497f9f4eba9710bb359a9e777e |
-| `assets/models/kamaz.glb` — шасси автобетоносмесителя | KAMAZ 5330 | davidbroutian | CC BY 4.0 | https://sketchfab.com/3d-models/e86a62f4b8c84e03b2c6e32c51474bc7 |
-| `assets/models/tractor.glb` | Tractor | le0tard | CC BY 4.0 | https://sketchfab.com/3d-models/278fc1e0516c401eba358d3aa2e55635 |
-| `assets/models/concrete-pump.glb` | Concrete pump | rhymone | CC BY 4.0 | https://sketchfab.com/3d-models/8e883fffc1b14e089304c41c5d9b484a |
-| `assets/models/site-mixer.glb` | Hormigonera | rafarelo | CC BY 4.0 | https://sketchfab.com/3d-models/7eb177b8abec4735b6644d74bb10ba82 |
+| `assets/models/loader.glb` — мини-погрузчик | Skid Steer Loader | jeandiz | CC BY 4.0 | https://sketchfab.com/3d-models/91948c1f514141fc82fee40ea56cc8df |
+| `assets/models/canter.glb` — бортовой грузовик-самосвал | 1975 FUSO Canter T200 | thejinjinjin | CC BY 4.0 | https://sketchfab.com/3d-models/4fe39804350e463795bf5404aef22138 |
 | `assets/models/bucket.glb` — ведро для бетона | Plasticbucket | Alexander.Treiner | CC BY 4.0 | https://sketchfab.com/3d-models/10d60b25c7ac4c0c9de056686ed01002 |
 | `assets/models/trowel.glb` — кельма каменщика | Trowel | vcotta | CC BY 4.0 | https://sketchfab.com/3d-models/b22da70bd64a49539d6226950c5355ca |
 | `assets/models/mallet.glb` — резиновая киянка | Rubber Mallet Photoscan | evan4129 | CC BY 4.0 | https://sketchfab.com/3d-models/1179b853a6ef40cca6a4f0893a85c1ef |

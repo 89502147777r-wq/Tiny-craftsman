@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:10.47 (860 mm = 9 m).
-export const BUILD = 156;
+export const BUILD = 157;
 export const STAGE = 3;
 export const MODEL_SCALE = 9000 / 860;   // 1:10.47 — 860 mm of the model is 9 m
 // how much finer everything is than at the old 1:3.5 (texture sizes of stones, pores …)
@@ -117,7 +117,6 @@ export const DEFAULT_SETTINGS = {
 export const DEFAULT_OUTLINES = [{ id: 1, kind: 'rect', x0: -0.43, z0: -0.33, x1: 0.43, z1: 0.53, depth: 75 }];   // a 9 × 9 m house
 
 // where the machines wait, along the back edge of the plot (x, z, yaw)
-export const PARKING = { excavator: [-0.85, -0.68, -Math.PI / 2], tractor: [-0.42, -0.7, -Math.PI / 2], mixer: [0.2, -0.72, 0], pump: [0.82, -0.7, 0], siteMixer: [1.02, -0.3, 0.4] };
 
 // Construction materials, real sizes converted to the model.
 export const MAT = {
