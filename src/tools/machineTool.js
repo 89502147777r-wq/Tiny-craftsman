@@ -646,8 +646,10 @@ export class MachineTool {
       // the skid steer: on the spot or on, the left stick forward / round; the right one the arms (up /
       // down) and the bucket (left curls it back, right tips it)
       // (heavy going: cutting and pushing with a full bucket it goes slower — down to half its speed)
-      const drag = this._drag ?? 0;
-      this.v += (-ly * SPEED * (1 - 0.5 * drag) - this.v) * (1 - Math.exp(-dt * 4));
+      // (and too much in front of it — a big windrow, a full bucket, firm ground — its wheels lose their
+      // grip: it goes slower and slower, stops, its wheels spinning on the spot, digging in)
+      const drag = this._drag ?? 0, slip = ly < 0 ? (this._slip ?? 0) : 0;
+      this.v += (-ly * SPEED * (1 - 0.5 * drag) * (1 - slip) - this.v) * (1 - Math.exp(-dt * 4));
       if (Math.abs(this.v) < R(0.02) && !ly) this.v = 0;
       const yaw = L.yaw - lx * TURN * dt, f = [Math.cos(yaw), -Math.sin(yaw)];
       const nx = L.x + f[0] * this.v * dt, nz = L.z + f[1] * this.v * dt;
@@ -663,6 +665,14 @@ export class MachineTool {
       this.armSet = Math.max(-0.35, Math.min(1.0, (this.armSet ?? L.armGoal) - ry * 0.7 * dt));
       L.armGoal = this.armSet;
       L.tiltGoal = Math.max(-1.0, Math.min(0.6, L.tiltGoal - rx * 1.4 * dt));
+      // what the bucket holds as it is tipped: curled back all of it (heaped); level ≈ 80 % (the heap on
+      // top runs off); nose down less and less — and a jerk of the arms or a bump shakes some more off
+      {
+        const tl = L.tilt, hold = tl >= 0.4 ? 1 : tl >= 0 ? 0.8 + 0.2 * tl / 0.4 : Math.max(0.15, 0.8 + tl / 0.45 * 0.65);
+        const pv = this._prevPose || [L.arm, L.pitch, L.roll], jerk = Math.abs(L.arm - pv[0]) / Math.max(dt, 1e-3) > 0.5 ? 0.05 : 0, bump = (Math.abs(L.pitch - pv[1]) + Math.abs(L.roll - pv[2])) / Math.max(dt, 1e-3) > 0.35 ? 0.06 : 0;
+        this._prevPose = [L.arm, L.pitch, L.roll];
+        this.capNow = this.cap * Math.max(0.1, hold - jerk - bump);
+      }
       // the arms hold where they are set: going on, the edge goes at that height and takes all over it
       // — no deeper unless lowered. Lowered, the bucket lies on what is under it — the ground, or a
       // heap's top: it sinks a little into loose material (up to ≈8 cm), its nose tipped down cuts a
@@ -713,17 +723,19 @@ export class MachineTool {
         const n = Math.max(1, Math.ceil(moved / (t.cell * 0.7)));
         for (let k = n - 1; k >= 0; k--) {
           const bx = e.x - f[0] * moved * k / n, bz = e.z - f[1] * moved * k / n;
-            g.blade(bx, bz, f[0], f[1], hw, this.cap, true);
-          if (g.load >= this.cap * 0.98) this._bulldoze(bx, bz, f, hw, cutY);
+            g.blade(bx, bz, f[0], f[1], hw, this.capNow, true);
+          if (g.load >= this.capNow * 0.98) this._bulldoze(bx, bz, f, hw, cutY);
         }
         // (and the bucket is a wall: what has run back over the edge into its mouth since — the pile
         // ahead slumping — is taken again, so the wheels behind go on the cut ground; once more after
         // the ground has slumped this frame)
-        if (g.load >= this.cap * 0.98) { const ex = e.x, ez = e.z, cy = cutY; this._wallPass = () => { for (let d = 0; d < R(0.7); d += t.cell * 0.7) this._bulldoze(ex - f[0] * d, ez - f[1] * d, f, hw, cy, d); }; }
+        if (g.load >= this.cap * 0.98) { const ex = e.x, ez = e.z, cy = cutY; this._wallPass = () => { for (let d = 0; d < R(0.7); d += t.cell * 0.7) this._bulldoze(ex - f[0] * d, ez - f[1] * d, f, hw, cy, d, true); }; }
+        // (behind the edge only what is loose: the firm ground was bitten once, at the edge)
+        g.target = (px, pz) => Math.max(cutY, t.nat[t.index(px, pz)]);
         for (let d = t.cell * 0.7; d < R(1.8); d += t.cell * 0.7) {   // (under the bucket and on to the front wheels)
           const bx = e.x - f[0] * d, bz = e.z - f[1] * d;
-          g.blade(bx, bz, f[0], f[1], hw, this.cap, true);
-          if (g.load >= this.cap * 0.98) this._bulldoze(bx, bz, f, hw, cutY, d);
+          g.blade(bx, bz, f[0], f[1], hw, this.capNow, true);
+          if (g.load >= this.capNow * 0.98) this._bulldoze(bx, bz, f, hw, cutY, d, true);
         }
         g.target = keep;
       }
@@ -762,6 +774,8 @@ export class MachineTool {
       }
       // tipped: it runs out over the lip as it tips — the more, the faster; into the body when it is
       // over it, else it falls and lands where it falls
+      // (what it does not hold runs off its lip and its sides)
+      if (L.tilt >= -0.45 && g.load > this.capNow * 1.02) this._spill(dt, e, f, g.load - this.capNow);
       if (L.tilt < -0.45 && g.load > 1e-9) this._pour(dt, e, f, hw);
       else if (this._intoTruck && g.load <= 1e-9) { this._intoTruck = false; app.ui?.toast(`В кузове ${(T.load * TRUCK_LOAD).toFixed(1).replace('.', ',')} из ${TRUCK_LOAD} м³`); }
       this._drag = moved > 0 && L.tilt > -0.45 && L.tilt < 0.15 && cutY < t.heightAt(e.x + f[0] * R(0.3), e.z + f[1] * R(0.3)) ? Math.min(1, g.load / this.cap) : 0;
@@ -770,7 +784,34 @@ export class MachineTool {
       L.soil.material.setMix?.(this._mixW());
       L.load = Math.min(1, g.load / this.cap);
       app.sfx.scrapeLevel(0.15 + Math.min(0.5, Math.abs(this.v) / SPEED * 0.3 + L.load * 0.2));
-      L.update(dt, moved);
+      // (the grip: what is in front of the bucket, how full it is, how firm the ground it cuts)
+      {
+        let slip = 0;
+        if (ly < 0 && L.tilt > -0.45) {
+          const st = t.cell * 3, lw = L.lowWorld(new THREE.Vector3()), cy = Math.min(this.holdY ?? e.y, lw.y); let v = 0;
+          for (let d = 0; d < R(0.7); d += st) for (let q = -hw; q <= hw; q += st) { const px = e.x + f[0] * d - f[1] * q, pz = e.z + f[1] * d + f[0] * q; if (!t.inside(px, pz)) continue; const o = t.heightAt(px, pz) - cy; if (o > 0) v += o; }
+          // (an empty bucket goes into a loose heap easily, filling; a full one pushes what is in front of it — the windrow — and that is what stops it)
+          const pileV = v * st * st * MODEL_SCALE ** 3, full = g.load >= this.capNow * 0.95, resist = pileV / (full ? 0.55 : 1.6) + (g.load / this.cap) * 0.2 + (this._drag || 0) * 0.4;
+          slip = Math.max(0, Math.min(1, (resist - 1) / 0.6));
+        }
+        this._slip = (this._slip || 0) + (slip - (this._slip || 0)) * Math.min(1, dt * 3);
+        if (this._slip > 0.6 && ly < 0) {
+          // (spinning on the spot: the wheels turn, dig into the ground under them, throw it back)
+          const spinD = -ly * SPEED * dt * this._slip;
+          L.update(dt, moved + spinD * 0.8);
+          if (app.journal.pending) for (const w of L.wheels.slice(2)) {
+            const p = L.body.localToWorld(w.at.clone()), i = t.index(p.x, p.z);
+            if (!g.free(i, p.x, p.z)) continue;
+            // (≈2 cm a second, loose or firm; a hole no deeper than ~25 cm under the plot as it was)
+            const tmp = (this._rutC ||= new Float64Array(4)), dig = Math.max(0, Math.min(R(0.0007) * this._slip, t.nat[i] + t.loose[i] - (t.orig[i] - R(0.25))));
+            if (dig > 0) for (let a = -R(0.12); a <= R(0.12); a += t.cell) { const px = p.x - f[1] * a, pz = p.z + f[0] * a; if (t.inside(px, pz)) g.cut(t.index(px, pz), dig, tmp); }
+            const bx = p.x - f[0] * R(0.6), bz = p.z - f[1] * R(0.6);
+            for (const m of [0, 1, 2, 3]) if (tmp[m] > 0) { if (t.inside(bx, bz)) t.deposit(bx, bz, tmp[m] * t.cellArea, R(0.3), 0, m); tmp[m] = 0; }
+            t._touch(Math.max(0, Math.floor(t.toCellX(p.x)) - 12), Math.max(0, Math.floor(t.toCellZ(p.z)) - 12), Math.min(t.rx, Math.ceil(t.toCellX(p.x)) + 12), Math.min(t.rz, Math.ceil(t.toCellZ(p.z)) + 12));
+          }
+          if (!this._slipSaid) { this._slipSaid = true; app.ui?.toast('Колёса буксуют — слишком много перед ковшом. Отъедьте и возьмите меньше'); setTimeout(() => (this._slipSaid = false), 6000); }
+        } else L.update(dt, moved);
+      }
     }
     const M = this.drv === 'truck' ? T : L, rig = app.rig;
     if (this.view === 'free') { this._mirrors(null); return; }   // (the camera left where it is)
@@ -818,6 +859,26 @@ export class MachineTool {
     const M = kind === 'loader' ? this.loader : this.truck, fx = Math.cos(M.yaw), fz = -Math.sin(M.yaw);
     const gain = kind === 'loader' ? 0.3 : 0.3 + 0.25 * (this.truck.load || 0);   // (a pass of a wheel ≈ several of the plate)
     for (const p of pts) t.compactStep(p.x, p.z, fx, fz, R(0.28), d, gain);
+  }
+  // what the bucket does not hold any more (amount: carry units) — off its lip and its sides, as
+  // crumbs falling: to the ground, or into the truck's body when it is over it
+  _spill(dt, e, f, amount) {
+    const app = this.app, t = app.terrain, g = this.grader, L = this.loader, T = this.truck, r = Math.random;
+    const a = Math.min(amount, this.cap * 1.2 * dt), k = a / g.load, hw = L.bucketW / 2;
+    for (const m of [0, 1, 2, 3]) {
+      const q = g.carry[m] * k; if (q <= 0) continue;
+      g.carry[m] -= q;
+      const vol = q * t.cellArea, N = 6;
+      for (let j = 0; j < N; j++) {
+        // (mostly over the lip, some off the sides)
+        const side = r() < 0.3, w = side ? (r() < 0.5 ? -1 : 1) * hw * 1.02 : (r() * 2 - 1) * hw * 0.9, back = side ? r() * R(0.5) : -R(0.03);
+        const pos = new THREE.Vector3(e.x - f[1] * w - f[0] * back, e.y + R(0.25), e.z + f[0] * w - f[1] * back);
+        const over = T?.root.visible && T.loaded ? T.root.worldToLocal(pos.clone()) : null, bb = T?.bodyBox;
+        const inTruck = over && over.x > bb.min.x && over.x < bb.max.x && over.z > bb.min.z && over.z < bb.max.z;
+        if (inTruck) { T.pourAt(pos, vol / N * MODEL_SCALE ** 3 / TRUCK_LOAD); app.particles.emit(pos, new THREE.Vector3(0, -R(0.2), 0), 0, R(0.03 + r() * 0.04), 0, 0, m); }
+        else app.particles.emit(pos, new THREE.Vector3((r() - 0.5) * R(0.2), -R(0.1), (r() - 0.5) * R(0.2)), vol / N, R(0.03 + r() * 0.04), m === 1 ? 0 : 0.05, 0, m);
+      }
+    }
   }
   // what is under the bucket's bottom, above it, where it has been pressed into loose soil: out to its
   // sides (half each way), just past them
