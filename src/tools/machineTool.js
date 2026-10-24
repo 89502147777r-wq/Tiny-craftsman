@@ -29,14 +29,15 @@ export class MachineTool {
     this.path = [];
     this.finger = false;
     app.objects.on((id, rec) => {
-      if (rec?.type !== 'vehicle' || this.state !== 'idle') return;
+      if (rec?.type !== 'vehicle' || this.state === 'work' || this.state === 'haul') return;
       if (rec.kind === 'loader' && this.loader?.loaded) this.loader.place(app.terrain, rec.x, rec.z, rec.yaw);
       if (rec.kind === 'truck' && this.truck?.loaded) { this.truck.place(app.terrain, rec.x, rec.z, rec.yaw); this.truck.load = rec.load || 0; this.truck.root.visible = !rec.away; }
     });
   }
   get machine() { return this.loader; }
   get mode() { return this.app.settings.machineMode === 'haul' ? 'haul' : 'grade'; }
-  busy() { return this.state !== 'idle'; }
+  busy() { return this.state !== 'idle' && this.state !== 'drive'; }
+  get driving() { return this.state === 'drive'; }
   recOf(kind) { return this.app.objects.all('vehicle').find((r) => r.kind === kind) || null; }
   get rec() { return this.recOf('loader'); }
   get cap() { return R(1) ** 3 * BUCKET / this.app.terrain.cellArea; }
@@ -65,6 +66,7 @@ export class MachineTool {
 
   down(p) {
     const app = this.app;
+    if (this.state === 'drive') return false;   // (the finger turns the camera round the machine)
     if (!this.loader?.loaded) { this.ensure(); app.ui?.toast('Погрузчик заезжает на участок…'); return true; }
     if (!app.terrain.inside(p.x, p.z)) return false;
     if (this.mode === 'haul') { this._haulAt(p); return true; }
@@ -133,6 +135,7 @@ export class MachineTool {
     const L = this.loader;
     if (!L?.loaded) return;
     let moved = 0;
+    if (this.state === 'drive') { this._driveStep(dt); this.truck?.update(dt); return; }
     if (this.state === 'work') moved = this._gradeStep(dt);
     else if (this.state === 'haul') moved = this._haulStep(dt);
     L.update(dt, moved);
@@ -168,6 +171,7 @@ export class MachineTool {
   // the pass is over: what is left in the bucket a heap there, the loader's place recorded, committed
   finish() {
     const app = this.app, L = this.loader, t = app.terrain;
+    if (this.state === 'drive') { this.exit(); return; }
     if (this.state === 'haul') { this._haulEnd(); return; }
     if (this.state !== 'work') return;
     this.state = 'idle'; this.path = []; this.finger = false;
@@ -365,9 +369,137 @@ export class MachineTool {
     app.ui?.refresh();
   }
 
+  // ---- driving by hand ------------------------------------------------------------------------------
+  // the left stick drives, the right one works the bucket (the loader) or the body (the truck); the
+  // camera rides behind. What it does is one action from the sticks touched till they are let go.
+  enter(kind) {
+    const app = this.app;
+    if (this.state !== 'idle') return;
+    Promise.all([this.ensure(), kind === 'truck' ? this.ensureTruck() : null]).then(() => {
+      if (this.state !== 'idle') return;
+      this.out = houseOutside(app);
+      this.grader.design(app.settings.gradeSlope ?? 1.5);
+      if (kind === 'truck') {
+        const T = this.truck, r = this.recOf('truck');
+        if (!r || r.away || !T.root.visible) {
+          const L = this.loader, pk = this._parkFor({ x: L.x, z: L.z });
+          if (!pk) { app.ui?.toast('Самосвалу негде встать у края участка'); return; }
+          T.tip = T.tipGoal = 0; T.load = r?.away ? 0 : T.load; T.place(app.terrain, pk.x, pk.z, pk.yaw); T.root.visible = true;
+          app.journal.act('truck-in', {}, app.clock, () => this._saveTruck({ away: false }));
+        }
+      }
+      this.state = 'drive'; this.drv = kind; this.stick = { l: [0, 0], r: [0, 0] };
+      this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0;
+      app.rig.goal.dist = R(kind === 'truck' ? 10 : 7.5); app.rig.goal.pitch = 0.4;
+      app.sfx.scrapeStart(); app.sfx.scrapeLevel(0.15);
+      app.ui?.toast(kind === 'truck' ? 'Вы в самосвале: левый джойстик — газ и руль, правый вверх/вниз — кузов' : 'Вы в погрузчике: левый джойстик — езда, правый: вверх/вниз — стрела, влево/вправо — ковш');
+      app.ui?.refresh();
+    });
+  }
+  exit() {
+    const app = this.app;
+    if (this.state !== 'drive') return;
+    this._commitDrive();
+    this.state = 'idle'; this.stick = { l: [0, 0], r: [0, 0] };
+    app.sfx.scrapeStop();
+    app.rig.goal.dist = R(16); app.rig.goal.pitch = 0.6;
+    app.ui?.refresh();
+  }
+  joystick(side, x, y) { if (this.state === 'drive') this.stick[side] = [x, y]; }
+  _commitDrive() {
+    const app = this.app;
+    if (app.journal.pending?.type !== 'drive') return;
+    this._savePose(); if (this.truck?.root.visible && this.recOf('truck')) this._saveTruck({});
+    app.journal.commit(app.clock);
+  }
+  // the machine's outline there clear of houses, of the other machine and of the plot's edge
+  _fits(kind, x, z, yaw) {
+    const t = this.app.terrain, fx = Math.cos(yaw), fz = -Math.sin(yaw);
+    const pts = kind === 'truck' ? [[2.3, 0.85], [2.3, -0.85], [0, 0.85], [0, -0.85], [-2.3, 0.85], [-2.3, -0.85]] : [[2.0, 0.95], [2.0, -0.95], [2.0, 0], [0, 1], [0, -1], [-1.5, 0.9], [-1.5, -0.9]];
+    const other = kind === 'truck' ? this.loader : this.truck?.root.visible ? this.truck : null, oh = kind === 'truck' ? [1.6, 1.0] : [2.4, 1.0];
+    for (const [a, b] of pts) {
+      const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b);
+      if (kind === 'truck' ? Math.abs(px) > t.halfX + R(6) || Math.abs(pz) > t.halfZ + R(6) : !t.inside(px, pz)) return false;
+      if (this.out && this.out(px, pz) !== true) return false;
+      if (other?.loaded) {
+        const dx = px - other.x, dz = pz - other.z, ox = Math.cos(other.yaw), oz = -Math.sin(other.yaw);
+        if (Math.abs(dx * ox + dz * oz) < R(oh[0]) && Math.abs(-dx * oz + dz * ox) < R(oh[1])) return false;
+      }
+    }
+    return true;
+  }
+  _driveStep(dt) {
+    const app = this.app, t = app.terrain, g = this.grader, L = this.loader, T = this.truck;
+    const [lx, ly] = this.stick.l, [rx, ry] = this.stick.r, on = lx || ly || rx || ry;
+    if (on) { this.idleT = 0; if (!app.journal.pending) app.journal.begin('drive', { machine: this.drv }, app.clock); }
+    else if (app.journal.pending?.type === 'drive' && (this.idleT += dt) > 0.4) this._commitDrive();
+    let moved = 0;
+    if (this.drv === 'truck') {
+      // a truck: speeds up and slows down, steers its front wheels (it turns as it goes)
+      this.v += (-ly * R(4) - this.v) * (1 - Math.exp(-dt * 1.8));
+      if (Math.abs(this.v) < R(0.02) && !ly) this.v = 0;
+      const yaw = T.yaw - lx * 0.55 * this.v / R(2.5) * dt, f = [Math.cos(yaw), -Math.sin(yaw)];
+      const nx = T.x + f[0] * this.v * dt, nz = T.z + f[1] * this.v * dt;
+      if (this.v && this._fits('truck', nx, nz, yaw)) T.place(t, nx, nz, yaw); else this.v = 0;
+      T.tipGoal = Math.max(0, Math.min(0.8, T.tipGoal - ry * 0.5 * dt));
+      // the body up: the soil runs out over the tailgate, a heap behind it
+      if (T.tip > 0.3 && T.load > 0) {
+        const dl = Math.min(T.load, dt * 0.35 * (T.tip - 0.3) / 0.5);
+        T.load -= dl;
+        const b = T.bodyBox, p = new THREE.Vector3(b.min.x, 0, (b.min.z + b.max.z) / 2).applyMatrix4(T.root.matrixWorld), fx = Math.cos(T.yaw), fz = -Math.sin(T.yaw);
+        const px = p.x - fx * R(0.5), pz = p.z - fz * R(0.5);
+        if (t.inside(px, pz)) t.deposit(px, pz, dl * TRUCK_LOAD / MODEL_SCALE ** 3, R(0.8), 0, 0);
+      }
+      app.sfx.scrapeLevel(0.1 + Math.min(0.4, Math.abs(this.v) / R(4) * 0.4));
+    } else {
+      // the skid steer: on the spot or on, the left stick forward / round; the right one the arms (up /
+      // down) and the bucket (left curls it back, right tips it)
+      this.v += (-ly * SPEED - this.v) * (1 - Math.exp(-dt * 4));
+      if (Math.abs(this.v) < R(0.02) && !ly) this.v = 0;
+      const yaw = L.yaw - lx * TURN * dt, f = [Math.cos(yaw), -Math.sin(yaw)];
+      const nx = L.x + f[0] * this.v * dt, nz = L.z + f[1] * this.v * dt;
+      if (this._fits('loader', nx, nz, yaw)) { moved = this.v * dt; L.place(t, nx, nz, yaw); } else { this.v = 0; if (lx && this._fits('loader', L.x, L.z, yaw)) L.place(t, L.x, L.z, yaw); }
+      L.armGoal = Math.max(-0.35, Math.min(1.0, L.armGoal - ry * 0.7 * dt));
+      L.tiltGoal = Math.max(-1.0, Math.min(0.6, L.tiltGoal - rx * 1.4 * dt));
+      // going on with the edge in the ground: it cuts at the edge's height, what it carries fills under it
+      const e = L.edgeWorld(new THREE.Vector3());
+      if (moved > 0 && L.tilt > -0.3) {
+        const keep = g.target; g.target = () => e.y;
+        const n = Math.max(1, Math.ceil(moved / (t.cell * 0.7)));
+        for (let k = n - 1; k >= 0; k--) g.blade(e.x - f[0] * moved * k / n, e.z - f[1] * moved * k / n, f[0], f[1], L.bucketW / 2, this.cap);
+        g.target = keep;
+      }
+      // tipped: into the body when it is over it, else a heap under the bucket
+      if (L.tilt < -0.5 && g.load > 0) {
+        const v = g.realVolume(), q = T?.root.visible && T.loaded ? T.root.worldToLocal(e.clone()) : null, b = T?.bodyBox;
+        if (q && q.x > b.min.x - R(0.1) && q.x < b.max.x + R(0.1) && q.z > b.min.z - R(0.25) && q.z < b.max.z + R(0.25)) {
+          T.load = Math.min(1, T.load + v / TRUCK_LOAD); g.carry.fill(0);
+          app.ui?.toast(`В кузове ${(T.load * TRUCK_LOAD).toFixed(1).replace('.', ',')} из ${TRUCK_LOAD} м³`);
+        } else {
+          for (const m of [0, 1, 2, 3]) if (g.carry[m] > 0) { t.deposit(e.x, e.z, g.carry[m] * t.cellArea, R(0.5), 0, m); g.carry[m] = 0; }
+        }
+      }
+      L.load = Math.min(1, g.load / this.cap);
+      app.sfx.scrapeLevel(0.15 + Math.min(0.5, Math.abs(this.v) / SPEED * 0.3 + L.load * 0.2));
+      L.update(dt, moved);
+    }
+    // the camera behind it (a finger turning it round keeps its turn)
+    const M = this.drv === 'truck' ? T : L, rig = app.rig;
+    if (this._camYaw != null) this.camOff += rig.goal.yaw - this._camYaw;
+    rig.goal.yaw = this._camYaw = M.yaw - Math.PI / 2 + this.camOff;
+    rig.goal.target.set(M.x, M.y + R(this.drv === 'truck' ? 1.6 : 1.2), M.z); rig.clampTarget();
+  }
+
   // undo while it works: what it did since the last commit is taken back
   abort() {
     const app = this.app, L = this.loader;
+    if (this.state === 'drive') {
+      if (app.journal.pending?.type !== 'drive') return false;
+      app.journal.cancel(); this.grader.carry.fill(0); L.load = 0; this.v = 0;
+      const r = this.rec; if (r) L.place(app.terrain, r.x, r.z, r.yaw);
+      const T = this.truck, q = this.recOf('truck'); if (T && q) { T.place(app.terrain, q.x, q.z, q.yaw); T.load = q.load || 0; }
+      return true;
+    }
     if (this.state === 'work') {
       this.state = 'idle'; this.path = []; this.finger = false;
       app.sfx.scrapeStop();
@@ -391,5 +523,5 @@ export class MachineTool {
   }
   sync() {}
   // where the camera's focus goes while it works
-  focus(out) { const L = this.loader; return L?.loaded ? out.set(L.x, L.y + R(1), L.z) : null; }
+  focus(out) { const L = this.state === 'drive' && this.drv === 'truck' ? this.truck : this.loader; return L?.loaded ? out.set(L.x, L.y + R(1), L.z) : null; }
 }
