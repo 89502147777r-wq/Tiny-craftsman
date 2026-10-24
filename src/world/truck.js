@@ -80,7 +80,8 @@ export class Truck {
     const hf = at(R(1.6), 0), hb = at(-R(1.4), 0), hl = at(0, -R(0.8)), hr = at(0, R(0.8));
     this.y = (hf + hb + hl + hr) / 4;
     this.root.position.set(x, this.y, z);
-    this.root.rotation.set(0, 0, 0); this.root.rotateY(yaw); this.root.rotateZ(Math.atan2(hf - hb, R(3))); this.root.rotateX(Math.atan2(hl - hr, R(1.6)));
+    this.pitch = Math.atan2(hf - hb, R(3)); this.roll = Math.atan2(hl - hr, R(1.6));
+    this.root.rotation.set(0, 0, 0); this.root.rotateY(yaw); this.root.rotateZ(this.pitch); this.root.rotateX(this.roll);
   }
   update(dt) {
     if (!this.bed) return;
