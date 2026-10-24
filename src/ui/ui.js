@@ -72,6 +72,7 @@ const HINTS = {
     tie: 'Коснитесь контура с каркасом — свяжем все пересечения проволокой',
     delete: 'Коснитесь стержня, сетки или стульчика, чтобы убрать',
   },
+  haul: 'Коснитесь кучи: самосвал встанет у края участка, погрузчик наберёт ковш и ссыплет в кузов — так, пока куча не уйдёт до проектной отметки. Полный самосвал уезжает и возвращается пустым',
   machine: 'Погрузчик: ведите пальцем по участку — он подъедет, опустит ковш и пройдёт по линии, срезая бугры и засыпая ямы по проектной отметке (уровень большей части участка, с уклоном от дома). Дом, отмостку и бетон не трогает',
 };
 
@@ -499,7 +500,8 @@ export class UI {
     if (t === 'machine') {
       const s = app.settings, set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
       return [
-        C('Погрузчик · планировка', true, () => {}),
+        C('Погрузчик · планировка', s.machineMode !== 'haul', () => set({ machineMode: 'grade' })),
+        C('Погрузчик · в самосвал', s.machineMode === 'haul', () => set({ machineMode: 'haul' })),
         G('gslope', `Уклон от дома ${s.gradeSlope ?? 1.5} %`.replace('.', ','), [0, 1, 1.5, 2].map((v) => C(`${v} %`.replace('.', ','), (s.gradeSlope ?? 1.5) === v, () => set({ gradeSlope: v }))), 'Уклон'),
       ];
     }
@@ -581,7 +583,7 @@ export class UI {
     if (t === 'rebar') hint = HINTS.rebar[app.rebarTool.mode];
     app.wallTool?.syncTray();
     if (t === 'wall') hint = app.wallTool.mode === 'lay' ? (app.wallTool.status() || HINTS.wall.lay) : app.wallTool.busy || app.physJob ? '' : HINTS.wall[app.wallTool.mode];
-    if (t === 'machine') hint = app.machineTool.busy() ? '' : app.machineTool.loader?.loaded ? HINTS.machine : 'Погрузчик заезжает на участок…';
+    if (t === 'machine') hint = app.machineTool.busy() ? '' : app.machineTool.loader?.loaded ? (app.settings.machineMode === 'haul' ? HINTS.haul : HINTS.machine) : 'Погрузчик заезжает на участок…';
     if (this._hint !== hint) { $('hint').textContent = hint; this._hint = hint; }
     this.renderGroups();
     this.renderChips();
