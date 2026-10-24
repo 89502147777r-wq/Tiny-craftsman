@@ -357,8 +357,12 @@ export class MachineTool {
       }
       if (this.wait <= 0) {
         // the bucketful is in the body: one action — the heap lower, the truck fuller
-        const v = g.realVolume(); g.carry.fill(0); L.load = 0; this.aim = null; this.empty = v < 0.03 ? this.empty + 1 : 0;
-        T.load = Math.min(1, T.load + v / TRUCK_LOAD);
+        const v = g.realVolume(); this.aim = null; this.empty = v < 0.03 ? this.empty + 1 : 0;
+        // (as much as the body takes; the rest runs over its side)
+        const into = Math.min(v, Math.max(0, (1 - T.load) * TRUCK_LOAD)), k = v > 0 ? 1 - into / v : 0;
+        if (k > 0) { const sp = this._overSide(L.edgeWorld(new THREE.Vector3())); for (const m of [0, 1, 2, 3]) if (g.carry[m] > 0) t.deposit(sp.x, sp.z, g.carry[m] * k * t.cellArea, R(0.5), 0, m); }
+        g.carry.fill(0); L.load = 0;
+        T.load = Math.min(1, T.load + into / TRUCK_LOAD);
         this._savePose(); this._saveTruck({ away: false });
         app.journal.commit(app.clock);
         this.phase = 'lower'; this.wait = 1.0;
@@ -486,20 +490,24 @@ export class MachineTool {
   // the machine's outline there clear of houses, of the other machine and of the plot's edge
   _fits(kind, x, z, yaw) {
     // (its outline every 20 cm — a 30 cm wall, a gate's post, cannot slip between two points — and
-    // its middle line)
+    // its middle line. The loader's bucket, its front 80 cm, is stopped by what stands higher than its
+    // bottom — lifted over the truck's side or a low wall it goes over it)
     const t = this.app.terrain, fx = Math.cos(yaw), fz = -Math.sin(yaw);
     const [a0, a1, hb] = kind === 'truck' ? [-2.35, 2.35, 0.9] : [-1.5, 2.0, 1.0], st = 0.2, pts = [];
     for (let a = a0; a <= a1 + 1e-6; a += st) pts.push([a, hb], [a, -hb], [a, 0]);
     for (let b = -hb + st; b < hb - 1e-6; b += st) pts.push([a0, b], [a1, b]);
     const other = kind === 'truck' ? this.loader : this.truck?.root.visible ? this.truck : null, oh = kind === 'truck' ? [1.6, 1.0] : [2.4, 1.0];
+    const bucketY = kind === 'loader' && this.loader?.loaded ? this.loader.lowWorld(new THREE.Vector3()).y : null;
+    const otherTop = other?.loaded && kind === 'loader' ? other.y + other.bodyBox.max.y : Infinity;
     for (const [a, b] of pts) {
-      const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b);
+      const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b), bucket = bucketY != null && a > 1.2;
       if (kind === 'truck' ? Math.abs(px) > t.halfX + R(6) || Math.abs(pz) > t.halfZ + R(6) : !t.inside(px, pz)) return false;
-      if (this.out && this.out(px, pz) !== true) return false;
-      if (this._wall(px, pz)) return false;
+      if (!bucket && this.out && this.out(px, pz) !== true) return false;
+      const top = this._obstTop(px, pz);
+      if (bucket ? top > bucketY : top > -Infinity) return false;
       if (other?.loaded) {
         const dx = px - other.x, dz = pz - other.z, ox = Math.cos(other.yaw), oz = -Math.sin(other.yaw);
-        if (Math.abs(dx * ox + dz * oz) < R(oh[0]) && Math.abs(-dx * oz + dz * ox) < R(oh[1])) return false;
+        if (Math.abs(dx * ox + dz * oz) < R(oh[0]) && Math.abs(-dx * oz + dz * ox) < R(oh[1]) && (!bucket || bucketY < otherTop)) return false;
       }
     }
     return true;
@@ -512,25 +520,30 @@ export class MachineTool {
     }
     return null;
   }
-  // a block of masonry there (any: a house's, a lone wall's, a gate's post) — 5 cm round it; the
-  // blocks in a grid of 2 m cells, made again when the blocks change
-  _wall(x, z) {
-    const us = this.app.objects.all('unit'), key = us.length + ':' + (us.at(-1)?.id ?? 0), C = R(2);
+  // the top of what stands there that a machine cannot go through — a block of masonry (a house's, a
+  // lone wall's, a gate's post), a pallet of blocks by a wall — 5 cm round it; −∞: nothing. In a grid
+  // of 2 m cells, made again when the blocks or the walls change.
+  _obstTop(x, z) {
+    const us = this.app.objects.all('unit'), ws = this.app.objects.all('wall'), C = R(2), t = this.app.terrain;
+    const key = us.length + ':' + (us.at(-1)?.id ?? 0) + ':' + ws.length + ':' + (ws.at(-1)?.id ?? 0) + ':' + ws.map((w) => w.pallet?.join() ?? '').join('|');
     if (this._wk !== key) {
       this._wk = key; const grid = (this._wg = new Map());
-      for (const u of us) {
-        if (!u.p || !u.s || !u.q || u.kind === 'prop') continue;
-        const b = boxOf(u), r = Math.hypot(b.hl, b.hw) + R(0.05);
+      const add = (b) => {
+        const r = Math.hypot(b.hl, b.hw) + R(0.05);
         for (let i = Math.floor((b.x - r) / C); i <= Math.floor((b.x + r) / C); i++) for (let j = Math.floor((b.z - r) / C); j <= Math.floor((b.z + r) / C); j++) {
           const k = i * 65536 + j; let l = grid.get(k); if (!l) grid.set(k, (l = [])); l.push(b);
         }
-      }
+      };
+      for (const u of us) if (u.p && u.s && u.q && u.kind !== 'prop') add(boxOf(u));
+      // (a pallet: 1200 × 800 mm, its stack of blocks ≈1,3 m high)
+      for (const w of ws) if (w.pallet) { const [px, pz, py] = w.pallet, g = t.heightAt(px, pz); add({ x: px, z: pz, ux: Math.cos(py), uz: -Math.sin(py), hl: R(0.6), hw: R(0.4), bot: g, top: g + R(1.3) }); }
     }
     const l = this._wg.get(Math.floor(x / C) * 65536 + Math.floor(z / C));
-    if (!l) return false;
-    const m = R(0.05);
-    for (const b of l) { const dx = x - b.x, dz = z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl + m && Math.abs(-dx * b.uz + dz * b.ux) < b.hw + m && b.bot < this.app.terrain.heightAt(x, z) + R(2.5)) return true; }
-    return false;
+    if (!l) return -Infinity;
+    const m = R(0.05), g = t.heightAt(x, z);
+    let top = -Infinity;
+    for (const b of l) { const dx = x - b.x, dz = z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl + m && Math.abs(-dx * b.uz + dz * b.ux) < b.hw + m && b.bot < g + R(2.5) && b.top > top) top = b.top; }
+    return top;
   }
   _driveStep(dt) {
     const app = this.app, t = app.terrain, g = this.grader, L = this.loader, T = this.truck;
@@ -679,8 +692,19 @@ export class MachineTool {
   // how low the bucket's lowest point can go at b: the top there, less what it sinks into loose
   // material (≤ 8 cm) or its nose cuts into firm ground (≤ 5 cm, tipped down)
   _bed(b) {
-    const t = this.app.terrain, L = this.loader, i = t.index(b.x, b.z), top = t.heightAt(b.x, b.z);
-    return top - Math.min(t.loose[i], R(0.08)) - R(0.05) * Math.min(1, Math.max(0, -L.tilt / 0.3));
+    const t = this.app.terrain, L = this.loader, T = this.truck, i = t.index(b.x, b.z), top = t.heightAt(b.x, b.z);
+    let bed = top - Math.min(t.loose[i], R(0.08)) - R(0.05) * Math.min(1, Math.max(0, -L.tilt / 0.3));
+    // (on a wall, a post, a pallet's stack: on its top)
+    bed = Math.max(bed, this._obstTop(b.x, b.z));
+    // (over the truck: on its side's top, or inside the body on its floor — on the load in it)
+    if (T?.loaded && T.root.visible) {
+      const q = T.root.worldToLocal(b.clone()), bb = T.bodyBox, w = R(0.12);
+      if (q.x > bb.min.x && q.x < bb.max.x && q.z > bb.min.z && q.z < bb.max.z) {
+        const inner = q.x > bb.min.x + w && q.x < bb.max.x - w && q.z > bb.min.z + w && q.z < bb.max.z - w;
+        bed = Math.max(bed, T.root.localToWorld(new THREE.Vector3(q.x, inner ? bb.min.y + (bb.max.y - bb.min.y) * 0.14 + T.soilH * T.load : bb.max.y, q.z)).y);
+      }
+    }
+    return bed;
   }
   // curling back with the edge in the soil: the strip just ahead of the edge, as wide as the bucket,
   // goes in down to the edge's height (a straight bite — not a round pit)
@@ -726,7 +750,12 @@ export class MachineTool {
       const a = g.carry[m] * k; if (a <= 0) continue;
       g.carry[m] -= a;
       const vol = a * t.cellArea;
-      if (truck) { if (T.load < 0.02) T.mix = [0, 0, 0, 0]; T.mix[m] += vol; T.soil.material.setMix?.(T.mix); T.load = Math.min(1, T.load + vol * MODEL_SCALE ** 3 / TRUCK_LOAD); this._intoTruck = true; }
+      // (into the body as much as it takes; what it does not, runs over its side onto the ground)
+      if (truck) {
+        const room = Math.max(0, (1 - T.load) * TRUCK_LOAD / MODEL_SCALE ** 3), into = Math.min(vol, room), spill = vol - into;
+        if (into > 0) { if (T.load < 0.02) T.mix = [0, 0, 0, 0]; T.mix[m] += into; T.soil.material.setMix?.(T.mix); T.load = Math.min(1, T.load + into * MODEL_SCALE ** 3 / TRUCK_LOAD); this._intoTruck = true; }
+        if (spill > 0) { const sp = this._overSide(e); for (let j = 0; j < 4; j++) app.particles.emit(sp.clone().add(new THREE.Vector3((r() - 0.5) * R(0.6), 0, (r() - 0.5) * R(0.6))), new THREE.Vector3(0, -R(0.2), 0), spill / 4, R(0.03 + r() * 0.05), 0.05, 0, m); }
+      }
       for (let j = 0; j < N; j++) {
         const w = (r() * 2 - 1) * hw * 0.9, pos = new THREE.Vector3(e.x - f[1] * w + f[0] * R(0.05), e.y + R(0.05), e.z + f[0] * w + f[1] * R(0.05));
         const vel = new THREE.Vector3(f[0] * R(0.4) * (0.5 + r()), -R(0.3) * r(), f[1] * R(0.4) * (0.5 + r()));
@@ -740,6 +769,12 @@ export class MachineTool {
     const c = this.grader.carry, tot = c[0] + c[1] + c[2] + c[3], w = (this._mw ||= [1, 0, 0, 0]);
     if (tot > 0) for (let k = 0; k < 4; k++) w[k] = c[k] / tot;
     return w;
+  }
+  // where what runs over the truck's side lands: just outside the side nearest to p, level with it
+  _overSide(p) {
+    const T = this.truck, q = T.root.worldToLocal(p.clone()), bb = T.bodyBox;
+    const out = q.z > (bb.min.z + bb.max.z) / 2 ? bb.max.z + R(0.35) : bb.min.z - R(0.35);
+    return T.root.localToWorld(new THREE.Vector3(Math.max(bb.min.x, Math.min(bb.max.x, q.x)), bb.max.y, out));
   }
   // the colour of what is in the bucket (the materials mixed as they are in it)
   _mix() {
