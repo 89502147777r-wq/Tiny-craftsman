@@ -178,8 +178,10 @@ export class UI {
     if (this._mKey === mt.drv + mt.view) return;
     this._mKey = mt.drv + mt.view;
     box.innerHTML = '';
-    const v = document.createElement('button'); v.textContent = mt.view === 'cab' ? 'Вид сзади' : 'Из кабины';
-    v.addEventListener('click', () => mt.setView(mt.view === 'cab' ? 'back' : 'cab'));
+    // (the view: the cab → the roof → behind, round and round; the button says the next one)
+    const next = { cab: 'roof', roof: 'back', back: 'cab' }[mt.view] || 'cab';
+    const v = document.createElement('button'); v.textContent = { cab: 'Из кабины', roof: 'С крыши', back: 'Вид сзади' }[next];
+    v.addEventListener('click', () => mt.setView(next));
     const b = document.createElement('button'); b.textContent = 'Выйти';
     b.addEventListener('click', () => { mt.exit(); this.refresh(); });
     box.append(v, b);
