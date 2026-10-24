@@ -51,12 +51,17 @@ export function planOf(rec) {
     }
     return best;
   };
-  const cells = new Map();
+  // (another building's area beside it: the ground between is shared down the middle — nearer
+  // the other house is its; an area already concreted keeps all of its own)
+  const others = (rec.others || []).map((o) => ({ ...o, near: (x, z) => { const a = x * o.ux + z * o.uz, d = -x * o.uz + z * o.ux; let m = Infinity; for (const r of o.rects) m = Math.min(m, Math.max(0, r[0] - a, a - r[2], r[1] - d, d - r[3])); return m; } }));
+  const W2_ = (a, d) => [a * ux - d * uz, a * uz + d * ux];
+  const theirs = (a, d, m) => { if (!others.length) return false; const [x, z] = W2_(a, d); return others.some((o) => { const q = o.near(x, z); return q <= o.W && (o.full || q < m); }); };
+  const cells = new Map(), claimed = new Set();
   for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
     const a = A0 + (i + 0.5) * C, d = D0 + (j + 0.5) * C, n = near(a, d);
-    if (n.m > 0 && n.m <= W) cells.set(j * ni + i, { i, j, a, d, dist: n.m, dx: n.dx, dy: n.dy, r: n.r });
+    if (n.m > 0 && n.m <= W) { if (theirs(a, d, n.m)) { claimed.add(j * ni + i); continue; } cells.set(j * ni + i, { i, j, a, d, dist: n.m, dx: n.dx, dy: n.dy, r: n.r }); }
   }
-  const house = (i, j) => { const a = A0 + (i + 0.5) * C, d = D0 + (j + 0.5) * C; return near(a, d).m === 0; };
+  const house = (i, j) => { const a = A0 + (i + 0.5) * C, d = D0 + (j + 0.5) * C; return near(a, d).m === 0 || claimed.has(j * ni + i); };   // (no boards against the other area either)
   const inB = (i, j) => i >= 0 && j >= 0 && i < ni && j < nj && cells.has(j * ni + i);
   // the outer edge: the cell edges with nothing (neither the area nor the house) beyond, joined
   // into straight segments — a: along a (a line of constant d), d: along d

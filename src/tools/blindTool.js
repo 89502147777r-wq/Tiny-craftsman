@@ -404,7 +404,10 @@ export class BlindWork {
       const r = this._of(H);
       if (r && (r.geo?.length || r.fin?.length)) { this._live(null); this.place = { why: 'Опалубка уже стоит и по ней уложены слои — чтобы переставить её заново по земле, снимите слои: «Удалить» по отмостке (сверху вниз до геотекстиля включительно), потом поднесите опалубку ещё раз' }; return; }
       const W = this.app.settings.blindW || 1000;
-      const rec0 = newBlind(H, W), rec = { ...rec0, g: +this._ground(H, { ...rec0, g: H.g }).toFixed(6), form: true, based: true };   // (the ground levelled under each strip as it is laid)
+      const nb = newBlind(H, W), olds = app.objects.all('blind').filter((q) => q.id !== r?.id);
+      // (the buildings' areas beside it: the ground between shared down the middle)
+      const rec0 = olds.length ? { ...nb, others: olds.map((q) => ({ id: q.id, ux: q.ux, uz: q.uz, rects: q.rects, W: q.W, full: !!(q.fin?.length || q.stripped) })) } : nb;
+      const rec = { ...rec0, g: +this._ground(H, { ...rec0, g: H.g }).toFixed(6), form: true, based: true };   // (the ground levelled under each strip as it is laid)
       this.place = { rec, W, old: r?.id ?? null };
       this._live({ form: rec, old: r?.id ?? null });
       return;
@@ -450,7 +453,13 @@ export class BlindWork {
     if (L === 'form') {
       const n = planOf(P.rec).segs.reduce((s, sg) => s + sg.s1 - sg.s0, 0) / S / 1000;
       // (the boards of this house set again: the old ones off; another house: an area of its own)
-      let id = null; app.journal.act('blind-form', {}, app.clock, () => { if (P.old != null) app.objects.remove(P.old); const o = app.objects.add({ type: 'blind', ...P.rec }); id = o?.id ?? o; });
+      let id = null; app.journal.act('blind-form', {}, app.clock, () => {
+        if (P.old != null) app.objects.remove(P.old);
+        const o = app.objects.add({ type: 'blind', ...P.rec }); id = o?.id ?? o;
+        // (the areas beside it that are not concreted yet give up their half of the ground between)
+        const me = { ux: P.rec.ux, uz: P.rec.uz, rects: P.rec.rects, W: P.rec.W, id };
+        for (const q of app.objects.all('blind')) if (q.id !== id && !q.fin?.length && !q.stripped) app.objects.update(q.id, { others: [...(q.others || []).filter((x) => x.id !== P.old), { ...me, full: false }] });
+      });
       if (id != null) this.sel = id;
       app.ui.toast(`Опалубка отмостки: доски на колышках, ${n.toFixed(1).replace('.', ',')} м по периметру, ширина ${P.W} мм — дальше геотекстиль`);
       return;
