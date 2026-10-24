@@ -140,7 +140,7 @@ export function sizeText(o, scale) {
 // ---- view ------------------------------------------------------------------------------
 // Stakes + string line around every outline, drag handles in the marking
 // tool, and a mask texture the terrain shader reads: R = chalk line,
-// G = inside an outline, B = design depth (0..100 mm).
+// G = inside an outline, B = design depth (0..250 mm).
 export class OutlineView {
   constructor(terrain, objects) {
     this.terrain = terrain;
@@ -255,7 +255,7 @@ export class OutlineView {
     // regions, shallow first so the deepest wins where outlines overlap
     const os = this.outlines().sort((a, b) => a.depth - b.depth);
     for (const o of os) {
-      const b = Math.max(0, Math.min(255, Math.round(o.depth / 100 * 255)));
+      const b = Math.max(0, Math.min(255, Math.round(o.depth / 250 * 255)));
       ctx.fillStyle = `rgb(0,255,${b})`;
       ctx.beginPath();
       polygon(o, 0).forEach((p, i) => { const [x, y] = P(p); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });

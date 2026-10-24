@@ -51,6 +51,19 @@ export class Truck {
     const L = bb.max.x - bb.min.x, W = bb.max.z - bb.min.z, H = bb.max.y - bb.min.y;
     this.NX = 16; this.NZ = 9;
     this.hx = L * 0.9; this.hz = W * 0.86; this.x0 = L * 0.04; this.floor = H * 0.14; this.hMax = H * 1.05;
+    // (the floor where it really is: felt from above down the middle of the body — what lies on it
+    // starts on it, its thin edges are not hidden under it)
+    {
+      this.bed.updateMatrixWorld(true);
+      const rc = new THREE.Raycaster(), ys = [], down = new THREE.Vector3(0, -1, 0).transformDirection(this.bed.matrixWorld);
+      for (const u of [0.2, 0.35, 0.5, 0.65, 0.8]) for (const v of [-0.25, 0, 0.25]) {
+        rc.set(this.bed.localToWorld(new THREE.Vector3(this.x0 + this.hx * u, H * 1.5, v * this.hz)), down);
+        const hit = rc.intersectObjects(parts, false)[0];
+        if (hit) ys.push(this.bed.worldToLocal(hit.point.clone()).y);
+      }
+      ys.sort((a, b) => a - b);
+      if (ys.length >= 5) this.floor = ys[Math.floor(ys.length / 2)] + H * 0.004;
+    }
     this.cA = (this.hx / (this.NX - 1)) * (this.hz / (this.NZ - 1));
     this.cap = R(1) ** 3 * TRUCK_LOAD;   // (the body's load, model volume)
     this.hf = new Float32Array(this.NX * this.NZ);
@@ -119,6 +132,31 @@ export class Truck {
     for (let i = 0; i < w.length; i++) this.hf[i] += vol * w[i] / sum / this.cA;
     this.load = Math.min(1, this.load + frac); this._hfLoad = this.load; this._hfDirty = true;
   }
+  // a bucketful falling off a lip `hw` wide along `dir` (world) round p: heaps along it
+  pourLine(p, dir, hw, frac) {
+    for (let k = 0; k < 5; k++) this.pourAt(p.clone().addScaledVector(dir, hw * (k / 2 - 1) * 0.8), frac / 5);
+  }
+  // the body tipped: what is in it slides back and runs out under the open tailgate. → the model
+  // volume that ran out this frame (it falls behind the truck)
+  _flowOut(dt) {
+    if (this.tip < 0.12) return 0;
+    const NX = this.NX, NZ = this.NZ, h = this.hf, s = Math.sin(this.tip) * this.hx / (NX - 1) * 0.5;
+    // (down the slope of the body toward the rear: the steeper, the more of each cell moves on)
+    const k = Math.min(0.5, dt * 6 * Math.max(0, Math.tan(this.tip) - 0.25));
+    if (k <= 0) return 0;
+    for (let ix = 1; ix < NX; ix++) for (let iz = 0; iz < NZ; iz++) {
+      const i = iz * NX + ix, j = i - 1, m = Math.max(0, h[i] + s - h[j] * 0.2) * k;
+      const mm = Math.min(h[i], m); h[i] -= mm; h[j] += mm;
+    }
+    // (out under the tailgate: the gate opens as the body rises)
+    let out = 0;
+    const open = Math.min(1, Math.max(0, (this.tip - 0.25) / 0.3));
+    if (open > 0) for (let iz = 0; iz < NZ; iz++) { const i = iz * NX, m = h[i] * Math.min(1, dt * 3 * open); h[i] -= m; out += m * this.cA; }
+    this.load = Math.max(0, this._hfVol() / this.cap); this._hfLoad = this.load; this._hfDirty = true;
+    return out;
+  }
+  // where it falls out (world): under the middle of the tailgate
+  tailLip(out = new THREE.Vector3()) { return this.bed.localToWorld(out.set(this.x0 - this.hx * 0.02, this.floor, 0)); }
   // the top of what is in the body at p (world), or of its floor: world height
   surfaceAt(p) {
     if (!this.bed) return -Infinity;
@@ -154,6 +192,7 @@ export class Truck {
   }
   update(dt) {
     if (!this.bed) return;
+    this.outflow = (this.outflow || 0) + this._flowOut(dt);
     this._sync();
     if (this._slump() || this._hfDirty) {
       this._hfDirty = false;

@@ -6,7 +6,7 @@ import { insideTray } from './plotShape.js';
 // ground — a building site is bare earth, so weeds grow in clumps mostly
 // along the edges. A tuft disappears as soon as its patch is dug or buried.
 export class Grass {
-  constructor(terrain, count = 1100) {
+  constructor(terrain, count = 2200) {
     this.terrain = terrain;
     const rnd = mulberry32(21);
     const geo = makeTuftGeometry(rnd);

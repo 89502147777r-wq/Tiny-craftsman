@@ -54,7 +54,8 @@ const STRATA_GLSL = CONC_NOISE_GLSL + /* glsl */ `
     float layer = floor(n);
     float f = n - layer;
     vec3 tint = mod(layer, 2.0) < 0.5 ? vec3(1.06, 1.0, 0.9) : vec3(0.93, 0.95, 1.02);
-    vec3 c = pow(vec3(0.85, 0.83, 0.8), vec3(layer)) * tint;
+    // (darker down to ~0.9 m; deeper — the box is 2.5 m deep — the same dense subsoil, layer on layer)
+    vec3 c = pow(vec3(0.85, 0.83, 0.8), vec3(min(layer, 7.0) + 0.15 * max(0.0, layer - 7.0) / (1.0 + 0.1 * max(0.0, layer - 7.0)))) * tint;
     // a thin darker seam where one layer meets the next
     return c * (1.0 - 0.22 * (1.0 - smoothstep(0.0, 0.1, f)) * step(0.5, layer));
   }
@@ -235,7 +236,7 @@ const FRAG_SOIL = `
         soilC = mix(soilC, vec3(0.80, 0.79, 0.74), chalk * uChalk * 0.9);
         // levelling overlay inside the outlines
         if (uLevel > 0.5 && mk.g > 0.5) {
-          float targetY = uSoilY - mk.b * 0.1;
+          float targetY = uSoilY - mk.b * 0.25;
           float dy = vWPos.y - targetY;
           vec3 lv = dy > 0.001 ? vec3(1.0, 0.45, 0.12) : (dy < -0.001 ? vec3(0.2, 0.45, 1.0) : vec3(0.25, 1.0, 0.35));
           float fl = fract(vWPos.y / 0.002);

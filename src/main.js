@@ -37,6 +37,7 @@ import { WallTool } from './tools/wallTool.js';
 import { MachineTool } from './tools/machineTool.js';
 import { Sfx } from './audio/sfx.js';
 import { UI } from './ui/ui.js';
+import { ProjectView } from './world/projectView.js';
 
 const app = (window.__tc = { ready: false, BUILD });
 
@@ -99,6 +100,7 @@ async function main() {
 
   app.objects = new ObjectStore();
   app.outlineView = new OutlineView(terrain, app.objects); scene.add(app.outlineView.group);
+  app.projectView = new ProjectView(); scene.add(app.projectView.group);
   app.formView = new FormworkView(tex, app.objects, terrain); scene.add(app.formView.group);
   app.rebarView = new RebarView(app.objects); scene.add(app.rebarView.group);
   app.wallView = new WallView(app.objects, tex); scene.add(app.wallView.group); app.wallView.app = app;
@@ -461,6 +463,7 @@ function applySettings() {
     app.workshop.sun.shadow.mapSize.setScalar(sm);
     if (app.workshop.sun.shadow.map) { app.workshop.sun.shadow.map.dispose(); app.workshop.sun.shadow.map = null; }
   }
+  if (app.projectView.show !== (s.project || 'off')) app.projectView.setShow(s.project || 'off');
   app.rig.shake = s.shake;
   app.sfx.enabled = s.sound;
   if (app.backdrop.mode !== s.backdrop) app.backdrop.set(s.backdrop);

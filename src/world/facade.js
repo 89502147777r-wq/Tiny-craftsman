@@ -23,8 +23,17 @@ export const PANEL_TYPES = {
   stone: ['Камень', { sandstone: ['Песчаник', ['#cdb894', '#b9a37c', '#d9c8a6', '#a99372']], slate: ['Сланец', ['#6b6f72', '#55595c', '#81848a', '#625f58']], travertine: ['Травертин', ['#e2d6bd', '#cfc0a2', '#ebe1cb', '#bfae8c']], granite: ['Гранит', ['#5a5450', '#6c6560', '#48433f', '#7a726a']], rust: ['Рваный ржавый', ['#9a6b45', '#b5875a', '#7d5537', '#c49a6c']] }],
   clinker: ['Клинкер', { red: ['Красный', ['#9c4a33', '#7c3626', '#b35d40']], brown: ['Коричневый', ['#5e3a2a', '#6f4632', '#4c2e22']], straw: ['Соломенный', ['#d5b779', '#c7a663', '#e0c58e']], graphite: ['Графит', ['#3d3d40', '#4a494b', '#2f2f32']], white: ['Белый', ['#e8e4dc', '#d9d4ca', '#f1eee8']] }],
   wood: ['Планкен', { oak: ['Светлый дуб', ['#b98a58', '#8c6038']], walnut: ['Термо-орех', ['#6b4429', '#43281a']], wenge: ['Венге', ['#3f2a20', '#24170f']], grey: ['Серый состаренный', ['#8d8a83', '#5f5c56']] }],
+  // the ventilated facade (навесной вентфасад): big flat panels on an aluminium subframe, open joints
+  porc: ['Керамогранит 1200×600', { concrete: ['Под бетон', ['#b4b3ae', '#a09f9a', '#c2c0ba']], marble: ['Мрамор белый', ['#e9e7e2', '#c9c6c0', '#8d8b88']], anthracite: ['Антрацит', ['#3b3c3e', '#2f3032', '#47484a']], travertine: ['Травертин', ['#d8c9ab', '#c4b393', '#e3d7be']] }],
+  fc: ['Фиброцемент', { white: ['Белый', ['#e6e5e0']], grey: ['Светло-серый', ['#b6b7b4']], graphite: ['Графит', ['#4a4c4f']], terra: ['Терракота', ['#a8644a']] }],
+  hpl: ['HPL-панели', { oak: ['Дуб (декор)', ['#b8895a', '#8a5f39']], walnut: ['Орех (декор)', ['#6e472d', '#4a2e1c']], white: ['Белый глянец', ['#efeeea']], anthracite: ['Антрацит', ['#36383b']] }],
+  cas: ['Металлокассеты', { graphite: ['RAL 7016 графит', ['#474d53']], silver: ['RAL 9006 серебро', ['#a5a8a6']], black: ['RAL 9005 чёрный', ['#1d1e20']], corten: ['Кортен', ['#8a4a26', '#6f3a1e', '#a35c30']] }],
 };
-const KIND = { stone: 'stone', clinker: 'brick', wood: 'wood' };
+const KIND = { stone: 'stone', clinker: 'brick', wood: 'wood', porc: 'porc', fc: 'fc', hpl: 'hpl', cas: 'cas' };
+// the size of one panel (mm, along × up) — the old kinds: 1000 × 500 boards of a pattern
+const MOD = { porc: [1200, 600], fc: [1200, 600], hpl: [1220, 610], cas: [1000, 500] };
+export const VENT = (key) => !!MOD[(PANELS[key] || [])[1]];
+export const panelMod = (key) => MOD[(PANELS[key] || [])[1]] || [1000, 500];
 export const PANELS = {};
 for (const [t, [tn, cols]] of Object.entries(PANEL_TYPES)) for (const [c, [cn, pal]] of Object.entries(cols)) PANELS[`${t}:${c}`] = [`${tn} — ${cn.toLowerCase()}`, KIND[t], pal];
 for (const [o, n] of Object.entries({ oak: 'wood:oak', walnut: 'wood:walnut', sandstone: 'stone:sandstone', slate: 'stone:slate', clinker: 'clinker:red' })) PANELS[o] = PANELS[n];
@@ -225,9 +234,80 @@ function brickTex(cols) {
   bake(c, hc, 1.3, 0.6);
   return { map: asTex(c), normalMap: normalOf(hc, 6), roughness: 0.62 };
 }
+// one panel of a ventilated facade, its whole face (uv 0…1 over the panel): the open joint round it
+// (half of it on each side: dark, the subframe's black rail behind), and what holds it —
+//   porc – porcelain stoneware: the body of the tile (a stone or concrete look), the clips
+//          (кляммеры) showing in the joints top and bottom;
+//   fc   – fibre cement boards: painted through, a fine mottle; riveted to the rails (the rivets
+//          painted to match, 30 mm in from the edges, 400 mm apart);
+//   hpl  – compact laminate: a smooth decor (wood or plain), a little gloss; riveted;
+//   cas  – metal cassettes: folded steel, the face flat, its edges turned in (a bright arris along
+//          the top, a shadow under), hung on hooks — no fixings seen; the joints wider.
+function ventTex(kind, cols, mod, key) {
+  const W = 512, H = Math.round(W * mod[1] / mod[0]), c = canvas(W, H), g = c.getContext('2d'), hc = canvas(W, H), h = hc.getContext('2d');
+  const px = W / mod[0], j = Math.max(2.2, (kind === 'cas' ? 15 : 10) * px / 2);   // half a joint
+  const r = rnd, col = (i, f = 1) => shade(cols[i % cols.length], f);
+  g.fillStyle = col(0); g.fillRect(0, 0, W, H); h.fillStyle = '#9a9a9a'; h.fillRect(0, 0, W, H);
+  if (kind === 'porc') {
+    if (/marble/.test(key)) {
+      // veins: long soft curves, a few sharper ones, the grey of the stone
+      for (let v = 0; v < 9; v++) {
+        let x = r() * W, y = r() * H, a = r() * 6.28; g.strokeStyle = col(v % 3 ? 1 : 2, 0.95 + r() * 0.1) + (v % 3 ? '55' : '99'); g.lineWidth = v % 3 ? 2 + r() * 4 : 0.8 + r() * 1.2; g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < 60; k++) { a += (r() - 0.5) * 0.5; x += Math.cos(a) * 9; y += Math.sin(a) * 9; g.lineTo(x, y); }
+        g.stroke();
+      }
+    } else if (/travertine/.test(key)) {
+      for (let y = 0; y < H; y += 2 + r() * 5) { g.fillStyle = col(1 + Math.floor(r() * 2), 0.95 + r() * 0.1) + '44'; g.fillRect(0, y, W, 1 + r() * 3); }
+      for (let i = 0; i < 260; i++) { const x = r() * W, y = r() * H, w = 3 + r() * 14; g.fillStyle = 'rgba(80,65,45,0.35)'; g.fillRect(x, y, w, 1 + r() * 1.5); h.fillStyle = '#707070'; h.fillRect(x, y, w, 1.5); }
+    } else {
+      // concrete: blotches, the shuttering's marks, pores; anthracite: a fine speckle
+      for (let i = 0; i < 70; i++) { const x = r() * W, y = r() * H, rr = 20 + r() * 70, gr = g.createRadialGradient(x, y, 0, x, y, rr), k = r() < 0.5 ? '0,0,0' : '255,255,255'; gr.addColorStop(0, `rgba(${k},${0.03 + r() * 0.05})`); gr.addColorStop(1, `rgba(${k},0)`); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr); }
+      for (let i = 0; i < (/anthracite/.test(key) ? 5000 : 900); i++) { const x = r() * W, y = r() * H, d = r() < 0.5; g.fillStyle = d ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.12)'; g.fillRect(x, y, 1, 1); if (d && r() < 0.3) { h.fillStyle = '#6a6a6a'; h.fillRect(x, y, 1.2, 1.2); } }
+    }
+  } else if (kind === 'hpl' && cols.length > 1) {
+    // a wood decor printed under the overlay: straight grain along the panel, a few figure lines
+    for (let i = 0; i < 160; i++) { const y = r() * H, a = 0.5 + r() * 2, ph = r() * 6, fr = 0.004 + r() * 0.008; g.strokeStyle = col(1, 0.85 + r() * 0.3) + (r() < 0.5 ? '40' : '70'); g.lineWidth = 0.6 + r() * 1.4; g.beginPath(); for (let x = 0; x <= W; x += 8) { const yv = y + Math.sin(x * fr + ph) * a; x ? g.lineTo(x, yv) : g.moveTo(x, yv); } g.stroke(); }
+  } else if (/corten/.test(key)) {
+    for (let i = 0; i < 2600; i++) { const x = r() * W, y = r() * H, rr = 1 + r() * 7; g.fillStyle = col(1 + Math.floor(r() * 2), 0.8 + r() * 0.4) + '66'; g.beginPath(); g.arc(x, y, rr, 0, 6.3); g.fill(); h.fillStyle = `rgba(${r() < 0.5 ? 170 : 120},${r() < 0.5 ? 170 : 120},${r() < 0.5 ? 170 : 120},0.25)`; h.fillRect(x, y, rr, rr); }
+    for (let i = 0; i < 25; i++) { const x = r() * W; g.fillStyle = 'rgba(70,30,10,0.12)'; g.fillRect(x, H * 0.6 + r() * H * 0.3, 2 + r() * 5, H); }   // (streaks run down)
+  } else {
+    // painted / laminated: a fine even mottle
+    for (let i = 0; i < 4000; i++) { const v = r() < 0.5 ? '0,0,0' : '255,255,255'; g.fillStyle = `rgba(${v},${0.015 + r() * 0.03})`; g.fillRect(r() * W, r() * H, 1 + r() * 3, 1 + r() * 3); }
+  }
+  if (kind === 'cas') {
+    // the turned-in edges: the arris catches the light along the top, a shadow along the bottom
+    const e = 10 * px; let gr = g.createLinearGradient(0, j, 0, j + e); gr.addColorStop(0, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, j, W, e);
+    gr = g.createLinearGradient(0, H - j - e, 0, H - j); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.4)'); g.fillStyle = gr; g.fillRect(0, H - j - e, W, e);
+    h.fillStyle = '#7a7a7a'; h.fillRect(j, j, W - 2 * j, 4); h.fillRect(j, H - j - 4, W - 2 * j, 4); h.fillRect(j, j, 4, H - 2 * j); h.fillRect(W - j - 4, j, 4, H - 2 * j);
+  }
+  if (kind === 'fc' || kind === 'hpl') {
+    // the rivets: a domed head 12 mm, the colour of the panel, a ring of shadow
+    const rv = 6 * px, inset = 30 * px, nx = Math.max(2, Math.round(mod[0] / 400) + 1), ny = Math.max(2, Math.round(mod[1] / 400) + 1);
+    for (let iy = 0; iy < ny; iy++) for (let ix = 0; ix < nx; ix++) {
+      if (iy > 0 && iy < ny - 1 && ix > 0 && ix < nx - 1) continue;
+      const x = inset + (W - 2 * inset) * ix / (nx - 1), y = inset + (H - 2 * inset) * iy / (ny - 1);
+      g.fillStyle = 'rgba(0,0,0,0.25)'; g.beginPath(); g.arc(x + 0.8, y + 0.8, rv + 0.6, 0, 6.3); g.fill();
+      g.fillStyle = col(0, 1.06); g.beginPath(); g.arc(x, y, rv, 0, 6.3); g.fill();
+      const hg = h.createRadialGradient(x, y, 0, x, y, rv); hg.addColorStop(0, '#d0d0d0'); hg.addColorStop(1, '#9a9a9a'); h.fillStyle = hg; h.beginPath(); h.arc(x, y, rv, 0, 6.3); h.fill();
+    }
+  }
+  // the open joint round the panel (half of it): the black rail behind
+  g.fillStyle = '#121314'; g.fillRect(0, 0, W, j); g.fillRect(0, H - j, W, j); g.fillRect(0, 0, j, H); g.fillRect(W - j, 0, j, H);
+  h.fillStyle = '#101010'; h.fillRect(0, 0, W, j); h.fillRect(0, H - j, W, j); h.fillRect(0, 0, j, H); h.fillRect(W - j, 0, j, H);
+  if (kind === 'porc') {
+    // the clips: stainless tabs in the horizontal joints, a fifth in from each end, holding the tile's edges
+    for (const fx of [0.18, 0.82]) for (const y of [0, H - j - 3]) { const x = W * fx - 9 * px; g.fillStyle = '#7d8185'; g.fillRect(x, y, 18 * px, j + 3); h.fillStyle = '#b0b0b0'; h.fillRect(x, y, 18 * px, j + 3); }
+  }
+  bake(c, hc, 0.6, 0.3);
+  const t = asTex(c); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  // (the cassettes powder coated: hardly a metal to look at — but the silver, a metallic paint)
+  const met = kind === 'cas' && !/corten/.test(key) ? (/silver/.test(key) ? 0.5 : 0.12) : 0, rough = kind === 'porc' ? (/marble/.test(key) ? 0.32 : 0.62) : kind === 'hpl' ? 0.42 : kind === 'cas' ? (met ? 0.45 : 0.85) : 0.82;
+  return { map: t, normalMap: normalOf(hc, 3), roughness: rough, metalness: met };
+}
 export function panelTex(key) {
   if (TEX[key]) return TEX[key];
   const [, kind, cols] = PANELS[key];
+  if (MOD[kind]) return (TEX[key] = ventTex(kind, cols, MOD[kind], key));
   return (TEX[key] = kind === 'wood' ? woodTex(cols) : kind === 'stone' ? stoneTex(cols) : brickTex(cols));
 }
 
@@ -449,8 +529,8 @@ function cellRects(set) {
 }
 // the slots of the boards / the panels: from the corner and the bottom of the face, the
 // insulation staggered by half a board
-export function slotAt(F, a, y, kind) {
-  const [L, H] = kind === 'pan' ? [1000, 500] : [FACADE.epsL, FACADE.epsW], e = ext(F, kind === 'pan' ? OFF.pan : OFF.eps);
+export function slotAt(F, a, y, kind, mod = [1000, 500]) {
+  const [L, H] = kind === 'pan' ? mod : [FACADE.epsL, FACADE.epsW], e = ext(F, kind === 'pan' ? OFF.pan : OFF.eps);
   const row = Math.floor((y - e[1]) / MM(H)), off = kind === 'eps' && row % 2 ? MM(L / 2) : 0;
   // (counted from the left end as seen from outside)
   const fromLeft = F.ru > 0, base = fromLeft ? e[0] - off : e[2] + off, col = Math.floor((fromLeft ? a - base : base - a) / MM(L));
@@ -479,7 +559,7 @@ class Geo {
 const MATS = {};
 function mat(key, make) { return MATS[key] || (MATS[key] = make()); }
 function stdMat(t, extra = {}, po = 0) {
-  const m = new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.normalMap, roughness: t.roughness ?? 0.9, metalness: 0, ...extra });
+  const m = new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.normalMap, roughness: t.roughness ?? 0.9, metalness: t.metalness ?? 0, ...extra });
   if (po) { m.polygonOffset = true; m.polygonOffsetFactor = -po; m.polygonOffsetUnits = -2 * po; }
   return m;
 }
@@ -587,7 +667,8 @@ export function buildFacade(F, rec, live, recG = null) {
   if (ghost?.kind === 'pan' && ghost.ok) (byKey[ghost.key] || (byKey[ghost.key] = [])).push([...ghost.slot, ghost.key]);
   for (const [key, ps] of Object.entries(byKey)) {
     const gp = new Geo();
-    for (const p of ps) board(gp, F, cutPiece(F, p, OFF.pan).map((r) => [r[0] + MM(1), r[1] + MM(1), r[2] - MM(1), r[3] - MM(1)]), OFF.eps, OFF.pan, [1000, 1000], [0, 0]);
+    const vent = VENT(key), md = panelMod(key);
+    for (const p of ps) board(gp, F, cutPiece(F, p, OFF.pan).map((r) => [r[0] + MM(1), r[1] + MM(1), r[2] - MM(1), r[3] - MM(1)]), OFF.eps, OFF.pan, vent ? md : [1000, 1000], vent ? (F.ru > 0 ? [p[0], p[1]] : [p[2], p[1]]) : [0, 0]);
     add(gp.mesh(mat('pan' + key, () => stdMat(panelTex(key)))));
   }
   // the corners: built by the face that stops at one (the other runs on round it), where both
@@ -668,6 +749,15 @@ function cornerPieces(group, F, e, aEnd, y0, y1, key) {
       boxUV(geo, F, aEnd + s * OFF.eps, ac + s * t, OFF.pan + t - lG, OFF.pan + t, y, yb, uv);
     }
     group.add(geo.mesh(mat('quoin' + key, () => stdMat(quoinTex(cols)))));
+    return;
+  }
+  if (MOD[kind]) {
+    // a ventilated facade's corner: a folded aluminium angle 50 × 50 over the panels' ends, powder
+    // coated in their colour (the joint behind it hides the cut edges)
+    const t = MM(1.5), w = MM(50);
+    boxUV(geo, F, ac + s * t - s * w, ac + s * t, OFF.pan, OFF.pan + t, y0, y1, [0.5, 0.5, 0.5, 0.5]);
+    boxUV(geo, F, ac, ac + s * t, OFF.pan + t - w, OFF.pan + t, y0, y1, [0.5, 0.5, 0.5, 0.5]);
+    group.add(geo.mesh(mat('angle' + key, () => new THREE.MeshStandardMaterial({ color: cols[0], metalness: 0.4, roughness: 0.45 }))));
     return;
   }
   // planken: the trim boards, the grain up

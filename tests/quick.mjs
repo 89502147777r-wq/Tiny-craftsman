@@ -232,7 +232,7 @@ console.log('—', sec());
       // carry a block from the pallet: let go off the plot → back on the pallet; at the wall → laid
       wt.setMode('lay');
       const pal = () => new V(w.pallet[0], 0.1, w.pallet[1]);
-      wt.down(pal(), e); wt.move(new V(1.6, 0.1, 0), e); wt.up();
+      wt.down(pal(), e); wt.move(new V(1.9, 0.1, 0), e); wt.up();
       const refused = !tc.objects.all('unit').length;
       wt.down(pal(), e); wt.move(new V(-0.45, 0.1, -0.6), e); wt.up();
       for (let i = 0; i < 400 && (tc.physJob || tc.physLoading); i++) { if (tc.physLoading) await new Promise((r) => setTimeout(r, 50)); else tc.simulate(1 / 30); }
@@ -255,7 +255,7 @@ console.log('—', sec());
         const u2 = tc.objects.all('unit').at(-1);
         const f3 = await put(new V(u1.p[0] + mm(130), u1.p[1] + mm(77), u1.p[2]));
         const u3 = tc.objects.all('unit').at(-1);
-        const red = await put(new V(1.6, 0.1, 0), false);   // off the plot: nothing to set it on
+        const red = await put(new V(1.9, 0.1, 0), false);   // off the plot: nothing to set it on
         const yaw = (u) => Math.abs(Math.sin(2 * Math.atan2(u.q[1], u.q[3])));
         // on the block wall laid above (its top course)
         const blk = tc.objects.all('unit').filter((u) => u.kind === 'block').sort((a, b) => b.p[1] - a.p[1])[0];

@@ -432,6 +432,11 @@ export class UI {
         C('＋ Котлован', m.mode === 'rect', () => m.setMode('rect')),
         C('＋ Траншея', m.mode === 'trench', () => m.setMode('trench')),
       ];
+      const pj = app.settings.project || 'off', setP = (v) => { app.settings.project = v; app.applySettings(); app.ui.refresh(); };
+      out.push(G('proj', '📐 Проект', [
+        ...[['off', 'Скрыть'], ['site', 'Участок'], ['f1', '1 этаж'], ['f2', '2 этаж'], ['all', 'Весь дом']].map(([k, l]) => C(l, pj === k, () => setP(k))),
+        C('Вынести котлованы', false, () => m.setOut()),
+      ], 'Проект', { on: pj !== 'off' }));
       if (m.trench) out.push(C('✓ Готово', true, () => m.finishTrench()));
       if (m.selected && !m.trench) out.push(C('Удалить контур', false, () => m.deleteSelected(), 'warn'));
       return out;
@@ -586,7 +591,7 @@ export class UI {
     if (key !== this._paramKey) {
       this._paramKey = key;
       el.innerHTML = `<div class="ttl">${o.kind === 'rect' ? 'Котлован' : 'Траншея'} #${o.id}</div>
-        <label>Глубина <output id="p-depth"></output><input id="p-depth-r" type="range" min="4" max="85" step="1"></label>
+        <label>Глубина <output id="p-depth"></output><input id="p-depth-r" type="range" min="4" max="235" step="1"></label>
         ${o.kind === 'trench' ? '<label>Ширина <output id="p-width"></output><input id="p-width-r" type="range" min="20" max="80" step="1"></label>' : ''}`;
       const d = $('p-depth-r');
       d.addEventListener('input', () => app.markTool.edit({ depth: +d.value }, false));
