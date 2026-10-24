@@ -182,7 +182,7 @@ export class MachineTool {
     app.ui?.refresh();
   }
   _savePose() {
-    const app = this.app, L = this.loader, pose = { x: +L.x.toFixed(5), z: +L.z.toFixed(5), yaw: +L.yaw.toFixed(4) }, r = this.rec;
+    const app = this.app, L = this.loader, pose = { x: +L.x.toFixed(5), z: +L.z.toFixed(5), yaw: +Math.atan2(Math.sin(L.yaw), Math.cos(L.yaw)).toFixed(4) }, r = this.rec;
     if (r) app.objects.update(r.id, pose); else app.objects.add({ type: 'vehicle', kind: 'loader', ...pose });
   }
   _saveTruck(patch) {
@@ -204,6 +204,18 @@ export class MachineTool {
     }
     return v * t.cellArea * MODEL_SCALE ** 3;
   }
+  // the top of what stands over the level round a point (the next bucketful is taken there)
+  _peak(x, z, r) {
+    const t = this.app.terrain, g = this.grader, n = Math.ceil(r / t.cell), cx = t.toCellX(x), cz = t.toCellZ(z);
+    let best = 0, bx = x, bz = z;
+    for (let iz = Math.max(0, Math.floor(cz - n)); iz <= Math.min(t.rz, Math.ceil(cz + n)); iz += 2) for (let ix = Math.max(0, Math.floor(cx - n)); ix <= Math.min(t.rx, Math.ceil(cx + n)); ix += 2) {
+      if (Math.hypot(ix - cx, iz - cz) > n) continue;
+      const i = iz * t.nx + ix, px = t.toWorldX(ix), pz = t.toWorldZ(iz);
+      if (!g.free(i, px, pz)) continue;
+      const o = t.nat[i] + t.loose[i] - g.target(px, pz); if (o > best) best = o, bx = px, bz = pz;
+    }
+    return { x: bx, z: bz };
+  }
   // where the truck stands for a heap: along the edge of the plot nearest to it, clear of houses
   _parkFor(p) {
     const t = this.app.terrain, hx = t.toWorldX(t.rx), hz = t.toWorldZ(t.rz), m = R(1.5), e = R(3);
@@ -223,7 +235,7 @@ export class MachineTool {
     this.grader.design(app.settings.gradeSlope ?? 1.5);
     this.out = houseOutside(app);
     if (this._over(p.x, p.z, R(1.4)) < 0.05) { app.ui?.toast('Здесь нечего вывозить: земля не выше проектной отметки — коснитесь кучи'); return; }
-    this.heap = { x: p.x, z: p.z };
+    this.heap = { x: p.x, z: p.z }; this.empty = 0;
     if (this.state === 'haul') { app.ui?.toast('Следующая куча — погрузчик возьмётся за неё'); return; }
     this.state = 'haul'; this.phase = 'truck'; this.wait = 0;
     app.ui?.refresh();
@@ -282,9 +294,10 @@ export class MachineTool {
     const H = this.heap;
     if (ph === 'toHeap') {
       // (it comes at the heap from the side away from nothing in particular: straight from where it is)
-      const dx = H.x - L.x, dz = H.z - L.z, d = Math.hypot(dx, dz) || 1;
+      if (!this.aim) this.aim = this._peak(H.x, H.z, R(1.6));
+      const A = this.aim, dx = A.x - L.x, dz = A.z - L.z, d = Math.hypot(dx, dz) || 1;
       this.into = [dx / d, dz / d];
-      const ax = H.x - this.into[0] * R(2.6), az = H.z - this.into[1] * R(2.6);
+      const ax = A.x - this.into[0] * R(2.6), az = A.z - this.into[1] * R(2.6);
       const r = this._drive(dt, ax, az); moved = r.step;
       if (r.blocked) { app.ui?.toast('К этой куче погрузчику не подъехать — дом на пути'); this._haulEnd(); return 0; }
       if (r.d < R(0.2)) { this.phase = 'push'; app.journal.begin('haul', { machine: 'loader' }, app.clock); app.sfx.scrapeStart(); }
@@ -293,7 +306,7 @@ export class MachineTool {
       // the bucket on the level, into the heap till it is full
       const e = L.edgeWorld(new THREE.Vector3());
       bucket(this._armFor(g.target(e.x, e.z)), 0);
-      const r = this._drive(dt, H.x + this.into[0] * R(0.8), H.z + this.into[1] * R(0.8), 0.5); moved = r.step;
+      const r = this._drive(dt, this.aim.x + this.into[0] * R(0.8), this.aim.z + this.into[1] * R(0.8), 0.5); moved = r.step;
       if (r.step > 0) { const n = Math.max(1, Math.ceil(r.step / (t.cell * 0.7))); for (let k = n - 1; k >= 0; k--) g.blade(e.x - r.fx * r.step * k / n, e.z - r.fz * r.step * k / n, r.fx, r.fz, L.bucketW / 2, this.cap); }
       L.load = Math.min(1, g.load / this.cap);
       app.sfx.scrapeLevel(0.3 + 0.4 * L.load);
@@ -305,7 +318,7 @@ export class MachineTool {
       // (the truck is away: the loader waits with its bucket full)
       bucket(0.3, 0.55); if (T?.root.visible && this.phase !== 'arrive' && this.drive?.t >= this.drive?.dur) this.phase = 'toTruck';
     } else if (ph === 'toTruck') {
-      const c = T.bedCentre(new THREE.Vector3()), off = T.width / 2 + R(2.1), ax = c.x + this.side[0] * off, az = c.z + this.side[1] * off;
+      const c = T.bedCentre(new THREE.Vector3()), off = T.width / 2 + R(1.75), ax = c.x + this.side[0] * off, az = c.z + this.side[1] * off;
       const r = this._drive(dt, ax, az); moved = r.step;
       if (r.d < R(0.2) || r.blocked) this.phase = 'faceTruck';
       bucket(0.3, 0.55);
@@ -321,7 +334,7 @@ export class MachineTool {
       L.load = Math.max(0, L.load - dt * 1.4);
       if (this.wait <= 0) {
         // the bucketful is in the body: one action — the heap lower, the truck fuller
-        const v = g.realVolume(); g.carry.fill(0); L.load = 0;
+        const v = g.realVolume(); g.carry.fill(0); L.load = 0; this.aim = null; this.empty = v < 0.03 ? this.empty + 1 : 0;
         T.load = Math.min(1, T.load + v / TRUCK_LOAD);
         this._savePose(); this._saveTruck({ away: false });
         app.journal.commit(app.clock);
@@ -336,7 +349,7 @@ export class MachineTool {
           this.phase = 'leave';
           app.ui?.toast('Самосвал полный — уезжает, вернётся пустым');
         }
-        if (this._over(H.x, H.z, R(1.4)) < 0.03) { app.ui?.toast('Куча вывезена до проектной отметки'); this.heap = null; if (this.phase !== 'leave') this._haulEnd(); }
+        if (this._over(H.x, H.z, R(1.4)) < 0.03 || this.empty >= 3) { app.ui?.toast('Куча вывезена до проектной отметки'); this.heap = null; if (this.phase !== 'leave') this._haulEnd(); }
         else if (this.phase !== 'leave') this.phase = 'toHeap';
       }
     }
