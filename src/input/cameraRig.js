@@ -9,7 +9,7 @@ export class CameraRig {
     this.target = new THREE.Vector3(0, 0.1, 0.1);
     this.yaw = 0.42; this.pitch = 0.36; this.dist = 1.5;
     this.goal = { target: this.target.clone(), yaw: this.yaw, pitch: this.pitch, dist: this.dist };
-    this.limits = { minDist: 0.035, maxDist: 4, minPitch: 0.08, maxPitch: 1.5, boxX: 1.5, boxZ: 1.2 };
+    this.limits = { minDist: 0.035, maxDist: 5, minPitch: 0.08, maxPitch: 1.5, boxX: 2.0, boxZ: 1.6 };
     this.shake = true;
     this.t = 0;
     this.focusGoal = 0.36;

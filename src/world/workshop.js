@@ -40,7 +40,7 @@ export function buildWorkshop(scene, renderer, tex) {
   group.add(rim);
 
   // ---- workbench ---------------------------------------------------------------
-  const TW = 3.8, TD = 3.3, TT = 0.045;
+  const TW = 4.8, TD = 4.0, TT = 0.045;
   // dark grey worn laminate top, as on the real workbench (dust, scratches)
   const tableMat = new THREE.MeshStandardMaterial({
     map: worktopTexture(), roughness: 0.62, metalness: 0.05, color: 0xffffff,
@@ -48,7 +48,7 @@ export function buildWorkshop(scene, renderer, tex) {
   });
   tableMat.map.repeat.set(TW / 1.2, TD / 1.2);
   const table = new THREE.Mesh(new THREE.BoxGeometry(TW, TT, TD), tableMat);
-  table.position.set(0.1, -TT / 2, -0.2);
+  table.position.set(0.1, TRAY.base - TT / 2, -0.2);
   table.receiveShadow = true;
   table.name = 'table';
   group.add(table);
@@ -74,9 +74,10 @@ export function buildWorkshop(scene, renderer, tex) {
   const plies = plyEdgeTexture(false);
   plies.wrapS = plies.wrapT = THREE.RepeatWrapping;
   const sideBottom = new THREE.MeshStandardMaterial({ map: plies, roughness: 0.85, color: 0xeee2d2 });
-  sideBottom.map = plies.clone(); sideBottom.map.repeat.set(20, 1 / TRAY.floor); sideBottom.map.needsUpdate = true;
+  sideBottom.map = plies.clone(); sideBottom.map.repeat.set(20, 1 / 0.010); sideBottom.map.needsUpdate = true;
   const rimMat = new THREE.MeshStandardMaterial({ color: 0xe2ded5, roughness: 0.75 });
-  const bottom = new THREE.Mesh(extrude(shapeOf(outer), TRAY.floor), [plyFace, sideBottom]);
+  const bottom = new THREE.Mesh(extrude(shapeOf(outer), 0.010), [plyFace, sideBottom]);
+  bottom.position.y = TRAY.base;
   tray.add(bottom);
   const wallH = TRAY.height - TRAY.floor;
   const frame = shapeOf(outer);
@@ -91,7 +92,7 @@ export function buildWorkshop(scene, renderer, tex) {
   const rulerTop = new THREE.MeshStandardMaterial({ map: rulerTexture(), metalness: 0.85, roughness: 0.38, color: 0xd8dde2 });
   const rulerSide = new THREE.MeshStandardMaterial({ color: 0xb8bec4, metalness: 0.9, roughness: 0.3 });
   const ruler = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.0009, 0.026), [rulerSide, rulerSide, rulerTop, rulerSide, rulerSide, rulerSide]);
-  ruler.position.set(-0.35, 0.00045, TRAY.innerZ / 2 + TRAY.wall + 0.09);
+  ruler.position.set(-0.35, TRAY.base + 0.00045, TRAY.innerZ / 2 + TRAY.wall + 0.09);
   ruler.rotation.y = 0.05;
   ruler.castShadow = true; ruler.receiveShadow = true;
   ruler.userData.prop = true;
@@ -99,7 +100,7 @@ export function buildWorkshop(scene, renderer, tex) {
 
   // ---- pencil ---------------------------------------------------------------------
   const pencil = makePencil();
-  pencil.position.set(0.25, 0.0037, TRAY.innerZ / 2 + TRAY.wall + 0.14);
+  pencil.position.set(0.25, TRAY.base + 0.0037, TRAY.innerZ / 2 + TRAY.wall + 0.14);
   pencil.rotation.y = 1.1;
   pencil.userData.prop = true;
   group.add(pencil);
@@ -116,7 +117,7 @@ export function buildWorkshop(scene, renderer, tex) {
     if (rnd() < 0.5) p.set((rnd() - 0.5) * OX, 0, side * (OZ / 2 + spill)); else p.set(side * (OX / 2 + spill), 0, (rnd() - 0.5) * OZ);
     const r = 0.0004 + Math.pow(rnd(), 3) * 0.0016;
     s.set(r * (0.8 + rnd() * 0.5), r * (0.5 + rnd() * 0.3), r * (0.8 + rnd() * 0.5));
-    p.y = s.y * 0.6;
+    p.y = TRAY.base + s.y * 0.6;
     q.setFromEuler(e.set(rnd() * 6, rnd() * 6, rnd() * 6));
     crumbs.setMatrixAt(i, m.compose(p, q, s));
   }

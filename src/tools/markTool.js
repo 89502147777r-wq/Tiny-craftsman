@@ -1,5 +1,6 @@
 import { MODEL_SCALE, K, KT } from '../config.js';
 import { moveHandle, sizeText } from '../world/outlines.js';
+import { PITS } from '../world/villa.js';
 
 const MM = (v) => v / 1000 / MODEL_SCALE;
 
@@ -142,6 +143,21 @@ export class MarkTool {
       app.objects.remove(id);
     });
     this.select(null);
+  }
+
+  // set out the project's pits (the house's slab, the pool) as outlines — the way the surveyor
+  // pegs them out from the drawing; a pit already pegged (an outline over the same place) stays
+  setOut() {
+    const { app } = this, pv = app.projectView;
+    const have = app.objects.all('outline').filter((o) => o.kind === 'rect');
+    const todo = PITS.map((pt) => ({ pt, r: pv.pitRect(pt) })).filter(({ r }) => !have.some((o) => Math.abs(o.x0 - r.x0) + Math.abs(o.x1 - r.x1) + Math.abs(o.z0 - r.z0) + Math.abs(o.z1 - r.z1) < 0.02));
+    if (!todo.length) { app.ui.toast('Котлованы по проекту уже размечены'); return; }
+    app.journal.act('outline-add', { kind: 'project' }, app.clock, () => {
+      for (const { r } of todo) app.objects.add({ type: 'outline', kind: 'rect', ...r });
+    });
+    if (pv.show === 'off') { app.settings.project = 'site'; app.applySettings(); }
+    app.ui.toast(todo.map(({ pt }) => `${pt.name}: ${((pt.x1 - pt.x0) / 1000).toFixed(1)} × ${((pt.z1 - pt.z0) / 1000).toFixed(1)} м, −${(pt.depth / 1000).toFixed(2)} м`).join(' · '));
+    app.ui.refresh();
   }
 
   // live slider edits of the selected outline: begin on first input, commit on change

@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:10.47 (860 mm = 9 m).
-export const BUILD = 177;
+export const BUILD = 178;
 export const STAGE = 3;
 export const MODEL_SCALE = 9000 / 860;   // 1:10.47 — 860 mm of the model is 9 m
 // how much finer everything is than at the old 1:3.5 (texture sizes of stones, pores …)
@@ -23,12 +23,16 @@ export const MACHINES_ENABLED = false;
 export const BACKDROP = { sx: -1, sz: -1, first: 'z', radius: 0.36, height: 1.35 };
 
 export const TRAY = {
-  innerX: 2.4,        // inner size of the plywood tray along X
-  innerZ: 1.8,        // … and along Z
+  innerX: 3.396,      // inner size of the plywood tray along X (35.5 m: twice the old 25 × 19 m plot's area)
+  innerZ: 2.547,      // … and along Z (26.7 m)
   wall: 0.018,        // wall thickness
-  height: 0.106,      // wall top above the table
-  floor: 0.010,       // top of the tray bottom board (soil cannot go lower)
-  soil: 0.100,        // natural ground level (90 mm of soil = 0.94 m at 1:10.47)
+  height: 0.106,      // wall top (6 mm above the ground)
+  soil: 0.100,        // natural ground level
+  // top of the tray bottom board (soil cannot go lower): 2.5 m of ground under the natural
+  // level — a pool pit (1.5 m of water + the bowl's slab and bedding ≈ 2.0 m) fits. The box
+  // is deep, so the table it stands on is lower (`base`, 10 mm of bottom board under `floor`)
+  floor: 0.100 - 2.5 / MODEL_SCALE,
+  get base() { return this.floor - 0.010; },
 };
 
 // size of one soil photo tile on the table (the sand is real sand of the

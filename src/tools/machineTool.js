@@ -409,7 +409,14 @@ export class MachineTool {
       bucket(0.3, 0.55);
     } else if (ph === 'lift') {
       bucket(0.95, 0.5); this.wait -= dt;
-      if (this.wait <= 0) { this.phase = 'dump'; this.wait = 1.0; }
+      // (raised: it creeps on until the bucket's lip is over the middle of the body — the load lands
+      // in the middle, not against the near side)
+      if (L.lowWorld(new THREE.Vector3()).y > T.y + T.bodyBox.max.y + R(0.1)) {
+        const c = T.bedCentre(new THREE.Vector3()), e = L.edgeWorld(new THREE.Vector3()), q = T.root.worldToLocal(e.clone()), bb = T.bodyBox;
+        const off = q.z - (bb.min.z + bb.max.z) / 2, far = Math.abs(off) > R(0.12) && Math.sign(off) === Math.sign(T.root.worldToLocal(new THREE.Vector3(L.x, c.y, L.z)).z - (bb.min.z + bb.max.z) / 2);
+        if (far && (this.creep = (this.creep || 0) + dt) < 5) { const r = this._drive(dt, c.x, c.z, 0.45); moved = r.step; if (r.blocked) this.creep = 9; this.wait = Math.max(this.wait, 0.05); }
+      }
+      if (this.wait <= 0) { this.phase = 'dump'; this.wait = 1.0; this.creep = 0; }
     } else if (ph === 'dump') {
       bucket(0.95, -0.9); this.wait -= dt;
       L.load = Math.max(0, L.load - dt * 1.4);
@@ -425,7 +432,12 @@ export class MachineTool {
         const into = Math.min(v, Math.max(0, (1 - T.load) * TRUCK_LOAD)), k = v > 0 ? 1 - into / v : 0;
         if (k > 0) { const sp = this._overSide(L.edgeWorld(new THREE.Vector3())); for (const m of [0, 1, 2, 3]) if (g.carry[m] > 0) t.deposit(sp.x, sp.z, g.carry[m] * k * t.cellArea, R(0.5), 0, m); }
         g.carry.fill(0); L.load = 0;
-        T.pourAt(L.edgeWorld(new THREE.Vector3()), into / TRUCK_LOAD);
+        { const mw = this._mixW(); if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let m = 0; m < 4; m++) T.mix[m] += mw[m] * into; T.soil.material.setMix?.(T.mix); }
+        // (the operator shakes the bucket over the body as it empties, the load leaves it sliding on
+        // forward: the heap lands along the body's middle, not against its near side)
+        const land = T.root.worldToLocal(L.edgeWorld(new THREE.Vector3()).add(new THREE.Vector3(Math.cos(L.yaw) * R(0.35), 0, -Math.sin(L.yaw) * R(0.35)))), bb = T.bodyBox, mz = (bb.min.z + bb.max.z) / 2;
+        land.z = mz + (land.z - mz) * 0.2; T.root.localToWorld(land);
+        T.pourLine(land, new THREE.Vector3(Math.sin(L.yaw), 0, Math.cos(L.yaw)), L.bucketW / 2, into / TRUCK_LOAD);
         this._savePose(); this._saveTruck({ away: false });
         app.journal.commit(app.clock);
         this.phase = 'lower'; this.wait = 1.0;
@@ -634,13 +646,7 @@ export class MachineTool {
       } else this.v = 0;
       T.tipGoal = Math.max(0, Math.min(0.8, T.tipGoal - ry * 0.5 * dt));
       // the body up: the soil runs out over the tailgate, a heap behind it
-      if (T.tip > 0.3 && T.load > 0) {
-        const dl = Math.min(T.load, dt * 0.35 * (T.tip - 0.3) / 0.5);
-        T.load -= dl;
-        const b = T.bodyBox, p = new THREE.Vector3(b.min.x, 0, (b.min.z + b.max.z) / 2).applyMatrix4(T.root.matrixWorld), fx = Math.cos(T.yaw), fz = -Math.sin(T.yaw);
-        const px = p.x - fx * R(0.5), pz = p.z - fz * R(0.5);
-        if (t.inside(px, pz)) t.deposit(px, pz, dl * TRUCK_LOAD / MODEL_SCALE ** 3, R(0.8), 0, 0);
-      }
+      this._tipOut(dt);
       app.sfx.scrapeLevel(0.1 + Math.min(0.4, Math.abs(this.v) / R(4) * 0.4));
     } else {
       // the skid steer: on the spot or on, the left stick forward / round; the right one the arms (up /
@@ -976,6 +982,21 @@ export class MachineTool {
       const box = { x0: Math.max(0, cx - n), z0: Math.max(0, cz - n), x1: Math.min(t.rx, cx + n), z1: Math.min(t.rz, cz + n) }, keep = t.active;
       t.active = { ...box };
       for (let k = 0; k < 24 && t.active; k++) t.relax(1);
+      // (a heap tipped out of the body: its ridges, where the grid's slump leaves them, roll off a
+      // little — loose grains run from each cell to a lower neighbour — so it stands round, as a cone)
+      if (this._roundHeap) {
+        const { nx: N, nat, loose } = t;
+        for (let it = 0; it < 3; it++) for (let iz = box.z0 + 1; iz < box.z1; iz++) for (let ix = box.x0 + 1; ix < box.x1; ix++) {
+          const i = iz * N + ix;
+          if (loose[i] <= 0) continue;
+          for (const j of [i + 1, i + N]) {
+            const d = nat[i] + loose[i] - nat[j] - loose[j], src = d > 0 ? i : j, m = Math.min(Math.abs(d) * 0.12, loose[src]);
+            if (m > 1e-8) t._move(src, d > 0 ? j : i, m);
+          }
+        }
+        t._touch?.(box.x0, box.z0, box.x1, box.z1);
+        this._roundHeap = false;
+      }
       t.active = keep ? { x0: Math.min(keep.x0, box.x0), z0: Math.min(keep.z0, box.z0), x1: Math.max(keep.x1, box.x1), z1: Math.max(keep.z1, box.z1) } : t.active;
       this._slumpAt = null;
     }
@@ -1003,6 +1024,31 @@ export class MachineTool {
       push[m] = 0;
     }
   }
+  // what ran out of the tipped body this frame: a stream of it off the tailgate's lip down to the
+  // ground, and there a heap — each material as it is mixed in the body — that grows up to the
+  // tail and slumps to its angle (a cone, not a smear: it lands in one place)
+  _tipOut(dt) {
+    const app = this.app, t = app.terrain, T = this.truck, v = T.outflow || 0;
+    T.outflow = 0;
+    if (!(v > 0)) return;
+    const lip = T.tailLip(new THREE.Vector3()), fx = Math.cos(T.yaw), fz = -Math.sin(T.yaw), r = Math.random;
+    const gx = lip.x - fx * R(0.25), gz = lip.z - fz * R(0.25);
+    const mix = T.mix || [1, 0, 0, 0], tot = mix[0] + mix[1] + mix[2] + mix[3] || 1;
+    for (const m of [0, 1, 2, 3]) {
+      const a = v * mix[m] / tot; if (!(a > 0)) continue;
+      // (the stream wanders across the gate's width as it runs: the heap grows round, not cut by the grid)
+      const w = (r() * 2 - 1) * R(0.45), u = (r() - 0.3) * R(0.3), dx = gx - fz * w - fx * u, dz = gz + fx * w - fz * u;
+      if (t.inside(dx, dz)) t.deposit(dx, dz, a, R(0.3), 0, m);
+      // (the stream: crumbs off the lip, across the tailgate's width, falling)
+      const n = Math.min(10, 2 + Math.round(a / (R(0.01) ** 3)));
+      for (let j = 0; j < n; j++) {
+        const w = (r() * 2 - 1) * T.hz * 0.45, pos = new THREE.Vector3(lip.x - fz * w, lip.y, lip.z + fx * w);
+        app.particles.emit(pos, new THREE.Vector3(-fx * R(0.5) * (0.4 + r()), -R(0.4) * r(), -fz * R(0.5) * (0.4 + r())), 0, R(0.03 + r() * 0.05), m === 1 ? 0 : 0.05, 0, m);
+      }
+    }
+    this._slumpAt = [gx, gz]; this._roundHeap = true;
+    if (T.load < 0.003) { T.load = 0; T.hf.fill(0); }
+  }
   // a frame of pouring: a share of each material out over the lip, as falling crumbs (they land
   // where they fall: the volume goes down there), or into the truck's body under it
   _pour(dt, e, f, hw) {
@@ -1018,7 +1064,7 @@ export class MachineTool {
       // (into the body as much as it takes; what it does not, runs over its side onto the ground)
       if (truck) {
         const room = Math.max(0, (1 - T.load) * TRUCK_LOAD / MODEL_SCALE ** 3), into = Math.min(vol, room), spill = vol - into;
-        if (into > 0) { if (T.load < 0.02) T.mix = [0, 0, 0, 0]; T.mix[m] += into; T.soil.material.setMix?.(T.mix); T.pourAt(e, into * MODEL_SCALE ** 3 / TRUCK_LOAD); this._intoTruck = true; }   // (a heap where it lands)
+        if (into > 0) { if (T.load < 0.02) T.mix = [0, 0, 0, 0]; T.mix[m] += into; T.soil.material.setMix?.(T.mix); T.pourAt(e.clone().add(new THREE.Vector3(f[0] * R(0.3), 0, f[1] * R(0.3))), into * MODEL_SCALE ** 3 / TRUCK_LOAD); this._intoTruck = true; }   // (a heap where it lands)
         if (spill > 0) { const sp = this._overSide(e); for (let j = 0; j < 4; j++) app.particles.emit(sp.clone().add(new THREE.Vector3((r() - 0.5) * R(0.6), 0, (r() - 0.5) * R(0.6))), new THREE.Vector3(0, -R(0.2), 0), spill / 4, R(0.03 + r() * 0.05), 0.05, 0, m); }
       }
       for (let j = 0; j < N; j++) {

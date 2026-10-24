@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { FACADE, LAYERS, OFF, CELL, PANELS, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
+import { FACADE, LAYERS, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
 
 // The facade done by hand (facade.js), on the outside of the walls:
 //   eps  – the boards carried from the tray, one by one, staggered, cut at the openings and
@@ -195,11 +195,12 @@ export class FacadeWork {
     const L = this.layer, h = this._hit(e, L === 'eps' ? 0 : OFF.eps);
     this.place = null;
     if (!h) { this._live(null); return null; }
-    const F = h.F, rec = this._rec(F), slot = slotAt(F, h.a, h.y, L), off = L === 'eps' ? OFF.eps : OFF.pan;
-    const piece = cutPiece(F, slot, off), full = MM(L === 'eps' ? FACADE.epsL : 1000) * MM(500);
+    const key = this.app.settings.facPanel || 'stone:sandstone', md = panelMod(key);
+    const F = h.F, rec = this._rec(F), slot = slotAt(F, h.a, h.y, L, md), off = L === 'eps' ? OFF.eps : OFF.pan;
+    const piece = cutPiece(F, slot, off), full = L === 'eps' ? MM(FACADE.epsL) * MM(FACADE.epsW) : MM(md[0]) * MM(md[1]);
     let why = null;
     if (!piece.length) why = 'Здесь проём — лист не нужен';
-    else if ((rec?.[L] || []).some((s) => sameSlot(s, slot))) why = 'Это место уже закрыто';
+    else if ((rec?.[L] || []).some((s) => sameSlot(s, slot) || (L === 'pan' && Math.min(s[2], slot[2]) - Math.max(s[0], slot[0]) > MM(20) && Math.min(s[3], slot[3]) - Math.max(s[1], slot[1]) > MM(20)))) why = 'Это место уже закрыто';
     else if (L === 'pan') {
       // on the insulation, not over the plaster
       // (its points under the face's top: by a gable's slope the panel is cut along it)
