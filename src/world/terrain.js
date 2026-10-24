@@ -1228,11 +1228,13 @@ export class Terrain {
     let most = 0;
     for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) {
       const i = iz * n + ix;
-      if (conc[i] > 1e-6 || loose[i] <= 1e-6 || comp[i] >= 1) continue;
+      if (conc[i] > 1e-6 || comp[i] >= 1) continue;
       const rx = this.toWorldX(ix) - x, rz = this.toWorldZ(iz) - z;
       if (Math.abs(rx * dx + rz * dz) > len / 2 || Math.abs(rx * ax + rz * az) > w / 2) continue;
       const nc = Math.min(1, comp[i] + gain), dc = nc - comp[i];
       comp[i] = nc;
+      // (undisturbed ground: already dense — its top only pressed smooth and settling a little, ~3 % of 10 cm)
+      if (loose[i] <= 1e-6) { const d = 0.1 / MODEL_SCALE * 0.03 * dc; this.nat[i] -= d; if (d > most) most = d; continue; }
       // shrink the layers from the top down to the plate's reach
       let rest = reach, lost = 0;
       for (let k = lN[i] - 1, base = i * LAYERS; k >= 0 && rest > 0; k--) {
