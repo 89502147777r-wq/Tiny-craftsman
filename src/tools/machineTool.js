@@ -122,6 +122,7 @@ export class MachineTool {
     let blocked = false;
     if (step > 0 && !this._fits('loader', nx, nz, yaw)) { blocked = true; step = 0; }
     L.place(t, L.x + fx * step, L.z + fz * step, yaw);
+    if (step) this._tracks('loader', step);
     return { step, d: d - step, blocked, fx, fz };
   }
   // turn on the spot to face (tx, tz) → true when it does
@@ -557,7 +558,12 @@ export class MachineTool {
       if (Math.abs(this.v) < R(0.02) && !ly) this.v = 0;
       const yaw = T.yaw - lx * 0.55 * this.v / R(2.5) * dt, f = [Math.cos(yaw), -Math.sin(yaw)];
       const nx = T.x + f[0] * this.v * dt, nz = T.z + f[1] * this.v * dt;
-      if (this.v && this._fits('truck', nx, nz, yaw)) T.place(t, nx, nz, yaw); else this.v = 0;
+      if (this.v && this._fits('truck', nx, nz, yaw)) {
+        const keep = [T.x, T.z, T.yaw];
+        T.place(t, nx, nz, yaw);
+        if (this._tooSteep('truck', T, keep)) { T.place(t, ...keep); this.v = 0; }
+        else this._tracks('truck', this.v * dt);
+      } else this.v = 0;
       T.tipGoal = Math.max(0, Math.min(0.8, T.tipGoal - ry * 0.5 * dt));
       // the body up: the soil runs out over the tailgate, a heap behind it
       if (T.tip > 0.3 && T.load > 0) {
@@ -577,7 +583,12 @@ export class MachineTool {
       if (Math.abs(this.v) < R(0.02) && !ly) this.v = 0;
       const yaw = L.yaw - lx * TURN * dt, f = [Math.cos(yaw), -Math.sin(yaw)];
       const nx = L.x + f[0] * this.v * dt, nz = L.z + f[1] * this.v * dt;
-      if (this._fits('loader', nx, nz, yaw)) { moved = this.v * dt; L.place(t, nx, nz, yaw); } else { this.v = 0; if (lx && this._fits('loader', L.x, L.z, yaw)) L.place(t, L.x, L.z, yaw); }
+      if (this._fits('loader', nx, nz, yaw)) {
+        const keep = [L.x, L.z, L.yaw];
+        L.place(t, nx, nz, yaw); moved = this.v * dt;
+        if (this._tooSteep('loader', L, keep)) { L.place(t, ...keep); moved = 0; this.v = 0; }
+      } else { this.v = 0; if (lx && this._fits('loader', L.x, L.z, yaw)) L.place(t, L.x, L.z, yaw); }
+      if (moved || lx) this._tracks('loader', moved);
       // (armSet: where the stick has put the arms — what the ground does to the bucket for a while, lifting
       // it where it bears on it, does not move that)
       this.armSet = Math.max(-0.35, Math.min(1.0, (this.armSet ?? L.armGoal) - ry * 0.7 * dt));
@@ -657,6 +668,8 @@ export class MachineTool {
         const b = L.lowWorld(new THREE.Vector3()), lim = this._bed(b) - R(0.02);
         if (b.y < lim) { const lo = this._armFor(lim, true); if (L.arm < lo) { L.arm = lo; L.update(0); L.edgeWorld(e); } }
       }
+      // (standing, the bucket pressed into loose soil: what is under its bottom is pushed out to its sides)
+      if (!moved && L.tilt > -0.45) this._displace(e, f);
       // tipped: it runs out over the lip as it tips — the more, the faster; into the body when it is
       // over it, else it falls and lands where it falls
       if (L.tilt < -0.45 && g.load > 1e-9) this._pour(dt, e, f, hw);
@@ -689,6 +702,53 @@ export class MachineTool {
     rig.goal.target.set(M.x + Math.cos(M.yaw) * ahead, M.y + R(0.8), M.z - Math.sin(M.yaw) * ahead); rig.clampTarget();
   }
 
+  // too steep for it: up or down a slope over its limit, or across one (a loaded bucket held high
+  // makes it tip sooner) — it stays where it was (keep: its pose before), with a word once
+  _tooSteep(kind, M, keep) {
+    const L = this.loader, high = kind === 'loader' ? Math.min(1, L.load) * Math.max(0, L.arm) : 0;
+    const [pm, rm] = kind === 'truck' ? [0.35, 0.3 - 0.06 * (this.truck.load || 0)] : [0.45, 0.4 - 0.15 * high];
+    const was = keep && this._slope?.[kind];
+    const bad = Math.abs(M.pitch ?? 0) > pm || Math.abs(M.roll ?? 0) > rm;
+    // (only a move that makes it steeper is stopped: from too steep it may go back)
+    const worse = bad && (!was || Math.abs(M.pitch ?? 0) + Math.abs(M.roll ?? 0) > was + 1e-4);
+    if (!worse) { (this._slope ||= {})[kind] = Math.abs(M.pitch ?? 0) + Math.abs(M.roll ?? 0); return false; }
+    if (!this._steepSaid) { this._steepSaid = true; this.app.ui?.toast(Math.abs(M.roll ?? 0) > rm ? 'Слишком крутой склон поперёк — машина может опрокинуться' + (high > 0.2 ? ': опустите ковш' : '') : 'Слишком круто — машина туда не заедет'); setTimeout(() => (this._steepSaid = false), 4000); }
+    return true;
+  }
+  // the wheels over loose material press it down: each pass a little more compact, a rut (the same
+  // settling as under the plate compactor; the heavier machine, the more) — only within an action
+  _tracks(kind, moved) {
+    const app = this.app, t = app.terrain;
+    if (!app.journal.pending) return;
+    const pts = [], d = Math.max(Math.abs(moved), R(0.05));
+    if (kind === 'loader') { const L = this.loader; for (const w of L.wheels) pts.push(L.body.localToWorld(w.at.clone())); }
+    else { const T = this.truck; for (const w of T.wheels) for (const sz of [-1, 1]) pts.push(T.root.localToWorld(new THREE.Vector3(w.g.position.x, 0, sz * R(0.72)).add(new THREE.Vector3(0, 0, 0)))); }
+    const M = kind === 'loader' ? this.loader : this.truck, fx = Math.cos(M.yaw), fz = -Math.sin(M.yaw);
+    const gain = kind === 'loader' ? 0.3 : 0.3 + 0.25 * (this.truck.load || 0);   // (a pass of a wheel ≈ several of the plate)
+    for (const p of pts) t.compactStep(p.x, p.z, fx, fz, R(0.28), d, gain);
+  }
+  // what is under the bucket's bottom, above it, where it has been pressed into loose soil: out to its
+  // sides (half each way), just past them
+  _displace(e, f) {
+    const t = this.app.terrain, g = this.grader, L = this.loader, by = L.lowWorld(new THREE.Vector3()).y, hw = L.bucketW / 2, st = t.cell * 0.7;
+    if (by > Math.max(t.heightAt(e.x, e.z), t.heightAt(e.x - f[0] * R(0.3), e.z - f[1] * R(0.3)), t.heightAt(e.x - f[0] * R(0.6), e.z - f[1] * R(0.6))) + R(0.03)) return;   // (in the air)
+    const side = (this._sideC ||= [new Float64Array(4), new Float64Array(4)]);
+    let any = false, k = 0;
+    for (let d = 0; d <= R(0.6); d += st) for (let q = -hw; q <= hw; q += st) {
+      const px = e.x - f[0] * d - f[1] * q, pz = e.z - f[1] * d + f[0] * q;
+      if (!t.inside(px, pz)) continue;
+      const i = t.index(px, pz); if (!g.free(i, px, pz) || t.loose[i] <= 0) continue;
+      const over = Math.min(t.nat[i] + t.loose[i] - by, t.loose[i]);
+      if (over > 1e-6) { g.cut(i, over, side[q < 0 ? 0 : 1]); any = true; }
+      k++;
+    }
+    if (!any) return;
+    t._touch(Math.max(0, Math.floor(t.toCellX(e.x) - 30)), Math.max(0, Math.floor(t.toCellZ(e.z) - 30)), Math.min(t.rx, Math.ceil(t.toCellX(e.x) + 30)), Math.min(t.rz, Math.ceil(t.toCellZ(e.z) + 30)));
+    for (const [s, c] of [[-1, side[0]], [1, side[1]]]) {
+      const px = e.x - f[0] * R(0.3) - f[1] * s * (hw + R(0.15)), pz = e.z - f[1] * R(0.3) + f[0] * s * (hw + R(0.15));
+      for (const m of [0, 1, 2, 3]) if (c[m] > 0) { if (t.inside(px, pz)) t.deposit(px, pz, c[m] * t.cellArea, R(0.25), 0, m); c[m] = 0; }
+    }
+  }
   // how low the bucket's lowest point can go at b: the top there, less what it sinks into loose
   // material (≤ 8 cm) or its nose cuts into firm ground (≤ 5 cm, tipped down)
   _bed(b) {
