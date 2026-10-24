@@ -1,3 +1,4 @@
+import { Mirrors } from './render/mirrors.js';
 import * as THREE from 'three';
 import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, KT, M_SOIL, M_SAND, M_G5, M_G20, CONCRETE, PUMP, DELIVERY } from './config.js';
 import { loadAssets } from './world/assets.js';
@@ -108,6 +109,7 @@ async function main() {
   u.uPlot.value.set(-terrain.halfX, -terrain.halfZ, terrain.sizeX, terrain.sizeZ);
 
   app.pipeline = new Pipeline(renderer);
+  app.mirrors = new Mirrors(renderer);
   app.rig = new CameraRig(camera);
   app.journal = new Journal(terrain, app.objects);
   // a physics action still running (stripping) finishes before the next one starts
@@ -284,6 +286,7 @@ function step(dt, time, render = true) {
     shadowT += dt;
     if (app.shadowLive !== false || shadowT > 0.5) { sm.needsUpdate = true; shadowT = 0; }
     app.pipeline.render(app.scene, app.camera, time);
+    app.mirrors.render(app.scene);
   }
   if (render && (shaderCheckT += dt) > 1) { shaderCheckT = 0; checkTerrainShader(); checkGpuMemory(); }
   app.recorder.sample(app.clock, dt, trackRow);

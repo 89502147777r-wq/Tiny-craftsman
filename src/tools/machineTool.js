@@ -410,9 +410,34 @@ export class MachineTool {
     this.state = 'idle'; this.stick = { l: [0, 0], r: [0, 0] };
     app.sfx.scrapeStop();
     if (app.rig.shakeKeep != null) { app.rig.shake = app.rig.shakeKeep; app.rig.shakeKeep = null; }
-    this._fov(null);
+    this._fov(null); this._mirrors(null);
     app.rig.goal.dist = R(16); app.rig.goal.pitch = 0.6;
     app.ui?.refresh();
+  }
+  // the rear-view mirrors, in the cab: the truck's two by its doors, the loader's one over the
+  // windscreen (looking back over the cab) — M the machine, f its forward; null: none
+  _mirrors(M, f) {
+    const mr = this.app.mirrors;
+    if (!mr) return;
+    const kind = M && this.view === 'cab' ? this.drv : null;
+    if (this._mrKind !== kind) {
+      this._mrKind = kind;
+      mr.set(kind === 'truck' ? [{ rect: [0.02, 0.4, 0.15, 0.17] }, { rect: [0.83, 0.4, 0.15, 0.17] }] : kind === 'loader' ? [{ rect: [0.37, 0.025, 0.26, 0.11] }] : null);
+    }
+    if (!kind) return;
+    M.root.updateMatrixWorld(true);
+    const side = new THREE.Vector3(Math.sin(M.yaw), 0, Math.cos(M.yaw)), back = f.clone().negate();
+    if (kind === 'truck') {
+      const hw = this.truck.width / 2 + R(0.2);
+      // (the left one shows the left side behind, the right one the right — each turned out a little)
+      for (const [k, s] of [[0, -1], [1, 1]]) {
+        const pos = new THREE.Vector3(M.x, M.y + R(1.75), M.z).addScaledVector(f, R(1.9)).addScaledVector(side, s * hw);
+        mr.aim(k, pos, back.clone().addScaledVector(side, s * 0.12).add(new THREE.Vector3(0, -0.06, 0)));
+      }
+    } else {
+      const pos = new THREE.Vector3(M.x, M.y + R(2.3), M.z).addScaledVector(f, -R(1.3));
+      mr.aim(0, pos, back.clone().add(new THREE.Vector3(0, -0.18, 0)));
+    }
   }
   _fov(f) {
     const c = this.app.camera;
@@ -541,10 +566,11 @@ export class MachineTool {
       rig.setState({ target: [e.x + f.x * ahead, e.y - drop, e.z + f.z * ahead], yaw: M.yaw - Math.PI / 2, pitch: Math.atan2(drop, ahead), dist: Math.hypot(ahead, drop) }, true);
       this._camYaw = null; rig.shakeKeep ??= rig.shake; rig.shake = false;
       this._fov(this.drv === 'truck' ? 62 : 75);   // (wide, as a camera in a cab: the bucket below and the way ahead both in sight)
+      this._mirrors(M, f);
       return;
     }
     if (rig.shakeKeep != null) { rig.shake = rig.shakeKeep; rig.shakeKeep = null; }
-    this._fov(null);
+    this._fov(null); this._mirrors(null);
     // the camera behind it (a finger turning it round keeps its turn)
     if (this._camYaw != null) this.camOff += rig.goal.yaw - this._camYaw;
     rig.goal.yaw = this._camYaw = M.yaw - Math.PI / 2 + this.camOff;
