@@ -558,7 +558,9 @@ export class MachineTool {
     } else {
       // the skid steer: on the spot or on, the left stick forward / round; the right one the arms (up /
       // down) and the bucket (left curls it back, right tips it)
-      this.v += (-ly * SPEED - this.v) * (1 - Math.exp(-dt * 4));
+      // (heavy going: cutting and pushing with a full bucket it goes slower — down to half its speed)
+      const drag = this._drag ?? 0;
+      this.v += (-ly * SPEED * (1 - 0.5 * drag) - this.v) * (1 - Math.exp(-dt * 4));
       if (Math.abs(this.v) < R(0.02) && !ly) this.v = 0;
       const yaw = L.yaw - lx * TURN * dt, f = [Math.cos(yaw), -Math.sin(yaw)];
       const nx = L.x + f[0] * this.v * dt, nz = L.z + f[1] * this.v * dt;
@@ -569,11 +571,13 @@ export class MachineTool {
       L.armGoal = this.armSet;
       L.tiltGoal = Math.max(-1.0, Math.min(0.6, L.tiltGoal - rx * 1.4 * dt));
       // the arms hold where they are set: going on, the edge goes at that height and takes all over it
-      // — no deeper unless lowered. Lowered, the bucket stops on the ground under it (a heap, tipped
-      // soil, does not hold it: it goes into it); its nose tipped down presses in a little (≈5 cm).
+      // — no deeper unless lowered. Lowered, the bucket lies on what is under it — the ground, or a
+      // heap's top: it sinks a little into loose material (up to ≈8 cm), its nose tipped down cuts a
+      // little into firm ground (≈5 cm). To take a heap it is put down on the ground before it and
+      // driven in.
       const e = L.edgeWorld(new THREE.Vector3());
       if (ry > 0) {
-        const b = L.lowWorld(new THREE.Vector3()), floor = Math.min(t.heightAt(b.x, b.z), t.orig[t.index(b.x, b.z)]) - R(0.05) * Math.min(1, Math.max(0, -L.tilt / 0.3)), lo = this._armFor(floor, true);
+        const b = L.lowWorld(new THREE.Vector3()), floor = this._bed(b), lo = this._armFor(floor, true);
         if (this.armSet < lo) this.armSet = L.armGoal = Math.min(L.arm, lo);
       }
       L.update(0); L.edgeWorld(e);
@@ -634,16 +638,17 @@ export class MachineTool {
       }
       // curled back with the edge in the soil: what lies over it in the bucket's mouth goes in
       if (rx < 0 && L.tilt < 0.35 && g.load < this.cap && e.y < t.heightAt(e.x, e.z)) this._scoopStrip(e, f, L.bucketW / 2);
-      // (it lies on the ground it has cut: the machine dipping into the cut does not sink it through —
-      // only its nose, tipped down and pressed, goes in a little; a heap, soil run under it, is no floor)
-      if (ry <= 0) {
-        const b = L.lowWorld(new THREE.Vector3()), lim = Math.min(t.heightAt(b.x, b.z), t.orig[t.index(b.x, b.z)]) - R(0.02) - R(0.05) * Math.min(1, Math.max(0, -L.tilt / 0.3));
+      // (it lies on what is under it — the ground it has cut, a heap: the machine dipping into the cut
+      // does not sink it through)
+      if (ry <= 0 && (moved || lx)) {   // (standing, soil sliding against it does not lift it)
+        const b = L.lowWorld(new THREE.Vector3()), lim = this._bed(b) - R(0.02);
         if (b.y < lim) { const lo = this._armFor(lim, true); if (L.arm < lo) { L.arm = lo; L.update(0); L.edgeWorld(e); } }
       }
       // tipped: it runs out over the lip as it tips — the more, the faster; into the body when it is
       // over it, else it falls and lands where it falls
       if (L.tilt < -0.45 && g.load > 1e-9) this._pour(dt, e, f, hw);
       else if (this._intoTruck && g.load <= 1e-9) { this._intoTruck = false; app.ui?.toast(`В кузове ${(T.load * TRUCK_LOAD).toFixed(1).replace('.', ',')} из ${TRUCK_LOAD} м³`); }
+      this._drag = moved > 0 && L.tilt > -0.45 && L.tilt < 0.15 && cutY < t.heightAt(e.x + f[0] * R(0.3), e.z + f[1] * R(0.3)) ? Math.min(1, g.load / this.cap) : 0;
       L.soil.material.setMix?.(this._mixW());
       L.load = Math.min(1, g.load / this.cap);
       app.sfx.scrapeLevel(0.15 + Math.min(0.5, Math.abs(this.v) / SPEED * 0.3 + L.load * 0.2));
@@ -671,6 +676,12 @@ export class MachineTool {
     rig.goal.target.set(M.x + Math.cos(M.yaw) * ahead, M.y + R(0.8), M.z - Math.sin(M.yaw) * ahead); rig.clampTarget();
   }
 
+  // how low the bucket's lowest point can go at b: the top there, less what it sinks into loose
+  // material (≤ 8 cm) or its nose cuts into firm ground (≤ 5 cm, tipped down)
+  _bed(b) {
+    const t = this.app.terrain, L = this.loader, i = t.index(b.x, b.z), top = t.heightAt(b.x, b.z);
+    return top - Math.min(t.loose[i], R(0.08)) - R(0.05) * Math.min(1, Math.max(0, -L.tilt / 0.3));
+  }
   // curling back with the edge in the soil: the strip just ahead of the edge, as wide as the bucket,
   // goes in down to the edge's height (a straight bite — not a round pit)
   _scoopStrip(e, f, hw) {
