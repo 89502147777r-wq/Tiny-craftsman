@@ -46,13 +46,19 @@ export class Truck {
         for (const c of gate) this.gate.attach(c.o);
       }
     }
-    // the soil in it: a mound over its floor, the floor ~12 % up the body's sides
+    // what it carries: a little ground of its own over the body's floor (~14 % up its sides) — a grid
+    // of heights: a bucketful lands as a heap where it is tipped and slumps to its angle of repose
     const L = bb.max.x - bb.min.x, W = bb.max.z - bb.min.z, H = bb.max.y - bb.min.y;
-    const g = new THREE.BoxGeometry(1, 1, 1, 8, 1, 4); g.translate(0.5, 0.5, 0);
-    { const pos = g.attributes.position; for (let i = 0; i < pos.count; i++) if (pos.getY(i) > 0.5) { const u = pos.getX(i), w = pos.getZ(i); pos.setY(i, 0.55 + 0.45 * Math.sin(Math.PI * Math.min(1, Math.max(0, u))) * (1 - 4 * w * w)); } g.computeVertexNormals(); }
+    this.NX = 16; this.NZ = 9;
+    this.hx = L * 0.9; this.hz = W * 0.86; this.x0 = L * 0.04; this.floor = H * 0.14; this.hMax = H * 1.05;
+    this.cA = (this.hx / (this.NX - 1)) * (this.hz / (this.NZ - 1));
+    this.cap = R(1) ** 3 * TRUCK_LOAD;   // (the body's load, model volume)
+    this.hf = new Float32Array(this.NX * this.NZ);
+    const g = new THREE.PlaneGeometry(1, 1, this.NX - 1, this.NZ - 1); g.rotateX(-Math.PI / 2); g.translate(0.5, 0, 0);
     this.soil = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x75553a, roughness: 1 }));
-    this.soil.position.set(L * 0.04, H * 0.14, 0); this.soil.scale.set(L * 0.9, 1e-4, W * 0.86); this.soil.visible = false;
-    this.bed.add(this.soil); this.soilH = H * 0.75;
+    this.soil.position.set(this.x0, this.floor, 0); this.soil.scale.set(this.hx, 1, this.hz); this.soil.visible = false;
+    this.soil.castShadow = true;
+    this.bed.add(this.soil); this.soilH = H * 0.75; this._hfDirty = true;
     // the wheels: the tyres (their rubber), each with what sits inside it (the rim, the hub), turned
     // on a pivot at its middle about the axle (the truck's local z)
     {
@@ -100,13 +106,65 @@ export class Truck {
     this.pitch = Math.atan2(hf - hb, R(3)); this.roll = Math.atan2(hl - hr, R(1.6));
     this.root.rotation.set(0, 0, 0); this.root.rotateY(yaw); this.root.rotateZ(this.pitch); this.root.rotateX(this.roll);
   }
+  // the volume in the body's grid (model)
+  _hfVol() { let v = 0; for (const h of this.hf) v += h; return v * this.cA; }
+  // a share `frac` of a full body tipped in at p (world): a heap there
+  pourAt(p, frac) {
+    if (!this.bed || !(frac > 0)) return;
+    const q = this.bed.worldToLocal(p.clone()), NX = this.NX, NZ = this.NZ;
+    const cx = Math.max(1, Math.min(NX - 2, (q.x - this.x0) / this.hx * (NX - 1))), cz = Math.max(1, Math.min(NZ - 2, (q.z / this.hz + 0.5) * (NZ - 1)));
+    const vol = frac * this.cap, w = [], r = 1.6;
+    let sum = 0;
+    for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) { const d2 = ((ix - cx) ** 2 + (iz - cz) ** 2) / (r * r), k = Math.exp(-d2); w.push(k); sum += k; }
+    for (let i = 0; i < w.length; i++) this.hf[i] += vol * w[i] / sum / this.cA;
+    this.load = Math.min(1, this.load + frac); this._hfLoad = this.load; this._hfDirty = true;
+  }
+  // the top of what is in the body at p (world), or of its floor: world height
+  surfaceAt(p) {
+    if (!this.bed) return -Infinity;
+    const q = this.bed.worldToLocal(p.clone()), NX = this.NX, NZ = this.NZ;
+    const ix = Math.round(Math.max(0, Math.min(NX - 1, (q.x - this.x0) / this.hx * (NX - 1)))), iz = Math.round(Math.max(0, Math.min(NZ - 1, (q.z / this.hz + 0.5) * (NZ - 1))));
+    return this.bed.localToWorld(new THREE.Vector3(q.x, this.floor + this.hf[iz * NX + ix], q.z)).y;
+  }
+  // the grid made to hold `load` of a body: what came in by itself (a record, a whole bucketful at
+  // once) a heap in the middle; what went out (tipped, emptied) taken off evenly
+  _sync() {
+    const want = this.load * this.cap, have = this._hfVol();
+    if (Math.abs(want - have) < this.cap * 0.002) return;
+    if (want <= 1e-9) this.hf.fill(0);
+    else if (want < have) { const k = want / have; for (let i = 0; i < this.hf.length; i++) this.hf[i] *= k; }
+    else { const l = this.load; this.load = have / this.cap; this.pourAt(this.bed.localToWorld(new THREE.Vector3(this.x0 + this.hx * 0.5, 0, 0)), l - this.load); this.load = l; }
+    this._hfDirty = true;
+  }
+  // it slumps: each pair of cells steeper than its repose shares the excess (a few sweeps a frame)
+  _slump() {
+    const NX = this.NX, NZ = this.NZ, h = this.hf, dx = this.hx / (NX - 1), dz = this.hz / (NZ - 1), rep = 0.72;
+    let moved = false;
+    for (let it = 0; it < 4; it++) for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
+      const i = iz * NX + ix;
+      for (const [j, d] of [[ix + 1 < NX ? i + 1 : -1, dx], [iz + 1 < NZ ? i + NX : -1, dz]]) {
+        if (j < 0) continue;
+        const diff = h[i] - h[j], lim = rep * d;
+        if (Math.abs(diff) > lim) { const m = (Math.abs(diff) - lim) / 2 * Math.sign(diff); h[i] -= m; h[j] += m; moved = true; }
+      }
+    }
+    // (heaped no higher than a little over the sides)
+    for (let i = 0; i < h.length; i++) if (h[i] > this.hMax - this.floor) h[i] = this.hMax - this.floor;
+    return moved;
+  }
   update(dt) {
     if (!this.bed) return;
+    this._sync();
+    if (this._slump() || this._hfDirty) {
+      this._hfDirty = false;
+      const pos = this.soil.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) pos.setY(i, Math.max(0.0005, this.hf[i]) / 1);
+      pos.needsUpdate = true; this.soil.geometry.computeVertexNormals();
+    }
     this.tip += (this.tipGoal - this.tip) * (1 - Math.exp(-dt * 1.5));
     this.bed.rotation.z = this.tip;   // (+: the front up, on the rear hinge)
     if (this.gate) this.gate.rotation.z = -this.tip * 0.97;
     for (const w of this.wheels || []) w.g.rotation.z = -(this.spin || 0) / w.r;
-    this.soil.visible = this.load > 0.01;
-    if (this.soil.visible) this.soil.scale.y = this.soilH * Math.min(1, this.load);
+    this.soil.visible = this.load > 0.005;
   }
 }
