@@ -4,6 +4,7 @@ import { Loader } from '../world/loader.js';
 import { Truck, TRUCK_LOAD } from '../world/truck.js';
 import { Grader } from './grade.js';
 import { houseOutside } from './pitchedTool.js';
+import { boxOf } from './freeBrick.js';
 
 // The site machines, driven by the finger (no joysticks):
 //   grade – draw a line over the plot: the skid-steer loader drives to its start, lowers its bucket
@@ -115,9 +116,8 @@ export class MachineTool {
     const yaw = L.yaw + Math.sign(err) * Math.min(Math.abs(err), TURN * dt);
     let step = Math.abs(err) < 0.6 ? Math.min(d, SPEED * slow * dt * (1 - Math.abs(err) / 0.6 * 0.7)) : 0;
     const fx = Math.cos(yaw), fz = -Math.sin(yaw), nx = L.x + fx * step, nz = L.z + fz * step;
-    const clear = (x, z) => !this.out || this.out(x, z) === true, at = (a, b) => clear(nx + fx * R(a) - fz * R(b), nz + fz * R(a) + fx * R(b));
     let blocked = false;
-    if (step > 0 && !(at(0, 0) && at(2.0, 0) && at(2.0, 0.95) && at(2.0, -0.95) && at(0, 1) && at(0, -1) && at(-1.5, 0.9) && at(-1.5, -0.9))) { blocked = true; step = 0; }
+    if (step > 0 && !this._fits('loader', nx, nz, yaw)) { blocked = true; step = 0; }
     L.place(t, L.x + fx * step, L.z + fz * step, yaw);
     return { step, d: d - step, blocked, fx, fz };
   }
@@ -224,13 +224,22 @@ export class MachineTool {
   // where the truck stands for a heap: along the edge of the plot nearest to it, clear of houses
   _parkFor(p) {
     const t = this.app.terrain, hx = t.toWorldX(t.rx), hz = t.toWorldZ(t.rz), m = R(1.5), e = R(3);
-    const clear = (x, z) => !this.out || this.out(x, z) === true;
-    const cands = [
-      { x: Math.max(-hx + e, Math.min(hx - e, p.x)), z: -hz + m, yaw: 0, n: [0, 1] },
-      { x: Math.max(-hx + e, Math.min(hx - e, p.x)), z: hz - m, yaw: Math.PI, n: [0, -1] },
-      { x: -hx + m, z: Math.max(-hz + e, Math.min(hz - e, p.z)), yaw: -Math.PI / 2, n: [1, 0] },
-      { x: hx - m, z: Math.max(-hz + e, Math.min(hz - e, p.z)), yaw: Math.PI / 2, n: [-1, 0] },
-    ].filter((c) => clear(c.x, c.z) && clear(c.x + Math.cos(c.yaw) * R(2.4), c.z - Math.sin(c.yaw) * R(2.4)) && clear(c.x - Math.cos(c.yaw) * R(2.4), c.z + Math.sin(c.yaw) * R(2.4)));
+    const cl = (v, h) => Math.max(-h + e, Math.min(h - e, v));
+    const edges = [
+      { at: (s) => ({ x: s, z: -hz + m }), s0: cl(p.x, hx), h: hx, yaw: 0 },
+      { at: (s) => ({ x: s, z: hz - m }), s0: cl(p.x, hx), h: hx, yaw: Math.PI },
+      { at: (s) => ({ x: -hx + m, z: s }), s0: cl(p.z, hz), h: hz, yaw: -Math.PI / 2 },
+      { at: (s) => ({ x: hx - m, z: s }), s0: cl(p.z, hz), h: hz, yaw: Math.PI / 2 },
+    ];
+    // (each edge: the place nearest the heap, else along the edge either way, half a metre a step,
+    // till the truck's whole outline is clear of the houses and the walls)
+    const cands = [];
+    for (const E of edges) for (let k = 0; k < 80; k++) {
+      const sv = E.s0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * R(0.5);
+      if (Math.abs(sv) > E.h - e) continue;
+      const c = E.at(sv);
+      if (this._fits('truck', c.x, c.z, E.yaw)) { cands.push({ ...c, yaw: E.yaw }); break; }
+    }
     cands.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
     return cands[0] || null;
   }
@@ -394,6 +403,13 @@ export class MachineTool {
           app.journal.act('truck-in', {}, app.clock, () => this._saveTruck({ away: false }));
         }
       }
+      // (a machine left in a wall — a project from before the walls were looked at — is moved out to
+      // the nearest clear place first, else it could not move at all)
+      const M = kind === 'truck' ? this.truck : this.loader;
+      if (!this._fits(kind, M.x, M.z, M.yaw)) {
+        const q = kind === 'truck' ? this._parkFor({ x: M.x, z: M.z }) : this._clearNear(M.x, M.z, M.yaw);
+        if (q) app.journal.act('move-out', {}, app.clock, () => { M.place(app.terrain, q.x, q.z, q.yaw); if (kind === 'truck') this._saveTruck({}); else this._savePose(); });
+      }
       this.state = 'drive'; this.drv = kind; this.stick = { l: [0, 0], r: [0, 0] };
       this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0; this.view ??= 'cab';   // (from the cab's front: the bucket and the arms below, the way ahead)
       if (kind === 'loader') { this.loader.armGoal = 0; this.loader.tiltGoal = 0; }
@@ -459,19 +475,52 @@ export class MachineTool {
   }
   // the machine's outline there clear of houses, of the other machine and of the plot's edge
   _fits(kind, x, z, yaw) {
+    // (its outline every 20 cm — a 30 cm wall, a gate's post, cannot slip between two points — and
+    // its middle line)
     const t = this.app.terrain, fx = Math.cos(yaw), fz = -Math.sin(yaw);
-    const pts = kind === 'truck' ? [[2.3, 0.85], [2.3, -0.85], [0, 0.85], [0, -0.85], [-2.3, 0.85], [-2.3, -0.85]] : [[2.0, 0.95], [2.0, -0.95], [2.0, 0], [0, 1], [0, -1], [-1.5, 0.9], [-1.5, -0.9]];
+    const [a0, a1, hb] = kind === 'truck' ? [-2.35, 2.35, 0.9] : [-1.5, 2.0, 1.0], st = 0.2, pts = [];
+    for (let a = a0; a <= a1 + 1e-6; a += st) pts.push([a, hb], [a, -hb], [a, 0]);
+    for (let b = -hb + st; b < hb - 1e-6; b += st) pts.push([a0, b], [a1, b]);
     const other = kind === 'truck' ? this.loader : this.truck?.root.visible ? this.truck : null, oh = kind === 'truck' ? [1.6, 1.0] : [2.4, 1.0];
     for (const [a, b] of pts) {
       const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b);
       if (kind === 'truck' ? Math.abs(px) > t.halfX + R(6) || Math.abs(pz) > t.halfZ + R(6) : !t.inside(px, pz)) return false;
       if (this.out && this.out(px, pz) !== true) return false;
+      if (this._wall(px, pz)) return false;
       if (other?.loaded) {
         const dx = px - other.x, dz = pz - other.z, ox = Math.cos(other.yaw), oz = -Math.sin(other.yaw);
         if (Math.abs(dx * ox + dz * oz) < R(oh[0]) && Math.abs(-dx * oz + dz * ox) < R(oh[1])) return false;
       }
     }
     return true;
+  }
+  // the nearest place the loader fits (rings round, 25 cm apart)
+  _clearNear(x, z, yaw) {
+    for (let r = R(0.25); r < R(12); r += R(0.25)) for (let k = 0, n = Math.ceil(r / R(0.25)) * 6; k < n; k++) {
+      const a = k / n * Math.PI * 2, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+      if (this._fits('loader', px, pz, yaw)) return { x: px, z: pz, yaw };
+    }
+    return null;
+  }
+  // a block of masonry there (any: a house's, a lone wall's, a gate's post) — 5 cm round it; the
+  // blocks in a grid of 2 m cells, made again when the blocks change
+  _wall(x, z) {
+    const us = this.app.objects.all('unit'), key = us.length + ':' + (us.at(-1)?.id ?? 0), C = R(2);
+    if (this._wk !== key) {
+      this._wk = key; const grid = (this._wg = new Map());
+      for (const u of us) {
+        if (!u.p || !u.s || !u.q || u.kind === 'prop') continue;
+        const b = boxOf(u), r = Math.hypot(b.hl, b.hw) + R(0.05);
+        for (let i = Math.floor((b.x - r) / C); i <= Math.floor((b.x + r) / C); i++) for (let j = Math.floor((b.z - r) / C); j <= Math.floor((b.z + r) / C); j++) {
+          const k = i * 65536 + j; let l = grid.get(k); if (!l) grid.set(k, (l = [])); l.push(b);
+        }
+      }
+    }
+    const l = this._wg.get(Math.floor(x / C) * 65536 + Math.floor(z / C));
+    if (!l) return false;
+    const m = R(0.05);
+    for (const b of l) { const dx = x - b.x, dz = z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl + m && Math.abs(-dx * b.uz + dz * b.ux) < b.hw + m && b.bot < this.app.terrain.heightAt(x, z) + R(2.5)) return true; }
+    return false;
   }
   _driveStep(dt) {
     const app = this.app, t = app.terrain, g = this.grader, L = this.loader, T = this.truck;
@@ -557,7 +606,7 @@ export class MachineTool {
       L.update(dt, moved);
     }
     const M = this.drv === 'truck' ? T : L, rig = app.rig;
-    if (this.view === 'free') return;   // (the camera left where it is)
+    if (this.view === 'free') { this._mirrors(null); return; }   // (the camera left where it is)
     if (this.view === 'cab' || this.view === 'roof') {
       // from the driver's seat: looking ahead and down at where the bucket works (held still, no lag)
       const f = new THREE.Vector3(Math.cos(M.yaw), 0, -Math.sin(M.yaw)), roof = this.view === 'roof', seat = this.seatAt || (roof ? (this.drv === 'truck' ? [1.3, 2.75] : [0.85, 2.55]) : this.drv === 'truck' ? [1.45, 1.6] : [0.62, 1.75]);
