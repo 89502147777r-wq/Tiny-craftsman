@@ -4,6 +4,7 @@ import { Channel } from './uPour.js';
 import { BeltChannel, beltContains } from './belt.js';
 import { isSlab } from './slab.js';
 import { houseOutside } from './pitchedTool.js';
+import { boxOf } from './freeBrick.js';
 import { BlindChannel } from './blindPour.js';
 import { BLIND, layerSet } from '../world/blind.js';
 
@@ -618,9 +619,12 @@ export class BreakerTool extends ConcreteTool {
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('break', {}, p);
     this.got = 0; this.thick = 0; this.jab = 0;
-    // (what is a spill: on the ground as it was dug (not down in a trench), outside the house)
-    const t = this.app.terrain, out = houseOutside(this.app);
-    this.ok = (i, x, z) => t.nat[i] + t.loose[i] > t.orig[i] - MM(50) && (!out || out(x, z) === true);
+    // (what is a spill: on the ground as it was dug (not down in a trench), outside the house —
+    // right up to the face of the wall, but not under its masonry)
+    const t = this.app.terrain, out = houseOutside(this.app), e = MM(5);
+    const feet = this.app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop').map(boxOf).filter((b) => Math.abs(b.bot - t.heightAt(b.x, b.z)) < MM(400));
+    const under = (x, z) => feet.some((b) => { const dx = x - b.x, dz = z - b.z; return Math.abs(dx * b.ux + dz * b.uz) < b.hl + e && Math.abs(-dx * b.uz + dz * b.ux) < b.hw + e; });
+    this.ok = (i, x, z) => t.nat[i] + t.loose[i] > t.orig[i] - MM(50) && (!out || out(x, z) !== false) && !under(x, z);
     this.gear.set('breaker', this._at(p), this._yaw(p), true);
     return true;
   }
@@ -646,6 +650,6 @@ export class BreakerTool extends ConcreteTool {
     const app = this.app, got = this.got, thick = this.thick;
     this.finish();
     if (got > 0) app.ui?.toast(`Наплыв бетона отбили ломом (${(got * MODEL_SCALE ** 3 * 1000).toFixed(0)} л в мусор) — ведите по нему дальше, пока не откроется земля`);
-    else app.ui?.toast(thick ? 'Это фундамент или плита (бетон в траншее, внутри дома или под стенами) — ломом их не отбивают' : 'Здесь нет застывшего бетона — ведите лом по наплывам у фундамента и опалубок');
+    else app.ui?.toast(thick ? 'Это фундамент или плита (бетон в траншее, внутри дома или под кладкой) — ломом их не отбивают' : 'Здесь нет застывшего бетона — ведите лом по наплывам у фундамента и опалубок');
   }
 }
