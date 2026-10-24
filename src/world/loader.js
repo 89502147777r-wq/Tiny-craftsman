@@ -97,9 +97,12 @@ export class Loader {
       const hf = (at(fx, -hz) + at(fx, hz)) / 2, hb = (at(bx, -hz) + at(bx, hz)) / 2, hl = (at(fx, -hz) + at(bx, -hz)) / 2, hr = (at(fx, hz) + at(bx, hz)) / 2;
       this.pitch = Math.atan2(hf - hb, fx - bx); this.roll = Math.atan2(hl - hr, 2 * hz);
       this.y = (hf + hb + hl + hr) / 4;
+      this.rearX = bx;
     } else this.y = terrain.heightAt(x, z);
-    this.root.position.set(x, this.y, z);
-    this.root.rotation.set(0, 0, 0); this.root.rotateY(yaw); this.root.rotateZ(this.pitch); this.root.rotateX(this.roll);
+    // (lift: the front up on the rear wheels — the bucket pressed down on the ground lifts it)
+    const lift = this.lift || 0, ly = lift ? -(this.rearX ?? 0) * Math.sin(lift) : 0;
+    this.root.position.set(x, this.y + ly, z);
+    this.root.rotation.set(0, 0, 0); this.root.rotateY(yaw); this.root.rotateZ(this.pitch + lift); this.root.rotateX(this.roll);
   }
   update(dt, moved = 0) {
     if (!this.armP) return;
@@ -108,15 +111,18 @@ export class Loader {
     this.armP.rotation.z = this.arm; this.bucketP.rotation.z = this.tilt - this.arm * 0.85;   // (self-levelling: the bucket keeps its angle as the arms rise)
     this.spin += moved;
     for (const w of this.wheels) w.g.rotation.z = -this.spin / w.r;
-    this.soil.visible = this.load > 0.01;
+    this.soil.visible = this.load > 0.03;
     if (this.soil.visible && Math.abs(this.load - this._fill) > 0.005) {
       // (the top: as high as full — a little over the rim when heaped — falling to the lip and the sides)
       this._fill = this.load;
       const pos = this.soil.geometry.attributes.position, f = this.load;
       for (const i of this.soilTop) {
         const u = pos.getX(i) + 0.5, w = pos.getZ(i) * 2;   // u: 0 at the back, 1 at the lip; w: −1…1 across
-        const h = f * 0.75 * (1 - 0.55 * u * u) + Math.max(0, f - 0.4) * 0.6 * Math.sin(Math.PI * Math.min(1, u * 1.15)) * (1 - w * w * 0.8);
-        pos.setY(i, Math.max(0.02, h + this.soilBump[i] * Math.min(1, f * 2)));
+        // (a little lies at the back, in the corner of the floor and the back wall: the less, the nearer
+        // the back it ends — a full one reaches the lip)
+        const c = 0.3 + 0.7 * Math.sqrt(f), fall = Math.max(0, Math.min(1, (c - u) / 0.25));
+        const h = (f * 0.75 * (1 - 0.55 * u * u) + Math.max(0, f - 0.4) * 0.6 * Math.sin(Math.PI * Math.min(1, u * 1.15)) * (1 - w * w * 0.8)) * fall * (1 - 0.5 * w * w * (1 - f));
+        pos.setY(i, Math.max(0.0, h + this.soilBump[i] * Math.min(1, f * 2) * fall));
       }
       pos.needsUpdate = true; this.soil.geometry.computeVertexNormals();
     }

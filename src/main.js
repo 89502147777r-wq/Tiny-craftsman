@@ -252,6 +252,7 @@ function step(dt, time, render = true) {
   const budget = app.settings.quality === 'low' ? 2.5 : 4;
   const t0 = performance.now();
   for (let i = 0; i < 80 && terrain.active && performance.now() - t0 < budget; i++) terrain.relax(1);
+  app.machineTool.afterRelax?.();   // (what slumped back into a pushing bucket goes out ahead again)
   // fresh concrete creeps: a few passes per frame
   terrain.clock = app.clock;
   // (only while a concrete action is open: what it does to the concrete belongs to its journal entry)
