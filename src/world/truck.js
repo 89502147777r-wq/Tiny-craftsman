@@ -36,6 +36,34 @@ export class Truck {
     this.soil = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x75553a, roughness: 1 }));
     this.soil.position.set(L * 0.04, H * 0.14, 0); this.soil.scale.set(L * 0.9, 1e-4, W * 0.86); this.soil.visible = false;
     this.bed.add(this.soil); this.soilH = H * 0.75;
+    // the wheels: the tyres (their rubber), each with what sits inside it (the rim, the hub), turned
+    // on a pivot at its middle about the axle (the truck's local z)
+    {
+      this.root.updateMatrixWorld(true);
+      const tyres = [], rest = [];
+      scene.traverse((o) => { if (!o.isMesh) return; (/fire/i.test(o.material?.name || '') ? tyres : rest).push(o); });
+      const groups = [];
+      for (const o of tyres) {
+        const b = new THREE.Box3().setFromObject(o), c = b.getCenter(new THREE.Vector3());
+        let gr = groups.find((g) => g.c.distanceTo(c) < R(0.45));
+        if (!gr) groups.push((gr = { c, box: b.clone(), parts: [] })); else gr.box.union(b);
+        gr.parts.push(o);
+      }
+      this.wheels = [];
+      const ground = Math.min(...groups.map((g) => g.box.min.y));
+      for (const gr of groups) {
+        const c = gr.box.getCenter(new THREE.Vector3()), r = (gr.box.max.y - gr.box.min.y) / 2;
+        if (r < R(0.2) || gr.box.min.y > ground + R(0.1)) continue;   // (not a wheel on the road: a small rubber part, the spare one under the body)
+        const inner = gr.box.clone().expandByScalar(R(0.02));
+        // (a tyre mesh may be a whole axle's pair: of what is inside, only what sits out at the wheels turns — not the springs and the beam between them)
+        const hz = (gr.box.max.z - gr.box.min.z) / 2;
+        for (const o of rest) { const b = new THREE.Box3().setFromObject(o), bc = b.getCenter(new THREE.Vector3()); if (inner.containsBox(b) && Math.abs(bc.z - c.z) > hz * 0.55) gr.parts.push(o); }
+        const pv = new THREE.Group(); pv.userData.wheel = true;
+        pv.position.copy(holder.worldToLocal(c.clone())); holder.add(pv); pv.updateMatrixWorld(true);
+        for (const o of gr.parts) pv.attach(o);
+        this.wheels.push({ g: pv, r });
+      }
+    }
     this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.len = R(4.7); this.width = W * this.root.scale.x;
     return this;
@@ -44,6 +72,9 @@ export class Truck {
   // the middle of the body (world): where the loader tips its bucket
   bedCentre(out = new THREE.Vector3()) { this.root.updateMatrixWorld(true); const b = this.bodyBox; return out.set((b.min.x + b.max.x) / 2, b.max.y, (b.min.z + b.max.z) / 2).applyMatrix4(this.root.matrixWorld); }
   place(terrain, x, z, yaw) {
+    // (the way gone along its forward since the last place — not a jump — turns the wheels)
+    const d = (x - this.x) * Math.cos(yaw) - (z - this.z) * Math.sin(yaw);
+    if (Math.abs(d) < R(2)) this.spin = (this.spin || 0) + d;
     this.x = x; this.z = z; this.yaw = yaw;
     const c = Math.cos(yaw), s = Math.sin(yaw), at = (lx, lz) => terrain.heightAt(x + c * lx + s * lz, z - s * lx + c * lz);
     const hf = at(R(1.6), 0), hb = at(-R(1.4), 0), hl = at(0, -R(0.8)), hr = at(0, R(0.8));
@@ -55,6 +86,7 @@ export class Truck {
     if (!this.bed) return;
     this.tip += (this.tipGoal - this.tip) * (1 - Math.exp(-dt * 1.5));
     this.bed.rotation.z = this.tip;   // (+: the front up, on the rear hinge)
+    for (const w of this.wheels || []) w.g.rotation.z = -(this.spin || 0) / w.r;
     this.soil.visible = this.load > 0.01;
     if (this.soil.visible) this.soil.scale.y = this.soilH * Math.min(1, this.load);
   }
