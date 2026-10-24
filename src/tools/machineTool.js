@@ -686,7 +686,7 @@ export class MachineTool {
       // after it)
       const rel = e.y - L.y;
       if (ry || rx) this.setT = 0.6; else this.setT = Math.max(0, (this.setT || 0) - dt);
-      if (this.holdRel == null || ry > 0 || rx > 0 || (this.setT > 0 && !ry && !rx)) this.holdRel = rel;
+      if (this.holdRel == null || ry > 0 || rx > 0 || (this.setT > 0 && !ry && !rx)) this.holdRel = Math.max(rel, -R(0.15) * Math.min(1, Math.max(0, -L.tilt / 0.3)));   // (pressed down level it slides on the ground, no deeper; its nose tipped down, it bites — ≤ 15 cm)
       else if (ry < 0 || rx < 0) this.holdRel = Math.max(this.holdRel, rel);
       this.holdY = L.y + this.holdRel;
       const cutY = this.holdY;
@@ -892,8 +892,8 @@ export class MachineTool {
     if (!any) return;
     const ix = Math.round(t.toCellX(x)), iz = Math.round(t.toCellZ(z)), n = Math.ceil(hw / t.cell) + 1;
     t._touch(Math.max(0, ix - n), Math.max(0, iz - n), Math.min(t.rx, ix + n), Math.min(t.rz, iz + n));
-    const ax = x + f[0] * (R(0.6) + back), az = z + f[1] * (R(0.6) + back);   // (heaped up in front of the bucket, as wide as it — the windrow it pushes)
-    for (const m of [0, 1, 2, 3]) if (push[m] > 0) { if (t.inside(ax, az)) t.deposit(ax, az, push[m] * t.cellArea, hw * 0.6, 0, m); push[m] = 0; }
+    const ax = x + f[0] * (R(0.8) + back), az = z + f[1] * (R(0.8) + back);   // (in front of the bucket, as wide as it — the windrow it pushes, spreading as it goes)
+    for (const m of [0, 1, 2, 3]) if (push[m] > 0) { if (t.inside(ax, az)) t.deposit(ax, az, push[m] * t.cellArea, hw * 0.75, 0, m); push[m] = 0; }
   }
   // a frame of pouring: a share of each material out over the lip, as falling crumbs (they land
   // where they fall: the volume goes down there), or into the truck's body under it
