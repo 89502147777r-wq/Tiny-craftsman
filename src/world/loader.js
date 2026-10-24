@@ -64,9 +64,11 @@ export class Loader {
     const bb = this.bucketBox, inB = this.bucketP.worldToLocal(bb.getCenter(new THREE.Vector3()));
     const BL = bb.max.x - bb.min.x, BW = bb.max.z - bb.min.z, BH = bb.max.y - bb.min.y;
     // (only its top: a sheet inside the walls — nothing of it shows through the bucket — with lumps)
-    const g = new THREE.PlaneGeometry(1, 1, 14, 10); g.rotateX(-Math.PI / 2);
+    const g = new THREE.PlaneGeometry(1, 1, 28, 20); g.rotateX(-Math.PI / 2);
     this.soilTop = []; { const pos = g.attributes.position; for (let i = 0; i < pos.count; i++) this.soilTop.push(i); }
-    this.soilBump = new Float32Array(g.attributes.position.count).map(() => (Math.random() - 0.5) * 0.05);
+    // (lumps: a few soft swells, smooth — no per-point noise, it shows as facets)
+    { const pos = g.attributes.position, ph = [Math.random() * 6, Math.random() * 6, Math.random() * 6];
+      this.soilBump = new Float32Array(pos.count).map((_, i) => { const x = pos.getX(i), z = pos.getZ(i); return 0.025 * (Math.sin(x * 9 + ph[0]) * Math.sin(z * 7 + ph[1]) + 0.6 * Math.sin((x + z) * 13 + ph[2])); }); }
     this.soil = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x6f5137, roughness: 1 }));
     this.soil.position.set(inB.x - BL * 0.1, inB.y - BH * 0.32, inB.z); this.soil.scale.set(BL * 0.6, BH, BW * 0.82);
     this.soil.castShadow = true; this.soil.visible = false; this._fill = -1;
