@@ -415,7 +415,7 @@ export class MachineTool {
         if (q) app.journal.act('move-out', {}, app.clock, () => { M.place(app.terrain, q.x, q.z, q.yaw); if (kind === 'truck') this._saveTruck({}); else this._savePose(); });
       }
       this.state = 'drive'; this.drv = kind; this.stick = { l: [0, 0], r: [0, 0] };
-      this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0; this.holdY = null; this.armSet = null; this.view ??= 'cab';   // (from the cab's front: the bucket and the arms below, the way ahead)
+      this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0; this.holdY = null; this.holdRel = null; this.armSet = null; this.view ??= 'cab';   // (from the cab's front: the bucket and the arms below, the way ahead)
       if (kind === 'loader') { this.loader.armGoal = 0; this.loader.tiltGoal = 0; }
       app.rig.goal.dist = R(kind === 'truck' ? 14 : 10); app.rig.goal.pitch = 0.5;
       app.sfx.scrapeStart(); app.sfx.scrapeLevel(0.15);
@@ -442,7 +442,7 @@ export class MachineTool {
     const kind = M && this.view === 'cab' ? this.drv : null;
     if (this._mrKind !== kind) {
       this._mrKind = kind;
-      mr.set(kind === 'truck' ? [{ rect: [0.02, 0.4, 0.15, 0.17] }, { rect: [0.83, 0.4, 0.15, 0.17] }] : kind === 'loader' ? [{ rect: [0.37, 0.025, 0.26, 0.11] }] : null);
+      mr.set(kind === 'truck' ? [{ rect: [0.02, 0.4, 0.15, 0.17] }, { rect: [0.83, 0.4, 0.15, 0.17] }] : kind === 'loader' ? [{ rect: [0.41, 0.012, 0.18, 0.075] }] : null);
     }
     if (!kind) return;
     M.root.updateMatrixWorld(true);
@@ -470,7 +470,13 @@ export class MachineTool {
     if (v !== 'cab') { app.rig.goal.dist = R(this.drv === 'truck' ? 14 : 10); app.rig.goal.pitch = 0.5; }
     app.ui?.refresh();
   }
-  joystick(side, x, y) { if (this.state === 'drive') this.stick[side] = [x, y]; }
+  joystick(side, x, y) {
+    if (this.state !== 'drive') return;
+    // (the right stick works one thing at a time — the arms or the bucket, whichever it is pushed more
+    // to: a thumb pulling it down always strays a little sideways, and the bucket would tip with it)
+    if (side === 'r') { if (Math.abs(x) < Math.abs(y) * 0.7) x = 0; else if (Math.abs(y) < Math.abs(x) * 0.7) y = 0; }
+    this.stick[side] = [x, y];
+  }
   _commitDrive() {
     const app = this.app;
     if (app.journal.pending?.type !== 'drive') return;
@@ -563,21 +569,27 @@ export class MachineTool {
       L.armGoal = this.armSet;
       L.tiltGoal = Math.max(-1.0, Math.min(0.6, L.tiltGoal - rx * 1.4 * dt));
       // the arms hold where they are set: going on, the edge goes at that height and takes all over it
-      // — no deeper unless lowered. Lowered, the bucket stops on what is under it; its nose tipped
-      // down it is pressed in up to ≈15 cm (along its edge only), else it stops on the top.
+      // — no deeper unless lowered. Lowered, the bucket stops on the ground under it (a heap, tipped
+      // soil, does not hold it: it goes into it); its nose tipped down presses in a little (≈5 cm).
       const e = L.edgeWorld(new THREE.Vector3());
       if (ry > 0) {
-        const b = L.lowWorld(new THREE.Vector3()), floor = t.heightAt(b.x, b.z) - R(0.15) * Math.min(1, Math.max(0, -L.tilt / 0.3)), lo = this._armFor(floor, true);
+        const b = L.lowWorld(new THREE.Vector3()), floor = Math.min(t.heightAt(b.x, b.z), t.orig[t.index(b.x, b.z)]) - R(0.05) * Math.min(1, Math.max(0, -L.tilt / 0.3)), lo = this._armFor(floor, true);
         if (this.armSet < lo) this.armSet = L.armGoal = Math.min(L.arm, lo);
       }
       L.update(0); L.edgeWorld(e);
-      // (the level it cuts at: where the edge was when the bucket was last set — the machine dipping
-      // into its own cut, nose down, does not take it any deeper; lowered again, it goes deeper)
+      // (the level it cuts at: where the edge was when the bucket was last set; lowered again, it goes deeper)
       // (only lowering the arms or tipping the nose down takes it lower; lifting or curling only higher —
       // the machine pitching meanwhile does not move it)
-      if (this.holdY == null || ry > 0 || rx > 0) this.holdY = e.y;
-      else if (ry < 0 || rx < 0) this.holdY = Math.max(this.holdY, e.y);
-      const cutY = Math.max(e.y, this.holdY);
+      // (held as a height over the ground the wheels stand on — the bucket goes with the machine, up a
+      // slope and down it, but its pitching as the front wheels drop into the cut does not take it down)
+      // (and taken a moment after the stick is let go too: the arms come to where they were put a little
+      // after it)
+      const rel = e.y - L.y;
+      if (ry || rx) this.setT = 0.6; else this.setT = Math.max(0, (this.setT || 0) - dt);
+      if (this.holdRel == null || ry > 0 || rx > 0 || (this.setT > 0 && !ry && !rx)) this.holdRel = rel;
+      else if (ry < 0 || rx < 0) this.holdRel = Math.max(this.holdRel, rel);
+      this.holdY = L.y + this.holdRel;
+      const cutY = this.holdY;
       const hw = Math.max(L.bucketW / 2, R(0.95));   // (a bucket is as wide as the wheels' track, or wider: they go where it has cut)
       // going on with the edge in the ground: it cuts at the edge's height into the bucket; a full bucket
       // pushes what stands over its edge on ahead of it (it runs off to the sides as a windrow)
@@ -604,12 +616,28 @@ export class MachineTool {
         }
         g.target = keep;
       }
+      // going back with the bucket down on the ground: its flat bottom drags behind it — the bumps it
+      // passes over are taken to its level and what it carries (and drags) fills the hollows; a full
+      // load is dragged on back. Forward and back once or twice and the ground is level.
+      if (moved < 0 && L.tilt > -0.45 && L.tilt < 0.3) {
+        const b = L.lowWorld(new THREE.Vector3()), by = Math.max(b.y, this.holdY - (e.y - b.y));
+        if (by < Math.min(t.heightAt(b.x, b.z), t.orig[t.index(b.x, b.z)]) + R(0.2)) {
+          const keep = g.target; g.target = () => by;
+          const back = [-f[0], -f[1]], m = -moved, n = Math.max(1, Math.ceil(m / (t.cell * 0.7)));
+          for (let k = n - 1; k >= 0; k--) for (const d of [R(0.1), R(0.35), R(0.6)]) {
+            const bx = e.x - f[0] * (d - m * k / n), bz = e.z - f[1] * (d - m * k / n);
+            g.blade(bx, bz, back[0], back[1], hw, this.cap * 1.3, false);
+            if (g.load >= this.cap * 1.25) this._bulldoze(bx, bz, back, hw, by);
+          }
+          g.target = keep;
+        }
+      }
       // curled back with the edge in the soil: what lies over it in the bucket's mouth goes in
       if (rx < 0 && L.tilt < 0.35 && g.load < this.cap && e.y < t.heightAt(e.x, e.z)) this._scoopStrip(e, f, L.bucketW / 2);
       // (it lies on the ground it has cut: the machine dipping into the cut does not sink it through —
-      // only its nose, tipped down and pressed, goes in, ≈15 cm; a heap, soil run under it, is no floor)
+      // only its nose, tipped down and pressed, goes in a little; a heap, soil run under it, is no floor)
       if (ry <= 0) {
-        const b = L.lowWorld(new THREE.Vector3()), lim = Math.min(t.heightAt(b.x, b.z), t.orig[t.index(b.x, b.z)]) - R(0.02) - R(0.15) * Math.min(1, Math.max(0, -L.tilt / 0.3));
+        const b = L.lowWorld(new THREE.Vector3()), lim = Math.min(t.heightAt(b.x, b.z), t.orig[t.index(b.x, b.z)]) - R(0.02) - R(0.05) * Math.min(1, Math.max(0, -L.tilt / 0.3));
         if (b.y < lim) { const lo = this._armFor(lim, true); if (L.arm < lo) { L.arm = lo; L.update(0); L.edgeWorld(e); } }
       }
       // tipped: it runs out over the lip as it tips — the more, the faster; into the body when it is
@@ -627,10 +655,10 @@ export class MachineTool {
       // from the driver's seat: looking ahead and down at where the bucket works (held still, no lag)
       const f = new THREE.Vector3(Math.cos(M.yaw), 0, -Math.sin(M.yaw)), roof = this.view === 'roof', seat = this.seatAt || (roof ? (this.drv === 'truck' ? [1.3, 2.75] : [0.85, 2.55]) : this.drv === 'truck' ? [1.45, 1.6] : [0.62, 1.75]);
       const e = new THREE.Vector3(seat[0] * R(1), seat[1] * R(1), 0).applyMatrix4(M.root.matrixWorld);
-      const [la, ld] = this.lookAt || (roof ? (this.drv === 'truck' ? [5.5, 2.3] : [1.35, 2.4]) : this.drv === 'truck' ? [8, 1.2] : [1.25, 1.7]), ahead = R(la), drop = R(ld);   // (the loader: steep down — the bucket in the middle of the picture)
+      const [la, ld] = this.lookAt || (roof ? (this.drv === 'truck' ? [5.5, 2.3] : [1.35, 2.4]) : this.drv === 'truck' ? [8, 1.2] : [2.6, 1.8]), ahead = R(la), drop = R(ld);   // (the loader: steep down — the bucket in the middle of the picture)
       rig.setState({ target: [e.x + f.x * ahead, e.y - drop, e.z + f.z * ahead], yaw: M.yaw - Math.PI / 2, pitch: Math.atan2(drop, ahead), dist: Math.hypot(ahead, drop) }, true);
       this._camYaw = null; rig.shakeKeep ??= rig.shake; rig.shake = false;
-      this._fov(this.drv === 'truck' ? 62 : 75);   // (wide, as a camera in a cab: the bucket below and the way ahead both in sight)
+      this._fov(this.drv === 'truck' ? 70 : 92);   // (wide, as a camera in a cab: the bucket below and the way ahead both in sight)
       this._mirrors(M, f);
       return;
     }
