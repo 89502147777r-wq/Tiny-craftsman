@@ -383,11 +383,14 @@ export class BlindWork {
   _strip(r, del = false) {
     const app = this.app, more = del ? ' (а слои — «Удалить» по самой отмостке, сверху вниз)' : '';
     if (r.stripped) { app.ui.toast('Опалубку уже сняли'); return; }
-    if (!r.fin?.length || leftOf(r, 'fin') > 0.05) { app.ui.toast('Доски снимают, когда верх готов — бетон или плитка по всему периметру' + more); return; }
+    // (the boards come off once any of the layers is laid over half the area or more)
+    const share = Math.max(...['geo', 'sand', 'grav', 'mesh', 'fin'].map((L) => 1 - leftOf(r, L)));
+    if (share < 0.5) { app.ui.toast(`Доски снимают, когда хотя бы один слой уложен на половине отмостки и больше — сейчас самый полный ${Math.round(share * 100)} %` + more); return; }
     // (its strength counts from the pour: or from the last concrete put in, if it never quite filled)
-    if (r.finKind === 'conc') { const k = uStrength({ pourT: r.pourT ?? r.wetT ?? r.castT }, app.clock); if (k < 1) { app.ui.toast(`Бетон набирает прочность: ${Math.round(k * 100)} % — доски рано снимать` + more); return; } }
-    this._save(r, { stripped: true, ...(r.finKind === 'conc' ? { set: true } : {}) }, 'blind-strip');
-    app.ui.toast(r.finKind === 'tile' ? 'Доски сняли — по краю остался бордюр' : 'Бетон набрал прочность — доски и колышки сняли');
+    if (r.finKind === 'conc' && r.fill > 0.02) { const k = uStrength({ pourT: r.pourT ?? r.wetT ?? r.castT }, app.clock); if (k < 1) { app.ui.toast(`Бетон набирает прочность: ${Math.round(k * 100)} % — доски рано снимать` + more); return; } }
+    const conc = r.finKind === 'conc' && r.fill > 0.02;
+    this._save(r, { stripped: true, ...(conc ? { set: true } : {}) }, 'blind-strip');
+    app.ui.toast(r.finKind === 'tile' && r.fin?.length ? 'Доски сняли — по краю остался бордюр' : conc ? 'Бетон набрал прочность — доски и колышки сняли' : 'Доски и колышки отмостки сняли');
   }
 
   // ---- the boards, the channels: carried from the tray ----
@@ -471,7 +474,7 @@ export class BlindWork {
       grav: this.app.settings.blindAct === 'rule' ? 'Правило: ведите вдоль стены — щебень ровно на 120 мм от геотекстиля (60 мм по песку)' : this.app.settings.blindAct === 'rake' ? 'Грабли: ведите вдоль стены по щебню — срезают кучи' : 'Щебень: держите палец — сыплется кучей (или лопатой с кучи щебня); потом «Правило — ровно 120 мм»',
       mesh: 'Сетка: ведите пальцем вдоль стены — листы сетки 150 × 150 из прутка Ø5 на стульчиках (под бетон)',
       fin: this.fin === 'tile' ? 'Плитка: выберите цвет и ведите пальцем по щебню — «кирпичик» на сухую смесь с уклоном от стен, по краю бордюр' : 'Бетон: «Бетон» → шланг или ведро по сетке — 80 мм; правило по доскам даст уклон 3 % от стен, потом кельма',
-      strip: 'Снять опалубку: коснитесь отмостки — когда верх готов по всему периметру',
+      strip: 'Снять опалубку: коснитесь отмостки — когда хотя бы один слой уложен на половине отмостки и больше',
       drain: 'Лотки: тяните из лотка к наружному краю отмостки — лоток с решёткой ляжет вдоль всей стороны',
     }[L];
   }

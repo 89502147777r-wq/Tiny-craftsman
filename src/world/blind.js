@@ -391,7 +391,7 @@ export function buildBlind(rec, live) {
   const top = (a, d) => finTop(rec, P.distAt(a, d));
   // the mesh: rods on chairs (in the concrete too: it is drawn over them)
   const meshCells = cellsOfL('mesh');
-  if (meshCells.size && !(kind === 'conc' && rec.stripped)) { const R = meshRods(P, meshCells, layerTop(rec, 'mesh') - MM(5)); add(R.rods, M.rod()); add(R.chairs, M.chair()); }
+  if (meshCells.size && !(kind === 'conc' && rec.stripped && fin.size)) { const R = meshRods(P, meshCells, layerTop(rec, 'mesh') - MM(5)); add(R.rods, M.rod()); add(R.chairs, M.chair()); }
   // (the concrete is cast in place: drawn with the other cast concrete, walls.js)
   if (kind === 'tile') add(slab(P, fin, top, g0 + MM(TOP.grav) - MM(2), MM(800)), tileMat(rec.finCol || live?.col || 'grey'));
   // the joints in the concrete: at the corners of the house and every 2 m along the walls
