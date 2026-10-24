@@ -140,10 +140,49 @@ export class UI {
       if (e.key >= '1' && e.key <= String(this.groups.length)) this.openGroup(this.groups[+e.key - 1].id);
       if (e.key.toLowerCase() === 'q') this.setQuiet(!app.settings.quiet);
     });
+    this.bindJoystick('joy', 'joy-knob', (x, y) => app.machineTool.joystick('l', x, y));
+    this.bindJoystick('joy2', 'joy2-knob', (x, y) => app.machineTool.joystick('r', x, y));
     this.bindSettings();
     showTouches(app);
     this.bindQuiet();
     this.refresh();
+  }
+
+  // a virtual joystick for the machines (its own pointer, so the canvas gestures stay free)
+  bindJoystick(elId, knobId, cb) {
+    const el = $(elId), knob = $(knobId);
+    let id = null;
+    const set = (e) => {
+      const r = el.getBoundingClientRect();
+      let x = (e.clientX - (r.left + r.width / 2)) / (r.width / 2), y = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
+      const l = Math.hypot(x, y);
+      if (l > 1) { x /= l; y /= l; }
+      knob.style.transform = `translate(${x * 34}px, ${y * 34}px)`;
+      // (a small dead zone, then a soft curve for fine control)
+      const f = (v) => Math.sign(v) * Math.max(0, Math.abs(v) - 0.12) / 0.88;
+      cb(f(x) * Math.abs(f(x)) ** 0.5, f(y));
+    };
+    el.addEventListener('pointerdown', (e) => { id = e.pointerId; el.setPointerCapture(id); this.app.sfx.unlock?.(); set(e); });
+    el.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });
+    const end = (e) => { if (e.pointerId !== id) return; id = null; knob.style.transform = ''; cb(0, 0); };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+  renderMachineControls() {
+    const app = this.app, mt = app.machineTool, on = app.tool === 'machine' && mt.driving;
+    $('joy').hidden = !on; $('joy2').hidden = !on;
+    $('ui').classList.toggle('driving', on);   // (the tools' row away: the bucket is low in the picture)
+    const box = $('mbtns');
+    box.hidden = !on; box.classList.toggle('up', on);
+    if (!on) { this._mKey = null; return; }
+    if (this._mKey === mt.drv + mt.view) return;
+    this._mKey = mt.drv + mt.view;
+    box.innerHTML = '';
+    const v = document.createElement('button'); v.textContent = mt.view === 'cab' ? 'Вид сзади' : 'Из кабины';
+    v.addEventListener('click', () => mt.setView(mt.view === 'cab' ? 'back' : 'cab'));
+    const b = document.createElement('button'); b.textContent = 'Выйти';
+    b.addEventListener('click', () => { mt.exit(); this.refresh(); });
+    box.append(v, b);
   }
 
   bindSettings() {
@@ -498,10 +537,12 @@ export class UI {
       return modes.map(([k, l]) => C(l, b.mode === k, () => b.setMode(k), k === 'delete' ? 'warn' : ''));
     }
     if (t === 'machine') {
-      const s = app.settings, set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
+      const s = app.settings, mt = app.machineTool, set = (o) => { if (mt.driving) mt.exit(); Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
       return [
-        C('Погрузчик · планировка', s.machineMode !== 'haul', () => set({ machineMode: 'grade' })),
-        C('Погрузчик · в самосвал', s.machineMode === 'haul', () => set({ machineMode: 'haul' })),
+        C('Погрузчик · планировка', !mt.driving && s.machineMode !== 'haul', () => set({ machineMode: 'grade' })),
+        C('Погрузчик · в самосвал', !mt.driving && s.machineMode === 'haul', () => set({ machineMode: 'haul' })),
+        C('Сесть в погрузчик', mt.driving && mt.drv === 'loader', () => { if (mt.driving) mt.exit(); mt.enter('loader'); }),
+        C('Сесть в самосвал', mt.driving && mt.drv === 'truck', () => { if (mt.driving) mt.exit(); mt.enter('truck'); }),
         G('gslope', `Уклон от дома ${s.gradeSlope ?? 1.5} %`.replace('.', ','), [0, 1, 1.5, 2].map((v) => C(`${v} %`.replace('.', ','), (s.gradeSlope ?? 1.5) === v, () => set({ gradeSlope: v }))), 'Уклон'),
       ];
     }
@@ -583,10 +624,11 @@ export class UI {
     if (t === 'rebar') hint = HINTS.rebar[app.rebarTool.mode];
     app.wallTool?.syncTray();
     if (t === 'wall') hint = app.wallTool.mode === 'lay' ? (app.wallTool.status() || HINTS.wall.lay) : app.wallTool.busy || app.physJob ? '' : HINTS.wall[app.wallTool.mode];
-    if (t === 'machine') hint = app.machineTool.busy() ? '' : app.machineTool.loader?.loaded ? (app.settings.machineMode === 'haul' ? HINTS.haul : HINTS.machine) : 'Погрузчик заезжает на участок…';
+    if (t === 'machine') hint = app.machineTool.busy() || app.machineTool.driving ? '' : app.machineTool.loader?.loaded ? (app.settings.machineMode === 'haul' ? HINTS.haul : HINTS.machine) : 'Погрузчик заезжает на участок…';
     if (this._hint !== hint) { $('hint').textContent = hint; this._hint = hint; }
     this.renderGroups();
     this.renderChips();
+    this.renderMachineControls();
     this.renderParams();
     this.renderFan();
     // quiet mode: an unfinished trench keeps its «Готово» visible

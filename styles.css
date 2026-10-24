@@ -190,6 +190,9 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-size: 13px;
 }
 .joy-r { left: auto; right: calc(var(--safe-r) + 18px); }
+#ui.driving .toolrow, #ui.driving .tools, #ui.driving .subbar, #ui.driving .hint { display: none !important; }
+#ui.driving .joy { bottom: calc(var(--safe-b) + 28px); }
+#ui.driving .mbtns { bottom: auto; top: calc(var(--safe-t) + 56px); }
 .mbtns.up { bottom: calc(var(--safe-b) + 262px); grid-auto-flow: row; }
 .mbtns button.on { background: var(--accent); color: var(--accent-ink); }
 
