@@ -457,3 +457,37 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
   m.customProgramCacheKey = () => 'tc-cast-concrete' + (steel ? '-steel' : '');
   return m;
 }
+
+// What a bucket or a truck's body carries, drawn with the ground's own photos: the dug soil (the
+// spoil's colour), sand, the two crushed stones — mixed as they are in it (`setMix([soil, sand,
+// g5, g20])`). The photos are laid in the mesh's own frame at their real size (`objScale`: the
+// mesh's scale in model units), so they ride with it. Shares the ground material's textures.
+export function makeLoadMaterial(ground) {
+  const gu = ground?.userData?.uniforms;
+  const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  if (!gu?.tWall || !gu?.tMat) { m.setMix = (w) => m.color.setRGB(0.44 * w[0] + 0.79 * w[1] + 0.64 * w[2] + 0.53 * w[3], 0.32 * w[0] + 0.64 * w[1] + 0.64 * w[2] + 0.52 * w[3], 0.22 * w[0] + 0.42 * w[1] + 0.62 * w[2] + 0.5 * w[3]); m.objScale = new THREE.Vector3(); return m; }
+  const u = { uW: { value: new THREE.Vector4(1, 0, 0, 0) }, uObjScale: { value: new THREE.Vector3(1, 1, 1) } };
+  m.setMix = (w) => u.uW.value.set(w[0], w[1], w[2], w[3]);
+  m.objScale = u.uObjScale.value;
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u, { tWall: gu.tWall, uWallScale: gu.uWallScale, uWallMean: gu.uWallMean, tMat: gu.tMat, uMatScale: gu.uMatScale });
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n        uniform vec3 uObjScale;\n        varying vec3 vObj;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n        vObj = position * uObjScale;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform sampler2D tWall; uniform float uWallScale; uniform vec4 uWallMean;
+        uniform highp sampler2DArray tMat; uniform vec3 uMatScale; uniform vec4 uW;
+        varying vec3 vObj;`)
+      .replace('#include <map_fragment>', `
+        {
+          vec2 q = vObj.xz;
+          vec3 cSoil = mix(uWallMean.rgb, texture2D(tWall, q * uWallScale).rgb, 0.6) * vec3(0.78, 0.70, 0.62) * 0.78;
+          vec3 cS = texture(tMat, vec3(q * uMatScale.x, 0.0)).rgb * vec3(1.05, 1.0, 0.86);
+          vec3 c5 = texture(tMat, vec3(q * uMatScale.y, 1.0)).rgb * vec3(0.56, 0.56, 0.58);
+          vec3 c20 = texture(tMat, vec3(q * uMatScale.z + 0.37, 1.0)).rgb * vec3(0.46, 0.45, 0.44);
+          diffuseColor.rgb = (cSoil * uW.x + cS * uW.y + c5 * uW.z + c20 * uW.w) / max(1e-4, uW.x + uW.y + uW.z + uW.w);
+        }`);
+  };
+  return m;
+}
