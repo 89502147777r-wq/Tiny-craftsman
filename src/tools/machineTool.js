@@ -390,7 +390,7 @@ export class MachineTool {
       }
       this.state = 'drive'; this.drv = kind; this.stick = { l: [0, 0], r: [0, 0] };
       this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0;
-      app.rig.goal.dist = R(kind === 'truck' ? 10 : 7.5); app.rig.goal.pitch = 0.4;
+      app.rig.goal.dist = R(kind === 'truck' ? 14 : 10); app.rig.goal.pitch = 0.5;
       app.sfx.scrapeStart(); app.sfx.scrapeLevel(0.15);
       app.ui?.toast(kind === 'truck' ? 'Вы в самосвале: левый джойстик — газ и руль, правый вверх/вниз — кузов' : 'Вы в погрузчике: левый джойстик — езда, правый: вверх/вниз — стрела, влево/вправо — ковш');
       app.ui?.refresh();
@@ -487,7 +487,8 @@ export class MachineTool {
     const M = this.drv === 'truck' ? T : L, rig = app.rig;
     if (this._camYaw != null) this.camOff += rig.goal.yaw - this._camYaw;
     rig.goal.yaw = this._camYaw = M.yaw - Math.PI / 2 + this.camOff;
-    rig.goal.target.set(M.x, M.y + R(this.drv === 'truck' ? 1.6 : 1.2), M.z); rig.clampTarget();
+    const ahead = R(this.drv === 'truck' ? 1.5 : 2);   // (a little ahead of it: what it goes into is in sight)
+    rig.goal.target.set(M.x + Math.cos(M.yaw) * ahead, M.y + R(0.8), M.z - Math.sin(M.yaw) * ahead); rig.clampTarget();
   }
 
   // undo while it works: what it did since the last commit is taken back
