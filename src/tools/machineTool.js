@@ -318,7 +318,7 @@ export class MachineTool {
       // (the truck is away: the loader waits with its bucket full)
       bucket(0.3, 0.55); if (T?.root.visible && this.phase !== 'arrive' && this.drive?.t >= this.drive?.dur) this.phase = 'toTruck';
     } else if (ph === 'toTruck') {
-      const c = T.bedCentre(new THREE.Vector3()), off = T.width / 2 + R(1.75), ax = c.x + this.side[0] * off, az = c.z + this.side[1] * off;
+      const c = T.bedCentre(new THREE.Vector3()), off = T.width / 2 + R(1.4), ax = c.x + this.side[0] * off, az = c.z + this.side[1] * off;
       const r = this._drive(dt, ax, az); moved = r.step;
       if (r.d < R(0.2) || r.blocked) this.phase = 'faceTruck';
       bucket(0.3, 0.55);
