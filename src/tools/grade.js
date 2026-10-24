@@ -37,9 +37,10 @@ export class Grader {
   // a sample cut down by h (what is cut goes into `into`: the loose layers first, then the ground)
   cut(i, h, into = this.carry) {
     const t = this.app.terrain, seg = this._seg;
+    if (h > 0.01 / 10.47 && t.comp[i] > 0) t.comp[i] = 0;   // (cut into: what shows is fresh, not the pressed top)
     const got = t._pop(i, h, seg);
     for (let k = 0; k < seg.n; k++) into[seg.m[k]] += seg.h[k];
-    if (h - got > 1e-9) { t.nat[i] -= h - got; into[0] += h - got; }
+    if (h - got > 1e-9) { t.nat[i] -= h - got; into[0] += h - got; this.natCut = (this.natCut || 0) + h - got; }
   }
   fill(i, need) {
     const t = this.app.terrain, c = this.carry;

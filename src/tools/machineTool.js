@@ -705,12 +705,15 @@ export class MachineTool {
         const clear = () => { for (let d = 0; d <= fr - bk + t.cell; d += t.cell * 0.7) this._bulldoze(fp.x - f[0] * d, fp.z - f[1] * d, f, hw, by, d, true); };   // (its round bottom slides over firm ground: only what is loose)
         clear(); this._wallPass = clear;
       }
+      const nat0 = g.natCut || 0;
       if (moved > 0 && L.tilt > -0.45 && L.tilt < 0.15) {
-        const keep = g.target; g.target = () => cutY;
+        // (firm ground gives ≤ 5 cm a pass, however the nose is tipped: deeper takes more passes; what is
+        // loose over it all goes)
+        const keep = g.target; g.target = (px, pz) => Math.max(cutY, t.nat[t.index(px, pz)] - R(0.05));
         const n = Math.max(1, Math.ceil(moved / (t.cell * 0.7)));
         for (let k = n - 1; k >= 0; k--) {
           const bx = e.x - f[0] * moved * k / n, bz = e.z - f[1] * moved * k / n;
-          g.blade(bx, bz, f[0], f[1], hw, this.cap, true);
+            g.blade(bx, bz, f[0], f[1], hw, this.cap, true);
           if (g.load >= this.cap * 0.98) this._bulldoze(bx, bz, f, hw, cutY);
         }
         // (and the bucket is a wall: what has run back over the edge into its mouth since — the pile
@@ -742,6 +745,7 @@ export class MachineTool {
       }
       // curled back with the edge in the soil: what lies over it in the bucket's mouth goes in
       if (rx < 0 && L.tilt < 0.35 && g.load < this.cap && e.y < t.heightAt(e.x, e.z)) this._scoopStrip(e, f, L.bucketW / 2);
+      if (rx >= 0) this._scooped?.clear();   // (a new curl: a new sliver)
       // (it lies on what is under it — the ground it has cut, a heap: the machine dipping into the cut
       // does not sink it through)
       // (standing, the bucket pressed into loose soil: what is under its bottom is pushed out to its sides)
@@ -750,11 +754,19 @@ export class MachineTool {
       // into its cut): it does not go in — the machine's front comes up on the rear wheels instead (up to
       // ≈20°; further the stick does nothing). After the cut and the push: what it goes through is gone.
       this._liftFor(t); L.edgeWorld(e);
+      // (pressed down standing — on the ground, more when it lifts the front: the ground under its bottom
+      // is pressed denser)
+      if (ry > 0 && !moved && L.tilt > -0.45) {
+        const b = L.lowWorld(new THREE.Vector3());
+        if (b.y < this._bed(b) + R(0.03)) t.compactStep(e.x - f[0] * R(0.3), e.z - f[1] * R(0.3), f[0], f[1], L.bucketW, R(0.55), dt * (L.lift > 0.005 ? 1.2 : 0.4));
+      }
       // tipped: it runs out over the lip as it tips — the more, the faster; into the body when it is
       // over it, else it falls and lands where it falls
       if (L.tilt < -0.45 && g.load > 1e-9) this._pour(dt, e, f, hw);
       else if (this._intoTruck && g.load <= 1e-9) { this._intoTruck = false; app.ui?.toast(`В кузове ${(T.load * TRUCK_LOAD).toFixed(1).replace('.', ',')} из ${TRUCK_LOAD} м³`); }
       this._drag = moved > 0 && L.tilt > -0.45 && L.tilt < 0.15 && cutY < t.heightAt(e.x + f[0] * R(0.3), e.z + f[1] * R(0.3)) ? Math.min(1, g.load / this.cap) : 0;
+      // (firm ground is heavy going: cutting it at ~0,1 m³/s it goes at half its speed)
+      { const natV = ((g.natCut || 0) - nat0) * t.cellArea * MODEL_SCALE ** 3; if (natV > 0) this._drag = Math.min(1, Math.max(this._drag, natV / Math.max(dt, 1e-3) / 0.1)); }
       L.soil.material.setMix?.(this._mixW());
       L.load = Math.min(1, g.load / this.cap);
       app.sfx.scrapeLevel(0.15 + Math.min(0.5, Math.abs(this.v) / SPEED * 0.3 + L.load * 0.2));
@@ -865,20 +877,38 @@ export class MachineTool {
   // goes in down to the edge's height (a straight bite — not a round pit)
   _scoopStrip(e, f, hw) {
     const t = this.app.terrain, g = this.grader, st = t.cell * 0.7;
+    this._scooped ||= new Set();
     let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
     for (let d = -R(0.05); d <= R(0.3) && g.load < this.cap; d += st) for (let q = -hw; q <= hw; q += st) {
       const px = e.x + f[0] * d - f[1] * q, pz = e.z + f[1] * d + f[0] * q;
       if (!t.inside(px, pz)) continue;
       const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
-      const over = t.nat[i] + t.loose[i] - e.y;
+      // (what is loose in front of it goes in; of firm ground only a sliver, ≤ 2 cm — curling in place
+      // does not dig: the bucket is filled by driving into the heap)
+      const sl = this._scooped.has(i) ? 0 : R(0.02); this._scooped.add(i);
+      const over = Math.min(t.nat[i] + t.loose[i] - e.y, t.loose[i] + sl);
       if (over > 1e-7) { g.cut(i, Math.min(over, this.cap - g.load)); const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
     }
     if (x1 >= 0) t._touch(x0, z0, x1, z1);
   }
   // after the ground has slumped this frame: the pushing bucket's footprint cleared again
-  afterRelax() { if (this.state === 'drive' && this._wallPass) { this._wallPass(); this._wallPass = null; } }
+  afterRelax() {
+    if (this.state !== 'drive') return;
+    // (round the bucket the soil it piles up slumps to its angle of repose every frame, whatever the
+    // phone's time for the rest of the ground: no walls of soil standing up in front of it)
+    if (this._slumpAt) {
+      const t = this.app.terrain, [x, z] = this._slumpAt, n = Math.ceil(R(1.8) / t.cell), cx = Math.round(t.toCellX(x)), cz = Math.round(t.toCellZ(z));
+      const box = { x0: Math.max(0, cx - n), z0: Math.max(0, cz - n), x1: Math.min(t.rx, cx + n), z1: Math.min(t.rz, cz + n) }, keep = t.active;
+      t.active = { ...box };
+      for (let k = 0; k < 24 && t.active; k++) t.relax(1);
+      t.active = keep ? { x0: Math.min(keep.x0, box.x0), z0: Math.min(keep.z0, box.z0), x1: Math.max(keep.x1, box.x1), z1: Math.max(keep.z1, box.z1) } : t.active;
+      this._slumpAt = null;
+    }
+    if (this._wallPass) { this._wallPass(); this._wallPass = null; }
+  }
   // what stands over the edge across the bucket, moved on ahead of it
   _bulldoze(x, z, f, hw, y, back = 0, looseOnly = false) {
+    this._slumpAt = [x + f[0] * (R(0.8) + back), z + f[1] * (R(0.8) + back)];
     const t = this.app.terrain, g = this.grader, push = (this._pushC ||= new Float64Array(4));
     let any = false;
     for (let q = -hw; q <= hw; q += t.cell * 0.7) {

@@ -167,8 +167,14 @@ const FRAG_SOIL = `
           vec3 mc = (cS * vMat.x + c5 * vMat.y + c20 * vMat.z) / max(0.001, mSum);
           soilC = mix(soilC, mc, smoothstep(0.0, 1.0, clamp(mSum, 0.0, 1.0)));
         }
-        // compacted with the plate: denser, a shade darker, the loose crumbs pressed in
-        soilC *= 1.0 - 0.09 * vExtra.y;
+        // compacted (the plate, wheels, a bucket pressed on it): denser and darker, the grain pressed
+        // smooth — its photo's crumbs and stones flattened toward one even tone
+        {
+          float cp = clamp(vExtra.y, 0.0, 1.0);
+          float lum = dot(soilC, vec3(0.333));
+          soilC = mix(soilC, vec3(lum) * normalize(soilC + 1e-4) * 1.732, 0.45 * cp);
+          soilC = mix(soilC, mix(soilC, vec3(lum), 0.25), cp) * (1.0 - 0.22 * cp);
+        }
         // concrete: wet and dark when fresh, light grey once set; trowelled = even tone
         float concW = smoothstep(0.00008, 0.0006, vConc.x);
         float cure = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
@@ -302,7 +308,7 @@ export function makeTerrainMaterial(tex) {
         ${FRAG_SOIL}`)
       .replace('#include <normal_fragment_maps>', `${ch.normal}
         float steepF = smoothstep(0.25, 0.75, 1.0 - normalize(vWNrm).y);
-        normal = normalize(mix(normal, normalize(vNormal) * faceDirection, vExtra.y * 0.55));   // compacted: pressed flat
+        normal = normalize(mix(normal, normalize(vNormal) * faceDirection, clamp(vExtra.y, 0.0, 1.0) * 0.85));   // compacted: pressed flat
         normal = normalize(mix(normal, normalize(vNormal) * faceDirection, max(steepF * 0.8, smoothstep(0.0, 0.0012, vSoil.y) * 0.45)));
         {
           float ms = clamp(vMat.x + vMat.y + vMat.z, 0.0, 1.0);
