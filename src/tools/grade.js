@@ -47,7 +47,8 @@ export class Grader {
   }
   // the blade at (x, z), across (ux, uz), half width hw: cut down to the level, fill up to it;
   // `cap`: the most it may carry (the bucket full: it cuts no more, it still fills)
-  blade(x, z, ux, uz, hw, cap = Infinity) {
+  // (`keep`: it fills nothing — a bucket going on with its load keeps it)
+  blade(x, z, ux, uz, hw, cap = Infinity, keep = false) {
     const t = this.app.terrain, seen = this._seen;
     seen.clear();
     let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
@@ -59,7 +60,7 @@ export class Grader {
       if (!this.free(i, px, pz)) continue;
       const s = t.nat[i] + t.loose[i], tg = this.target(px, pz);
       if (s > tg + 1e-7) { const h = Math.min(s - tg, Math.max(0, cap - this.load)); if (h <= 0) continue; this.cut(i, h); }
-      else if (s < tg - 1e-7 && this.load > 0) this.fill(i, tg - s);
+      else if (s < tg - 1e-7 && this.load > 0 && !keep) this.fill(i, tg - s);
       else continue;
       const ix = i % t.nx, iz = (i / t.nx) | 0;
       if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz;

@@ -55,15 +55,21 @@ export class Loader {
     // (it stands on its wheels: the bucket in the model's rest pose may hang lower)
     const low = Math.min(...this.wheels.map((w) => w.at.y - w.r));
     holder.position.y -= low; for (const w of this.wheels) w.at.y -= low;
-    // the soil in the bucket: a heap shown when it carries
+    // the soil in the bucket: a sheet over its floor whose top rises as it fills — level at the
+    // back, heaped in the middle, low at the lip and at the sides (shaped in update)
     const bb = this.bucketBox, inB = this.bucketP.worldToLocal(bb.getCenter(new THREE.Vector3()));
-    this.soil = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x7a5a3c, roughness: 1 }));
-    this.soil.position.copy(inB); this.soil.scale.set((bb.max.x - bb.min.x) * 0.38, 1e-4, (bb.max.z - bb.min.z) * 0.44); this.soil.castShadow = true; this.soil.visible = false;
-    this.bucketP.add(this.soil); this.soilY = inB.y - (bb.max.y - bb.min.y) * 0.25;
+    const BL = bb.max.x - bb.min.x, BW = bb.max.z - bb.min.z, BH = bb.max.y - bb.min.y;
+    const g = new THREE.BoxGeometry(1, 1, 1, 12, 1, 8); g.translate(0, 0.5, 0);
+    this.soilTop = []; { const pos = g.attributes.position; for (let i = 0; i < pos.count; i++) if (pos.getY(i) > 0.5) this.soilTop.push(i); }
+    this.soil = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x6f5137, roughness: 1 }));
+    this.soil.position.set(inB.x - BL * 0.08, inB.y - BH * 0.32, inB.z); this.soil.scale.set(BL * 0.7, BH, BW * 0.9);
+    this.soil.castShadow = true; this.soil.visible = false; this._fill = -1;
+    this.bucketP.add(this.soil);
     this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     return this;
   }
   get loaded() { return !!this.armP; }
+  soilColor(c) { this.soil?.material.color.copy(c); }
   // where the cutting edge is (world)
   edgeWorld(out = new THREE.Vector3()) { this.root.updateMatrixWorld(true); return this.bucketP ? out.copy(this.edge).applyMatrix4(this.bucketP.matrixWorld) : out.set(this.x, this.y, this.z); }
   // stand on the ground at (x, z) facing yaw: height and tilt from under the four wheels
@@ -87,7 +93,17 @@ export class Loader {
     this.armP.rotation.z = this.arm; this.bucketP.rotation.z = this.tilt - this.arm * 0.85;   // (self-levelling: the bucket keeps its angle as the arms rise)
     this.spin += moved;
     for (const w of this.wheels) w.g.rotation.z = -this.spin / w.r;
-    this.soil.visible = this.load > 0.02;
-    if (this.soil.visible) { this.soil.scale.y = (this.bucketBox.max.y - this.bucketBox.min.y) * 0.55 * Math.sqrt(this.load); this.soil.position.y = this.soilY; }
+    this.soil.visible = this.load > 0.01;
+    if (this.soil.visible && Math.abs(this.load - this._fill) > 0.005) {
+      // (the top: as high as full — a little over the rim when heaped — falling to the lip and the sides)
+      this._fill = this.load;
+      const pos = this.soil.geometry.attributes.position, f = this.load;
+      for (const i of this.soilTop) {
+        const u = pos.getX(i) + 0.5, w = pos.getZ(i) * 2;   // u: 0 at the back, 1 at the lip; w: −1…1 across
+        const h = f * 0.75 * (1 - 0.55 * u * u) + Math.max(0, f - 0.4) * 0.6 * Math.sin(Math.PI * Math.min(1, u * 1.15)) * (1 - w * w * 0.8);
+        pos.setY(i, Math.max(0.02, h));
+      }
+      pos.needsUpdate = true; this.soil.geometry.computeVertexNormals();
+    }
   }
 }
