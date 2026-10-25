@@ -6,7 +6,7 @@ import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
-import { LAYERS as FAC_LAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES } from '../world/facade.js';
+import { LAYERS as FAC_LAYERS, VLAYERS as FAC_VLAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES, VENT } from '../world/facade.js';
 import { RWIN_TYPES } from '../world/roofWindows.js';
 import { ROOF_TYPES, PITCHES, PITCH_RANGE, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
@@ -471,10 +471,18 @@ export class UI {
         if (k === 'pan') {
           // the panels: the type (stone, clinker, planks) → its colour
           const cur = s.facPanel || 'stone:sandstone';
-          return G('pan', c.label, Object.entries(PANEL_TYPES).map(([t, [tn, cols]]) => G('pt' + t, tn, Object.entries(cols).map(([q, [n]]) => C('◼ ' + n, cur === `${t}:${q}`, () => lay({ wallKind: 'facade', facLayer: 'pan', facPanel: `${t}:${q}` }))), null, C('', cur.startsWith(t + ':'), () => lay({ wallKind: 'facade', facLayer: 'pan', facPanel: `${t}:${Object.keys(cols)[0]}` })))), null, c);
+          return G('pan', c.label, Object.entries(PANEL_TYPES).filter(([t, [, cols]]) => !VENT(`${t}:${Object.keys(cols)[0]}`)).map(([t, [tn, cols]]) => G('pt' + t, tn, Object.entries(cols).map(([q, [n]]) => C('◼ ' + n, cur === `${t}:${q}`, () => lay({ wallKind: 'facade', facLayer: 'pan', facPanel: `${t}:${q}` }))), null, C('', cur.startsWith(t + ':'), () => lay({ wallKind: 'facade', facLayer: 'pan', facPanel: `${t}:${Object.keys(cols)[0]}` })))), null, c);
         }
         return c;
       });
+      // the ventilated facade: its stages; the panels → the material → its colour
+      const vent = FAC_VLAYERS.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('facade') && FL === k, () => lay({ wallKind: 'facade', facLayer: k }));
+        if (k !== 'vp') return c;
+        const cur = s.facVent || 'porc:concrete';
+        return G('vp', c.label, Object.entries(PANEL_TYPES).filter(([t, [, cols]]) => VENT(`${t}:${Object.keys(cols)[0]}`)).map(([t, [tn, cols]]) => G('vt' + t, tn, Object.entries(cols).map(([q, [n]]) => C('◼ ' + n, cur === `${t}:${q}`, () => lay({ wallKind: 'facade', facLayer: 'vp', facVent: `${t}:${q}` }))), null, C('', cur.startsWith(t + ':'), () => lay({ wallKind: 'facade', facLayer: 'vp', facVent: `${t}:${Object.keys(cols)[0]}` })))), null, c);
+      });
+      const isV = FAC_VLAYERS.some(([k]) => k === FL);
       // the pitched roof: its type, pitch, covering (and colour), then the stages
       const po = wt.proof.opts(), pr = wt.proof.target, wsel = wt.proof.wing;   // (a roof with its rafters up: the menu is for the next one)
       const pset = (o, ch) => { lay({ wallKind: 'proof', ...o }); wt.proof.applyOpts(ch); };
@@ -516,7 +524,7 @@ export class UI {
       const hid = (n) => ({ ...n, hidden: true });
       // the top row's own groups (hidden here: opened from there), then the walls themselves
       return [
-        hid(G('facade', 'Фасад', [...facade, del()], null, C('', has('facade'), () => lay({ wallKind: 'facade' })))),
+        hid(G('facade', 'Фасад', [G('wet', 'Мокрый фасад', facade, null, C('', has('facade') && !isV, () => lay({ wallKind: 'facade', facLayer: isV ? 'eps' : FL }))), G('vent', 'Вентфасад', vent, null, C('', has('facade') && isV, () => lay({ wallKind: 'facade', facLayer: isV ? FL : 'br' }))), del()], null, C('', has('facade'), () => lay({ wallKind: 'facade' })))),
         hid(G('win', 'Окна и двери', [
           G('wins', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window'), () => lay({ wallKind: 'window' }))),
           G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'), () => lay({ wallKind: 'door' }))),
