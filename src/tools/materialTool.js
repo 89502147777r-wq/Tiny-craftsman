@@ -33,6 +33,7 @@ export class MaterialTool {
     app.journal.begin(this.mode === 'deliver' ? 'deliver' : 'bucket', { material: MATERIALS[this.mat].id, m3: m3 || undefined, at: [+p.x.toFixed(4), +p.z.toFixed(4)] }, app.clock);
     this.poured = 0;
     this.t = 0;
+    this.heap = null;
     if (this.mode === 'deliver') {
       // a heap: the bigger, the longer it takes to tip
       this.total = real(m3);
@@ -76,7 +77,9 @@ export class MaterialTool {
         const cone = Math.cbrt(3 * Math.min(this.total, this.poured + this.rate * 4 || this.total) / (Math.PI * MATERIALS[this.mat].repose));
         // the truck body empties unevenly: the stream wanders a little
         const j = this.state === 'pour' ? cone * 0.25 : 0, ja = Math.random() * Math.PI * 2, jr = Math.random() * j;
-        t.deposit(this.p.x + Math.cos(ja) * jr, this.p.z + Math.sin(ja) * jr, vol, Math.max(this.spread * 0.7 + t.cell, cone * 0.35), 0, this.mat);
+        // (a delivery: the heap grows as the cone it will rest as; the barrow's stream: a soft splat)
+        if (this.state === 'pour') t.heapTo(this.heap ||= t.heapStart(this.p.x, this.p.z, this.total, MATERIALS[this.mat].repose * 0.97), want, this.mat);
+        else t.deposit(this.p.x + Math.cos(ja) * jr, this.p.z + Math.sin(ja) * jr, vol, Math.max(this.spread * 0.7 + t.cell, cone * 0.35), 0, this.mat);
         const per = this.state === 'pour' ? this.total / this.crumbs : this.rate / 90;
         let n = Math.min(40, Math.max(1, Math.round(vol / per)));
         const r = Math.random;
