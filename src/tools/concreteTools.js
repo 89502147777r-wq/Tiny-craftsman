@@ -100,7 +100,11 @@ class ConcreteTool {
   update(dt) {
     if (this.state === 'settle') {
       this.settleT += dt;
-      if (!this.app.terrain.cActive || this.settleT > 2.5) this.finish();
+      // concrete in a channel (U-blocks, the ring beam, a slab, the blind area) flows on frame
+      // by frame until it holds (not all at once on the finger's release)
+      const ch = this.uw?.ch || this.ch;
+      if (ch) { const m = ch.step(dt); ch.show(this.app.wallView); if ((this.settleT > 0.3 && m < dt) || this.settleT > 12) this.finish(); }
+      else if (!this.app.terrain.cActive || this.settleT > 2.5) this.finish();
     }
     if (this.state === 'work') this.work(dt);
   }
@@ -114,7 +118,7 @@ class ConcreteTool {
     if (this.uw) {
       // (the channel: into its records; the ground is not touched)
       app.sfx.scrapeStop();
-      this.uw.ch.settle(); this.uw.ch.write(app); this.uw = null;
+      this.uw.ch.write(app); this.uw = null;
       app.wallView.fillLive = app.wallView.fillLiveSm = app.wallView.beltLive = app.wallView.blindLive = null; app.wallView.fillDirty = true;
       app.journal.commit(app.clock);
       this.state = 'idle';
@@ -152,6 +156,7 @@ export class HoseTool extends ConcreteTool {
 
 
   down(p, e) {
+    if (this.state === 'settle') this.finish();   // (a new press: what still flows is taken as it is)
     if (this.state !== 'idle') return true;
     this.uT = this._uAt(e);
     if (this.uT) p = new THREE.Vector3(this._uHit.x, 0, this._uHit.z);
@@ -194,7 +199,7 @@ export class HoseTool extends ConcreteTool {
   }
   abort() { this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = this.app.wallView.blindLive = null; this.app.wallView.fillDirty = true; return super.abort(); }
   finish() {
-    if (this.state !== 'idle' && this.ch) { this.ch.settle(); this.ch.write(this.app); this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = this.app.wallView.blindLive = null; this.app.wallView.fillDirty = true; }
+    if (this.state !== 'idle' && this.ch) { this.ch.write(this.app); this.ch = null; this.app.wallView.fillLive = this.app.wallView.fillLiveSm = this.app.wallView.beltLive = this.app.wallView.blindLive = null; this.app.wallView.fillDirty = true; }
     super.finish();
   }
 
@@ -252,6 +257,7 @@ export class PailTool extends ConcreteTool {
 
 
   down(p, e) {
+    if (this.state === 'settle') this.finish();   // (a new press: what still flows is taken as it is)
     if (this.state !== 'idle') return true;
     const u = this._uAt(e);
     if (!u) { this.app.ui?.toast('Ведро — для U-блоков, пояса и отмостки: коснитесь лотка, опалубки пояса или щебня отмостки'); return true; }
@@ -326,14 +332,14 @@ export class PailTool extends ConcreteTool {
       const moved = this.ch.step(dt);
       this.ch.show(this.app.wallView);
       this._pose();
-      if (this.settleT > 0.6 && (moved < 0.02 || this.settleT > 2)) this.finish();
+      if (this.settleT > 0.6 && (moved < dt || this.settleT > 12)) this.finish();
     }
   }
 
   finish() {
     const app = this.app;
     if (this.state === 'idle') return;
-    this.ch.settle(); this.ch.write(app);
+    this.ch.write(app);
     app.wallView.fillLive = app.wallView.fillLiveSm = app.wallView.beltLive = app.wallView.blindLive = null; app.wallView.fillDirty = true;
     const m = app.journal.pending;
     if (m) m.meta.litres = +((PAIL_L - this.left)).toFixed(1);
@@ -373,6 +379,7 @@ export class ScreedTool extends ConcreteTool {
   }
 
   down(p, e) {
+    if (this.state === 'settle') this.finish();   // (a new press: what still flows is taken as it is)
     if (this.state !== 'idle') return true;
     if (this._uBegin(e, 'u-screed')) { if (this.uw) this._uRule(this.uw.i, [1, 0], true); return true; }
     if (!this.app.terrain.inside(p.x, p.z)) return false;
@@ -428,6 +435,7 @@ export class VibratorTool extends ConcreteTool {
   constructor(app) { super(app, 'vibro'); }
 
   down(p, e) {
+    if (this.state === 'settle') this.finish();   // (a new press: what still flows is taken as it is)
     if (this.state !== 'idle') return true;
     if (this._uBegin(e, 'u-vibrate')) { if (this.uw) this.gear.set('vibro', this.uw.ch.point(this.uw.i), 0, true); return true; }
     if (!this.app.terrain.inside(p.x, p.z)) return false;
@@ -468,6 +476,7 @@ export class TrowelTool extends ConcreteTool {
   constructor(app) { super(app, 'trowel'); }
 
   down(p, e) {
+    if (this.state === 'settle') this.finish();   // (a new press: what still flows is taken as it is)
     if (this.state !== 'idle') return true;
     if (this._uBegin(e, 'u-trowel')) {
       if (this.uw) { const ch = this.uw.ch; this.gear.set('trowel', ch.point(this.uw.i), Math.PI / 2, true); this.touched = true; }
@@ -519,6 +528,7 @@ export class BitumenTool extends ConcreteTool {
   constructor(app) { super(app, 'bitumen'); }
 
   down(p) {
+    if (this.state === 'settle') this.finish();   // (a new press: what still flows is taken as it is)
     if (this.state !== 'idle') return true;
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('bitumen', {}, p);
@@ -555,6 +565,7 @@ export class PlateTool extends ConcreteTool {
   constructor(app) { super(app, 'plate'); }
 
   down(p) {
+    if (this.state === 'settle') this.finish();   // (a new press: what still flows is taken as it is)
     if (this.state !== 'idle') return true;
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('compact', {}, p);
@@ -615,6 +626,7 @@ export class BreakerTool extends ConcreteTool {
   _at(p) { return new THREE.Vector3(p.x, this.app.terrain.heightAt(p.x, p.z), p.z); }
   _yaw(p) { const c = this.app.camera.position; return Math.atan2(c.x - p.x, c.z - p.z); }
   down(p) {
+    if (this.state === 'settle') this.finish();   // (a new press: what still flows is taken as it is)
     if (this.state !== 'idle') return true;
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('break', {}, p);
