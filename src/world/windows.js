@@ -18,10 +18,16 @@ export const WINDOWS = {
   pvc3: { name: 'ПВХ, три створки', mat: 'pvc', cols: [1, 0, 1], sill: true },
   pano: { name: 'Панорамное, узкий алюминий', mat: 'alu', narrow: true, maxPane: 1600 },
   portal: { name: 'Раздвижной портал', mat: 'alu', slide: true },
+  // floor to ceiling: the narrow aluminium frame sunk into the floor (its bottom under the screed,
+  // a drained threshold), tempered laminated glass (triplex inside) — no sill, no window board
+  floor: { name: 'Витраж в пол, узкий алюминий', mat: 'alu', narrow: true, maxPane: 1500, floor: true },
+  // the corner without a post: two glazed legs meeting glass to glass (a stepped unit, black
+  // structural silicone in the corner), the frames only at the masonry, the floor and the slab
+  corner: { name: 'Угловое остекление, стекло в стекло', mat: 'alu', corner: true },
 };
 
 // what a window can be made to: → null, or why not
-const SIZES = { pvc1: [300, 9000, 300, 9000], pvc2: [500, 9000, 300, 9000], pvc3: [700, 9000, 300, 9000], pano: [300, 9000, 300, 9000], portal: [900, 9000, 900, 9000] };   // (made to any opening; only too small for the frames and sashes to fit)
+const SIZES = { pvc1: [300, 9000, 300, 9000], pvc2: [500, 9000, 300, 9000], pvc3: [700, 9000, 300, 9000], pano: [300, 9000, 300, 9000], portal: [900, 9000, 900, 9000], floor: [500, 9000, 1800, 9000], corner: [500, 7000, 1200, 9000] };   // (made to any opening; only too small for the frames and sashes to fit)
 export function windowFits(key, w, h) {
   const [w0, w1, h0, h1] = SIZES[key], n = WINDOWS[key].name;
   if (w < w0) return `Проём ${w} мм узок для «${n}» (от ${w0} мм) — выберите другое окно`;
@@ -117,7 +123,7 @@ export function glazing(G, x0, y0, x1, y1, z, gap = 16) {
 export function buildWindow(key, w, h, t = 300, col = 'white') {
   const P = WINDOWS[key], M = mats(), gap = 18;
   const G = { frame: [], inner: [], seal: [], bead: [], glass: [], spacer: [], chrome: [], board: [], foam: [], tapeOut: [], tapeIn: [] };
-  const X0 = -w / 2 + gap, X1 = w / 2 - gap, Y0 = (P.sill ? 30 : 10) + gap, Y1 = h - gap;   // the frame's outside (a sill support profile under a PVC frame)
+  const X0 = -w / 2 + gap, X1 = w / 2 - gap, Y0 = P.floor ? -40 : (P.sill ? 30 : 10) + gap, Y1 = h - gap;   // (a floor-to-ceiling frame: its bottom 40 under the opening's floor — the screed goes over it)   // the frame's outside (a sill support profile under a PVC frame)
   const zF = t / 2 - 35 - 70;   // the frame stands in the outer part of the wall, 70 in from its face
   // the foam in the gap round it, a little back from the faces of the frame
   sweep(G.foam, X0 - gap, Y0 - gap, X1 + gap, Y1 + gap, [[0, -28], [0, 28], [gap, 28], [gap, -28]], zF);
@@ -153,6 +159,8 @@ export function buildWindow(key, w, h, t = 300, col = 'white') {
       const a = X0 + F + i * (pw + mw), b = a + pw;
       if (i > 0) box(G.frame, a - mw / 2, (Y0 + Y1) / 2, zF, mw, Y1 - Y0 - 2 * F, 70);
       glazing(G, a + 2, Y0 + F + 2, b - 2, Y1 - F - 2, zF + 2, 16);
+      // (in the floor: a drained threshold track over the sunk frame, flush with the floor)
+      if (P.floor && i === 0) box(G.frame, (X0 + X1) / 2, 2, zF, X1 - X0, 4, 90);
       sweep(G.seal, a, Y0 + F, b, Y1 - F, [[0, 12], [0, 16], [5, 16], [5, 12]], zF);
       sweep(G.bead, a, Y0 + F, b, Y1 - F, PROF.aluBead, zF);
     }
@@ -210,5 +218,48 @@ export function buildWindow(key, w, h, t = 300, col = 'white') {
   }
   g.scale.setScalar(S);
   g.userData.window = { key, w, h, col };
+  return g;
+}
+
+// Corner glazing for a corner opening `c` (findCorners): the group in the model's scale, its origin
+// at the outer corner at the bottom of the opening; local x along leg A (from the corner toward its
+// masonry), local z along leg B — both glass lines 105 mm in from the outer faces, meeting there.
+export function buildCorner(c, h, col = 'anth') {
+  const M = mats(), G = { frame: [], seal: [], glass: [], spacer: [] }, Q = 105, gap = 18, F = 50, low = c.floor ? -40 : 10 + gap;
+  const legs = [[c.wA, false], [c.wB, true]];
+  for (const [w, B] of legs) {
+    // in the leg's own terms: s along it from the corner, n across (0 = its glass line)
+    const bx = (s0, s1, y0, y1, n0, n1) => { const sm = (s0 + s1) / 2, nm = (n0 + n1) / 2; if (B) box(G.frame, Q + nm, (y0 + y1) / 2, sm, n1 - n0, y1 - y0, s1 - s0); else box(G.frame, sm, (y0 + y1) / 2, Q + nm, s1 - s0, y1 - y0, n1 - n0); };
+    const end = w - gap;
+    // the frame at the masonry, along the floor and the slab (none in the corner)
+    bx(end - F, end, low, h - gap, -35, 35);
+    bx(Q - 12, end, low, low + F, -35, 35);
+    bx(Q - 12, end, h - gap - F, h - gap, -35, 35);
+    if (c.floor) bx(Q, end, 0, 4, -45, 45);
+    // the unit: two panes; the outer one runs on to the corner over the other leg's edge (stepped)
+    const y0 = low + F + 2, y1 = h - gap - F - 2;
+    // (outside is toward n < 0: the outer pane runs on to the other leg's outer pane, the inner
+    // one stops at the other's inner pane — the panes of the two legs butt, the silicone between)
+    for (const [dn, s0] of [[-12, Q - 15], [12, Q + 9]]) {
+      const s1 = end - F - 2;
+      if (B) box(G.glass, Q + dn, (y0 + y1) / 2, (s0 + s1) / 2, 6, y1 - y0, s1 - s0); else box(G.glass, (s0 + s1) / 2, (y0 + y1) / 2, Q + dn, s1 - s0, y1 - y0, 6);
+    }
+    // the spacer along the edge at the masonry, the seal along the frames
+    if (B) box(G.spacer, Q, (y0 + y1) / 2, end - F - 8, 16, y1 - y0, 8); else box(G.spacer, end - F - 8, (y0 + y1) / 2, Q, 8, y1 - y0, 16);
+  }
+  // the corner: black structural silicone down the joint, the black edge band of the stepped unit
+  box(G.seal, Q - 12, (low + h) / 2, Q - 12, 10, h - gap - low - 2 * F, 10);
+  const g = new THREE.Group();
+  for (const [k, list] of Object.entries(G)) {
+    if (!list.length) continue;
+    const mesh = new THREE.Mesh(mergeGeometries(list.map((q) => (q.index ? q.toNonIndexed() : q)), false), k === 'frame' ? frameMat(col, true) : M[k]);
+    mesh.castShadow = k !== 'glass'; mesh.receiveShadow = k !== 'glass';
+    if (k === 'glass') mesh.renderOrder = 2;
+    g.add(mesh);
+  }
+  // the basis: x → dA, z → dB (a mirror when B turns the other way: the materials are two-sided)
+  g.matrixAutoUpdate = false;
+  g.userData.corner = true;
+  g.userData.window = { key: 'corner', w: c.wA, h, col };
   return g;
 }

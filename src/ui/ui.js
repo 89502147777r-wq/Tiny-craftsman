@@ -25,7 +25,7 @@ const GROUPS = [
   { id: 'walls', label: 'Стены', icon: 'wall' },
   // (of the walls' tool, but on the top row of their own: straight to their chips; kinds: the
   // work under it, the first the one it opens on)
-  { id: 'winG', label: 'Окна и двери', svg: '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="17"/><path d="M12 3v17M5 11h14"/><path d="M3 21h18"/></svg>', virt: { kinds: ['window', 'door'], path: ['win'] } },
+  { id: 'winG', label: 'Окна и двери', svg: '<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="17"/><path d="M12 3v17M5 11h14"/><path d="M3 21h18"/></svg>', virt: { kinds: ['window', 'door', 'rail'], path: ['win'] } },
   { id: 'roofG', label: 'Кровля', svg: '<svg viewBox="0 0 24 24"><path d="M2 12L12 4l10 8"/><path d="M5 10v10h14V10"/><rect x="13" y="8" width="3" height="3"/></svg>', virt: { kinds: ['proof', 'roof', 'rwin'], path: ['roofs'] } },
   { id: 'facadeG', label: 'Фасад', svg: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M4 9h16M4 14h16M9 4v5M15 9v5M9 14v6"/><path d="M2 20h20"/></svg>', virt: { kinds: ['facade'], path: ['facade'] } },
   { id: 'blindG', label: 'Отмостка', svg: '<svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="13"/><path d="M2 16h20l-2 4H4z"/><path d="M7 18h.01M12 18h.01M17 18h.01"/></svg>', virt: { kinds: ['blind'], path: ['blind'] } },
@@ -526,11 +526,12 @@ export class UI {
       return [
         hid(G('facade', 'Фасад', [G('wet', 'Мокрый фасад', facade, null, C('', has('facade') && !isV, () => lay({ wallKind: 'facade', facLayer: isV ? 'eps' : FL }))), G('vent', 'Вентфасад', vent, null, C('', has('facade') && isV, () => lay({ wallKind: 'facade', facLayer: isV ? FL : 'br' }))), del()], null, C('', has('facade'), () => lay({ wallKind: 'facade' })))),
         hid(G('win', 'Окна и двери', [
-          G('wins', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['portal', '5 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window'), () => lay({ wallKind: 'window' }))),
+          G('wins', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['floor', '5 · Витраж в пол'], ['corner', '6 · Угловое остекление'], ['portal', '7 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window'), () => lay({ wallKind: 'window' }))),
           G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'), () => lay({ wallKind: 'door' }))),
-          G('garage', 'Гаражные ворота', pick([['gar1', '1 · Секционные'], ['gar2', '2 · Рулонные'], ['gar3', '3 · Распашные, дерево']], 'doorKey', 'door', 'gar1'), null, C('', has('door') && String(s.doorKey).startsWith('gar'), () => lay({ wallKind: 'door', doorKey: 'gar1' }))),
+          G('garage', 'Гаражные ворота', pick([['gar1', '1 · Секционные'], ['gar2', '2 · Рулонные'], ['gar3', '3 · Распашные, дерево'], ['gar4', '4 · Скрытые, под отделку']], 'doorKey', 'door', 'gar1'), null, C('', has('door') && String(s.doorKey).startsWith('gar'), () => lay({ wallKind: 'door', doorKey: 'gar1' }))),
+          C('Стеклянное ограждение', has('rail'), () => lay({ wallKind: 'rail' })),
           del(),
-        ], null, C('', has('window', 'door')))),
+        ], null, C('', has('window', 'door', 'rail')))),
         hid(G('roofs', 'Кровля', [
           G('proof', 'Скатная крыша', proof, null, C('', has('proof'), () => lay({ wallKind: 'proof' }))),
           G('roof', 'Плоская кровля', roof, null, C('', has('roof'), () => lay({ wallKind: 'roof' }))),
