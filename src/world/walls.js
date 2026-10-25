@@ -8,6 +8,7 @@ import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
+import { outerBox, inBowl, wallTopY } from './pool.js';
 import { buildBlind, streamMesh, setStream, blindTopAt, BLIND_TEX, BLIND_GROUND, BLIND, planOf as blindPlan, cellList, concLevels, gravTop } from './blind.js';
 import { makeBoardMaterial } from './formwork.js';
 import { variant } from './assets.js';
@@ -455,6 +456,7 @@ export class WallView {
     this.focus = null;     // wall id whose next course gets the cord
     this.marks = false;    // planned openings shown (while working on walls)
     objects.on((id, rec) => {
+      if (rec?.type === 'pool' || this._poolIds?.has(id)) { this.blindDirty = true; return; }
       if (rec?.type === 'blind' || this._blindIds?.has(id)) { this.blindDirty = true; this.proofDirty = true; this.fillDirty = true; return; }
       if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; if (rec?.type === 'proof' || !rec) { this.dirty = true; this._faces = null; this.facadeDirty = true; } return; }   // (the nuts on the studs follow the wall plate)
       if (rec?.type === 'rail' || this._railIds?.has(id)) { this.railDirty = true; return; }
@@ -615,7 +617,7 @@ export class WallView {
     // faces of the top course, studs every 600 mm outside
     for (const b of [...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])]) {
       if (b.stripped) continue;
-      const th = BELT.board * S, over = BELT.over * S, h = over + b.H, yc = b.top - over + h / 2, yaw = Math.atan2(-b.u[1], b.u[0]);
+      const th = BELT.board * S, over = (b.over ?? BELT.over) * S, h = over + b.H, yc = b.top - over + h / 2, yaw = Math.atan2(-b.u[1], b.u[0]);
       let seed = (b.id || 7) * 9301;
       const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
       // (a lintel's end against a block: no board across it, the side boards stop at it)
@@ -938,16 +940,23 @@ export class WallView {
     this._blindIds = new Set(recs.map((r) => r.id));
     // the ground inside the boards: what is poured there stays there (terrain.js zones)
     const zrs = recs.filter((r) => r.form && !r.stripped);
+    // (and a pool's bowl, once its walls' formwork stands: what is heaped round it stays out
+    // of it up to the walls' top)
+    const pools = this.objects.all('pool').filter((r) => r.wall != null);
+    this._poolIds = new Set(this.objects.all('pool').map((r) => r.id));
     if (this.terrain) {
-      if (zrs.length) {
+      if (zrs.length || pools.length) {
         // (each building's area: its boards hold what is poured in it)
         const Z = zrs.map((zr) => {
           const P = blindPlan(zr), cs = [[P.A0, P.D0], [P.A0 + P.ni * P.C, P.D0], [P.A0, P.D0 + P.nj * P.C], [P.A0 + P.ni * P.C, P.D0 + P.nj * P.C]].map(([a, d]) => P.W2(a, d));
           // (by the boards: their top — what heaps over it runs out; by the walls: held)
           return { zr, P, bTop: zr.g + BLIND.top * S - BLIND.slope * zr.W + 10 * S, box: [Math.min(...cs.map((c) => c[0])), Math.min(...cs.map((c) => c[1])), Math.max(...cs.map((c) => c[0])), Math.max(...cs.map((c) => c[1]))] };
         });
+        const PZ = pools.map((r) => ({ r, box: outerBox(r), top: wallTopY(r) }));
         const at = (x, z) => Z.find((q) => { const k = q.P.cellAt(...q.P.frame(x, z)); return k >= 0 && q.P.cells.has(k); });
-        this.terrain.setZone((x, z) => !!at(x, z), [Math.min(...Z.map((q) => q.box[0])), Math.min(...Z.map((q) => q.box[1])), Math.max(...Z.map((q) => q.box[2])), Math.max(...Z.map((q) => q.box[3]))], (x, z) => { const q = at(x, z); return q && q.P.distAt(...q.P.frame(x, z)) > q.zr.W - q.P.C * 1.5 ? q.bTop : 0; });
+        const atP = (x, z) => PZ.find((q) => inBowl(q.r, x, z));
+        const boxes = [...Z, ...PZ].map((q) => q.box);
+        this.terrain.setZone((x, z) => !!atP(x, z) || !!at(x, z), [Math.min(...boxes.map((b) => b[0])), Math.min(...boxes.map((b) => b[1])), Math.max(...boxes.map((b) => b[2])), Math.max(...boxes.map((b) => b[3]))], (x, z) => { const p = atP(x, z); if (p) return p.top; const q = at(x, z); return q && q.P.distAt(...q.P.frame(x, z)) > q.zr.W - q.P.C * 1.5 ? q.bTop : 0; });
       } else this.terrain.setZone(null, null);
     }
     // (the boards carried: the other buildings' areas stay; what is being done: on its own area)

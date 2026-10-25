@@ -5,6 +5,7 @@ import { DAY_LENGTHS, WEATHER } from '../world/sky.js';
 import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
+import { POOL_LAYERS, MOSAICS, COPES } from '../world/pool.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
 import { LAYERS as FAC_LAYERS, VLAYERS as FAC_VLAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES, VENT } from '../world/facade.js';
 import { RWIN_TYPES } from '../world/roofWindows.js';
@@ -29,6 +30,7 @@ const GROUPS = [
   { id: 'roofG', label: 'Кровля', svg: '<svg viewBox="0 0 24 24"><path d="M2 12L12 4l10 8"/><path d="M5 10v10h14V10"/><rect x="13" y="8" width="3" height="3"/></svg>', virt: { kinds: ['proof', 'roof', 'rwin'], path: ['roofs'] } },
   { id: 'facadeG', label: 'Фасад', svg: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M4 9h16M4 14h16M9 4v5M15 9v5M9 14v6"/><path d="M2 20h20"/></svg>', virt: { kinds: ['facade'], path: ['facade'] } },
   { id: 'blindG', label: 'Отмостка', svg: '<svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="13"/><path d="M2 16h20l-2 4H4z"/><path d="M7 18h.01M12 18h.01M17 18h.01"/></svg>', virt: { kinds: ['blind'], path: ['blind'] } },
+  { id: 'poolG', label: 'Бассейн', svg: '<svg viewBox="0 0 24 24"><path d="M3 7h18v10H3z"/><path d="M5 12c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 3-1.2 4.5 0"/><path d="M7 4v6M11 4v6M7 6h4"/></svg>', virt: { kinds: ['pool'], path: ['pool'] } },
   { id: 'machines', label: 'Техника', icon: 'machine' },
 ];
 const m3 = (v) => `${String(v).replace('.', ',')} м³`;
@@ -513,6 +515,16 @@ export class UI {
           return G('bfin', c.label, [C('Бетон', (s.blindFin || 'conc') === 'conc', () => bset({ blindLayer: 'fin', blindFin: 'conc' })), G('btile', 'Плитка', Object.entries(TILE_COLOURS).map(([q, [n]]) => C('◼ ' + n, s.blindFin === 'tile' && (s.blindCol || 'grey') === q, () => bset({ blindLayer: 'fin', blindFin: 'tile', blindCol: q }))), null, C('', s.blindFin === 'tile', () => bset({ blindLayer: 'fin', blindFin: 'tile' })))], null, c);
         }),
       ];
+      // the pool: its stages (the mosaic: its colour; the coping: its stone; the water: in / out)
+      const PL = s.poolLayer || 'pit', plset = (o) => lay({ wallKind: 'pool', ...o });
+      const pool = POOL_LAYERS.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('pool') && PL === k, () => plset({ poolLayer: k }));
+        if (k === 'pit') return G('ppit', c.label, [C('Разметить', has('pool') && PL === 'pit', () => plset({ poolLayer: 'pit' })), C('↻ Повернуть', !!s.poolTurn, () => plset({ poolLayer: 'pit', poolTurn: !s.poolTurn }))], null, c);
+        if (k === 'tile') return G('ptile', c.label, Object.entries(MOSAICS).map(([q, [n]]) => C('◼ ' + n, (s.poolMos || 'turq') === q, () => plset({ poolLayer: 'tile', poolMos: q }))), null, c);
+        if (k === 'cope') return G('pcope', c.label, Object.entries(COPES).map(([q, [n]]) => C('◼ ' + n, (s.poolCope || 'trav') === q, () => plset({ poolLayer: 'cope', poolCope: q }))), null, c);
+        if (k === 'water') return G('pwater', c.label, [C('Наполнить', s.poolWater !== 'drain', () => plset({ poolLayer: 'water', poolWater: 'fill' })), C('Слить', s.poolWater === 'drain', () => plset({ poolLayer: 'water', poolWater: 'drain' }))], null, c);
+        return c;
+      });
       // the windows in the roof (a slope or a flat roof): the size, the colour of the frame
       const rwin = [
         ...Object.entries(RWIN_TYPES).map(([k, [l]]) => C(l, has('rwin') && (s.rwinType || 'pivot') === k, () => lay({ wallKind: 'rwin', rwinType: k }))),
@@ -539,6 +551,7 @@ export class UI {
           del(),
         ], null, C('', has('proof', 'roof', 'rwin')))),
         hid(G('blind', 'Отмостка', [...blind, del()], null, C('', has('blind'), () => lay({ wallKind: 'blind' })))),
+        hid(G('pool', 'Бассейн', [...pool, del()], null, C('', has('pool'), () => lay({ wallKind: 'pool' })))),
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
