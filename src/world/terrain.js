@@ -477,6 +477,48 @@ export class Terrain {
     this._touch(ix0, iz0, ix1, iz1);
   }
 
+  // A heap poured from above onto (x, z), as it rests: its surface is the higher of the ground under
+  // it and a cone at the material's slope s whose top rises as the volume grows — on any ground,
+  // over another heap, against a wall — so there is (almost) nothing left to slump when it is done.
+  // heapStart → a state for the place; heapTo(state, v) brings it to the volume v (model), the
+  // material laid in the layers (what grows on a cell over the step is pushed on top of it).
+  heapStart(x, z, vMax, s) {
+    const { nx: n, nat, loose, conc, top } = this, R = Math.cbrt(3 * vMax / (Math.PI * s)) * 1.8;
+    const ix0 = Math.max(0, Math.floor(this.toCellX(x - R))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(x + R)));
+    const iz0 = Math.max(0, Math.floor(this.toCellZ(z - R))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(z + R)));
+    // (each cell: the height the cone's surface reaches it at — its ground lifted by s·d; in that order,
+    // with the running sums, the top for a volume comes straight out)
+    // (a tipped heap is not turned on a lathe: its sides a little steeper here, flatter there)
+    const p1 = Math.random() * 6.28, p2 = Math.random() * 6.28, list = [];
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z, d = Math.hypot(dx, dz); if (d > R) continue;
+      const a = Math.atan2(dz, dx), se = s * (1 + 0.07 * Math.sin(3 * a + p1) + 0.04 * Math.sin(5 * a + p2)) * (1 - 0.05 * Math.min(1, d / R));
+      const i = iz * n + ix; list.push([nat[i] + loose[i] + conc[i] + top[i] + se * d, i]);
+    }
+    list.sort((a, b) => a[0] - b[0]);
+    const key = Float64Array.from(list, (q) => q[0]), idx = Int32Array.from(list, (q) => q[1]), pre = new Float64Array(key.length + 1);
+    for (let k = 0; k < key.length; k++) pre[k + 1] = pre[k] + key[k];
+    return { key, idx, pre, cur: new Float64Array(key.length), n: 0, A: key[0] ?? 0, laid: 0, box: [ix0, iz0, ix1, iz1] };
+  }
+  heapTo(H, v, mat = M_SOIL, depth = 0) {
+    const { key, idx, pre, cur } = H, N = key.length, q = v / this.cellArea;
+    if (!N || !(v > H.laid)) return;
+    // (k cells under the cone: the top A = (q + Σkey) / k, the right k the one where it falls between
+    // the k-th key and the next)
+    let k = Math.max(1, H.n), A = (q + pre[k]) / k;
+    while (k < N && A > key[k]) { k++; A = (q + pre[k]) / k; }
+    H.n = k; H.A = A;
+    // (and the mesh redone over what grew, not the whole place)
+    let x0 = Infinity, z0 = Infinity, x1 = -1, z1 = -1;
+    const nx = this.nx;
+    for (let j = 0; j < k; j++) {
+      const h = A - key[j], dh = h - cur[j];
+      if (dh > 1e-9) { const i = idx[j], ix = i % nx, iz = (i / nx) | 0; this._push(i, dh, mat, depth); cur[j] = h; if (ix < x0) x0 = ix; if (ix > x1) x1 = ix; if (iz < z0) z0 = iz; if (iz > z1) z1 = iz; }
+    }
+    H.laid = v;
+    if (x1 >= 0) this._touch(x0, z0, x1, z1);
+  }
+
   // Granular relaxation (angle of repose). Returns true while still moving.
   relax(iterations = 4) {
     for (let it = 0; it < iterations && this.active; it++) this._relaxOnce();
