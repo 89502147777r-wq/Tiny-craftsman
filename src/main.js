@@ -25,7 +25,7 @@ import { Gestures } from './input/gestures.js';
 import { Journal } from './core/journal.js';
 import { ObjectStore } from './core/objects.js';
 import { Recorder, TRACK_FIELDS } from './core/recorder.js';
-import { saveLocal, loadLocal, clearLocal, toJSON, fromJSON, download } from './core/storage.js';
+import { loadLocal, clearLocal, saveParts, loadParts, toJSON, fromJSON, download } from './core/storage.js';
 import { ScoopTool } from './tools/scoopTool.js';
 import { RakeTool } from './tools/rakeTool.js';
 import { MaterialTool } from './tools/materialTool.js';
@@ -136,11 +136,16 @@ async function main() {
   app.tool = 'shovel';
 
   // ---- restore the saved project, or start a fresh plot -------------------------------------
-  const saved = await loadLocal();
+  // (saved by parts since BUILD 187; before, one record)
+  let saved = null, byParts = false;
+  try { saved = assembleParts(await loadParts()); byParts = !!saved; } catch (e) { console.warn('could not read the saved parts', e); }
+  if (!saved) { saved = await loadLocal(); SAVE.legacy = !!saved; }
   let restored = false;
   if (saved) {
     try { applyProject(saved); restored = true; } catch (e) { console.warn('could not restore project', e); }
   }
+  // (what was just read is what is stored: nothing to write until something changes)
+  if (restored && byParts && !app.migrated) { app.terrain.sDirty.fill(0); for (const r of [...app.journal.done, ...app.journal.undone]) SAVE.j.add(r.id); SAVE.trackT = performance.now(); }
   if (!restored) freshPlot();
 
   app.ui = new UI(app);
@@ -154,8 +159,8 @@ async function main() {
   window.addEventListener('resize', resize);
   window.visualViewport?.addEventListener('resize', resize);
   resize();
-  document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
-  window.addEventListener('pagehide', saveNow);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(true); });
+  window.addEventListener('pagehide', () => saveNow(true));
 
   app.rig.update(1);
   renderer.compile(scene, camera);
@@ -483,7 +488,7 @@ function freshPlot() {
   for (const o of DEFAULT_OUTLINES) app.objects.add({ type: 'outline', ...o, id: undefined });
 }
 
-function buildProject() {
+function buildProject(parts = false) {
   const t = app.terrain;
   // an action still in progress (soil on the shovel) is not saved: the ground
   // and objects are stored as they were before it, so the file equals its journal
@@ -498,15 +503,15 @@ function buildProject() {
     format: 'tiny-craftsman-project', version: 3, build: BUILD, stage: STAGE, savedAt: new Date().toISOString(),
     clock: app.clock, scale: MODEL_SCALE, units: 'metres (real size of the diorama)',
     tray: TRAY,
-    terrain: { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, ldep: base.ldep || t.ldep, orig: t.orig,
+    terrain: parts ? { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed } : { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, ldep: base.ldep || t.ldep, orig: t.orig,
       layers: { count: 3, n: base.lN || t.lN, h: base.lH || t.lH, m: base.lM || t.lM, materials: ['soil', 'sand', 'gravel 5-20', 'gravel 20-40'] },
       concrete: { h: base.conc || t.conc, poured: base.cTime || t.cTime, smooth: base.cSm || t.cSm, cureSeconds: CONCRETE.cure },
       onConcrete: { h: base.top || t.top, m: base.topM || t.topM } },
     objects,
     settings: app.settings,
     camera: app.rig.state(),
-    journal: { nextId: app.journal.nextId, done: app.journal.done.map(strip), undone: app.journal.undone.map(strip) },
-    track: { fields: TRACK_FIELDS, rate: 20, data: app.recorder.toArray() },
+    journal: parts ? { nextId: app.journal.nextId, done: app.journal.done.map((r) => r.id), undone: app.journal.undone.map((r) => r.id) } : { nextId: app.journal.nextId, done: app.journal.done.map(strip), undone: app.journal.undone.map(strip) },
+    ...(parts ? {} : { track: { fields: TRACK_FIELDS, rate: 20, data: app.recorder.toArray() } }),
   };
 }
 app.buildProject = buildProject;
@@ -635,33 +640,94 @@ function migrateGrid(p) {
   }
 }
 
+// Saving: by parts (storage.js) — the ground's tiles changed since the last save, the
+// journal's new entries, the rest (small). A whole project is tens of MB: copied at every
+// action it froze the game for a second each time (the loader, the truck). And not while
+// the work goes on: when the finger has rested a moment (or after 15 s at the latest).
+const SAVE = { j: new Set(), trackT: -1e9, legacy: false, wait0: 0 };
 let saveTimer = 0;
 function scheduleSave() {
   app.ui?.setSaveState('pending');
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveNow, 1200);
+  saveTimer = setTimeout(lazySave, 1500);
+}
+function lazySave() {
+  const now = performance.now();
+  if (!SAVE.wait0) SAVE.wait0 = now;
+  if ((now - app.lastInput < 1200 || app.busy?.()) && now - SAVE.wait0 < 15000) { saveTimer = setTimeout(lazySave, 700); return; }
+  SAVE.wait0 = 0;
+  saveNow();
 }
 app.scheduleSave = scheduleSave;
 let saveChain = Promise.resolve();
+// the fields of the ground saved per tile (and their values per cell)
+const TFIELDS = [['nat', 1], ['loose', 1], ['ldep', 1], ['orig', 1], ['lN', 1], ['lH', 3], ['lM', 3], ['conc', 1], ['cTime', 1], ['cSm', 1], ['top', 1], ['topM', 1]];
+const STILE = 64;
+function tileOf(src, t, k) {
+  const tx = k % t.stnx, tz = (k / t.stnx) | 0, x0 = tx * STILE, z0 = tz * STILE, w = Math.min(t.nx, x0 + STILE) - x0, h = Math.min(t.nz, z0 + STILE) - z0, out = { x0, z0, w, h };
+  for (const [f, m] of TFIELDS) {
+    const A = f === 'orig' ? t.orig : src[f] || t[f], B = new A.constructor(w * h * m);
+    for (let z = 0; z < h; z++) { const i = ((z0 + z) * t.nx + x0) * m; B.set(A.subarray(i, i + w * m), z * w * m); }
+    out[f] = B;
+  }
+  return out;
+}
+// the parts to write now: [[key, value]…], keys to delete
+function buildParts(force) {
+  const t = app.terrain, j = app.journal, pend = j.pending, src = pend ? pend.snap : t, puts = [], dels = [];
+  // (an action going on: the ground as it was before it — its tiles stay to be written again)
+  for (let k = 0; k < t.sDirty.length; k++) if (t.sDirty[k]) { puts.push(['p:t:' + k, tileOf(src, t, k)]); if (!pend) t.sDirty[k] = 0; }
+  const strip = (r) => ({ id: r.id, type: r.type, t0: r.t0, t1: r.t1, meta: r.meta, diff: r.diff, objs: r.objs });
+  const ids = new Set();
+  for (const r of [...j.done, ...j.undone]) { ids.add(r.id); if (!SAVE.j.has(r.id)) { puts.push(['p:j:' + r.id, strip(r)]); SAVE.j.add(r.id); } }
+  for (const id of [...SAVE.j]) if (!ids.has(id)) { dels.push('p:j:' + id); SAVE.j.delete(id); }
+  if (force || performance.now() - SAVE.trackT > 120000) { puts.push(['p:track', { fields: TRACK_FIELDS, rate: 20, data: app.recorder.toArray() }]); SAVE.trackT = performance.now(); }
+  const meta = buildProject(true);
+  meta.terrain.tiles = { size: STILE, nx: t.stnx, nz: t.stnz };
+  puts.push(['p:meta', meta]);
+  return { puts, dels };
+}
+// the saved parts → a project (as buildProject makes it), or null
+function assembleParts(parts) {
+  const meta = parts.get('p:meta');
+  if (!meta || !meta.terrain?.tiles) return null;
+  const T = meta.terrain, n = (T.rx + 1) * (T.rz + 1), nx = T.rx + 1, arr = {};
+  for (const [f, m] of TFIELDS) arr[f] = new ({ lN: Uint8Array, lM: Uint8Array, topM: Uint8Array }[f] || Float32Array)(n * m);
+  for (let k = 0; k < T.tiles.nx * T.tiles.nz; k++) {
+    const q = parts.get('p:t:' + k);
+    if (!q) return null;
+    for (const [f, m] of TFIELDS) for (let z = 0; z < q.h; z++) { const i = ((q.z0 + z) * nx + q.x0) * m; arr[f].set(q[f].subarray(z * q.w * m, (z + 1) * q.w * m), i); }
+  }
+  const p = { ...meta };
+  p.terrain = { ...T, nat: arr.nat, loose: arr.loose, ldep: arr.ldep, orig: arr.orig, layers: { count: 3, n: arr.lN, h: arr.lH, m: arr.lM, materials: ['soil', 'sand', 'gravel 5-20', 'gravel 20-40'] },
+    concrete: { h: arr.conc, poured: arr.cTime, smooth: arr.cSm, cureSeconds: CONCRETE.cure }, onConcrete: { h: arr.top, m: arr.topM } };
+  const ent = (id) => parts.get('p:j:' + id);
+  p.journal = { nextId: meta.journal.nextId, done: meta.journal.done.map(ent).filter(Boolean), undone: meta.journal.undone.map(ent).filter(Boolean) };
+  p.track = parts.get('p:track') || null;
+  return p;
+}
 // saves are serialised: a request during a running save waits for it and then saves again
-function saveNow() {
+function saveNow(force = false) {
   clearTimeout(saveTimer);
   if (!app.ready) return Promise.resolve();
   saveChain = saveChain.then(async () => {
     try {
       if (app.shovelTool.state === 'settle' || app.shovelTool.state === 'dump') app.shovelTool.finish();
-      await saveLocal(buildProject());
+      const { puts, dels } = buildParts(force);
+      await saveParts(puts, dels, SAVE.legacy);
+      SAVE.legacy = false;
       app.ui?.setSaveState('saved');
     } catch (e) {
       console.error(e);
+      app.terrain.sDirty.fill(1); SAVE.j.clear();   // (written again whole next time)
       app.ui?.setSaveState('error');
     }
   });
   return saveChain;
 }
 app.saveNow = saveNow;
-// camera/tool track is saved periodically even without edits
-setInterval(() => { if (app.ready && !document.hidden) saveNow(); }, 20000);
+// camera/tool track is saved now and then even without edits (when nothing is going on)
+setInterval(() => { if (app.ready && !document.hidden) lazySave(); }, 60000);
 
 app.exportProject = () => {
   app.shovelTool.finish();
@@ -674,6 +740,7 @@ app.exportProject = () => {
 
 app.importProject = async (file) => {
   const p = fromJSON(await file.text());
+  await clearLocal(); SAVE.j.clear(); SAVE.legacy = false;
   applyProject(p);
   applySettings();
   if (app.migrated) app.ui.toast(app.migrated);
@@ -688,7 +755,7 @@ app.newProject = async () => {
   for (const t of Object.values(app.concreteTools)) t.abort();
   app.machineTool.abort();
   app.machineTool.finish();
-  await clearLocal();
+  await clearLocal(); SAVE.j.clear(); SAVE.legacy = false;
   app.particles.clearClods();
   app.journal.done = []; app.journal.undone = []; app.journal.pending = null; app.journal.nextId = 1;
   freshPlot();

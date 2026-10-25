@@ -98,7 +98,22 @@ export class Terrain {
     this.markAll();
   }
 
+  // What changed, by tiles of cells: for the journal (since its snapshot: only there is the
+  // diff looked for) and for saving (since the last save: only those tiles are written).
+  _chg(x0, z0, x1, z1) {
+    const J = this.jDirty, D = this.sDirty;
+    if (!J) return;
+    x0 = Math.max(0, x0 | 0); z0 = Math.max(0, z0 | 0); x1 = Math.min(this.rx, x1 | 0); z1 = Math.min(this.rz, z1 | 0);
+    for (let tz = z0 >> 5; tz <= z1 >> 5; tz++) for (let tx = x0 >> 5; tx <= x1 >> 5; tx++) J[tz * this.jtnx + tx] = 1;
+    for (let tz = z0 >> 6; tz <= z1 >> 6; tz++) for (let tx = x0 >> 6; tx <= x1 >> 6; tx++) D[tz * this.stnx + tx] = 1;
+  }
+  _chgInit() {
+    this.jtnx = Math.ceil(this.nx / 32); this.jtnz = Math.ceil(this.nz / 32); this.jDirty = new Uint8Array(this.jtnx * this.jtnz).fill(1);
+    this.stnx = Math.ceil(this.nx / 64); this.stnz = Math.ceil(this.nz / 64); this.sDirty = new Uint8Array(this.stnx * this.stnz).fill(1);
+  }
+
   markAll() {
+    if (!this.jDirty) this._chgInit(); else { this.jDirty.fill(1); this.sDirty.fill(1); }
     this.meshDirty = { x0: 0, z0: 0, x1: this.rx, z1: this.rz };
     this.active = { x0: 0, z0: 0, x1: this.rx, z1: this.rz };
     this.version++;
@@ -175,6 +190,7 @@ export class Terrain {
 
   // ---- editing ---------------------------------------------------------------
   _touch(ix0, iz0, ix1, iz1) {
+    this._chg(ix0 - 1, iz0 - 1, ix1 + 1, iz1 + 1);
     this.active = grow(this.active, ix0 - 1, iz0 - 1, ix1 + 1, iz1 + 1, this.rx, this.rz);
     // (the mesh: each place touched apart — the bucket here, the wheels' tracks there — not the box
     // round them all; one that overlaps another (or nearly) joins it)
@@ -611,6 +627,7 @@ export class Terrain {
   }
 
   _markMesh(x0, z0, x1, z1) {
+    this._chg(x0 - 1, z0 - 1, x1 + 1, z1 + 1);
     this.meshDirty = grow(this.meshDirty, x0, z0, x1, z1, this.rx, this.rz);
     this.version++;
   }
@@ -1034,7 +1051,7 @@ export class Terrain {
     const h = dt / substeps;
     for (let sub = 0; sub < substeps; sub++) {
       const list = this._tList.slice();
-      for (const t of list) this._tAct[t] = 0;
+      for (const t of list) { this._tAct[t] = 0; const tx = t % tnx, tz = (t / tnx) | 0; this._chg(tx * TS - 1, tz * TS - 1, tx * TS + TS, tz * TS + TS); }
       this._tList.length = 0;
       this._coarseFlow(list, h, clock, setT);
       const fwd = (this._csweep = !this._csweep), NB = fwd ? NB_FWD : NB_BWD;
@@ -1388,6 +1405,7 @@ export class Terrain {
       top: new Float32Array(this.nat.length), topM: new Uint8Array(this.nat.length), bit: new Float32Array(this.nat.length), comp: new Float32Array(this.nat.length) });
     s.nat.set(this.nat); s.loose.set(this.loose); s.ldep.set(this.ldep); s.lH.set(this.lH); s.lM.set(this.lM); s.lN.set(this.lN);
     s.conc.set(this.conc); s.cTime.set(this.cTime); s.cSm.set(this.cSm); s.top.set(this.top); s.topM.set(this.topM); s.bit.set(this.bit); s.comp.set(this.comp);
+    this.jDirty?.fill(0);
     return s;
   }
 
@@ -1407,11 +1425,17 @@ export class Terrain {
   diffFrom(s) {
     const idx = [], L = LAYERS;
     const { nat, loose, lN, lH, lM, conc, cTime, cSm, top, topM, bit, comp } = this;
-    for (let i = 0; i < nat.length; i++) {
-      if (s.nat[i] !== nat[i] || s.loose[i] !== loose[i] || s.lN[i] !== lN[i] || s.conc[i] !== conc[i] || s.cSm[i] !== cSm[i] || s.cTime[i] !== cTime[i] || s.top[i] !== top[i] || s.topM[i] !== topM[i] || s.bit[i] !== bit[i] || s.comp[i] !== comp[i]) { idx.push(i); continue; }
+    // (only in the tiles where something was changed since the snapshot — in index order)
+    const J = this.jDirty, n = this.nx;
+    let many = !J;
+    if (J) { let k = 0; for (const v of J) k += v; many = k > J.length * 0.4; }
+    const look = (i) => {
+      if (s.nat[i] !== nat[i] || s.loose[i] !== loose[i] || s.lN[i] !== lN[i] || s.conc[i] !== conc[i] || s.cSm[i] !== cSm[i] || s.cTime[i] !== cTime[i] || s.top[i] !== top[i] || s.topM[i] !== topM[i] || s.bit[i] !== bit[i] || s.comp[i] !== comp[i]) { idx.push(i); return; }
       const b = i * L;
       for (let k = 0; k < lN[i]; k++) if (s.lH[b + k] !== lH[b + k] || s.lM[b + k] !== lM[b + k]) { idx.push(i); break; }
-    }
+    };
+    if (many) for (let i = 0; i < nat.length; i++) look(i);
+    else for (let tz = 0; tz < this.jtnz; tz++) for (let iz = tz * 32; iz < Math.min(this.nz, tz * 32 + 32); iz++) for (let tx = 0; tx < this.jtnx; tx++) if (J[tz * this.jtnx + tx]) for (let ix = tx * 32, e = Math.min(n, tx * 32 + 32); ix < e; ix++) look(iz * n + ix);
     const m = idx.length;
     const d = {
       idx: new Uint32Array(idx), bn: new Float32Array(m), bl: new Float32Array(m), an: new Float32Array(m), al: new Float32Array(m),
