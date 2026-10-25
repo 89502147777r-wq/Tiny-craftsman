@@ -463,7 +463,7 @@ export class WallTool {
       return;
     }
     const u = { type: 'unit', free: true, kind: r.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +r.bedT.toFixed(6), s: r.s.toArray().map((x) => +x.toFixed(6)), ...(r.half ? { cut: true } : {}) };
-    app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, []);
+    app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, [], null, null, true);   // (a course: quick, no trimming)
     // the rest of the plan follows where this one really went (and at its height)
     const dx = r.p.x - q.x, dz = r.p.z - q.z, bot = r.p.y - r.s.y / 2;
     for (let k = J.n + 1; k < J.plan.length; k++) { J.plan[k].x += dx; J.plan[k].z += dz; if (J.plan[k].bot == null) J.plan[k].bot = bot; }
@@ -1224,10 +1224,13 @@ export class WallTool {
 
 // One unit: lowered by hand onto the mortar a little off, it settles (physics: the
 // units around, the bed, the foundation), then three taps of the rubber mallet bring it
-// to the cord and the level. One journal entry.
+// to the cord and the level; a brick's pressed-out mortar is cut off with the trowel. One
+// journal entry. In a course laid along a line (`fast`) it goes quicker: set down, one tap,
+// the joint left clean (the whole show is for the unit laid by hand).
 class LayJob {
-  constructor(app, w, unit, target, st, beds = [], newWall = null, cap = null) {
+  constructor(app, w, unit, target, st, beds = [], newWall = null, cap = null, fast = false) {
     this.app = app;
+    this.fast = fast;
     this.unit = unit;
     this.target = target;
     this.pending = app.journal.begin('lay', w ? { wall: w.id, row: unit.row, i: unit.i } : { free: unit.kind }, app.clock);
@@ -1248,14 +1251,14 @@ class LayJob {
     const bedBot = (w ? rowY(w, unit.row) : target.bedY + bedT / 2) - bedT;
     // a brick goes onto mortar spread thicker than the joint: it is pressed down into it and
     // squeezes the rest out of the open sides (mortarSqueeze.js), then the trowel cuts it off
-    const brick = !!k?.nb && !unit.lintel && bedT > 0;
+    const brick = !!k?.nb && !unit.lintel && bedT > 0 && !fast;
     const bedH = brick ? bedT * FAT : bedT;
     this.ep.staticBox(new THREE.Vector3(p.x, bedBot + bedH / 2, p.z), target.q, s.x / 2, bedH / 2, s.z / 2);
     this.sq = brick ? new Squeeze(app, null, target, bedT, bedBot) : null;
     // the hand puts it down a few mm off and slightly askew, 2 cm above
     const j = (m) => (Math.random() - 0.5) * m;
     const q0 = target.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(j(0.03), j(0.05), j(0.03))));
-    const p0 = p.clone().add(new THREE.Vector3(j(MM(8)), MM(20), j(MM(8))));
+    const p0 = p.clone().add(new THREE.Vector3(j(MM(fast ? 4 : 8)), MM(fast ? 8 : 20), j(MM(fast ? 4 : 8))));
     this.body = this.ep.box(s.x / 2, s.y / 2, s.z / 2, p0, q0, { density: unit.lintel ? 2400 : unit.kind === 'block' || unit.kind === 'ublock' || unit.kind === 'prop' ? 500 : unit.kind === 'cinder' ? 1300 : 1800, friction: 0.9 });
     this.t = 0;
     this.phase = 'drop';
@@ -1273,7 +1276,7 @@ class LayJob {
     const ep = this.ep;
     ep.step(dt);
     this.t += dt;
-    if (this.phase === 'drop' && (this.t > 0.35 && ep.still() || this.t > 0.9)) {
+    if (this.phase === 'drop' && (this.fast ? this.t > 0.18 && ep.still() || this.t > 0.35 : this.t > 0.35 && ep.still() || this.t > 0.9)) {
       this.phase = 'tap'; this.tapT = 0; this.taps = 0;
       ep.pose(this.body, this.from, this.fromQ);
       ep.kinematic(this.body);
@@ -1283,16 +1286,16 @@ class LayJob {
       this.tapT += dt;
       const g = this.app.concreteGear, top = this.target.p.clone(); top.y += this.target.s.y / 2;
       // (lifted slowly, brought down fast)
-      const f = (this.tapT % 0.22) / 0.22, swing = f < 0.7 ? Math.sin(f / 0.7 * Math.PI / 2) : Math.cos((f - 0.7) / 0.3 * Math.PI / 2);
+      const TP = this.fast ? 0.18 : 0.22, f = (this.tapT % TP) / TP, swing = f < 0.7 ? Math.sin(f / 0.7 * Math.PI / 2) : Math.cos((f - 0.7) / 0.3 * Math.PI / 2);
       // the flat face of the head strikes the middle of the top; between taps it is swung up
       g.malletSwing = swing * 0.75;
       g.set('mallet', top, 0);
-      if (this.tapT > (this.taps + 1) * 0.22) {
+      if (this.tapT > (this.taps + 1) * TP) {
         this.taps++;
         this.app.sfx?.stab?.();
-        this.from.lerp(this.target.p, 0.6); this.fromQ.slerp(this.target.q, 0.6);
+        this.from.lerp(this.target.p, this.fast ? 1 : 0.6); this.fromQ.slerp(this.target.q, this.fast ? 1 : 0.6);
         ep.moveTo(this.body, this.from, this.fromQ);
-        if (this.taps >= 3) {
+        if (this.taps >= (this.fast ? 1 : 3)) {
           // a brick: the pressed-out mortar is cut off with the trowel, side by side
           if (this.sq && this.sq.order.length) { this.phase = 'trim'; this.trimT = 0; this.trimK = 0; g.ktrowelLump = 0; }
           else { this._commit(); return; }
