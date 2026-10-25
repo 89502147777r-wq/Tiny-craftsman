@@ -61,7 +61,15 @@ class ConcreteTool {
     if (!e || !v || e.clientX === undefined) return null;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
     const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.blocks, v.bricks, v.cinders, v.lintels, v.blinds], true)[0];
-    if (!hit) return null;
+    if (!hit) {
+      // (a pool's bottom slab: nothing but the bars over its lean concrete — its plane)
+      for (const b of app.objects.all('belt')) {
+        if (b.kind !== 'pool' || b.part !== 'floor' || b.stripped) continue;
+        const q = _ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -(b.top + b.H * 0.5)), new THREE.Vector3());
+        if (q && beltContains(b, q.x, q.z)) { this._uHit = q; return b; }
+      }
+      return null;
+    }
     this._uHit = hit.point;
     const id = v.ownerOf(hit), r = id && app.objects.get(id);
     if (r?.type === 'belt') return r;
@@ -189,10 +197,10 @@ export class HoseTool extends ConcreteTool {
     const ch = this.ch, i = ch.at(this.p.x, this.p.z);
     // (a ring beam takes the hose near its pump rate: 37 … 60 l/s; the narrow channel of the
     // U-blocks 8 l/s)
-    const lps = isSlab(this.uT) || this.uT.type === 'blind' ? (app.settings.pump || PUMP[1]) * (this.uT.type === 'blind' ? 300 : 1000) : this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;   // (a slab: the pump's whole rate)
+    const lps = isSlab(this.uT) || this.uT.kind === 'pool' || this.uT.type === 'blind' ? (app.settings.pump || PUMP[1]) * (this.uT.type === 'blind' ? 300 : 1000) : this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;   // (a slab: the pump's whole rate)
     if (!ch.full && ch.h[i] < (ch.brim ? ch.brim(i) : ch.cap) - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
-    else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT.type === 'blind' ? 'Здесь отмостка полна — ведите шланг дальше вдоль дома' : isSlab(this.uT) ? 'Здесь уже 200 мм — ведите шланг дальше по перекрытию' : this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
-    else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast(this.uT.type === 'blind' ? 'Отмостка залита — отпустите; потом вибратор, правило по доскам (уклон от стен) и кельма' : isSlab(this.uT) ? 'Перекрытие залито — отпустите; потом вибратор и правило по доскам' : this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
+    else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT.type === 'blind' ? 'Здесь отмостка полна — ведите шланг дальше вдоль дома' : isSlab(this.uT) ? 'Здесь уже 200 мм — ведите шланг дальше по перекрытию' : this.uT.kind === 'pool' ? (this.uT.part === 'floor' ? 'Здесь днище полно — ведите шланг дальше' : 'Здесь стена полна — ведите шланг дальше по периметру') : this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
+    else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast(this.uT.type === 'blind' ? 'Отмостка залита — отпустите; потом вибратор, правило по доскам (уклон от стен) и кельма' : isSlab(this.uT) ? 'Перекрытие залито — отпустите; потом вибратор и правило по доскам' : this.uT.kind === 'pool' ? (this.uT.part === 'floor' ? 'Днище залито — отпустите; потом вибратор и правило по доскам' : 'Стены чаши залиты доверху — отпустите, провибрируйте') : this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
     ch.show(app.wallView);
     return ch.point(i);

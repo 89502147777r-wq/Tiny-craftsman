@@ -14,6 +14,7 @@ import { DOORS, doorFits, isDoor } from '../world/doors.js';
 import { RoofWork } from './roofTool.js';
 import { FacadeWork } from './facadeTool.js';
 import { BlindWork } from './blindTool.js';
+import { PoolWork, isPoolBelt } from './poolTool.js';
 import { PitchedWork, RoofWindowWork } from './pitchedTool.js';
 const winName = (k) => (WINDOWS[k] || DOORS[k]).name;
 
@@ -59,6 +60,7 @@ export class WallTool {
     this.roof = new RoofWork(app);
     this.facade = new FacadeWork(app);
     this.blind = new BlindWork(app);
+    this.pool = new PoolWork(app);
     this.proof = new PitchedWork(app);
     this.rwin = new RoofWindowWork(app);
     this.mode = 'lay';
@@ -81,6 +83,7 @@ export class WallTool {
         if (this.kind === 'roof' && !this.roof.isCarry) { app.ui.toast(this.roof.status(false)); return; }
         if (this.kind === 'facade' && !this.facade.isCarry) { app.ui.toast(this.facade.status(false)); return; }
         if (this.kind === 'blind' && !this.blind.isCarry) { app.ui.toast(this.blind.status(false)); return; }
+        if (this.kind === 'pool') { app.ui.toast(this.pool.status(false)); return; }
         if (this.kind === 'proof' && !this.proof.isCarry) { app.ui.toast(this.proof.status(false)); return; }
         const w = this._trayWall();
         try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ }
@@ -95,7 +98,7 @@ export class WallTool {
     }
   }
 
-  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob; }
+  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || !!this.pool.drag; }
   // one finger works on the wall in every mode (the camera: two fingers)
   blocksOrbit() { return true; }
 
@@ -185,6 +188,7 @@ export class WallTool {
     if (this.mode === 'lay' && this.kind === 'roof') return this.roof.down(p, e);
     if (this.mode === 'lay' && this.kind === 'facade') return this.facade.down(p, e);
     if (this.mode === 'lay' && this.kind === 'blind') return this.blind.down(p, e);
+    if (this.mode === 'lay' && this.kind === 'pool') return this.pool.down(p, e);
     if (this.mode === 'lay' && this.kind === 'proof') return this.proof.down(p, e);
     if (this.mode === 'lay') {
       if (app.physJob || app.physLoading) return true;   // the last one is still being set
@@ -210,6 +214,7 @@ export class WallTool {
     if (this.roof.drag) { this.roof.move(p, e); return; }
     if (this.facade.drag) { this.facade.move(p, e); return; }
     if (this.blind.drag) { this.blind.move(p, e); return; }
+    if (this.pool.drag) { this.pool.move(p, e); return; }
     if (this.proof.drag) { this.proof.move(p, e); return; }
     if (!this.drag) return;
     if (this.mode === 'line') {
@@ -251,6 +256,7 @@ export class WallTool {
     if (this.roof.drag) { this.roof.up(); return; }
     if (this.facade.drag) { this.facade.up(); return; }
     if (this.blind.drag) { this.blind.up(); return; }
+    if (this.pool.drag) { this.pool.up(); return; }
     if (this.proof.drag) { this.proof.up(); return; }
     this.drag = null;
     app.ui.hideMeasure();
@@ -285,9 +291,9 @@ export class WallTool {
     }
   }
 
-  interrupt() { this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
+  interrupt() { this.pool.interrupt(); this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
 
-  update(dt) { if (this.rowJob) this._rowStep(); this.blind.update(dt); }
+  update(dt) { if (this.rowJob) this._rowStep(); this.blind.update(dt); this.pool.update(dt); }
 
   // ---- a course along a line: the «Ряд» button under the tray, then a finger drawn along
   // where the course goes — the units go down one after another (each set as by hand:
@@ -757,7 +763,7 @@ export class WallTool {
     } else if (c.kind === 'studs') {
       // the anchor studs: into the ring beam under the finger (its formwork, before the
       // concrete or while it is fresh)
-      const b = app.objects.all('belt').find((q) => !isSlab(q) && !q.lform && beltContains(q, p.x, p.z) && p.y > q.top - 0.003 && p.y < q.top + q.H + MM(80)) || null;
+      const b = app.objects.all('belt').find((q) => !isSlab(q) && !q.lform && !isPoolBelt(q) && beltContains(q, p.x, p.z) && p.y > q.top - 0.003 && p.y < q.top + q.H + MM(80)) || null;
       c.studBelt = b; c.free = undefined; c.snap = null; v.live = null; v.liveBed = null;
       if (b) {
         const L = b.ni * b.c, W = b.nj * b.c, [cx, cz] = toWorld(b, L / 2, W / 2);
@@ -827,7 +833,7 @@ export class WallTool {
       // the cage: over a run of U-blocks, shown as the run lit up — or into a ring beam's formwork
       // (a ring beam's formwork under the finger first: the U-blocks of a lintel courses
       // below may be near it on the screen)
-      c.beltCage = app.objects.all('belt').find((b) => !b.stripped && beltContains(b, p.x, p.z) && p.y > b.top - 0.003 && p.y < b.top + b.H + MM(60)) || null;   // (in its formwork — not the walls standing on a slab)
+      c.beltCage = app.objects.all('belt').find((b) => !b.stripped && !isPoolBelt(b) && beltContains(b, p.x, p.z) && p.y > b.top - 0.003 && p.y < b.top + b.H + MM(60)) || null;   // (in its formwork — not the walls standing on a slab)
       const R = c.beltCage ? null : uRun(app, p, scr, fing);
       c.cage = R; c.free = undefined; c.snap = null;
       v.live = null; v.hlMany = null;
@@ -931,7 +937,7 @@ export class WallTool {
     if (!this.tray) return;
     const on = this.app.tool === 'wall' && this.mode === 'lay';
     if (this.delBtn) { this.delBtn.hidden = !(this.app.tool === 'wall' && (this.mode === 'lay' || this.mode === 'delete')); this.delBtn.classList.toggle('active', this.mode === 'delete'); }
-    this.tray.hidden = !on;
+    this.tray.hidden = !on || this.kind === 'pool';
     if (this.rowBtn) { this.rowBtn.hidden = !(on && (this.kind === 'block' || this.kind === 'brick' || this.kind === 'cinder')); this.rowBtn.classList.toggle('active', !!this.rowMode); }
     if (!on) return;
     const kind = this.kind;
@@ -1093,7 +1099,8 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : c.kind === 'cinder' ? 'Шлакоблок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform', 'studs', 'rail'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform', 'studs', 'rail', 'pool'].includes(this.kind)) return {
+      pool: this.pool.status(false),
       rail: 'Стеклянное ограждение: тяните из лотка к краю залитого перекрытия (консоль, балкон, проём лестницы или второго света) — встанет вдоль свободного края, высота 1,1 м',
       studs: 'Шпильки под мауэрлат: тяните из лотка к опалубке армопояса — до заливки (или в свежий бетон) встанут шпильки М12 по оси стен через ≤ 1 м; на них потом ляжет мауэрлат на шайбах и гайках',
       lform: 'Монолитная перемычка: тяните опалубку из лотка к проёму — днище на стойках и доски по бокам встанут над ним с опорой по 250 мм; потом «Каркас», бетон (ведро / шланг), вибратор, правило; когда наберёт прочность — «Удалить» снимет опалубку',
@@ -1147,6 +1154,8 @@ export class WallTool {
     if (id && app.objects.get(id)?.type === 'roof') { this.roof.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'facade') { this.facade.remove(id, e); return; }
     if (id && app.objects.get(id)?.type === 'blind') { this.blind.remove(id); return; }
+    if (id && app.objects.get(id)?.type === 'pool') { this.pool.remove(id); return; }
+    if (id && isPoolBelt(app.objects.get(id))) { this.pool.belt(app.objects.get(id)); return; }
     if (id && app.objects.get(id)?.type === 'proof') { this.proof.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'rail') { app.journal.act('rail-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Ограждение сняли'); return; }
     if (id && app.objects.get(id)?.type === 'rwin') { app.journal.act('rwin-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Окно сняли — кровля снова сплошная'); return; }

@@ -108,7 +108,7 @@ export function findHouse(app, near = null, whole = false) {
     for (let s = -b.hl; s <= b.hl; s += C * 0.5) for (let t = -b.hw; t <= b.hw; t += C * 0.5) mark(b.x + b.ux * s - b.uz * t, b.z + b.uz * s + b.ux * t);
   }
   for (const b of app.objects.all('belt')) {
-    if (b.kind === 'slab') continue;
+    if (b.kind === 'slab' || b.kind === 'pool') continue;
     const P = beltPlan(b);
     for (const [i, j] of P.cells) { const [x, z] = beltWorld(b, (i + 0.5) * b.c, (j + 0.5) * b.c); mark(x, z); }
   }
@@ -188,7 +188,7 @@ export function findHouse(app, near = null, whole = false) {
   }
   // the top: the walls, or a ring beam cast on them
   let y0 = Math.max(...units.map((b) => b.top));
-  for (const b of app.objects.all('belt')) if (b.fill > 0.5 && b.top + b.H > y0 - MM(50) && b.top + b.H < y0 + MM(400)) y0 = Math.max(y0, b.top + b.H);
+  for (const b of app.objects.all('belt')) if (b.kind !== 'pool' && b.fill > 0.5 && b.top + b.H > y0 - MM(50) && b.top + b.H < y0 + MM(400)) y0 = Math.max(y0, b.top + b.H);
   const T = [...units.map((b) => 2 * Math.min(b.hw, b.hl))].sort((p, q) => p - q)[Math.floor(units.length / 2)];
   const g = Math.min(...all.map((b) => b.bot)) - MM(20);
   return { y0: +y0.toFixed(6), T: +T.toFixed(6), g: +g.toFixed(6), wings: wings.map((w) => ({ cx: +w.cx.toFixed(6), cz: +w.cz.toFixed(6), ux: +w.ux.toFixed(6), uz: +w.uz.toFixed(6), A: +w.A.toFixed(6), B: +w.B.toFixed(6), e: w.e, x: w.x.map((v) => +v.toFixed(6)) })) };
