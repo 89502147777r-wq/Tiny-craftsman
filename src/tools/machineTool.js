@@ -182,6 +182,7 @@ export class MachineTool {
     };
     if (L?.loaded) one('loader', L, this.state !== 'idle', 'loader');
     if (T?.loaded) one('truck', T, this.state === 'haul' || (this.state === 'drive' && this.drv === 'truck'), 'truck');
+    this._flushPush();
     P.update(dt);
     (this.streams ||= new Streams(app.scene)).update(dt);
   }
@@ -1040,7 +1041,10 @@ export class MachineTool {
       const t = this.app.terrain, [x, z] = this._slumpAt, n = Math.ceil(R(1.8) / t.cell), cx = Math.round(t.toCellX(x)), cz = Math.round(t.toCellZ(z));
       const box = { x0: Math.max(0, cx - n), z0: Math.max(0, cz - n), x1: Math.min(t.rx, cx + n), z1: Math.min(t.rz, cz + n) }, keep = t.active;
       t.active = { ...box };
-      for (let k = 0; k < 24 && t.active; k++) t.relax(1);
+      // (on a time budget: what is not settled now goes on settling in the next frames — two or three
+      // of them, unseen — instead of holding this one up)
+      const t0 = performance.now();
+      for (let k = 0; k < 24 && t.active && (k < 2 || performance.now() - t0 < 3.5); k++) t.relax(1);
       // (a heap tipped out of the body: its ridges, where the grid's slump leaves them, roll off a
       // little — loose grains run from each cell to a lower neighbour — so it stands round, as a cone)
       if (this._roundHeap) {
@@ -1060,6 +1064,7 @@ export class MachineTool {
       this._slumpAt = null;
     }
     if (this._wallPass) { this._wallPass(); this._wallPass = null; }
+    this._flushPush();
   }
   // what stands over the edge across the bucket, moved on ahead of it
   _bulldoze(x, z, f, hw, y, back = 0, looseOnly = false) {
@@ -1078,10 +1083,18 @@ export class MachineTool {
     const ix = Math.round(t.toCellX(x)), iz = Math.round(t.toCellZ(z)), n = Math.ceil(hw / t.cell) + 1;
     t._touch(Math.max(0, ix - n), Math.max(0, iz - n), Math.min(t.rx, ix + n), Math.min(t.rz, iz + n));
     // (right against the bucket's face, the width of it: a windrow growing there — it slumps out ahead and to the sides from there, not appearing far off)
-    for (const m of [0, 1, 2, 3]) if (push[m] > 0) {
-      for (const q of [-0.6, -0.2, 0.2, 0.6]) { const ax = x + f[0] * (R(0.35) + back) - f[1] * hw * q, az = z + f[1] * (R(0.35) + back) + f[0] * hw * q; if (t.inside(ax, az)) t.deposit(ax, az, push[m] * t.cellArea / 4, R(0.18), 0, m); }
-      push[m] = 0;
-    }
+    // (gathered: the passes of a frame push it to the same place — it is laid there once)
+    const ax = x + f[0] * (R(0.35) + back), az = z + f[1] * (R(0.35) + back), P = this._pend;
+    if (P && (Math.hypot(P.x - ax, P.z - az) > R(0.06) || P.hw !== hw)) this._flushPush();
+    const Q = (this._pend ||= { x: ax, z: az, f: [f[0], f[1]], hw, v: new Float64Array(4) });
+    for (const m of [0, 1, 2, 3]) { Q.v[m] += push[m]; push[m] = 0; }
+  }
+  // the windrow gathered this frame, laid against the bucket's face across its width
+  _flushPush() {
+    const P = this._pend; if (!P) return;
+    this._pend = null;
+    const t = this.app.terrain, { x, z, f, hw } = P;
+    for (const m of [0, 1, 2, 3]) if (P.v[m] > 0) for (const q of [-0.6, -0.2, 0.2, 0.6]) { const ax = x - f[1] * hw * q, az = z + f[0] * hw * q; if (t.inside(ax, az)) t.deposit(ax, az, P.v[m] * t.cellArea / 4, R(0.18), 0, m); }
   }
   // what ran out of the tipped body this frame: a stream of it off the tailgate's lip down to the
   // ground, and there a heap — each material as it is mixed in the body — that grows up to the
