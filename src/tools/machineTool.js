@@ -705,10 +705,17 @@ export class MachineTool {
       if (this.holdRel == null || ry > 0 || rx > 0 || (this.setT > 0 && !ry && !rx)) this.holdRel = Math.max(rel, -R(0.15) * Math.min(1, Math.max(0, -L.tilt / 0.3)));   // (pressed down level it slides on the ground, no deeper; its nose tipped down, it bites — ≤ 15 cm)
       else if (ry < 0 || rx < 0) this.holdRel = Math.max(this.holdRel, rel);
       this.holdY = ref + this.holdRel;
-      const cutY = this.holdY;
+      // (going on, the sticks let go, the level the edge holds is steadied: the machine rocking over the
+      // bumps under its wheels does not rock the cut — an operator's hands, the float — only the
+      // lie of the ground over a metre or so takes it up or down)
+      const steady = moved !== 0 && !ry && !rx && this.setT <= 0;
+      this._cutF = steady && this._cutF != null && Math.sign(moved) === this._cutDir ? this._cutF + (this.holdY - this._cutF) * Math.min(1, dt / 0.35) : this.holdY;
+      this._cutDir = Math.sign(moved);
+      const cutY = this._cutF;
       // (going on, the stick let go, the arms keep the edge at that level as the machine rides up on what
       // it leaves or dips — like a grade control: what it cuts is where the edge is)
-      if (moved && !ry && !rx && L.tilt > -0.45 && L.tilt < 0.15 && Math.abs(e.y - cutY) > R(0.01)) {
+      // (not while its front is up on the bucket: that is the ground holding it, not the level)
+      if (moved && !ry && !rx && L.tilt > -0.45 && L.tilt < 0.15 && Math.abs(e.y - cutY) > R(0.01) && !((L.lift || 0) > 0.01 && cutY < e.y)) {
         const a = this._armFor(cutY); L.arm = L.armGoal = this.armSet = a; L.update(0); L.edgeWorld(e);
       }
       const hw = Math.max(L.bucketW / 2, R(0.95));   // (a bucket is as wide as the wheels' track, or wider: they go where it has cut)
@@ -728,10 +735,26 @@ export class MachineTool {
         clear(); this._wallPass = clear;
       }
       const nat0 = g.natCut || 0;
-      if (moved > 0 && L.tilt > -0.45 && L.tilt < 0.15) {
+      // (a pass: going on with the edge set — the firm ground it meets is bitten ≤ 5 cm under where it
+      // was when the pass began, however slowly it goes or long it stalls there: no pits where it slows)
+      const cutting = moved > 0 && L.tilt > -0.45 && L.tilt < 0.15, dragging = moved < 0 && L.tilt > -0.45 && L.tilt < 0.3, dir = cutting ? 1 : dragging ? -1 : 0;
+      if (!dir || ry || rx || dir !== this._passDir) this._passNat = dir ? new Map() : null; else if (!this._passNat) this._passNat = new Map();
+      this._passDir = dir;
+      // (the level the 5 cm are counted from: the firm ground round the point as the bucket meets it —
+      // over ±25 cm, most of it: a narrow ridge or a lump is not a level of its own, it goes)
+      const PN = this._passNat, n0 = (px, pz) => {
+        const i = t.index(px, pz); let v = PN.get(i);
+        if (v === undefined) {
+          const hs = [];
+          for (let a = -2; a <= 2; a++) for (let c = -2; c <= 2; c++) { const qx = px + a * R(0.12), qz = pz + c * R(0.12); if (t.inside(qx, qz)) hs.push(t.nat[t.index(qx, qz)]); }
+          hs.sort((p2, q2) => p2 - q2); v = Math.min(t.nat[i], hs[Math.floor(hs.length * 0.6)]); PN.set(i, v);
+        }
+        return v;
+      };
+      if (cutting) {
         // (firm ground gives ≤ 5 cm a pass, however the nose is tipped: deeper takes more passes; what is
         // loose over it all goes)
-        const keep = g.target; g.target = (px, pz) => Math.max(cutY, t.nat[t.index(px, pz)] - R(0.05));
+        const keep = g.target; g.target = (px, pz) => Math.max(cutY, n0(px, pz) - R(0.05));
         const n = Math.max(1, Math.ceil(moved / (t.cell * 0.7)));
         for (let k = n - 1; k >= 0; k--) {
           const bx = e.x - f[0] * moved * k / n, bz = e.z - f[1] * moved * k / n;
@@ -754,18 +777,30 @@ export class MachineTool {
       // going back with the bucket down on the ground: its flat bottom drags behind it — the bumps it
       // passes over are taken to its level and what it carries (and drags) fills the hollows; a full
       // load is dragged on back. Forward and back once or twice and the ground is level.
-      if (moved < 0 && L.tilt > -0.45 && L.tilt < 0.3) {
-        const b = L.lowWorld(new THREE.Vector3()), by = Math.max(b.y, this.holdY - (e.y - b.y));
+      if (dragging) {
+        // (its bottom's level steadied as the edge's: the wheels going first over the bumps rock the
+        // machine, not the drag; the firm ground ≤ 5 cm a pass, as going on)
+        const b = L.lowWorld(new THREE.Vector3()), by = cutY - (e.y - b.y);
         if (by < Math.min(t.heightAt(b.x, b.z), t.orig[t.index(b.x, b.z)]) + R(0.2)) {
-          const keep = g.target; g.target = () => by;
+          // (what its back scrapes off is a roll of soil before it — not in the bucket: it fills the
+          // hollows the bucket passes over and goes on with it; what is in the bucket stays in it)
+          const keep = g.target, inB = g.carry; g.target = (px, pz) => Math.max(by, n0(px, pz) - R(0.05));
+          g.carry = this._dragC || (this._dragC = new Float64Array(4));
           const back = [-f[0], -f[1]], m = -moved, n = Math.max(1, Math.ceil(m / (t.cell * 0.7)));
-          for (let k = n - 1; k >= 0; k--) for (const d of [R(0.1), R(0.35), R(0.6)]) {
+          for (let k = n - 1; k >= 0; k--) for (const d of [R(0.6), R(0.35), R(0.1)]) {
             const bx = e.x - f[0] * (d - m * k / n), bz = e.z - f[1] * (d - m * k / n);
-            g.blade(bx, bz, back[0], back[1], hw, this.cap * 1.3, false);
-            if (g.load >= this.cap * 1.25) this._bulldoze(bx, bz, back, hw, by);
+            g.blade(bx, bz, back[0], back[1], hw, this.cap * 1.5, false);
           }
-          g.target = keep;
+          g.carry = inB; g.target = keep;
+          this._dragAt = { x: e.x - f[0] * R(0.7), z: e.z - f[1] * R(0.7), back, by, hw };
         }
+      }
+      // (the drag over: the roll before the bucket's back stays there, spread into the hollows round it)
+      if (!dragging && this._dragC && this._dragC.some((v) => v > 0)) {
+        const D = this._dragAt, inB = g.carry, keep = g.target;
+        g.carry = this._dragC; g.target = () => D.by;
+        g.drop(D.x, D.z, D.back[0], D.back[1], D.hw);
+        g.carry = inB; g.target = keep; this._dragC.fill(0);
       }
       // curled back with the edge in the soil: what lies over it in the bucket's mouth goes in
       if (rx < 0 && L.tilt < 0.35 && g.load < this.cap && e.y < t.heightAt(e.x, e.z)) this._scoopStrip(e, f, L.bucketW / 2);
@@ -940,8 +975,21 @@ export class MachineTool {
   // how low the bucket's lowest point can go at b: the top there, less what it sinks into loose
   // material (≤ 8 cm) or its nose cuts into firm ground (≤ 5 cm, tipped down)
   _bed(b) {
-    const t = this.app.terrain, L = this.loader, T = this.truck, i = t.index(b.x, b.z), top = t.heightAt(b.x, b.z);
-    let bed = top - Math.min(t.loose[i], R(0.08)) - R(0.05) * Math.min(1, Math.max(0, -L.tilt / 0.3));
+    const t = this.app.terrain, L = this.loader, T = this.truck;
+    const i = t.index(b.x, b.z);
+    let bed = t.heightAt(b.x, b.z) - Math.min(t.loose[i], R(0.08));
+    // (on bare firm ground the bottom bears over its width and depth, not on one point: it rests where
+    // most of the ground under it is — a narrow ridge of it, a lump, does not hold it up: it gets cut)
+    if (t.loose[i] < R(0.01) && t.conc[i] <= 1e-6) {
+      const fx = Math.cos(L.yaw), fz = -Math.sin(L.yaw), hw = L.bucketW / 2, hs = [];
+      for (const u of [-0.25, 0, 0.25]) for (const v of [-0.8, -0.4, 0, 0.4, 0.8]) {
+        const x = b.x + fx * R(u) - fz * hw * v, z = b.z + fz * R(u) + fx * hw * v;
+        if (t.inside(x, z)) { const k = t.index(x, z); hs.push(t.nat[k] + t.conc[k] + Math.max(0, t.top[k])); }
+      }
+      hs.sort((p, q) => p - q);
+      if (hs.length) bed = Math.min(bed, hs[Math.floor(hs.length * 0.6)]);
+    }
+    bed -= R(0.05) * Math.min(1, Math.max(0, -L.tilt / 0.3));
     // (on a wall, a post, a pallet's stack: on its top)
     bed = Math.max(bed, this._obstTop(b.x, b.z));
     // (over the truck: on its side's top, or inside the body on its floor — on the load in it)
