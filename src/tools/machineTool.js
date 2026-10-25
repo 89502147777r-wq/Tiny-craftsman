@@ -7,6 +7,7 @@ import { houseOutside } from './pitchedTool.js';
 import { boxOf } from './freeBrick.js';
 import { makeLoadMaterial } from '../world/terrainMaterial.js';
 import { Puffs } from '../world/smoke.js';
+import { Streams } from '../world/stream.js';
 
 // The site machines, driven by the finger (no joysticks):
 //   grade – draw a line over the plot: the skid-steer loader drives to its start, lowers its bucket
@@ -182,6 +183,7 @@ export class MachineTool {
     if (L?.loaded) one('loader', L, this.state !== 'idle', 'loader');
     if (T?.loaded) one('truck', T, this.state === 'haul' || (this.state === 'drive' && this.drv === 'truck'), 'truck');
     P.update(dt);
+    (this.streams ||= new Streams(app.scene)).update(dt);
   }
 
   // ---- grading -------------------------------------------------------------------------------------
@@ -408,6 +410,7 @@ export class MachineTool {
       if (this._face(dt, c.x, c.z)) { this.phase = 'lift'; this.wait = 1.4; }
       bucket(0.3, 0.55);
     } else if (ph === 'lift') {
+      this._dumpV = null;
       bucket(0.95, 0.5); this.wait -= dt;
       // (raised: it creeps on until the bucket's lip is over the middle of the body — the load lands
       // in the middle, not against the near side)
@@ -419,25 +422,33 @@ export class MachineTool {
       if (this.wait <= 0) { this.phase = 'dump'; this.wait = 1.0; this.creep = 0; }
     } else if (ph === 'dump') {
       bucket(0.95, -0.9); this.wait -= dt;
+      // (where it lands: the operator shakes the bucket over the body as it empties, the load leaves it
+      // sliding on forward — along the body's middle, not against its near side)
+      const landAt = () => { const q = T.root.worldToLocal(L.edgeWorld(new THREE.Vector3()).add(new THREE.Vector3(Math.cos(L.yaw) * R(0.35), 0, -Math.sin(L.yaw) * R(0.35)))), bb = T.bodyBox, mz = (bb.min.z + bb.max.z) / 2; q.z = mz + (q.z - mz) * 0.2; return T.root.localToWorld(q); };
+      if (!this._dumpV) {
+        // (as much as the body takes; the rest runs over its side)
+        const v = g.realVolume(), into = Math.min(v, Math.max(0, (1 - T.load) * TRUCK_LOAD));
+        const mw = this._mixW(); if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let m = 0; m < 4; m++) T.mix[m] += mw[m] * into; T.soil.material.setMix?.(T.mix);
+        this._dumpV = { v, into, done: 0, col: this._mix().clone() };
+      }
+      const D = this._dumpV;
       L.load = Math.max(0, L.load - dt * 1.4);
-      if (L.load > 0 && L.tilt < -0.3) {
-        // (the stream into the body: only to be seen — the volume goes in as the bucket is emptied)
-        const e = L.edgeWorld(new THREE.Vector3()), fx = Math.cos(L.yaw), fz = -Math.sin(L.yaw), r = Math.random, hw = L.bucketW / 2;
-        const mw = this._mixW(); for (let j = 0; j < 8; j++) { const w = (r() * 2 - 1) * hw * 0.9; let m = 0, u = r(); for (let q = 0; q < 4; q++) { u -= mw[q]; if (u <= 0) { m = q; break; } } app.particles.emit(new THREE.Vector3(e.x + fz * w, e.y, e.z - fx * w), new THREE.Vector3(fx * R(0.4) * r(), -R(0.3) * r(), fz * R(0.4) * r()), 0, R(0.03 + r() * 0.05), 0, 0, m); }
+      if (L.tilt < -0.3 && D.done < D.into) {
+        // (it runs into the body as the bucket tips: a stream off the lip, the heap growing under it)
+        const e = L.edgeWorld(new THREE.Vector3()), fx = Math.cos(L.yaw), fz = -Math.sin(L.yaw), r = Math.random, hw = L.bucketW / 2, land = landAt();
+        const dv = Math.min(D.into - D.done, D.into * dt * 1.6); D.done += dv;
+        T.pourLine(land, new THREE.Vector3(Math.sin(L.yaw), 0, Math.cos(L.yaw)), hw, dv / TRUCK_LOAD);
+        const ly = land.clone(); ly.y = Math.max(T.surfaceAt(land), e.y - R(2));
+        (this.streams ||= new Streams(app.scene)).set(1, e, ly, hw * 1.7, D.col, 1, new THREE.Vector3(-fz, 0, fx));
+        const mw = this._mixW(); for (let j = 0; j < 6; j++) { const w = (r() * 2 - 1) * hw * 0.9; let m = 0, u = r(); for (let q = 0; q < 4; q++) { u -= mw[q]; if (u <= 0) { m = q; break; } } app.particles.emit(new THREE.Vector3(e.x + fz * w, e.y, e.z - fx * w), new THREE.Vector3(fx * R(0.4) * r(), -R(0.3) * r(), fz * R(0.4) * r()), 0, R(0.03 + r() * 0.05), 0, 0, m); }
       }
       if (this.wait <= 0) {
         // the bucketful is in the body: one action — the heap lower, the truck fuller
-        const v = g.realVolume(); this.aim = null; this.empty = v < 0.03 ? this.empty + 1 : 0;
-        // (as much as the body takes; the rest runs over its side)
-        const into = Math.min(v, Math.max(0, (1 - T.load) * TRUCK_LOAD)), k = v > 0 ? 1 - into / v : 0;
+        const { v, into } = D; this.aim = null; this.empty = v < 0.03 ? this.empty + 1 : 0;
+        if (D.done < into) T.pourLine(landAt(), new THREE.Vector3(Math.sin(L.yaw), 0, Math.cos(L.yaw)), L.bucketW / 2, (into - D.done) / TRUCK_LOAD);
+        const k = v > 0 ? 1 - into / v : 0;
         if (k > 0) { const sp = this._overSide(L.edgeWorld(new THREE.Vector3())); for (const m of [0, 1, 2, 3]) if (g.carry[m] > 0) t.deposit(sp.x, sp.z, g.carry[m] * k * t.cellArea, R(0.5), 0, m); }
-        g.carry.fill(0); L.load = 0;
-        { const mw = this._mixW(); if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let m = 0; m < 4; m++) T.mix[m] += mw[m] * into; T.soil.material.setMix?.(T.mix); }
-        // (the operator shakes the bucket over the body as it empties, the load leaves it sliding on
-        // forward: the heap lands along the body's middle, not against its near side)
-        const land = T.root.worldToLocal(L.edgeWorld(new THREE.Vector3()).add(new THREE.Vector3(Math.cos(L.yaw) * R(0.35), 0, -Math.sin(L.yaw) * R(0.35)))), bb = T.bodyBox, mz = (bb.min.z + bb.max.z) / 2;
-        land.z = mz + (land.z - mz) * 0.2; T.root.localToWorld(land);
-        T.pourLine(land, new THREE.Vector3(Math.sin(L.yaw), 0, Math.cos(L.yaw)), L.bucketW / 2, into / TRUCK_LOAD);
+        g.carry.fill(0); L.load = 0; this._dumpV = null;
         this._savePose(); this._saveTruck({ away: false });
         app.journal.commit(app.clock);
         this.phase = 'lower'; this.wait = 1.0;
@@ -570,17 +581,17 @@ export class MachineTool {
   // the machine's outline there clear of houses, of the other machine and of the plot's edge
   _fits(kind, x, z, yaw, noOther = false) {
     // (its outline every 20 cm — a 30 cm wall, a gate's post, cannot slip between two points — and
-    // its middle line. The loader's bucket, its front 80 cm, is stopped by what stands higher than its
+    // its middle line. The loader's bucket and the arms' ends, its front 1 m, are stopped by what stands higher than its
     // bottom — lifted over the truck's side or a low wall it goes over it)
     const t = this.app.terrain, fx = Math.cos(yaw), fz = -Math.sin(yaw);
     const [a0, a1, hb] = kind === 'truck' ? [-2.35, 2.35, 0.9] : [-1.5, 2.0, 1.0], st = 0.2, pts = [];
     for (let a = a0; a <= a1 + 1e-6; a += st) pts.push([a, hb], [a, -hb], [a, 0]);
     for (let b = -hb + st; b < hb - 1e-6; b += st) pts.push([a0, b], [a1, b]);
-    const other = noOther ? null : kind === 'truck' ? this.loader : this.truck?.root.visible ? this.truck : null, oh = kind === 'truck' ? [1.6, 1.0] : [2.4, 1.0];
+    const other = noOther ? null : kind === 'truck' ? this.loader : this.truck?.root.visible ? this.truck : null, oh = kind === 'truck' ? [1.6, 1.0] : [2.4, (other?.width ? other.width * MODEL_SCALE / 2 : 0.85) + 0.05];   // (the loader comes right up to the body's side: its front tyres end 0,8 m ahead of it, what is further on is the arms and the bucket)
     const bucketY = kind === 'loader' && this.loader?.loaded ? this.loader.lowWorld(new THREE.Vector3()).y : null;
     const otherTop = other?.loaded && kind === 'loader' ? other.y + other.bodyBox.max.y : Infinity;
     for (const [a, b] of pts) {
-      const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b), bucket = bucketY != null && a > 1.2;
+      const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b), bucket = bucketY != null && a > 0.95;
       if (kind === 'truck' ? Math.abs(px) > t.halfX + R(6) || Math.abs(pz) > t.halfZ + R(6) : !t.inside(px, pz)) return false;
       if (!bucket && this.out && this.out(px, pz) !== true) return false;
       const top = this._obstTop(px, pz);
@@ -1081,6 +1092,9 @@ export class MachineTool {
     if (!(v > 0)) return;
     const lip = T.tailLip(new THREE.Vector3()), fx = Math.cos(T.yaw), fz = -Math.sin(T.yaw), r = Math.random;
     const gx = lip.x - fx * R(0.25), gz = lip.z - fz * R(0.25);
+    // (the stream off the tailgate's lip, as wide as the gate opens, down onto the heap)
+    { const col = new THREE.Color(0, 0, 0), mx = T.mix || [1, 0, 0, 0], tot = mx.reduce((a, v) => a + v, 0) || 1; for (let m = 0; m < 4; m++) { const c = BUCKET_COL[m]; col.r += c.r * mx[m] / tot; col.g += c.g * mx[m] / tot; col.b += c.b * mx[m] / tot; }
+      (this.streams ||= new Streams(this.app.scene)).set(2, lip, new THREE.Vector3(gx, t.heightAt(gx, gz), gz), T.hz * 0.8, col, Math.min(1, v / (R(0.02) ** 3)), new THREE.Vector3(-fz, 0, fx)); }
     const mix = T.mix || [1, 0, 0, 0], tot = mix[0] + mix[1] + mix[2] + mix[3] || 1;
     for (const m of [0, 1, 2, 3]) {
       const a = v * mix[m] / tot; if (!(a > 0)) continue;
@@ -1105,6 +1119,12 @@ export class MachineTool {
     const q = T?.root.visible && T.loaded ? T.root.worldToLocal(e.clone()) : null, b = T?.bodyBox;
     const truck = q && q.x > b.min.x - R(0.1) && q.x < b.max.x + R(0.1) && q.z > b.min.z - R(0.25) && q.z < b.max.z + R(0.25);
     const r = Math.random, N = 10;
+    // (the stream off the lip, down to where it lands — the load in the body, the ground)
+    {
+      const land = e.clone().add(new THREE.Vector3(f[0] * R(0.3), 0, f[1] * R(0.3)));
+      land.y = truck ? Math.max(T.surfaceAt(land), T.root.localToWorld(new THREE.Vector3(0, b.min.y, 0)).y) : app.terrain.heightAt(land.x, land.z);
+      if (g.load > 1e-9) (this.streams ||= new Streams(app.scene)).set(0, e.clone().add(new THREE.Vector3(f[0] * R(0.04), 0, f[1] * R(0.04))), land, hw * 1.7, this._mix(), Math.min(1, (-L.tilt - 0.45) / 0.45), new THREE.Vector3(-f[1], 0, f[0]));
+    }
     for (const m of [0, 1, 2, 3]) {
       const a = g.carry[m] * k; if (a <= 0) continue;
       g.carry[m] -= a;
