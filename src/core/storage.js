@@ -38,8 +38,37 @@ export async function loadLocal() {
 
 export async function clearLocal() {
   const db = await openDB();
-  await new Promise((res) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).delete(KEY); tx.oncomplete = res; tx.onerror = res; });
+  await new Promise((res) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).clear(); tx.oncomplete = res; tx.onerror = res; });
   db.close();
+}
+
+// The project saved by parts (BUILD 187): what changed since the last save only — the ground
+// by tiles, the journal by entries, the rest small. Keys 'p:…'; the old single 'current'
+// record goes once the parts are written.
+let _db = null;
+const db1 = async () => (_db ||= await openDB());
+export async function saveParts(puts, dels = [], dropLegacy = false) {
+  const db = await db1();
+  await new Promise((res, rej) => {
+    const tx = db.transaction(STORE, 'readwrite'), st = tx.objectStore(STORE);
+    for (const [k, v] of puts) st.put(v, k);
+    for (const k of dels) st.delete(k);
+    if (dropLegacy) st.delete(KEY);
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+  });
+}
+export async function loadParts() {
+  try {
+    const db = await db1();
+    return await new Promise((res, rej) => {
+      const out = new Map(), r = db.transaction(STORE).objectStore(STORE).openCursor(IDBKeyRange.bound('p:', 'p:\uffff'));
+      r.onsuccess = () => { const c = r.result; if (c) { out.set(c.key, c.value); c.continue(); } else res(out); };
+      r.onerror = () => rej(r.error);
+    });
+  } catch (e) {
+    console.warn('IndexedDB unavailable', e);
+    return new Map();
+  }
 }
 
 // ---- JSON with typed arrays -------------------------------------------------------
