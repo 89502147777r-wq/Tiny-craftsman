@@ -16,6 +16,8 @@ import { makeNoise2 } from '../core/rand.js';
 // Loose soil slides at its angle of repose; native ground only collapses
 // when a wall is cut steeper than ~78°. Volume is conserved exactly.
 const MM_CHIP = 0.0005 / MODEL_SCALE;   // (a crust thinner than 0,5 mm: gone)
+const TILE = 96;   // cells a side of a piece of the mesh (drawn or not as a whole)
+
 export class Terrain {
   constructor() {
     // rectangular plot: rx × rz cells, (rx+1) × (rz+1) samples, row stride nx
@@ -174,7 +176,12 @@ export class Terrain {
   // ---- editing ---------------------------------------------------------------
   _touch(ix0, iz0, ix1, iz1) {
     this.active = grow(this.active, ix0 - 1, iz0 - 1, ix1 + 1, iz1 + 1, this.rx, this.rz);
-    this.meshDirty = grow(this.meshDirty, ix0 - 1, iz0 - 1, ix1 + 1, iz1 + 1, this.rx, this.rz);
+    // (the mesh: each place touched apart — the bucket here, the wheels' tracks there — not the box
+    // round them all; one that overlaps another (or nearly) joins it)
+    const r = { x0: Math.max(0, ix0 - 1), z0: Math.max(0, iz0 - 1), x1: Math.min(this.rx, ix1 + 1), z1: Math.min(this.rz, iz1 + 1) }, L = (this._mRects ||= []);
+    let k = 0;
+    for (; k < L.length; k++) { const q = L[k]; if (q.x0 <= r.x1 + 8 && q.x1 >= r.x0 - 8 && q.z0 <= r.z1 + 8 && q.z1 >= r.z0 - 8) { q.x0 = Math.min(q.x0, r.x0); q.z0 = Math.min(q.z0, r.z0); q.x1 = Math.max(q.x1, r.x1); q.z1 = Math.max(q.z1, r.z1); break; } }
+    if (k === L.length) { if (L.length < 24) L.push(r); else this.meshDirty = grow(this.meshDirty, r.x0, r.z0, r.x1, r.z1, this.rx, this.rz); }
     this.version++;
   }
 
@@ -624,13 +631,20 @@ export class Terrain {
       uv[i * 2] = pos[i * 3] / SOIL_TILE; uv[i * 2 + 1] = -pos[i * 3 + 2] / SOIL_TILE;
       nor[i * 3 + 1] = 1;
     }
-    const idx = new Uint32Array(this.rx * this.rz * 6);
+    // the triangles in blocks of MT × MT cells, each block's run of the index one after the other:
+    // each block is drawn as its own piece — one the camera (or the sun's shadow) does not see is
+    // not drawn at all; the vertices are the same for all of them (one buffer)
+    const idx = new Uint32Array(this.rx * this.rz * 6), MT = TILE, tiles = [];
     let k = 0;
-    for (let iz = 0; iz < this.rz; iz++) for (let ix = 0; ix < this.rx; ix++) {
-      const a = iz * n + ix, b = a + 1, c = a + n, d = c + 1;
-      // alternate the diagonal to avoid directional artefacts
-      if ((ix + iz) & 1) { idx[k++] = a; idx[k++] = c; idx[k++] = b; idx[k++] = b; idx[k++] = c; idx[k++] = d; }
-      else { idx[k++] = a; idx[k++] = c; idx[k++] = d; idx[k++] = a; idx[k++] = d; idx[k++] = b; }
+    for (let tz = 0; tz < this.rz; tz += MT) for (let tx = 0; tx < this.rx; tx += MT) {
+      const start = k;
+      for (let iz = tz; iz < Math.min(this.rz, tz + MT); iz++) for (let ix = tx; ix < Math.min(this.rx, tx + MT); ix++) {
+        const a = iz * n + ix, b = a + 1, c = a + n, d = c + 1;
+        // alternate the diagonal to avoid directional artefacts
+        if ((ix + iz) & 1) { idx[k++] = a; idx[k++] = c; idx[k++] = b; idx[k++] = b; idx[k++] = c; idx[k++] = d; }
+        else { idx[k++] = a; idx[k++] = c; idx[k++] = d; idx[k++] = a; idx[k++] = d; idx[k++] = b; }
+      }
+      tiles.push({ x0: tx, z0: tz, x1: Math.min(this.rx, tx + MT), z1: Math.min(this.rz, tz + MT), start, count: k - start });
     }
     const g = new THREE.BufferGeometry();
     g.setIndex(new THREE.BufferAttribute(idx, 1));
@@ -652,19 +666,57 @@ export class Terrain {
     g.setAttribute('aExtra', this.aExtra);
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, TRAY.soil, 0), Math.hypot(this.halfX, this.halfZ) + 0.05);
     g.boundingBox = new THREE.Box3(new THREE.Vector3(-this.halfX, 0, -this.halfZ), new THREE.Vector3(this.halfX, 0.3, this.halfZ));
-    this.mesh = new THREE.Mesh(g, material);
-    this.mesh.castShadow = true;
-    this.mesh.receiveShadow = true;
-    this.mesh.name = 'terrain';
+    // the pieces: a geometry each over the same attributes and index (its draw range), its bounds
+    // (the heights in it, kept up to date) for the culling
+    const group = new THREE.Group(); group.name = 'terrain';
+    this.tiles = tiles.map((T) => {
+      const tg = new THREE.BufferGeometry();
+      tg.setIndex(g.index); for (const [name, a] of Object.entries(g.attributes)) tg.setAttribute(name, a);
+      tg.setDrawRange(T.start, T.count);
+      tg.boundingSphere = new THREE.Sphere(); tg.boundingBox = new THREE.Box3();
+      const m = new THREE.Mesh(tg, material); m.castShadow = true; m.receiveShadow = true; m.name = 'terrain'; m.matrixAutoUpdate = false;
+      group.add(m);
+      T.mesh = m; T.ymin = this.floorY; T.ymax = TRAY.soil + 0.05;
+      return T;
+    });
+    this._fitTiles(this.tiles);
+    // (the group stands for the one mesh it was: its material, its geometry's dispose)
+    const tl = this.tiles;
+    Object.defineProperty(group, 'material', { get: () => tl[0].mesh.material, set: (v) => { for (const T of tl) T.mesh.material = v; } });
+    group.geometry = { dispose: () => { for (const T of tl) T.mesh.geometry.dispose(); } };
+    this.mesh = group;
     this.markAll();
     this.updateMesh();
     return this.mesh;
+  }
+
+  // a piece's box and sphere from its height range
+  _boundTiles(list) {
+    const c = this.cell;
+    for (const T of list) {
+      const g = T.mesh.geometry;
+      g.boundingBox.min.set(this.toWorldX(T.x0), T.ymin, this.toWorldZ(T.z0)); g.boundingBox.max.set(this.toWorldX(T.x1), T.ymax + c, this.toWorldZ(T.z1));
+      g.boundingBox.getBoundingSphere(g.boundingSphere);
+    }
+  }
+  // the bounds of pieces of the mesh from the heights in them (a sphere round the box)
+  _fitTiles(list) {
+    const { nx: n, nat, loose, conc, top } = this, c = this.cell;
+    for (const T of list) {
+      let lo = Infinity, hi = -Infinity;
+      for (let iz = T.z0; iz <= T.z1; iz++) for (let ix = T.x0; ix <= T.x1; ix++) { const i = iz * n + ix, h = nat[i] + loose[i] + conc[i] + top[i]; if (h < lo) lo = h; if (h > hi) hi = h; }
+      T.ymin = lo; T.ymax = hi;
+      const g = T.mesh.geometry;
+      g.boundingBox.min.set(this.toWorldX(T.x0), lo, this.toWorldZ(T.z0)); g.boundingBox.max.set(this.toWorldX(T.x1), hi + c, this.toWorldZ(T.z1));
+      g.boundingBox.getBoundingSphere(g.boundingSphere);
+    }
   }
 
   updateMesh() {
     if (!this.mesh) return false;
     const rects = [];
     if (this.meshDirty) { rects.push(this.meshDirty); this.meshDirty = null; }
+    if (this._mRects?.length) { rects.push(...this._mRects); this._mRects.length = 0; }
     // concrete tiles that moved (each on its own: far apart they would make one huge box)
     for (const t of this.meshTiles) {
       const tx = t % this.tnx, tz = (t / this.tnx) | 0, TS = this.TS;
@@ -685,6 +737,8 @@ export class Terrain {
       const r = this._updateRect(b);
       for (let z = r.z0; z <= r.z1; z++) { if (r.x0 < lo[z]) lo[z] = r.x0; if (r.x1 > hi[z]) hi[z] = r.x1; }
     }
+    // (the pieces the new heights went out of: their bounds grown to them — heaped up, dug down)
+    if (this._grown?.size) { const list = [...this._grown].map((k) => this.tiles[k]); this._grown.clear(); this._boundTiles(list); }
     for (const a of attrs) { a.clearUpdateRanges(); a.needsUpdate = true; }
     // runs of rows: a full-width block when wide, else a range per row
     for (let z = 0; z < this.nz; z++) {
@@ -712,13 +766,18 @@ export class Terrain {
       iz = iz < 0 ? 0 : iz > rz ? rz : iz;
       const i = iz * n + ix; return nat[i] + loose[i] + conc[i] + top[i];
     };
-    const done = this._done, pass = this._pass;
+    const done = this._done, pass = this._pass, tiles = this.tiles, tnx = tiles ? Math.ceil(rx / TILE) : 0, tnz = tiles ? Math.ceil(rz / TILE) : 0;
     for (let iz = oz0; iz <= oz1; iz++) for (let ix = ox0; ix <= ox1; ix++) {
       const i = iz * n + ix;
       if (done && done[i] === pass) continue;
       if (done) done[i] = pass;
       const h = nat[i] + loose[i] + conc[i] + top[i];
       pos[i * 3 + 1] = h;
+      if (tiles) {
+        // (the height out of its piece's range: the range grows — the culling keeps seeing it)
+        const tk = Math.min(tnx - 1, (ix / TILE) | 0) + Math.min(tnz - 1, (iz / TILE) | 0) * tnx, T = tiles[tk];
+        if (h < T.ymin || h > T.ymax) { if (h < T.ymin) T.ymin = h; else T.ymax = h; (this._grown ||= new Set()).add(tk); }
+      }
       const hx = H(ix + 1, iz) - H(ix - 1, iz), hz = H(ix, iz + 1) - H(ix, iz - 1);
       const inv = 1 / Math.hypot(hx, 2 * cell, hz);
       nor[i * 3] = -hx * inv; nor[i * 3 + 1] = 2 * cell * inv; nor[i * 3 + 2] = -hz * inv;

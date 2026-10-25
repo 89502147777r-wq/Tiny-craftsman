@@ -38,11 +38,16 @@ export class Grass {
 
   update() {
     const t = this.terrain;
-    if (t.version === this._seen) return;
-    this._seen = t.version;
+    // (the ground changed: the tufts are looked over again — a quarter of them a frame, round and
+    // round while it goes on changing; one dug away goes a frame or two later, unseen)
+    if (t.version !== this._seen) { this._seen = t.version; this._left = this.tufts.length; }
+    if (!(this._left > 0)) return;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
     let changed = false;
-    for (let i = 0; i < this.tufts.length; i++) {
+    const N = this.tufts.length, n = Math.min(this._left, Math.ceil(N / 4));
+    this._left -= n;
+    for (let c = 0; c < n; c++) {
+      const i = this._k = ((this._k ?? -1) + 1) % N;
       const g = this.tufts[i];
       const k = t.index(g.x, g.z);
       const dug = t.orig[k] - t.nat[k] > 0.0006 || t.loose[k] > 0.0012 || t.conc[k] > 0.0002;   // dug, covered or concreted
