@@ -129,3 +129,68 @@ export function openingAt(list, p, screen, finger) {
   }
   return best;
 }
+
+// Corner openings (for corner glazing): two walls meeting at a corner, both stopping short of it
+// course after course — the corner itself open from the floor (or a sill course) up to the slab /
+// the ring beam cast over it, which carries the corner (a cantilever: no post in the corner).
+//   → [{ corner: true, O: [x, z] (the outer corner), dA, dB (unit, from the corner along each wall
+//        toward its masonry), wA, wB (mm: the corner to each wall's masonry), tA, tB (mm), y0, y1,
+//        x, z, w, h, yaw (for picking: leg A), ok, why, floor }]
+export function findCorners(app) {
+  const units = masonry(app);
+  if (units.length < 6) return [];
+  let cx = 0, cz = 0; for (const b of units) { cx += b.x; cz += b.z; } cx /= units.length; cz /= units.length;
+  const lines = wallLines(units).filter((L) => L.units.length >= 3), out = [];
+  // a course of a line: its bottom, top and what it covers along it (the joints bridged)
+  const courses = (L) => {
+    const lv = [];
+    for (const u of [...L.units].sort((p, q) => p.bot - q.bot)) if (!lv.length || u.bot - lv.at(-1).bot > (u.top - u.bot) * 0.5) lv.push({ bot: u.bot, top: u.top, us: [u] }); else { const c = lv.at(-1); c.us.push(u); c.top = Math.max(c.top, u.top); }
+    for (const c of lv) { const iv = c.us.map((u) => [u.a0, u.a1]).sort((p, q) => p[0] - q[0]), m = []; for (const v of iv) { if (m.length && v[0] <= m.at(-1)[1] + MM(30)) m.at(-1)[1] = Math.max(m.at(-1)[1], v[1]); else m.push([...v]); } c.m = m; }
+    return lv;
+  };
+  for (let i = 0; i < lines.length; i++) for (let j = i + 1; j < lines.length; j++) {
+    const A = lines[i], B = lines[j];
+    if (Math.abs(A.ux * B.ux + A.uz * B.uz) > 0.05) continue;
+    // where their axes cross: a point of a line has p·n = d (n = (−uz, ux))
+    const det = -A.uz * B.ux + A.ux * B.uz;
+    if (Math.abs(det) < 1e-9) continue;
+    const Cx = (A.d * B.ux - A.ux * B.d) / det, Cz = (-A.uz * B.d + B.uz * A.d) / det;
+    const aC = Cx * A.ux + Cz * A.uz, bC = Cx * B.ux + Cz * B.uz;
+    // each wall's masonry on one side of the corner only, and near it (not a wall far off on the same line)
+    const side = (L, c) => { const m = L.units.map((u) => (u.a0 + u.a1) / 2 - c); return m.every((v) => v > 0) ? 1 : m.every((v) => v < 0) ? -1 : 0; };
+    const sA = side(A, aC), sB = side(B, bC);
+    if (!sA || !sB) continue;
+    const endA = sA > 0 ? Math.min(...A.units.map((u) => u.a0)) : Math.max(...A.units.map((u) => u.a1)), endB = sB > 0 ? Math.min(...B.units.map((u) => u.a0)) : Math.max(...B.units.map((u) => u.a1));
+    if (Math.abs(endA - aC) > MM(7000) || Math.abs(endB - bC) > MM(7000)) continue;
+    // the courses: open at the corner in both (the masonry's end in each this far from the corner)
+    const ca = courses(A), cb = courses(B), lv = [];
+    for (const c of ca) {
+      const d = cb.find((q) => Math.abs(q.bot - c.bot) < (c.top - c.bot) * 0.5);
+      if (!d) continue;
+      const gap = (cs, cc, s, hwO) => { const e = s > 0 ? Math.min(...cs.m.map((v) => v[0]).filter((v) => v > cc - hwO - MM(30))) : Math.max(...cs.m.map((v) => v[1]).filter((v) => v < cc + hwO + MM(30))); return Number.isFinite(e) ? Math.abs(e - cc) - hwO : 0; };
+      lv.push({ bot: Math.min(c.bot, d.bot), top: Math.max(c.top, d.top), gA: gap(c, aC, sA, B.hw), gB: gap(d, bC, sB, A.hw), bed: c.us[0].b.u.bedT ?? MM(20) });
+    }
+    // the open run at the top of the storey: down from the top course while both are open
+    let k1 = lv.length - 1; while (k1 >= 0 && !(lv[k1].gA >= MM(MIN_W) && lv[k1].gB >= MM(MIN_W))) k1--;
+    if (k1 < 0) continue;
+    let k0 = k1; while (k0 > 0 && lv[k0 - 1].gA >= MM(MIN_W) && lv[k0 - 1].gB >= MM(MIN_W) && lv[k0].bot - lv[k0 - 1].top < MM(60)) k0--;
+    const gA = Math.min(...lv.slice(k0, k1 + 1).map((c) => c.gA)), gB = Math.min(...lv.slice(k0, k1 + 1).map((c) => c.gB));
+    const y0 = k0 > 0 && lv[k0].bot - lv[k0 - 1].top < MM(60) ? lv[k0 - 1].top : lv[k0].bot - lv[k0].bed, yTop = lv[k1].top;
+    // the outer corner (the outer faces of both walls), the walls' directions from it
+    const nAx = -A.uz, nAz = A.ux, nBx = -B.uz, nBz = B.ux;
+    const oA = ((Cx - cx) * nAx + (Cz - cz) * nAz) >= 0 ? 1 : -1, oB = ((Cx - cx) * nBx + (Cz - cz) * nBz) >= 0 ? 1 : -1;
+    const Ox = Cx + nAx * oA * A.hw + nBx * oB * B.hw, Oz = Cz + nAz * oA * A.hw + nBz * oB * B.hw;
+    const dA = [A.ux * sA, A.uz * sA], dB = [B.ux * sB, B.uz * sB];
+    const wA = Math.round((gA + 2 * B.hw) / S), wB = Math.round((gB + 2 * A.hw) / S);
+    // over it: a slab / a ring beam cast over the corner carries it
+    const px = Ox + (dA[0] + dB[0]) * MM(100), pz = Oz + (dA[1] + dB[1]) * MM(100);
+    const bl = app.objects.all('belt').find((b) => b.fill > 0.3 && b.top > yTop - MM(30) && b.top < yTop + MM(80) && beltContains(b, px, pz));
+    const y1 = bl ? bl.top : yTop, h = Math.round((y1 - y0) / S);
+    if (h < MIN_H) continue;
+    const floor0 = Math.min(...[...A.units, ...B.units].map((u) => u.bot - (u.b.u.bedT ?? MM(20))));
+    const mx = Ox + dA[0] * MM(wA / 2) + dB[0] * MM(150), mz = Oz + dA[1] * MM(wA / 2) + dB[1] * MM(150);
+    out.push({ corner: true, O: [+Ox.toFixed(6), +Oz.toFixed(6)], dA, dB, wA, wB, tA: Math.round(A.hw * 2 / S), tB: Math.round(B.hw * 2 / S), y0, y1, h, w: Math.min(wA, wB), t: Math.round(A.hw * 2 / S),
+      x: mx, z: mz, yaw: Math.atan2(-dA[1], dA[0]), ok: !!bl, why: bl ? null : 'Над угловым проёмом нужна плита или монолитный пояс — угол без стойки держит перекрытие (консоль)', floor: y0 - floor0 < MM(450) });
+  }
+  return out;
+}

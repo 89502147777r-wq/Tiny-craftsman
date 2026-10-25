@@ -61,6 +61,18 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
   };
   bridge(ni, nj, (j, i) => j * ni + i);
   bridge(nj, ni, (i, j) => j * ni + i);
+  // an open corner (both walls stop short of it — a corner glazed from floor to slab): the slab
+  // goes on over it, out to the corner (a cantilever on the two walls). At a corner of the walls'
+  // outline: along its row and its column the walls begin within 2R of it — the notch between is
+  // closed (a bigger one is the house's own shape: an L)
+  for (const [ci, cj, si, sj] of [[i0, j0, 1, 1], [i1, j0, -1, 1], [i0, j1, 1, -1], [i1, j1, -1, -1]]) {
+    if (sup[cj * ni + ci]) continue;
+    let di = 0, dj = 0;
+    while (di <= 2 * R && !sup[cj * ni + ci + si * di]) di++;
+    while (dj <= 2 * R && !sup[(cj + sj * dj) * ni + ci]) dj++;
+    if (di > 2 * R || dj > 2 * R) continue;
+    for (let a = 0; a < di; a++) for (let d = 0; d < dj; d++) blk[(cj + sj * d) * ni + ci + si * a] = 1;
+  }
   const out = new Uint8Array(ni * nj), st = [];
   for (let i = 0; i < ni; i++) for (const j of [0, nj - 1]) if (!blk[j * ni + i] && !out[j * ni + i]) { out[j * ni + i] = 1; st.push(j * ni + i); }
   for (let j = 0; j < nj; j++) for (const i of [0, ni - 1]) if (!blk[j * ni + i] && !out[j * ni + i]) { out[j * ni + i] = 1; st.push(j * ni + i); }

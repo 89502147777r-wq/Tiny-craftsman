@@ -7,7 +7,8 @@ import { placeLintel, placeProp, placeLintelForm, uRun, cageRec, uStrength } fro
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds, rle } from './belt.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
-import { findOpenings, openingAt } from './windowFit.js';
+import { findOpenings, findCorners, openingAt } from './windowFit.js';
+import { findRail, RAIL } from '../world/railing.js';
 import { WINDOWS, windowFits, WIN_COLOURS } from '../world/windows.js';
 import { DOORS, doorFits, isDoor } from '../world/doors.js';
 import { RoofWork } from './roofTool.js';
@@ -785,16 +786,30 @@ export class WallTool {
       (c.kind === 'roof' ? this.roof : c.kind === 'proof' ? this.proof : c.kind === 'rwin' ? this.rwin : this.facade).carryMove(p, e);
       app.ui.refresh();
       return;
+    } else if (c.kind === 'rail') {
+      // a glass railing: along the edge of a floor slab nearest the finger, its free stretch
+      const R = findRail(app, p);
+      c.rail = R; c.free = undefined; c.snap = null; v.live = null; v.hl = null; v.liveBed = null;
+      v.liveRail = R ? { rec: R.rec, ok: !R.why } : null; v.dirty = true;
+      if (R) app.ui.showMeasure(R.why ? R.why : `Ограждение ${(R.len / 1000).toFixed(2).replace('.', ',')} м, высота 1,1 м`); else app.ui.hideMeasure();
+      app.ui.refresh();
+      return;
     } else if (c.kind === 'window' || c.kind === 'door') {
       // a window / a door: into the opening under the finger, made to its size
-      if (!c.openings) c.openings = findOpenings(app);
+      if (!c.openings) c.openings = [...findOpenings(app), ...(c.kind === 'window' ? findCorners(app) : [])];
       const door = c.kind === 'door', o = openingAt(c.openings, p, scr, fing), key = door ? app.settings.doorKey || 'door1' : app.settings.windowKey || 'pvc2';
       c.win = o; c.free = undefined; c.snap = null;
       v.live = null; v.liveBed = null; v.liveWin = null; v.hl = null;
       if (o) {
         const taken = app.objects.all('window').some((w) => Math.hypot(w.x - o.x, w.z - o.z) < MM(150) && Math.abs(w.y - o.y0) < MM(150));
-        o.why2 = taken ? 'В этом проёме уже стоит окно или дверь' : !o.ok ? o.why : door ? (o.floor ? doorFits(key, o.w, o.h) : 'Под дверь нужен проём до пола — здесь снизу кладка (это проём под окно)') : windowFits(key, o.w, o.h);
-        if (!o.why2) v.liveWin = { key, w: o.w, h: o.h, t: o.t, x: o.x, y: o.y0, z: o.z, yaw: o.yaw, ...(door ? {} : { col: app.settings.winCol || 'white' }) };
+        o.why2 = taken ? 'В этом проёме уже стоит окно или дверь' : !o.ok ? o.why
+          : o.corner && key !== 'corner' && !door ? 'Это угловой проём (без стойки в углу) — для него «Угловое остекление»'
+          : o.corner && door ? 'Это угловой проём — дверь ставят в обычный проём'
+          : !o.corner && key === 'corner' ? 'Угловое остекление — в угловой проём: оставьте угол дома открытым до перекрытия (обе стены не доходят до угла)'
+          : key === 'floor' && !o.floor ? 'Витраж в пол — в проём до пола; здесь снизу кладка (под обычное окно)'
+          : door ? (o.floor ? doorFits(key, o.w, o.h) : 'Под дверь нужен проём до пола — здесь снизу кладка (это проём под окно)') : windowFits(key, o.w, o.h);
+        const corner = o.corner ? { O: o.O, dA: o.dA, dB: o.dB, wA: o.wA, wB: o.wB, floor: o.floor } : undefined;
+        if (!o.why2) v.liveWin = { key, w: o.w, h: o.h, t: o.t, x: o.x, y: o.y0, z: o.z, yaw: o.yaw, corner, ...(door ? {} : { col: app.settings.winCol || (key === 'corner' || key === 'floor' ? 'anth' : 'white') }) };
         else v.hl = { p: [o.x, (o.y0 + o.y1) / 2, o.z], q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), o.yaw).toArray(), s: [o.w * S, o.y1 - o.y0, o.t * S], ok: false };
       }
       v.dirty = true;
@@ -923,7 +938,7 @@ export class WallTool {
     this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');
     this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
+    const NAMES = { studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', rail: 'Ограждение', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
     if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', joists: 'Лаги', ridge: 'Прогон', trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
     if (lab && kind === 'blind') { lab.textContent = this.app.settings.blindLayer === 'drain' ? 'Лоток' : 'Опалубка'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель', br: 'Кронштейн', mw: 'Плита минваты', mb: 'Рулон мембраны', rl: 'Направляющая', vp: 'Панель НВФ' }[this.app.settings.facLayer || 'eps']; return; }
@@ -936,12 +951,13 @@ export class WallTool {
   _carryCancel() {
     const v = this.app.wallView;
     if (this.carry?.kind === 'ucage') { this.app.rebarView.live = null; this.app.rebarView.dirty = true; }
-    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.hlMany = null; v.liveBelt = null; v.liveWin = null; v.dirty = true; this.roof._live(null); this.facade._live(null); this.proof._live(null); this.rwin._live(null); this.blind._live(null);
+    this.carry = null; v.live = null; v.liveBed = null; v.hl = null; v.hlMany = null; v.liveBelt = null; v.liveWin = null; v.liveRail = null; v.dirty = true; this.roof._live(null); this.facade._live(null); this.proof._live(null); this.rwin._live(null); this.blind._live(null);
     this.app.ui.refresh();
   }
 
   _carryDrop() {
     const app = this.app, snap = this.carry.snap, free = this.carry.free, ck = this.carry.kind, cage = this.carry.cage, belt = this.carry.belt, bc = this.carry.beltCage, win = this.carry.win, lf = this.carry.lform, sb = this.carry.studBelt;
+    const railR = this.carry.rail;
     this._carryCancel();
     if (ck === 'studs') {
       if (!sb) { app.ui.toast('Шпильки — в армопояс: поднесите их к опалубке пояса на верху стен'); return; }
@@ -966,6 +982,14 @@ export class WallTool {
       app.ui.toast(`Опалубка пояса: доски по обе стороны стен, ${belt.lenM.toFixed(1).replace('.', ',')} м стен, высота пояса 250 мм — теперь каркас («Каркас»), потом бетон`);
       return;
     }
+    if (ck === 'rail') {
+      const R = railR; app.ui.hideMeasure();
+      if (!R) { app.ui.toast('Стеклянное ограждение — на край залитого перекрытия: балкон, консоль, проём лестницы или второго света'); return; }
+      if (R.why) { app.ui.toast(R.why); return; }
+      app.journal.act('rail', {}, app.clock, () => app.objects.add(R.rec));
+      app.ui.toast(`Стеклянное ограждение ${(R.len / 1000).toFixed(2).replace('.', ',')} м: профиль-основание на анкерах в 50 мм от края, триплекс 10+10 мм на клиньях, высота ${RAIL.H} мм, поручень из нержавейки`);
+      return;
+    }
     if (ck === 'roof') { this.roof.carryDrop(); return; }
     if (ck === 'facade') { this.facade.carryDrop(); return; }
     if (ck === 'blind') { this.blind.carryDrop(); return; }
@@ -975,7 +999,10 @@ export class WallTool {
       const o = win, door = ck === 'door', key = door ? app.settings.doorKey || 'door1' : app.settings.windowKey || 'pvc2';
       if (!o) { app.ui.toast(door ? 'Дверь — в проём до пола: оставьте его в кладке (перемычка или перекрытие сверху) и поднесите дверь к нему' : 'Окно — в проём: оставьте его в кладке (перемычка или перекрытие сверху) и поднесите окно к нему'); return; }
       if (o.why2) { app.ui.toast(o.why2); return; }
-      app.journal.act(door ? 'door' : 'window', {}, app.clock, () => app.objects.add({ type: 'window', key, ...(door ? {} : { col: app.settings.winCol || 'white' }), w: o.w, h: o.h, t: o.t, x: +o.x.toFixed(6), y: +o.y0.toFixed(6), z: +o.z.toFixed(6), yaw: +o.yaw.toFixed(5) }));
+      const corner = o.corner ? { O: o.O, dA: o.dA.map((v) => +v.toFixed(6)), dB: o.dB.map((v) => +v.toFixed(6)), wA: o.wA, wB: o.wB, floor: o.floor } : undefined;
+      app.journal.act(door ? 'door' : 'window', {}, app.clock, () => app.objects.add({ type: 'window', key, ...(door ? {} : { col: app.settings.winCol || (key === 'corner' || key === 'floor' ? 'anth' : 'white') }), ...(corner ? { corner } : {}), w: o.w, h: o.h, t: o.t, x: +o.x.toFixed(6), y: +o.y0.toFixed(6), z: +o.z.toFixed(6), yaw: +o.yaw.toFixed(5) }));
+      if (corner) { app.ui.toast(`Угловое остекление ${o.wA} + ${o.wB} × ${o.h} мм: рамы только у кладки, по полу и по плите; в углу стеклопакеты стык в стык на чёрном структурном силиконе, без стойки — угол держит плита`); return; }
+      if (key === 'floor') { app.ui.toast(`Витраж в пол ${o.w} × ${o.h} мм: рама утоплена в пол на 40 мм под стяжку, порог с водоотводом, стекло — закалённый триплекс`); return; }
       app.ui.toast(door && DOORS[key].garage ? `${DOORS[key].name}: ${o.w} × ${o.h} мм — ${{ sectional: 'панели 40 мм на направляющих изнутри, торсионный вал с пружинами над проёмом, уплотнители', roller: 'короб над проёмом, шины по бокам, ламели 77 мм, нижняя планка с замком', swing: 'стальная рама в проёме, две створки из доски на ригелях с раскосами, полосовые петли, засов и проушины под замок' }[DOORS[key].garage]}` : door ? `${DOORS[key].name}: ${o.w} × ${o.h} мм — коробка на пене с зазором 15 мм, полотно на ${DOORS[key].entrance ? 'трёх петлях, порог' : 'двух петлях'}, наличники` : `${WINDOWS[key].name}: ${o.w} × ${o.h} мм — рама с зазором 18 мм на пене, снаружи лента и ${WINDOWS[key].sill ? 'отлив, внутри подоконник' : 'пароизоляция внутри'}`);
       return;
     }
@@ -1066,7 +1093,8 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : c.kind === 'cinder' ? 'Шлакоблок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform', 'studs'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform', 'studs', 'rail'].includes(this.kind)) return {
+      rail: 'Стеклянное ограждение: тяните из лотка к краю залитого перекрытия (консоль, балкон, проём лестницы или второго света) — встанет вдоль свободного края, высота 1,1 м',
       studs: 'Шпильки под мауэрлат: тяните из лотка к опалубке армопояса — до заливки (или в свежий бетон) встанут шпильки М12 по оси стен через ≤ 1 м; на них потом ляжет мауэрлат на шайбах и гайках',
       lform: 'Монолитная перемычка: тяните опалубку из лотка к проёму — днище на стойках и доски по бокам встанут над ним с опорой по 250 мм; потом «Каркас», бетон (ведро / шланг), вибратор, правило; когда наберёт прочность — «Удалить» снимет опалубку',
       blind: this.blind.status(false),
@@ -1120,6 +1148,7 @@ export class WallTool {
     if (id && app.objects.get(id)?.type === 'facade') { this.facade.remove(id, e); return; }
     if (id && app.objects.get(id)?.type === 'blind') { this.blind.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'proof') { this.proof.remove(id); return; }
+    if (id && app.objects.get(id)?.type === 'rail') { app.journal.act('rail-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Ограждение сняли'); return; }
     if (id && app.objects.get(id)?.type === 'rwin') { app.journal.act('rwin-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Окно сняли — кровля снова сплошная'); return; }
     if (id && app.objects.get(id)?.type === 'window') {
       app.journal.act('window-remove', {}, app.clock, () => app.objects.remove(id));

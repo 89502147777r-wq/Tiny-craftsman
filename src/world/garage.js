@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { canvas, normalOf } from './roof.js';
+import { panelTex } from './facade.js';
 
 // The garage doors, built to the opening like the doors (doors.js) — in mm, the local frame
 // of a window: x along the wall, y up from the floor of the opening, z across the wall
@@ -18,6 +19,10 @@ export const GARAGES = {
   gar1: { name: 'Гаражные секционные', kind: 'sectional' },
   gar2: { name: 'Гаражные рулонные', kind: 'roller' },
   gar3: { name: 'Гаражные распашные, дерево', kind: 'swing' },
+  // hidden in the facade: a sectional door whose panels are clad with the facade's own boards
+  // (thermo-walnut planken across), the joints of the sections falling in the boards' gaps; no
+  // handle — an electric operator on a rail under the ceiling opens it
+  gar4: { name: 'Гаражные скрытые, под отделку фасада', kind: 'sectional', flush: true },
 };
 export const GARAGE_SIZE = [1800, 6000, 1200, 3500];   // w from…to, h from…to (mm) (low ones: a shed, a store for the mower, a carport for a quad)
 
@@ -45,6 +50,13 @@ function mats(wood) {
   M.ledge = M.wood.clone(); M.ledge.color.setHex(0x9c7a58);   // (the ledges and braces a shade darker: weathered, oiled)
   return M;
 }
+// the cladding of a hidden door: the facade's thermo-walnut planken (the same boards as on the walls)
+let _clad = null;
+function cladMat() {
+  if (_clad) return _clad;
+  const t = panelTex('wood:walnut');
+  return (_clad = new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.normalMap, roughness: t.roughness }));
+}
 const box = (out, cx, cy, cz, sx, sy, sz) => { const g = new THREE.BoxGeometry(sx, sy, sz); g.translate(cx, cy, cz); out.push(g); };
 const cyl = (out, r, L, cx, cy, cz, axis = 'x', seg = 12) => { const g = new THREE.CylinderGeometry(r, r, L, seg); if (axis === 'x') g.rotateZ(Math.PI / 2); if (axis === 'z') g.rotateX(Math.PI / 2); g.translate(cx, cy, cz); out.push(g); };
 // uv from the position (mm / su, sv) on the face each triangle looks along
@@ -60,14 +72,15 @@ function planarUV(g, su, sv) {
   return g;
 }
 
-function sectional(G, w, h, t) {
+function sectional(G, w, h, t, flush = false) {
   const zi = -t / 2, cw = w + 180, top = h + 90, n = Math.max(3, Math.round(top / 560)), ph = top / n, zc = zi - 32, d = 40;
   // the panels, their joints (a dark line where one closes into the next), two ribs each
   for (let k = 0; k < n; k++) {
     const y0 = k * ph, y1 = y0 + ph;
     box(G.panel, 0, (y0 + y1) / 2, zc, cw, ph - 3, d);
     box(G.groove, 0, y1 - 1.5, zc + d / 2 - 6, cw, 4, 12);
-    for (const f of [1 / 3, 2 / 3]) { box(G.groove, 0, y0 + ph * f, zc + d / 2 + 0.5, cw - 4, 6, 2); box(G.panel, 0, y0 + ph * f + 5, zc + d / 2 + 1.5, cw - 4, 4, 2); }
+    if (flush) box(G.clad, 0, (y0 + y1) / 2, zc + d / 2 + 12, cw - 4, ph - 3, 22);   // (the cladding on the panel: planken on a thin subframe)
+    else for (const f of [1 / 3, 2 / 3]) { box(G.groove, 0, y0 + ph * f, zc + d / 2 + 0.5, cw - 4, 6, 2); box(G.panel, 0, y0 + ph * f + 5, zc + d / 2 + 1.5, cw - 4, 4, 2); }
     // the hinges between the panels and the rollers at the sides (inside)
     if (k) for (const x of [-cw / 2 + 60, -cw / 6, cw / 6, cw / 2 - 60]) box(G.galv, x, y0, zc - d / 2 - 4, 50, 70, 8);
     for (const s of [-1, 1]) cyl(G.galv, 22, 26, s * (cw / 2 + 18), y0 + ph / 2, zc - 10, 'x');
@@ -79,7 +92,14 @@ function sectional(G, w, h, t) {
   for (const s of [-1, 1]) box(G.rubber, s * (w / 2 + 70), top / 2, zi - 6, 30, top, 12);
   box(G.rubber, 0, h + 50, zi - 6, w + 160, 30, 12);
   // the handle outside on the bottom panel
-  box(G.iron, 0, ph * 0.55, zc + d / 2 + 14, 160, 26, 14); for (const s of [-1, 1]) box(G.iron, s * 70, ph * 0.55, zc + d / 2 + 6, 20, 26, 14);
+  if (!flush) { box(G.iron, 0, ph * 0.55, zc + d / 2 + 14, 160, 26, 14); for (const s of [-1, 1]) box(G.iron, s * 70, ph * 0.55, zc + d / 2 + 6, 20, 26, 14); }
+  else {
+    // the operator: a rail down the middle under the ceiling, the motor at its far end, the arm to the top panel
+    const L2 = Math.min(3400, top + 600);
+    box(G.galv, 0, top + 260, zi - 60 - L2 / 2, 60, 40, L2);
+    box(G.aluDark, 0, top + 200, zi - 60 - L2, 260, 160, 380);
+    box(G.galv, 0, top - 40, zi - 70, 30, 220, 30);
+  }
   // the guides up the sides, turned into the tracks under the ceiling, the shaft and springs
   const ty = top + 220, L = Math.min(3200, top + 400);
   for (const s of [-1, 1]) {
@@ -168,14 +188,14 @@ function swing(G, w, h, t) {
 // model's scale, its origin at the middle of the bottom of the opening, in the middle of the wall
 export function buildGarage(key, w, h, t = 300, wood = null) {
   const P = GARAGES[key], MM = mats(wood);
-  const G = { panel: [], panelIn: [], groove: [], galv: [], spring: [], rubber: [], alu: [], aluDark: [], iron: [], frame: [], wood: [], ledge: [] };
-  (P.kind === 'roller' ? roller : P.kind === 'swing' ? swing : sectional)(G, w, h, t);
+  const G = { panel: [], panelIn: [], groove: [], galv: [], spring: [], rubber: [], alu: [], aluDark: [], iron: [], frame: [], wood: [], ledge: [], clad: [] };
+  (P.kind === 'roller' ? roller : P.kind === 'swing' ? swing : sectional)(G, w, h, t, !!P.flush);
   const g = new THREE.Group();
   for (const [k, list] of Object.entries(G)) {
     if (!list.length) continue;
     let geo = mergeGeometries(list.map((q) => { const n = q.index ? q.toNonIndexed() : q; for (const a of Object.keys(n.attributes)) if (a !== 'position') n.deleteAttribute(a); return n; }), false);
-    geo = planarUV(geo, k === 'wood' || k === 'ledge' ? 900 : 300, k === 'wood' || k === 'ledge' ? 1800 : 300);
-    const mesh = new THREE.Mesh(geo, MM[k]);
+    geo = planarUV(geo, k === 'wood' || k === 'ledge' ? 900 : k === 'clad' ? 1000 : 300, k === 'wood' || k === 'ledge' ? 1800 : k === 'clad' ? 1000 : 300);
+    const mesh = new THREE.Mesh(geo, k === 'clad' ? cladMat() : MM[k]);
     mesh.castShadow = true; mesh.receiveShadow = true;
     g.add(mesh);
   }

@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { levels, worked, uLinks, UN } from '../tools/uPour.js';
 import { plan, boardsOf, toWorld, snapS, BELT } from '../tools/belt.js';
 import { SlabFormView, floorUnder } from './slabForm.js';
-import { buildWindow } from './windows.js';
+import { buildWindow, buildCorner } from './windows.js';
+import { buildRail } from './railing.js';
 import { buildDoor, isDoor } from './doors.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
@@ -432,6 +433,7 @@ export class WallView {
     this.liveWin = null;     // { key, w, h, t, x, y, z, yaw }
     // the flat roofs on the slabs (roof.js)
     this.roofs = new THREE.Group(); this.group.add(this.roofs);
+    this.rails = new THREE.Group(); this.group.add(this.rails); this.railDirty = true;
     // the facade on the outside of the walls (facade.js): one group per face
     this.facades = new THREE.Group(); this.group.add(this.facades);
     this.liveFacade = null; this.facadeDirty = true; this._faces = null; this._facKnown = new Set();
@@ -455,12 +457,14 @@ export class WallView {
     objects.on((id, rec) => {
       if (rec?.type === 'blind' || this._blindIds?.has(id)) { this.blindDirty = true; this.proofDirty = true; this.fillDirty = true; return; }
       if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; if (rec?.type === 'proof' || !rec) { this.dirty = true; this._faces = null; this.facadeDirty = true; } return; }   // (the nuts on the studs follow the wall plate)
+      if (rec?.type === 'rail' || this._railIds?.has(id)) { this.railDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
     });
   }
 
   update() {
+    if (this.railDirty || this.liveRail !== this._liveRailAt) this._buildRails();
     if (this.blindStream !== this._streamAt) { this._streamAt = this.blindStream; setStream(this.stream, this.blindStream?.r, this.blindStream); }
     if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); if (this.proofDirty) this._buildProofs(); if (this.blindDirty) this._buildBlinds(); return; }
     this.dirty = false;
@@ -849,19 +853,35 @@ export class WallView {
   _buildWindows() {
     const recs = [...this.objects.all('window'), ...(this.liveWin ? [{ id: 'live', ...this.liveWin }] : [])], seen = new Set();
     for (const r of recs) {
-      const key = `${r.key}:${r.w}:${r.h}:${r.t}:${r.col || 'white'}`;
+      const key = `${r.key}:${r.w}:${r.h}:${r.t}:${r.col || 'white'}:${r.corner ? JSON.stringify(r.corner) : ''}`;
       let e = this._win.get(r.id);
       if (!e || e.key !== key) {
         if (e) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); }
-        const g = (isDoor(r.key) ? buildDoor : buildWindow)(r.key, r.w, r.h, r.t, r.col || 'white');
+        const g = r.corner ? buildCorner(r.corner, r.h, r.col || 'anth') : (isDoor(r.key) ? buildDoor : buildWindow)(r.key, r.w, r.h, r.t, r.col || 'white');
         g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id === 'live' ? null : r.id; });
         this.windows.add(g);
         this._win.set(r.id, (e = { key, group: g }));
       }
-      e.group.position.set(r.x, r.y, r.z); e.group.rotation.set(0, r.yaw, 0);
+      if (r.corner) {
+        // (the corner's own basis: along leg A, up, along leg B; in the model's scale)
+        const c = r.corner, S = 1 / 1000 / MODEL_SCALE;
+        e.group.matrix.makeBasis(new THREE.Vector3(c.dA[0] * S, 0, c.dA[1] * S), new THREE.Vector3(0, S, 0), new THREE.Vector3(c.dB[0] * S, 0, c.dB[1] * S)).setPosition(c.O[0], r.y, c.O[1]);
+        e.group.matrixWorldNeedsUpdate = true;
+      } else { e.group.position.set(r.x, r.y, r.z); e.group.rotation.set(0, r.yaw, 0); }
       seen.add(r.id);
     }
     for (const [id, e] of [...this._win]) if (!seen.has(id)) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); this._win.delete(id); }
+  }
+
+  // the glass railings (and the one in the hand: green — it goes there, red — it does not)
+  _buildRails() {
+    this.railDirty = false; this._liveRailAt = this.liveRail;
+    for (const g of [...this.rails.children]) { this.rails.remove(g); g.traverse((o) => o.geometry?.dispose()); }
+    const recs = this.objects.all('rail');
+    this._railIds = new Set(recs.map((r) => r.id));
+    for (const r of recs) { const g = buildRail(r); g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; }); this.rails.add(g); }
+    const lv = this.liveRail;
+    if (lv) { const g = buildRail(lv.rec, lv.ok ? null : false); g.traverse((o) => { if (o.isMesh) o.userData.noPick = true; }); this.rails.add(g); }
   }
 
   // the roofs: rebuilt with the masonry (the parapet may change)
