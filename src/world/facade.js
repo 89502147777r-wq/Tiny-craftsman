@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { canvas, asTex, normalOf } from './roof.js';
 import { wallLines, masonry, findOpenings } from '../tools/windowFit.js';
@@ -48,6 +49,37 @@ function blob(h, n, x, y, r, v, a = 1) {
     const X = x + ox, Y = y + oy; if (X < -r || Y < -r || X > n + r || Y > n + r) continue;
     const gr = h.createRadialGradient(X, Y, 0, X, Y, r); gr.addColorStop(0, `rgba(${v},${v},${v},${a})`); gr.addColorStop(1, `rgba(${v},${v},${v},0)`); h.fillStyle = gr; h.fillRect(X - r, Y - r, 2 * r, 2 * r);
   }
+}
+
+// ---- the mineral wool of a ventilated facade: a stone-wool slab 1000 × 600, yellow-brown fibres,
+// a denser darker skin on the face, the edges a little ragged --------------------------------------
+export function woolTex() {
+  if (TEX.wool) return TEX.wool;
+  const n = 512, m = 307, c = canvas(n, m), g = c.getContext('2d'), hc = canvas(n, m), h = hc.getContext('2d');
+  g.fillStyle = '#b89a62'; g.fillRect(0, 0, n, m); h.fillStyle = '#808080'; h.fillRect(0, 0, n, m);
+  for (let i = 0; i < 9000; i++) {
+    const x = rnd() * n, y = rnd() * m, l = 3 + rnd() * 12, a = (rnd() - 0.5) * 0.9, v = rnd();
+    g.strokeStyle = v < 0.5 ? `rgba(120,92,50,${0.15 + rnd() * 0.2})` : `rgba(225,200,150,${0.12 + rnd() * 0.2})`; g.lineWidth = 0.6 + rnd() * 0.8;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+    h.strokeStyle = `rgba(${v < 0.5 ? 90 : 170},${v < 0.5 ? 90 : 170},${v < 0.5 ? 90 : 170},0.25)`; h.lineWidth = 1; h.beginPath(); h.moveTo(x, y); h.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); h.stroke();
+  }
+  // the edges: a darker ragged rim (the slabs butt tight, the joint just shows)
+  g.fillStyle = 'rgba(70,50,25,0.55)'; for (let x = 0; x < n; x += 2) { g.fillRect(x, 0, 2, 1 + rnd() * 3); g.fillRect(x, m - 1 - rnd() * 3, 2, 4); } for (let y = 0; y < m; y += 2) { g.fillRect(0, y, 1 + rnd() * 3, 2); g.fillRect(n - 1 - rnd() * 3, y, 4, 2); }
+  bake(c, hc, 0.9, 0.3);
+  const t = asTex(c); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  return (TEX.wool = { map: t, normalMap: normalOf(hc, 4), roughness: 1 });
+}
+// the windproof membrane: a white spun sheet, the maker's print in rows, translucent (the wool
+// shows through a little)
+export function membraneTex() {
+  if (TEX.mb) return TEX.mb;
+  const n = 512, c = canvas(n), g = c.getContext('2d');
+  g.fillStyle = 'rgba(236,238,240,0.86)'; g.fillRect(0, 0, n, n);
+  for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(${rnd() < 0.5 ? '255,255,255' : '160,165,175'},${0.08 + rnd() * 0.1})`; g.fillRect(rnd() * n, rnd() * n, 2 + rnd() * 10, 1 + rnd() * 2); }
+  g.fillStyle = 'rgba(40,90,170,0.75)'; g.font = 'bold 22px Arial';
+  for (let y = 40; y < n; y += 128) for (let x = (y / 128 % 2) * 120; x < n; x += 260) g.fillText('ВЕТРОЗАЩИТА', x, y);
+  const t = asTex(c);
+  return (TEX.mb = { map: t, roughness: 0.75 });
 }
 
 // ---- the insulation: a white EPS board 1000 × 500 (the beads, the stamp, the edges) ------------
@@ -327,8 +359,15 @@ export const tileOf = (f) => (f.kind === 'eps' ? [1000, 500] : f.kind === 'panel
 // insulation and the coats wrap the corner. The openings are holes [a0, y0, a1, y1].
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const CELL = MM(50);   // the grid the coats are spread on (the spatula's dabs)
-export const OFF = { eps: MM(100), glue: MM(103), loose: MM(106), emb: MM(105), wet: MM(108), fin: MM(108), pan: MM(120) };
+export const OFF = { eps: MM(100), glue: MM(103), loose: MM(106), emb: MM(105), wet: MM(108), fin: MM(108), pan: MM(120), mw: MM(100), mb: MM(101), rl: MM(145), vent0: MM(167), vent: MM(177) };
 export const LAYERS = [['eps', 'Утеплитель'], ['glue', 'Клей'], ['mesh', 'Сетка'], ['emb', 'Вдавить сетку'], ['pl', 'Штукатурка'], ['fl', 'Затирка'], ['pan', 'Панели']];
+// the ventilated facade (НВФ), as it goes up on site: brackets dowelled to the wall on the rails'
+// lines; mineral wool slabs 1000 × 600 × 100 between them, two plate dowels each; the windproof
+// membrane over the wool (rolls 1.5 m, 100 laps); the aluminium rails (T at the panels' joints,
+// L between) on the brackets; the panels riveted / clipped / hung on the rails (a 40 mm air gap
+// behind them, the joints open)
+export const VLAYERS = [['br', 'Кронштейны'], ['mw', 'Минвата'], ['mb', 'Мембрана'], ['rl', 'Направляющие'], ['vp', 'Панели']];
+export const VENT_SUB = { col: 600, row: 800, row0: 300, mwL: 1000, mwW: 600, mbW: 1500, mbLap: 100 };
 
 const across = (b, nx, nz) => Math.abs(b.hl * (b.ux * nx + b.uz * nz)) + Math.abs(b.hw * (-b.uz * nx + b.ux * nz));
 export function facadeFaces(objects) {
@@ -537,6 +576,43 @@ export function slotAt(F, a, y, kind, mod = [1000, 500]) {
   const s0 = fromLeft ? base + col * MM(L) : base - (col + 1) * MM(L), t0 = e[1] + row * MM(H);
   return [s0, t0, s0 + MM(L), t0 + MM(H)].map((v) => +v.toFixed(6));
 }
+// the lines of the rails (along the face, model): every 600 mm from the face's left end (as seen
+// from outside) — the panels' joints fall on every other one — the ends 40 mm in
+export function railCols(F) {
+  const e = ext(F, OFF.vent), C = MM(VENT_SUB.col), out = [], fromLeft = F.ru > 0;
+  for (let k = 0; ; k++) {
+    let a = fromLeft ? e[0] + k * C : e[2] - k * C;
+    if (fromLeft ? a > e[2] + MM(1) : a < e[0] - MM(1)) break;
+    a = Math.max(e[0] + MM(40), Math.min(e[2] - MM(40), a));
+    out.push(+a.toFixed(6));
+  }
+  // (and one more each side of an opening, 70 mm off its jamb: the cut panels by it rest on it)
+  for (const h of F.holes) for (const a of [h[0] - MM(70), h[2] + MM(70)]) if (a > e[0] + MM(40) && a < e[2] - MM(40) && !out.some((c) => Math.abs(c - a) < MM(150))) out.push(+a.toFixed(6));
+  return out.sort((p, q) => p - q);
+}
+// the heights of the brackets on a rail's line: 300 mm up from the face's bottom, every 800
+export function bracketRows(F) {
+  const out = [];
+  for (let y = F.y0 + MM(VENT_SUB.row0); y < F.y1 - MM(100); y += MM(VENT_SUB.row)) out.push(+y.toFixed(6));
+  return out;
+}
+// a slot of the wool (staggered by half) or of a ventilated panel (its own size), from the face's
+// bottom and its left end
+export function ventSlot(F, a, y, kind, mod) {
+  const [L, H] = kind === 'mw' ? [VENT_SUB.mwL, VENT_SUB.mwW] : mod, e = ext(F, kind === 'mw' ? OFF.mw : OFF.vent);
+  const row = Math.floor((y - e[1]) / MM(H)), off = kind === 'mw' && row % 2 ? MM(L / 2) : 0, fromLeft = F.ru > 0;
+  const base = fromLeft ? e[0] - off : e[2] + off, col = Math.floor((fromLeft ? a - base : base - a) / MM(L));
+  const s0 = fromLeft ? base + col * MM(L) : base - (col + 1) * MM(L), t0 = e[1] + row * MM(H);
+  return [s0, t0, s0 + MM(L), t0 + MM(H)].map((v) => +v.toFixed(6));
+}
+// whether the panel (its pieces as cut to the face: by an opening it is shorter) rests on rails: in
+// it (a joint rail at its edge counts) running over most of its height — two, a narrow strip one
+export function railsHold(rec, pieces) {
+  if (!pieces.length) return false;
+  const a0 = Math.min(...pieces.map((r) => r[0])), a1 = Math.max(...pieces.map((r) => r[2])), y0 = Math.min(...pieces.map((r) => r[1])), y1 = Math.max(...pieces.map((r) => r[3]));
+  const n = (rec?.rl || []).filter(([a, r0, r1]) => a >= a0 - MM(5) && a <= a1 + MM(5) && Math.min(r1, y1) - Math.max(r0, y0) > (y1 - y0) * 0.6).length;
+  return n >= (a1 - a0 < MM(450) ? 1 : 2);
+}
 export const sameSlot = (p, q) => Math.abs(p[0] - q[0]) < MM(2) && Math.abs(p[1] - q[1]) < MM(2);
 
 // ---- the model of a face ------------------------------------------------------------------------
@@ -599,6 +675,7 @@ export function buildFacade(F, rec, live, recG = null) {
   if (live) {
     if (live.layer === 'eps' && live.slot) ghost = { kind: 'eps', slot: live.slot, ok: live.ok };
     if (live.layer === 'pan' && live.slot) ghost = { kind: 'pan', slot: live.slot, ok: live.ok, key: live.key };
+    if ((live.layer === 'mw' || live.layer === 'vp') && live.slot) ghost = { kind: live.layer, slot: live.slot, ok: live.ok, key: live.key };
     if (live.layer === 'mesh' && live.rect) mesh.push(live.rect);
     const add = (set) => { for (const k of live.cells || []) set.add(k); };
     if (live.layer === 'glue') add(glue);
@@ -671,6 +748,75 @@ export function buildFacade(F, rec, live, recG = null) {
     for (const p of ps) board(gp, F, cutPiece(F, p, OFF.pan).map((r) => [r[0] + MM(1), r[1] + MM(1), r[2] - MM(1), r[3] - MM(1)]), OFF.eps, OFF.pan, vent ? md : [1000, 1000], vent ? (F.ru > 0 ? [p[0], p[1]] : [p[2], p[1]]) : [0, 0]);
     add(gp.mesh(mat('pan' + key, () => stdMat(panelTex(key)))));
   }
+  // ---- the ventilated facade ----
+  const n3 = new THREE.Vector3(F.sg * F.nx, 0, F.sg * F.nz), u3 = new THREE.Vector3(F.ux * F.sg, 0, F.uz * F.sg), up3 = new THREE.Vector3(0, 1, 0), m4 = new THREE.Matrix4();
+  const at = (a, y, off) => m4.makeBasis(u3, up3, n3).setPosition(...W(F, a, y, off));
+  const alu = mat('alu', () => new THREE.MeshStandardMaterial({ color: 0xc7ccd1, metalness: 0.75, roughness: 0.38 }));
+  // the brackets: an L of 2 mm aluminium (its foot dowelled to the wall on a paronite pad), the arm out to the rail
+  const br = [...(rec.br || []), ...(live?.layer === 'br' ? live.pts || [] : [])];
+  if (br.length) {
+    const im = new THREE.InstancedMesh(bracketGeo(), alu, br.length);
+    br.forEach(([a, y], i) => im.setMatrixAt(i, at(a, y, 0)));
+    im.castShadow = true; group.add(im);
+  }
+  // the mineral wool slabs (slit round the brackets — they come through), two plate dowels each
+  const mw = [...(rec.mw || [])], gw = new Geo(), wd = [];
+  if (ghost?.kind === 'mw' && ghost.ok) mw.push(ghost.slot);
+  for (const s of mw) {
+    board(gw, F, cutPiece(F, s, OFF.mw), 0, OFF.mw, [VENT_SUB.mwL, VENT_SUB.mwW], F.ru > 0 ? [s[0], s[1]] : [s[2], s[1]]);
+    for (const [da, dy] of [[250, 300], [750, 300]]) { const a = F.ru > 0 ? s[0] + MM(da) : s[2] - MM(da), y = s[1] + MM(dy); if (cutPiece(F, s, OFF.mw).some((r) => inR(r, a, y))) wd.push(W(F, a, y, OFF.mw + MM(2))); }
+  }
+  add(gw.mesh(mat('wool', () => stdMat(woolTex()))));
+  if (wd.length) {
+    const dm = new THREE.InstancedMesh(new THREE.CylinderGeometry(MM(45), MM(45), MM(3), 16), mat('plateDowel', () => new THREE.MeshStandardMaterial({ color: '#d9d9d4', roughness: 0.5 })), wd.length);
+    const q = new THREE.Quaternion().setFromUnitVectors(up3, n3);
+    wd.forEach((p, i) => dm.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(...p), q, new THREE.Vector3(1, 1, 1))));
+    dm.castShadow = true; group.add(dm);
+  }
+  // the membrane: strips over the wool, taut, translucent
+  const mb = [...(rec.mb || []), ...(live?.layer === 'mb' && live.rect ? [live.rect] : [])], gm2 = new Geo();
+  for (const r of mb) sheet(gm2, F, cutPiece(F, r, OFF.mb), OFF.mb + MM(0.5 * (mb.indexOf(r) % 2)), [1500, 1500], [r[0], r[1]]);
+  add(gm2.mesh(mat('membrane', () => { const t = membraneTex(); const m = new THREE.MeshStandardMaterial({ map: t.map, roughness: t.roughness, transparent: true, depthWrite: true, side: THREE.DoubleSide }); m.polygonOffset = true; m.polygonOffsetFactor = -1; return m; })));
+  // the rails: a T (100 face × 2, the web 45 deep back to the brackets) along their runs
+  const rl = [...(rec.rl || []), ...(live?.layer === 'rl' && live.rail ? [live.rail] : [])], gr = new Geo();
+  for (const [a, y0, y1] of rl) { boxUV(gr, F, a - MM(1), a + MM(1), OFF.rl - MM(20), OFF.vent0, y0, y1, [0, 0, 1, 1]); boxUV(gr, F, a - MM(40), a + MM(40), OFF.vent0 - MM(2), OFF.vent0, y0, y1, [0, 0, 1, 1]); }
+  add(gr.mesh(alu));
+  // the panels on the rails, each its own piece of the pattern
+  const vp = [...(rec.vp || [])];
+  if (ghost?.kind === 'vp' && ghost.ok) vp.push([...ghost.slot, ghost.key]);
+  const byV = {};
+  for (const p of vp) (byV[p[4]] || (byV[p[4]] = [])).push(p);
+  for (const [key, ps] of Object.entries(byV)) {
+    const gp = new Geo(), md = panelMod(key);
+    for (const p of ps) board(gp, F, cutPiece(F, p, OFF.vent).map((r) => [r[0] + MM(1), r[1] + MM(1), r[2] - MM(1), r[3] - MM(1)]), OFF.vent0, OFF.vent, md, F.ru > 0 ? [p[0], p[1]] : [p[2], p[1]]);
+    add(gp.mesh(mat('pan' + key, () => stdMat(panelTex(key)))));
+  }
+  // the openings framed where the panels come up to them: the jambs and the head lined with
+  // steel sheet in the panels' colour from the wall's face out to the panels' face, the sill
+  // a flashing (отлив) standing 40 mm proud with a drip
+  if (vp.length) for (const h of F.holes) {
+    const near = vp.find((p) => p[0] < h[2] + MM(150) && p[2] > h[0] - MM(150) && p[1] < h[3] + MM(150) && p[3] > h[1] - MM(150));
+    if (!near) continue;
+    const cols = PANELS[near[4]][2], gf = new Geo(), t = MM(1.2), R0 = [0.5, 0.5, 0.5, 0.5];
+    // (1 mm into the opening: over the cut edges of the wool and the membrane)
+    boxUV(gf, F, h[0] + MM(1), h[0] + MM(1) + t, MM(2), OFF.vent, h[1], h[3] - MM(1), R0);
+    boxUV(gf, F, h[2] - MM(1) - t, h[2] - MM(1), MM(2), OFF.vent, h[1], h[3] - MM(1), R0);
+    if (!F.topAt || h[3] < F.topAt((h[0] + h[2]) / 2) - MM(30)) boxUV(gf, F, h[0] + MM(1), h[2] - MM(1), MM(2), OFF.vent, h[3] - MM(1) - t, h[3] - MM(1), R0);
+    const ys = h[1];
+    if (ys > F.y0 + MM(50)) { boxUV(gf, F, h[0] - MM(20), h[2] + MM(20), MM(2), OFF.vent + MM(40), ys, ys + t * 1.5, R0); boxUV(gf, F, h[0] - MM(20), h[2] + MM(20), OFF.vent + MM(38), OFF.vent + MM(40), ys - MM(25), ys, R0); }
+    group.add(gf.mesh(mat('reveal' + near[4], () => new THREE.MeshStandardMaterial({ color: cols[0], metalness: 0.35, roughness: 0.5 }))));
+  }
+  // its corners: an angle over the panels' ends where both faces are clad
+  for (const e of [0, 1]) {
+    const cn = e ? F.cn1 : F.cn0;
+    if (!cn || (e ? F.wrap1 : F.wrap0) || !recG || !vp.length) continue;
+    const gp = recG(cn.G)?.vp || [];
+    if (!gp.length) continue;
+    const aEnd = e ? F.a1 : F.a0, mine = vp.filter((p) => (e ? p[2] >= aEnd - MM(5) : p[0] <= aEnd + MM(5)));
+    const theirs = gp.filter((p) => p[0] <= cn.aF + OFF.vent + MM(5) && p[2] >= cn.aF - OFF.vent - MM(5));
+    const top = F.topAt ? F.topAt(aEnd) : Infinity;
+    for (const [y0, y1, key] of overlapY(mine, theirs)) if (Math.min(y1, top) - y0 > MM(40)) ventCorner(group, F, e, aEnd, y0, Math.min(y1, top), key);
+  }
   // the corners: built by the face that stops at one (the other runs on round it), where both
   // are clad with panels at the same heights
   for (const e of [0, 1]) {
@@ -684,8 +830,8 @@ export function buildFacade(F, rec, live, recG = null) {
     for (const [y0, y1, key] of overlapY(mine, theirs)) if (Math.min(y1, top) - y0 > MM(40)) cornerPieces(group, F, e, aEnd, y0, Math.min(y1, top), key);
   }
   // the board in the hand: where it goes (green / red)
-  if (ghost?.kind === 'eps' || (ghost?.kind === 'pan' && !ghost.ok)) {
-    const gh = new Geo(), o0 = ghost.kind === 'eps' ? 0 : OFF.eps, o1 = ghost.kind === 'eps' ? OFF.eps : OFF.pan;
+  if (ghost?.kind === 'eps' || (['pan', 'mw', 'vp'].includes(ghost?.kind) && !ghost.ok)) {
+    const gh = new Geo(), o0 = ghost.kind === 'eps' || ghost.kind === 'mw' ? 0 : ghost.kind === 'vp' ? OFF.vent0 : OFF.eps, o1 = ghost.kind === 'eps' || ghost.kind === 'mw' ? OFF.eps : ghost.kind === 'vp' ? OFF.vent : OFF.pan;
     board(gh, F, cutPiece(F, ghost.slot, o1), o0 + MM(1), o1 + MM(1), [FACADE.epsL, FACADE.epsW], F.ru > 0 ? [ghost.slot[0], ghost.slot[1]] : [ghost.slot[2], ghost.slot[1]]);
     const m = gh.mesh(ghost.ok && ghost.kind === 'eps' ? mat('epsGhost', () => stdMat(epsTex(), { emissive: 0x1d6b33, emissiveIntensity: 0.35 })) : mat('ghostRed', () => new THREE.MeshBasicMaterial({ color: 0xd04040, transparent: true, opacity: 0.5, depthWrite: false })));
     if (m) { m.castShadow = false; m.userData.noPick = true; group.add(m); }
@@ -765,6 +911,22 @@ function cornerPieces(group, F, e, aEnd, y0, y1, key) {
   boxUV(geo, F, ac + s * t - s * w, ac + s * t, OFF.pan, OFF.pan + t, y0, y1, uv, true);
   boxUV(geo, F, ac, ac + s * t, OFF.pan + t - w, OFF.pan + t, y0, y1, uv, true);
   group.add(geo.mesh(mat('pan' + key, () => stdMat(panelTex(key)))));
+}
+// a facade bracket (local: x along the face, y up, z out of the wall): the foot 50 wide × 100 high on
+// the wall, a paronite pad under it, the arm 80 high out to the rail's line
+let _brGeo = null;
+function bracketGeo() {
+  if (_brGeo) return _brGeo;
+  const b = (w, h, d, x, y, z) => new THREE.BoxGeometry(MM(w), MM(h), MM(d)).translate(MM(x), MM(y), MM(z));
+  return (_brGeo = mergeGeometries([b(50, 100, 3, 0, 0, 1.5), b(2, 80, 150, 0, 0, 75), b(50, 2, 6, 0, -40, 4)]));
+}
+// a ventilated facade's corner: a folded aluminium angle 50 × 50 over the panels' ends, coated in
+// their colour
+function ventCorner(group, F, e, aEnd, y0, y1, key) {
+  const [, , cols] = PANELS[key], s = e ? 1 : -1, ac = aEnd + s * OFF.vent, t = MM(1.5), w = MM(50), geo = new Geo();
+  boxUV(geo, F, ac + s * t - s * w, ac + s * t, OFF.vent, OFF.vent + t, y0, y1, [0.5, 0.5, 0.5, 0.5]);
+  boxUV(geo, F, ac, ac + s * t, OFF.vent + t - w, OFF.vent + t, y0, y1, [0.5, 0.5, 0.5, 0.5]);
+  group.add(geo.mesh(mat('angle' + key, () => new THREE.MeshStandardMaterial({ color: cols[0], metalness: 0.4, roughness: 0.45 }))));
 }
 // the quoins: four dressed blocks (2 × 2 in the picture), a chiselled margin round each face
 function quoinTex(cols) {
