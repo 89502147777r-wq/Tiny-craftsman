@@ -39,6 +39,7 @@ import { Sfx } from './audio/sfx.js';
 import { UI } from './ui/ui.js';
 import { ProjectView } from './world/projectView.js';
 import { PoolView } from './world/poolView.js';
+import { HandTools } from './world/handTools.js';
 
 const app = (window.__tc = { ready: false, BUILD });
 
@@ -97,6 +98,7 @@ async function main() {
   app.shovel.setType(app.settings.shovel);
   app.rake = new Rake(tex); scene.add(app.rake.root);
   app.concreteGear = new ConcreteGear(); scene.add(app.concreteGear.root);
+  app.handTools = new HandTools(); scene.add(app.handTools.root);
   app.dust = makeDust(); scene.add(app.dust.points);
 
   app.objects = new ObjectStore();

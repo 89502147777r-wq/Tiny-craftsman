@@ -79,6 +79,7 @@ export class WallTool {
       const g = (e) => this._pt(app.gestures.ground(e.clientX, e.clientY) || this._lastP || new THREE.Vector3(), e);
       this.tray.addEventListener('pointerdown', (e) => {
         e.preventDefault(); e.stopPropagation();
+        if (app.physJob?.fit) app.physJob.finish();   // (the last piece's fitting: done at once)
         if (this.mode !== 'lay' || app.physJob || app.physLoading) return;
         if (this.kind === 'roof' && !this.roof.isCarry) { app.ui.toast(this.roof.status(false)); return; }
         if (this.kind === 'facade' && !this.facade.isCarry) { app.ui.toast(this.facade.status(false)); return; }

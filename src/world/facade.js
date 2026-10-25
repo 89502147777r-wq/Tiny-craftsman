@@ -663,6 +663,17 @@ function board(geo, F, rects, off0, off1, tile, o) {
 // cells cut to the face and the openings
 function cellsCut(F, set, off) { let out = []; for (const r of cellRects(set)) out.push(...cutPiece(F, r, off)); return out; }
 const DOWELS = [[100, 100], [900, 100], [500, 250], [100, 400], [900, 400]];
+// where the dowels of a board / a wool slab go ([a, y] on the face)
+export function epsDowels(F, s) {
+  const out = [], P = cutPiece(F, s, OFF.eps);
+  for (const [da, dy] of DOWELS) { const a = F.ru > 0 ? s[0] + MM(da) : s[2] - MM(da), y = s[1] + MM(dy); if (P.some((r) => inR(r, a, y)) && !(F.topAt && y > F.topAt(a) - MM(40))) out.push([a, y]); }
+  return out;
+}
+export function woolDowels(F, s) {
+  const out = [], P = cutPiece(F, s, OFF.mw);
+  for (const [da, dy] of [[250, 300], [750, 300]]) { const a = F.ru > 0 ? s[0] + MM(da) : s[2] - MM(da), y = s[1] + MM(dy); if (P.some((r) => inR(r, a, y))) out.push([a, y]); }
+  return out;
+}
 
 // rec: { eps, glue, mesh, emb, pl: {variant: runs}, fl: { v, h }, pan }; live (the hand):
 // { layer, slot | rect | cells, variant, dir, tool: { kind, a, y } }
@@ -692,14 +703,14 @@ export function buildFacade(F, rec, live, recG = null) {
       if (!cutPiece(F, s, OFF.eps).some((r) => inR(r, a, y))) continue;
       if (F.topAt && y > F.topAt(a) - MM(40)) continue;   // (a board cut along a gable's slope: not in the part cut off)
       if (glue.has(ck(Math.floor(a / CELL), Math.floor(y / CELL)))) continue;
-      gd.push(W(F, a, y, OFF.eps + MM(2)));
+      if (!rec._piece) gd.push(W(F, a, y, OFF.eps + MM(2)));
     }
   }
   const add = (m) => { if (m) group.add(m); return m; };
   add(ge.mesh(mat('eps', () => stdMat(epsTex()))));
   // over a plinth standing out: the starter track (цокольный профиль) the first row of
   // boards stands in — its base under them, a lip up their face, a drip over the plinth
-  if (F.ledge && eps.length) {
+  if (F.ledge && eps.length && !rec._piece) {
     const alu = mat('track', () => new THREE.MeshStandardMaterial({ color: 0xc4c8cc, metalness: 0.8, roughness: 0.35 })), yaw = Math.atan2(-F.uz, F.ux), am = (F.a0 + F.a1) / 2, L = F.a1 - F.a0;
     for (const [y, h, o, d] of [[F.y0 + MM(1), MM(2), OFF.eps / 2, OFF.eps + MM(4)], [F.y0 + MM(15), MM(30), OFF.eps + MM(2), MM(2)], [F.y0 - MM(4), MM(8), OFF.eps + MM(5), MM(3)]]) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(L, h, d), alu); m.position.set(...W(F, am, y, o)); m.rotation.y = yaw; m.castShadow = true; group.add(m);
@@ -764,7 +775,7 @@ export function buildFacade(F, rec, live, recG = null) {
   if (ghost?.kind === 'mw' && ghost.ok) mw.push(ghost.slot);
   for (const s of mw) {
     board(gw, F, cutPiece(F, s, OFF.mw), 0, OFF.mw, [VENT_SUB.mwL, VENT_SUB.mwW], F.ru > 0 ? [s[0], s[1]] : [s[2], s[1]]);
-    for (const [da, dy] of [[250, 300], [750, 300]]) { const a = F.ru > 0 ? s[0] + MM(da) : s[2] - MM(da), y = s[1] + MM(dy); if (cutPiece(F, s, OFF.mw).some((r) => inR(r, a, y))) wd.push(W(F, a, y, OFF.mw + MM(2))); }
+    if (!rec._piece) for (const [a, y] of woolDowels(F, s)) wd.push(W(F, a, y, OFF.mw + MM(2)));
   }
   add(gw.mesh(mat('wool', () => stdMat(woolTex()))));
   if (wd.length) {

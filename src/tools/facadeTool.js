@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
+import { FitJob, bring, wait, drill, drive, hammer, part, at } from './fitJob.js';
+import { buildFacade, W, epsDowels, woolDowels, FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
 
 // The facade done by hand (facade.js), on the outside of the walls:
 //   eps  – the boards carried from the tray, one by one, staggered, cut at the openings and
@@ -214,8 +215,11 @@ export class FacadeWork {
     const app = this.app, L = this.layer, F = d.F;
     if (L === 'br') {
       if (!d.pts.size) { app.ui.toast('Здесь кронштейны уже стоят (или проём)'); return; }
-      this._save(F, { br: [...(rec.br || []), ...d.pts.values()] }, 'facade-brackets');
-      app.ui.toast(`Кронштейнов: ${d.pts.size} — на анкер-дюбели, паронитовая прокладка от мостика холода`);
+      const pts = [...d.pts.values()];
+      this._fitBrackets(F, pts, () => {
+        this._save(F, { br: [...(this._rec(F)?.br || []), ...pts] }, 'facade-brackets');
+        app.ui.toast(`Кронштейнов: ${pts.length} — на анкер-дюбели, паронитовая прокладка от мостика холода`);
+      });
       return;
     }
     if (!d.rail) { app.ui.toast('Направляющая: проведите пальцем вверх или вниз вдоль линии кронштейнов'); return; }
@@ -292,22 +296,89 @@ export class FacadeWork {
     this.place = null; this._live(null);
     if (!P) { app.ui.toast(`${L === 'eps' ? 'Лист утеплителя' : 'Панель'} — на наружную сторону стены`); return; }
     if (P.why) { app.ui.toast(P.why); return; }
-    const rec = this._rec(P.F) || {};
+    const F = P.F, rec = () => this._rec(F) || {};
     if (L === 'mw') {
-      this._save(P.F, { mw: [...(rec.mw || []), P.slot] }, 'facade-wool');
-      app.ui.toast(`Плита минваты ${P.size[0]} × ${P.size[1]} × 100${P.cut ? ' — подрезана по месту' : ''}: надрезана под кронштейны, 2 тарельчатых дюбеля`);
+      this._fit(P, 'mw', null, () => {
+        this._save(F, { mw: [...(rec().mw || []), P.slot] }, 'facade-wool');
+        app.ui.toast(`Плита минваты ${P.size[0]} × ${P.size[1]} × 100${P.cut ? ' — подрезана по месту' : ''}: надрезана под кронштейны, 2 тарельчатых дюбеля`);
+      });
     } else if (L === 'vp') {
       const key = this.ventKey, kind = key.split(':')[0];
-      this._save(P.F, { vp: [...(rec.vp || []), [...P.slot, key]] }, 'facade-vent');
-      app.ui.toast(`${PANELS[key][0]}: ${P.size[0]} × ${P.size[1]} мм${P.cut ? ' — подрезана' : ''} — ${{ porc: 'на кляммеры', fc: 'на заклёпки', hpl: 'на заклёпки', cas: 'навешена на крючки' }[kind]}, шов 8–10 мм открытый`);
+      this._fit(P, 'vp', key, () => {
+        this._save(F, { vp: [...(rec().vp || []), [...P.slot, key]] }, 'facade-vent');
+        app.ui.toast(`${PANELS[key][0]}: ${P.size[0]} × ${P.size[1]} мм${P.cut ? ' — подрезана' : ''} — ${{ porc: 'на кляммеры', fc: 'на заклёпки', hpl: 'на заклёпки', cas: 'навешена на крючки' }[kind]}, шов 8–10 мм открытый`);
+      });
     } else if (L === 'eps') {
-      this._save(P.F, { eps: [...(rec.eps || []), P.slot] }, 'facade-eps');
-      app.ui.toast(`Лист ППС ${P.size[0]} × ${P.size[1]} мм на клей${P.cut ? ' — подрезан по месту' : ''}, 5 дюбелей-грибков`);
+      this._fit(P, 'eps', null, () => {
+        this._save(F, { eps: [...(rec().eps || []), P.slot] }, 'facade-eps');
+        app.ui.toast(`Лист ППС ${P.size[0]} × ${P.size[1]} мм на клей${P.cut ? ' — подрезан по месту' : ''}, 5 дюбелей-грибков`);
+      });
     } else {
       const key = app.settings.facPanel || 'stone:sandstone';
-      this._save(P.F, { pan: [...(rec.pan || []), [...P.slot, key]] }, 'facade-panel');
-      app.ui.toast(`${PANELS[key][0]}: панель ${P.size[0]} × ${P.size[1]} мм${P.cut ? ' — подрезана по месту' : ''}`);
+      this._fit(P, 'pan', key, () => {
+        this._save(F, { pan: [...(rec().pan || []), [...P.slot, key]] }, 'facade-panel');
+        app.ui.toast(`${PANELS[key][0]}: панель ${P.size[0]} × ${P.size[1]} мм${P.cut ? ' — подрезана по месту' : ''}`);
+      });
     }
+  }
+
+  // ---- fitting (fitJob.js): the piece put up as on site, then saved ----
+  // a board of insulation: glue round its edge and in dabs on its back, pressed to the wall,
+  // then the dowels — a hole drilled through it into the wall, the dowel pushed in, two taps
+  // of the hammer; a wool slab: pushed over the brackets, two plate dowels; a panel: set on
+  // (onto the rails), screwed at its corners
+  _fit(P, L, key, save) {
+    const app = this.app, F = P.F, s = P.slot, n = new THREE.Vector3(F.sg * F.nx, 0, F.sg * F.nz);
+    const V = (a, y, off) => new THREE.Vector3(...W(F, a, y, off));
+    const g = buildFacade(F, { _piece: true, [L]: [key ? [...s, key] : s] }, null);
+    const parts = [g], steps = [];
+    const pc = cutPiece(F, s, L === 'eps' ? OFF.eps : L === 'mw' ? OFF.mw : L === 'vp' ? OFF.vent : OFF.pan);
+    if (L === 'eps') {
+      // (the glue on its back: a strip 40 in from the edge, three dabs in the middle)
+      for (const r of pc) {
+        const i = MM(50), st = MM(150);
+        for (let a = r[0] + i; a <= r[2] - i + 1e-6; a += st) for (const y of [r[1] + i, r[3] - i]) { const b = at(part('blob'), V(a, y, MM(1)), n); b.userData.obj.visible = true; b.userData.obj.scale.set(0.7, 0.7, 1.2); g.add(b); }
+        for (let y = r[1] + i + st; y < r[3] - i - 1e-6; y += st) for (const a of [r[0] + i, r[2] - i]) { const b = at(part('blob'), V(a, y, MM(1)), n); b.userData.obj.visible = true; b.userData.obj.scale.set(0.7, 0.7, 1.2); g.add(b); }
+        for (const f of [0.3, 0.5, 0.7]) { const b = at(part('blob'), V(r[0] + (r[2] - r[0]) * f, (r[1] + r[3]) / 2, MM(1)), n); b.userData.obj.visible = true; b.userData.obj.scale.set(1.6, 1.6, 1.5); g.add(b); }
+      }
+      steps.push(bring(g, n.clone().multiplyScalar(MM(350)), 0.55), [0.18, (u) => g.position.copy(n).multiplyScalar(-MM(4) * Math.sin(u * Math.PI))], wait(0.1));
+      for (const [a, y] of epsDowels(F, s)) {
+        const p = V(a, y, OFF.eps), d = at(part('dowel'), p, n), o = d.userData.obj;
+        parts.push(d);
+        steps.push(drill(app, p, n, 0.32, 160), [0.1, (u) => { o.visible = true; o.position.z = MM(80) * (1 - u) + MM(4) * u; }], hammer(app, p.clone().addScaledVector(n, MM(4)), n, 2, 0.14, (k) => { o.position.z = k >= 2 ? 0 : MM(2); }));
+      }
+    } else if (L === 'mw') {
+      steps.push(bring(g, n.clone().multiplyScalar(MM(300)), 0.5), wait(0.1));
+      for (const [a, y] of woolDowels(F, s)) {
+        const p = V(a, y, OFF.mw), d = at(part('plate'), p, n), o = d.userData.obj;
+        parts.push(d);
+        steps.push(drill(app, p, n, 0.36, 170), [0.1, (u) => { o.visible = true; o.position.z = MM(80) * (1 - u) + MM(3) * u; }], hammer(app, p.clone().addScaledVector(n, MM(3)), n, 2, 0.14, (k) => { o.position.z = k >= 2 ? 0 : MM(1.5); }));
+      }
+    } else {
+      // (a panel: brought on, then the screwdriver at its corners — on the clamps / the rivets)
+      steps.push(bring(g, n.clone().multiplyScalar(MM(220)), 0.5), wait(0.08));
+      const off = L === 'vp' ? OFF.vent : OFF.pan;
+      for (const r of pc.slice(0, 1)) for (const [a, y] of [[r[0] + MM(40), r[1] + MM(40)], [r[2] - MM(40), r[1] + MM(40)], [r[2] - MM(40), r[3] - MM(40)], [r[0] + MM(40), r[3] - MM(40)]]) steps.push(drive(app, V(a, y, off), n, null, 0.28));
+    }
+    new FitJob(app, { steps, parts, commit: save });
+  }
+  // the brackets: one by hand — two holes, the anchor dowels driven, the level against it;
+  // a row of them along the finger's way — each quickly (a hole, an anchor)
+  _fitBrackets(F, pts, save) {
+    const app = this.app, n = new THREE.Vector3(F.sg * F.nx, 0, F.sg * F.nz), V = (a, y, off) => new THREE.Vector3(...W(F, a, y, off));
+    const parts = [], steps = [], one = pts.length === 1, k = one ? 1 : Math.min(1, 3.5 / (pts.length * 0.42));
+    for (const [a, y] of pts) {
+      const g = buildFacade(F, { _piece: true, br: [[a, y]] }, null);
+      g.visible = false; parts.push(g);
+      steps.push(bring(g, n.clone().multiplyScalar(MM(150)), (one ? 0.35 : 0.12) * k));
+      for (const dy of one ? [MM(-35), MM(35)] : [0]) {
+        const p = V(a, y + dy, MM(4)), an = at(part('anchor'), p, n);
+        parts.push(an);
+        steps.push(drill(app, p, n, (one ? 0.35 : 0.18) * k, 70), drive(app, p, n, an.userData.obj, (one ? 0.3 : 0.12) * k));
+      }
+      if (one) steps.push([0.45, (u) => app.handTools.set('level', V(a + MM(30), y, MM(80)), n, null, 0)]);
+    }
+    new FitJob(app, { steps, parts, commit: save });
   }
   status(carry) {
     const L = this.layer;
