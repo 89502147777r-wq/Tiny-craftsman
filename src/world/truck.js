@@ -49,7 +49,7 @@ export class Truck {
     // what it carries: a little ground of its own over the body's floor (~14 % up its sides) — a grid
     // of heights: a bucketful lands as a heap where it is tipped and slumps to its angle of repose
     const L = bb.max.x - bb.min.x, W = bb.max.z - bb.min.z, H = bb.max.y - bb.min.y;
-    this.NX = 16; this.NZ = 9;
+    this.NX = 32; this.NZ = 18;   // (a cell ≈ 9 cm: a first bucketful is a small heap, not a layer)
     this.hx = L * 0.9; this.hz = W * 0.86; this.x0 = L * 0.04; this.floor = H * 0.14; this.hMax = H * 1.05;
     // (the floor where it really is: felt from above down the middle of the body — what lies on it
     // starts on it, its thin edges are not hidden under it)
@@ -126,7 +126,7 @@ export class Truck {
     if (!this.bed || !(frac > 0)) return;
     const q = this.bed.worldToLocal(p.clone()), NX = this.NX, NZ = this.NZ;
     const cx = Math.max(1, Math.min(NX - 2, (q.x - this.x0) / this.hx * (NX - 1))), cz = Math.max(1, Math.min(NZ - 2, (q.z / this.hz + 0.5) * (NZ - 1)));
-    const vol = frac * this.cap, w = [], r = 1.6;
+    const vol = frac * this.cap, w = [], r = 3.0;
     let sum = 0;
     for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) { const d2 = ((ix - cx) ** 2 + (iz - cz) ** 2) / (r * r), k = Math.exp(-d2); w.push(k); sum += k; }
     for (let i = 0; i < w.length; i++) this.hf[i] += vol * w[i] / sum / this.cA;
@@ -142,7 +142,7 @@ export class Truck {
     if (this.tip < 0.12) return 0;
     const NX = this.NX, NZ = this.NZ, h = this.hf, s = Math.sin(this.tip) * this.hx / (NX - 1) * 0.5;
     // (down the slope of the body toward the rear: the steeper, the more of each cell moves on)
-    const k = Math.min(0.5, dt * 6 * Math.max(0, Math.tan(this.tip) - 0.25));
+    const k = Math.min(0.5, dt * 6 * (this.NX / 16) * Math.max(0, Math.tan(this.tip) - 0.25));   // (cells, finer: the faster across them)
     if (k <= 0) return 0;
     for (let ix = 1; ix < NX; ix++) for (let iz = 0; iz < NZ; iz++) {
       const i = iz * NX + ix, j = i - 1, m = Math.max(0, h[i] + s - h[j] * 0.2) * k;
@@ -178,7 +178,7 @@ export class Truck {
   _slump() {
     const NX = this.NX, NZ = this.NZ, h = this.hf, dx = this.hx / (NX - 1), dz = this.hz / (NZ - 1), rep = 0.72;
     let moved = false;
-    for (let it = 0; it < 4; it++) for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
+    for (let it = 0; it < 6; it++) for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
       const i = iz * NX + ix;
       for (const [j, d] of [[ix + 1 < NX ? i + 1 : -1, dx], [iz + 1 < NZ ? i + NX : -1, dz]]) {
         if (j < 0) continue;
@@ -197,7 +197,8 @@ export class Truck {
     if (this._slump() || this._hfDirty) {
       this._hfDirty = false;
       const pos = this.soil.geometry.attributes.position;
-      for (let i = 0; i < pos.count; i++) pos.setY(i, Math.max(0.0005, this.hf[i]) / 1);
+      // (where nothing lies the sheet goes under the floor: the floor shows, the heap rises out of it)
+      for (let i = 0; i < pos.count; i++) pos.setY(i, this.hf[i] > this.hx * 0.0015 ? this.hf[i] : -this.hx * 0.004);
       pos.needsUpdate = true; this.soil.geometry.computeVertexNormals();
     }
     this.tip += (this.tipGoal - this.tip) * (1 - Math.exp(-dt * 1.5));
