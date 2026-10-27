@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { MODEL_SCALE, M_SAND, M_G20 } from '../config.js';
 import { findHouse } from './pitchedTool.js';
 import { uStrength } from './lintels.js';
-import { BLIND, BLIND_LAYERS, BLIND_FIN, TILE_COLOURS, planOf, newBlind, layerTop, leftOf, runsOf, setOf, layerSet, heights, LOOSE } from '../world/blind.js';
+import { FitJob, wait, hammer, M as MMf } from './fitJob.js';
+import { tilePiece, cellPos, BLIND, BLIND_LAYERS, BLIND_FIN, TILE_COLOURS, planOf, newBlind, layerTop, leftOf, runsOf, setOf, layerSet, heights, LOOSE } from '../world/blind.js';
 
 // The blind area done by hand (blind.js): the boards and the channels are carried from the
 // tray; the geotextile, the sand, the gravel, the mesh and the top (concrete or paving) are
@@ -374,6 +375,16 @@ export class BlindWork {
       const P = planOf(d.r), cs = [...d.cells].map((k) => P.cells.get(k)), pts = cs.map((c) => P.W2(c.a, c.d)), pad = P.C;
       const box = [Math.min(...pts.map((q) => q[0])) - pad, Math.min(...pts.map((q) => q[1])) - pad, Math.max(...pts.map((q) => q[0])) + pad, Math.max(...pts.map((q) => q[1])) + pad];
       app.journal.act('blind-geo', {}, app.clock, () => { app.objects.update(d.r.id, patch); app.terrain.levelTo((x, z) => d.cells.has(P.cellAt(...P.frame(x, z))), d.r.g + MM(7), box, MM(100)); });   // (a thin crust of concrete run out of the forms: broken off under the strip)
+    } else if (L === 'fin' && (patch.finKind || d.r.finKind) === 'tile') {
+      // (the paving laid as on site: fitJob.js — then saved)
+      const r = d.r, col = patch.finCol || r.finCol || this.col;
+      this._fitTiles(r, [...d.cells], col, () => {
+        const cur = app.objects.get(r.id) || r;
+        this._save(cur, { ...patch, fin: runsOf(new Set([...setOf(cur.fin), ...d.cells])) }, 'blind-fin');
+        const left = Math.round(leftOf(app.objects.get(r.id) || r, L) * 100);
+        app.ui.toast(`Плитка «кирпичик» (${TILE_COLOURS[col][0].toLowerCase()}) на сухую смесь, уклон 3 % от стен` + (left > 1 ? ` — осталось ${left} %` : ' — по всему дому'));
+      });
+      return;
     } else this._save(d.r, patch, 'blind-' + L);
     const left = Math.round(leftOf({ ...d.r, ...patch }, L) * 100);
     const what = { geo: 'Геотекстиль раскатали полосой вдоль стены', mesh: 'Сетка 150 × 150 из прутка Ø5 на стульчиках — листы внахлёст', fin: `Плитка «кирпичик» (${TILE_COLOURS[d.r.finCol || this.col][0].toLowerCase()}) на сухую смесь, уклон 3 % от стен` }[L];
@@ -468,6 +479,27 @@ export class BlindWork {
     this._save(r, { drains: on ? [...list, key] : list.filter((k) => k !== key) }, 'blind-drain');
     app.ui.toast(on ? `Лотки с решётками: ${((P.seg.s1 - P.seg.s0) / S / 1000).toFixed(1).replace('.', ',')} м вдоль края, пескоуловитель в конце — в дождь в них стекает вода` : 'Лотки с этой стороны сняли');
   }
+  // the paving tiles: a few by a tap — set down on the bed, three taps of the mallet, the level
+  // across them; along the finger's way — piece by piece quickly, a tap each
+  _fitTiles(r, cells, col, save) {
+    const app = this.app, pos = cells.map((k) => cellPos(r, k)).filter(Boolean), steps = [], parts = [];
+    if (!pos.length) { save(); return; }
+    const one = cells.length <= 4, up = new THREE.Vector3(0, 1, 0);
+    // (in the order the finger went: chunks of a few cells)
+    const per = one ? cells.length : 3, groups = [];
+    for (let k = 0; k < cells.length; k += per) groups.push(cells.slice(k, k + per));
+    const T = one ? 1 : Math.min(1, 3.2 / (groups.length * 0.3));
+    for (const gk of groups) {
+      const m = tilePiece(r, gk, col); m.visible = false; parts.push(m);
+      const ps = gk.map((k) => cellPos(r, k)).filter(Boolean), c = ps.reduce((a, p) => [a[0] + p[0] / ps.length, a[1] + p[1] / ps.length, a[2] + p[2] / ps.length], [0, 0, 0]);
+      const top = new THREE.Vector3(c[0], c[1], c[2]);
+      steps.push([(one ? 0.4 : 0.14) * T, (u) => { m.visible = true; m.position.y = MMf(one ? 60 : 30) * (1 - u * u); }]);
+      steps.push(hammer(app, top, up, one ? 3 : 1, (one ? 0.2 : 0.14) * T, (k) => { m.position.y = MMf(one ? 3 : 0) * Math.max(0, 1 - k / 2); }, new THREE.Vector3(1, 0, 0), 'mallet'));
+      if (one) steps.push([0.45, () => app.handTools.set('level', top.clone().add(new THREE.Vector3(0, MMf(1), 0)), up, new THREE.Vector3(...[1, 0, 0]), 0)]);
+    }
+    new FitJob(app, { steps, parts, commit: save });
+  }
+
   status(carry) {
     const L = this.layer;
     if (carry) {

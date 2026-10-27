@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, TRAY } from '../config.js';
 import { uStrength } from './lintels.js';
+import { FitJob, hammer, part, at, M as MMf } from './fitJob.js';
+import { buildMosaic, buildCoping } from '../world/poolView.js';
 import {
   POOL, POOL_LAYERS, MOSAICS, COPES, newPool, poolFits, pitOutline, pitBox, floorBelt, wallBelt, floorCage, wallCage, faces, cellsOf, sheetsOf, sheetRect, faceStr,
-  copeLayout, hitInner, hitRim, hitGround, slabRect, PW, PF, wallTopY, waterMax, isPoolBelt,
+  copeLayout, hitInner, hitRim, hitGround, slabRect, PW, PF, wallTopY, waterMax, isPoolBelt, floorTopY, rimY,
 } from '../world/pool.js';
 
 // The pool done by the finger (pool.js): «Бассейн» → its stages one after the other. The pit,
@@ -82,7 +84,7 @@ export class PoolWork {
     const d = this.drag; if (!d) return;
     if (d.L === 'pit') { const ray = this._rayOf(e), q = (ray && hitGround(ray, TRAY.soil)) || p; d.q = q; this._ghost(q); return; }
     if (d.L === 'proof') this._paint(e);
-    else if (d.L === 'tile') this._tile(e);
+    else if (d.L === 'tile') { d.moved = true; this._tile(e); }
     else if (d.L === 'cope') this._cope(e);
   }
 
@@ -119,10 +121,17 @@ export class PoolWork {
       return;
     }
     const patch = d.L === 'proof' ? { proof: r.proof } : d.L === 'tile' ? { tile: r.tile } : { cope: r.cope, copeCol: r.copeCol };
-    this._save('pool-' + d.L, () => app.objects.update(id, patch));
+    const done = () => {
+      this._save('pool-' + d.L, () => app.objects.update(id, patch));
+      const msg = this._progress(app.objects.get(id), d.L);
+      if (msg) this.toast(msg);
+    };
     this._live(null);
-    const msg = this._progress(app.objects.get(id), d.L);
-    if (msg) this.toast(msg);
+    // the sheets of mosaic, the stones of the coping: fitted as on site (fitJob.js), then saved
+    const old = app.objects.get(id);
+    if (d.L === 'tile') this._fitSheets(r, old, done);
+    else if (d.L === 'cope') this._fitStones(r, old, done);
+    else done();
   }
 
   interrupt() { if (!this.drag) return; if (this.drag.L === 'water') this.app.poolView.fillAt = null; if (this.drag.L === 'pit') this.app.ui?.hideMeasure?.(); this.drag = null; this._live(null); }
@@ -219,7 +228,8 @@ export class PoolWork {
     for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
       const [a0, b0, a1, b1] = sheetRect(f, i, j);
       // the sheet under the finger and those it reaches over (a sheet and a half wide)
-      if (Math.max(a0 - h.a, h.a - a1, 0) > 160 || Math.max(b0 - h.b, h.b - b1, 0) > 160) continue;
+      const reach = d.moved ? 160 : 0;   // (a tap: the sheet under the finger; drawn along: those it reaches over)
+      if (Math.max(a0 - h.a, h.a - a1, 0) > reach || Math.max(b0 - h.b, h.b - b1, 0) > reach) continue;
       if (str[j * ni + i] === letter) continue;
       // the coating under it: two coats over most of it
       let n = 0, ok = 0;
@@ -247,6 +257,70 @@ export class PoolWork {
     }
     if (changed) { this._live(r); this.app.sfx?.stab?.(); }
   }
+  // world point / normal of the bowl's frame (mm: s, t, y over the slab)
+  _w(r, p) { const [x, z] = PW(r, p[0], p[1]); return new THREE.Vector3(x, floorTopY(r) + MM(p[2]), z); }
+  _n(r, N) { const [x, z] = PW(r, N[0] * 1000, N[1] * 1000), [x0, z0] = PW(r, 0, 0); return new THREE.Vector3(x - x0, N[2] * MM(1000), z - z0).normalize(); }
+  // the mosaic: a sheet or two by a tap — the glue combed on with the notched trowel, the
+  // sheet pressed on, smoothed over; along the finger's way — sheet by sheet quickly
+  _fitSheets(r, old, save) {
+    const app = this.app, F = faces(r), list = [];
+    for (const f of F) {
+      const [ni, nj] = sheetsOf(f), a = faceStr(r.tile, f.k, ni * nj), b = faceStr(old?.tile, f.k, ni * nj);
+      for (let k = 0; k < ni * nj; k++) if (a[k] !== '0' && a[k] !== b[k]) list.push({ f, k, ch: a[k], i: k % ni, j: (k / ni) | 0 });
+    }
+    if (!list.length) { save(); return; }
+    const U = { uWaterY: { value: -1e9 }, uTime: { value: 0 }, uSun: { value: 1 }, uNightGlow: { value: 0 } };
+    const one = list.length <= 2, chunk = one ? 1 : Math.max(1, Math.ceil(list.length / 24)), steps = [], parts = [];
+    const T = one ? 1 : Math.min(1, 2.6 / (Math.ceil(list.length / chunk) * 0.12));
+    for (let q = 0; q < list.length; q += chunk) {
+      const grp = list.slice(q, q + chunk), tile = F.map((f) => { const [ni, nj] = sheetsOf(f), c = new Array(ni * nj).fill('0'); for (const e of grp) if (e.f.k === f.k) c[e.k] = e.ch; return c.join(''); });
+      const g = buildMosaic({ ...r, tile }, U); g.visible = false; parts.push(g);
+      const e = grp[0], n = this._n(r, e.f.N), [a0, b0, a1, b1] = sheetRect(e.f, e.i, e.j), mid = this._w(r, e.f.P((a0 + a1) / 2, (b0 + b1) / 2));
+      const along = this._w(r, e.f.P(a1, (b0 + b1) / 2)).sub(this._w(r, e.f.P(a0, (b0 + b1) / 2))), upv = this._w(r, e.f.P(a0, b1)).sub(this._w(r, e.f.P(a0, b0))).normalize();
+      if (one) {
+        // (the glue: a grey bed growing behind the trowel, combed)
+        const bed = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0xb4b2aa, roughness: 0.95 }));
+        bed.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(upv.clone().cross(n).normalize(), upv, n));   // (right-handed: x = y × z)
+        const w = along.length(), h = this._w(r, e.f.P(a0, b1)).distanceTo(this._w(r, e.f.P(a0, b0)));
+        bed.visible = false; parts.push(bed);
+        steps.push([0.55, (u) => {
+          bed.visible = true; bed.scale.set(w * Math.max(0.02, u), h, 1);
+          bed.position.copy(this._w(r, e.f.P(a0 + (a1 - a0) * u / 2, (b0 + b1) / 2))).addScaledVector(n, MM(4));
+          app.handTools.set('notch', this._w(r, e.f.P(a0 + (a1 - a0) * u, b0 + 20)).addScaledVector(n, MM(5)), n, upv, 0);
+        }]);
+      }
+      steps.push([(one ? 0.35 : 0.1) * T, (u) => { g.visible = true; g.position.copy(n).multiplyScalar(MM(one ? 25 : 10) * (1 - u)); if (one) app.handTools.hide(); }]);
+      if (one) steps.push([0.4, (u) => { app.handTools.set('notch', mid.clone().addScaledVector(along, (u - 0.5) * 0.8).addScaledVector(n, MM(6)), n, upv, 0); }]);
+    }
+    new FitJob(app, { steps, parts, commit: save });
+  }
+  // the coping: a stone by a tap — glue on the wall's top, the stone set down on it, three
+  // taps of the mallet, the level along it; along the finger's way — stone by stone quickly
+  _fitStones(r, old, save) {
+    const app = this.app, list = [];
+    for (const sd of copeLayout(r)) {
+      const a = faceStr(r.cope, sd.side, sd.n), b = faceStr(old?.cope, sd.side, sd.n);
+      for (const st of sd.list) if (a[st.i] === '1' && b[st.i] !== '1') list.push({ sd, st });
+    }
+    if (!list.length) { save(); return; }
+    const one = list.length <= 2, steps = [], parts = [], up = new THREE.Vector3(0, 1, 0), T = one ? 1 : Math.min(1, 3.2 / (list.length * 0.26));
+    const top = (rimY(r) - floorTopY(r)) / S;
+    for (const { sd, st } of list) {
+      const g = buildCoping(r, new Set([sd.side + ':' + st.i])); if (!g) continue;
+      g.visible = false; parts.push(g);
+      const [s, t] = sd.P((st.a0 + st.a1) / 2, (st.c0 + st.c1) / 2), c = this._w(r, [s, t, top]);
+      const [s1, t1] = sd.P(st.a1, (st.c0 + st.c1) / 2), along = this._w(r, [s1, t1, top]).sub(c).normalize();
+      if (one) {
+        const bl = at(part('blob'), this._w(r, [s, t, top - POOL.cope - POOL.glue]), up); bl.userData.obj.scale.set(4, 2.2, 1); parts.push(bl);
+        steps.push([0.25, () => { bl.userData.obj.visible = true; }]);
+      }
+      steps.push([(one ? 0.45 : 0.13) * T, (u) => { g.visible = true; g.position.y = MMf(one ? 80 : 30) * (1 - u * u); }]);
+      steps.push(hammer(app, c, up, one ? 3 : 1, (one ? 0.2 : 0.13) * T, null, along, 'mallet'));
+      if (one) steps.push([0.45, () => app.handTools.set('level', c.clone().add(new THREE.Vector3(0, MMf(1), 0)), up, along, 0)]);
+    }
+    new FitJob(app, { steps, parts, commit: save });
+  }
+
   // what is left of a layer (a toast after a stroke)
   _progress(r, L) {
     if (!r) return null;

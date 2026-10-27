@@ -13,8 +13,8 @@ export const ease = (u) => u * u * (3 - 2 * u);
 export class FitJob {
   // steps: [[seconds, (u 0…1, job) => {}], …]; commit: () => {} (puts the records in);
   // parts: objects shown while it runs (added to the scene, removed at the end)
-  constructor(app, { steps, commit, parts = [] }) {
-    this.app = app; this.steps = steps; this.commitFn = commit; this.parts = parts;
+  constructor(app, { steps, commit, parts = [], cleanup = null }) {
+    this.app = app; this.steps = steps; this.commitFn = commit; this.parts = parts; this.cleanup = cleanup;
     this.k = 0; this.t = 0; this.done = false; this.fit = true;
     if (app.physJob && app.physJob !== this) app.physJob.fit ? app.physJob.finish() : app.physJob.finish?.();
     for (const p of parts) app.scene.add(p);
@@ -39,6 +39,7 @@ export class FitJob {
     this.app.handTools?.hide();
     for (const id of ['fit-drill', 'fit-driver']) this.app.sfx?.engine?.(id, 0);
     if (this.app.physJob === this) this.app.physJob = null;
+    this.cleanup?.();
   }
   _end() { this._clear(); this.commitFn?.(); this.app.ui?.refresh(); }
   finish() {

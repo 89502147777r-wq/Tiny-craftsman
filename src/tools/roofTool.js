@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { beltContains, toFrame } from './belt.js';
 import { isSlab } from './slab.js';
-import { ROOF, ROOF_LAYERS, roofArea, cellsOf, coverage, done, drainOf, parapetLines, upgrade, COP_COLOURS } from '../world/roof.js';
+import { FitJob, drill, drive } from './fitJob.js';
+import { buildRoof, ROOF, ROOF_LAYERS, roofArea, cellsOf, coverage, done, drainOf, parapetLines, upgrade, COP_COLOURS } from '../world/roof.js';
 
 // The flat roof laid by hand (roof.js): the rolls (the vapour barrier, the membrane) are
 // rolled out by dragging a finger over the slab; the boards (XPS, the wedges) and the
@@ -13,6 +14,7 @@ const _ray = new THREE.Raycaster();
 const ROLLS = { vap: [ROOF.vapW, ROOF.vapLap], mem: [ROOF.memW, ROOF.memLap] };
 const BOARDS = { xps: [ROOF.xpsL, ROOF.xpsW, true], wedge: [ROOF.wedgeL, ROOF.wedgeL, false] };
 const UNDER = { xps: 'vap', wedge: 'xps', mem: 'wedge' };
+const MMr = (v) => v / 1000 / MODEL_SCALE;
 const NAME = Object.fromEntries(ROOF_LAYERS);
 const r6 = (v) => +v.toFixed(6);
 
@@ -202,16 +204,45 @@ export class RoofWork {
     if (!P) { app.ui.toast(L === 'cop' ? 'Отлив — на верх парапета' : `${NAME[L]} — на кровлю (на залитое перекрытие)`); return; }
     if (P.why) { app.ui.toast(P.why); return; }
     if (L === 'cop') {
-      const old = P.R.rec.copS === 'all' ? [] : P.R.rec.copS || [];
-      this._save(P.R, { copS: [...old, P.seg], cop: app.settings.roofCop || 'zinc' }, 'roof-coping');
-      app.ui.toast(`Отлив ${P.size[0]} мм${P.cut ? ' (подрезан по месту)' : ''} — «${COP_COLOURS[app.settings.roofCop || 'zinc'][0]}»`);
+      const col = app.settings.roofCop || 'zinc';
+      this._fit(P, { copS: [P.seg], cop: col }, () => {
+        const R = this._fresh(P.R), old = R.rec.copS === 'all' ? [] : R.rec.copS || [];
+        this._save(R, { copS: [...old, P.seg], cop: col }, 'roof-coping');
+        app.ui.toast(`Отлив ${P.size[0]} мм${P.cut ? ' (подрезан по месту)' : ''} — «${COP_COLOURS[col][0]}»`);
+      });
       return;
     }
-    const patch = { [L]: [...(P.R.rec[L] || []), P.piece] };
-    if (L === 'wedge' && !P.R.rec.drain) patch.drain = drainOf(P.R.b, P.R.area);
-    this._save(P.R, patch, L === 'xps' ? 'roof-xps' : 'roof-wedge');
-    const left = done(P.R.b, P.R.area, patch[L]);
-    app.ui.toast(`${L === 'xps' ? 'Лист XPS' : 'Клиновидная плита'} ${P.size[0]} × ${P.size[1]} мм${P.cut ? ' — подрезан по месту' : ''}; ${left.full ? 'слой закрыт' : `осталось ${Math.round(left.left / left.of * 100)} %`}`);
+    this._fit(P, { [L]: [P.piece], ...(L === 'wedge' ? { xps: [P.piece] } : {}) }, () => {
+      const R = this._fresh(P.R), patch = { [L]: [...(R.rec[L] || []), P.piece] };
+      if (L === 'wedge' && !R.rec.drain) patch.drain = drainOf(R.b, R.area);
+      this._save(R, patch, L === 'xps' ? 'roof-xps' : 'roof-wedge');
+      const left = done(R.b, R.area, patch[L]);
+      app.ui.toast(`${L === 'xps' ? 'Лист XPS' : 'Клиновидная плита'} ${P.size[0]} × ${P.size[1]} мм${P.cut ? ' — подрезан по месту' : ''}; ${left.full ? 'слой закрыт' : `осталось ${Math.round(left.left / left.of * 100)} %`}`);
+    });
+  }
+  // the record of the roof as it is now (a piece fitted before this one has been saved since)
+  _fresh(R) { const q = (R.id != null && this.app.objects.get(R.id)) || this.app.objects.all('roof').find((x) => x.slab === R.b.id); return q ? { ...R, id: q.id, rec: upgrade(q, R.b, R.area) } : R; }
+  // fitting (fitJob.js): a board of XPS / a wedge lowered onto the roof, two telescopic
+  // fasteners drilled and driven through it; a coping set on the parapet, screwed every 500
+  _fit(P, piece, save) {
+    const app = this.app, R = P.R, rec = { slab: R.b.id, vap: [], xps: [], wedge: [], memS: [], copS: [], grav: [], ...(R.rec.drain ? { drain: R.rec.drain } : {}), ...piece };
+    if (piece.wedge) rec.xps = [];   // (the wedge on its own: the board under it is there already)
+    const g = buildRoof(R.b, R.units, rec, null);
+    if (!g) { save(); return; }
+    const box = new THREE.Box3().setFromObject(g), top = box.max.y, up = new THREE.Vector3(0, 1, 0), steps = [];
+    steps.push([0.45, (u) => { g.visible = true; g.position.y = MMr(piece.copS ? 150 : 220) * (1 - u * u); }]);
+    if (piece.copS) {
+      const [x0, z0, x1, z1] = P.seg, along = new THREE.Vector3(x1 - x0, 0, z1 - z0).normalize();
+      for (const f of [0.15, 0.38, 0.62, 0.85]) steps.push(drive(app, new THREE.Vector3(x0 + (x1 - x0) * f, top + MMr(1), z0 + (z1 - z0) * f), up, null, 0.26, along));
+    } else {
+      const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3()), long = sz.x >= sz.z ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1), L = Math.max(sz.x, sz.z);
+      for (const f of [-1 / 4, 1 / 4]) {
+        const p = c.clone().addScaledVector(long, L * f); p.y = top + MMr(1);
+        steps.push(drill(app, p, up, 0.32, 200, long), drive(app, p, up, null, 0.28, long));
+      }
+    }
+    g.visible = false;
+    new FitJob(app, { steps, parts: [g], commit: save });
   }
   status(carry) {
     const L = this.layer;

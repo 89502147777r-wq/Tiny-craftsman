@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { boxOf } from './freeBrick.js';
+import { FitJob, drive, hammer } from './fitJob.js';
 import { plan as beltPlan, toWorld as beltWorld } from './belt.js';
 import { RWIN_TYPES, rwinSpan } from '../world/roofWindows.js';
 import { wingShape, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
@@ -303,7 +304,7 @@ export class PitchedWork {
     if (!r.done?.[PREV[L]] && !(L === 'frame' && r.done?.frame)) { app.ui.toast(`${NAME[L]} — после этапа «${NAME[PREV[L]]}»`); return true; }
     const h = this._hit(e);
     if (!h) { app.ui.toast('Ведите пальцем по крыше вдоль конька'); return true; }
-    this.drag = { wi: h.wi, a0: h.a, a1: h.a, f: h.f };
+    this.drag = { wi: h.wi, a0: h.a, a1: h.a, f: h.f, dd: h.d };
     this._show();
     return true;
   }
@@ -351,12 +352,45 @@ export class PitchedWork {
   up() {
     const app = this.app, d = this.drag, L = this.stage;
     if (!d) return;
+    // the covering / the battens: laid out piece by piece (fitJob.js), then saved
+    const sp = (L === 'cover' || L === 'battens') && this.rec?.done?.[L] !== true ? this._span(d) : null;
+    if (sp) {
+      this.drag = null; app.ui.hideMeasure();
+      this._fitSpan(d, sp, L, () => {
+        this.drag = d; const ok = this._commit(); this.drag = null; this._live(null);
+        if (!ok) return;
+        const r = this.rec, left = this.left(r, L);
+        app.ui.toast({ battens: 'Контробрешётка и обрешётка прибиты', cover: `${COVERS[r.cover.kind]} уложена` }[L] + (left > 0.02 ? ` — осталось ${Math.round(left * 100)} %` : ' — весь скат готов'));
+      });
+      return;
+    }
     const ok = this._commit();
     this.drag = null; this._live(null); app.ui.hideMeasure();
     if (!ok) { app.ui.toast(`${NAME[L]}: ведите пальцем по крыше вдоль конька — там, где уже готов этап «${NAME[PREV[L]]}»`); return; }
     const r = this.rec, left = this.left(r, L);
     app.ui.toast({ frame: 'Стропила стоят', memb: 'Мембрана раскатана внахлёст', battens: 'Контробрешётка и обрешётка прибиты', cover: `${COVERS[r.cover.kind]} уложена` }[L] + (left > 0.02 ? ` — осталось ${Math.round(left * 100)} %` : ' — весь скат готов'));
   }
+  // the stretch laid as it is done: piece by piece along the slope (a sheet of the covering
+  // screwed down, a run of battens nailed) — one by a short stroke in full, more quickly
+  _fitSpan(d, sp, L, save) {
+    const app = this.app, f = d.f, r = this.rec, k = MM(L === 'cover' ? PITCHED.sheet[r.cover?.kind || 'metal'] : STEP[L]);
+    const n = Math.max(1, Math.round((sp[1] - sp[0]) / k)), one = n <= 2, T = one ? 1 : Math.min(1, 3.5 / (n * 0.3));
+    const side = Math.sign(d.dd || 1), steps = [];
+    const P = (a, dd) => { const [x, z] = f.W(a, dd); return new THREE.Vector3(x, f.top(a, dd) + MM(L === 'cover' ? 12 : 30), z); };
+    const N = (a, dd) => { const e = MM(50), p0 = P(a, dd), pa = P(a + e, dd), pd = P(a, dd + e); return new THREE.Vector3().crossVectors(pd.sub(p0), pa.sub(p0)).normalize().multiplyScalar(side); };
+    for (let i = 0; i < n; i++) {
+      const a1 = i === n - 1 ? sp[1] : sp[0] + (i + 1) * k, am = sp[0] + (i + 0.5) * k;
+      steps.push([(one ? 0.35 : 0.12) * T, (u) => { if (u >= 1) this._live({ stage: L, w: d.wi, a0: sp[0], a1 }); }]);
+      const span = f.R || MM(4000), pts = one ? [0.25, 0.5, 0.75] : [0.5];
+      for (const q of pts) {
+        const dd = side * span * q, p = P(am, dd), nn = N(am, dd);
+        if (nn.y < 0) nn.negate();
+        steps.push(L === 'cover' ? drive(app, p, nn, null, (one ? 0.26 : 0.1) * T) : hammer(app, p, nn, one ? 2 : 1, (one ? 0.16 : 0.1) * T));
+      }
+    }
+    new FitJob(app, { steps, parts: [], commit: save, cleanup: () => this._live(null) });
+  }
+
   // the share of the roof not done in a stage
   left(r, L) {
     const cur = r.done?.[L]; if (cur === true) return 0;

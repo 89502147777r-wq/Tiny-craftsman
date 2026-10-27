@@ -9,8 +9,9 @@ import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds, rle
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
 import { findOpenings, findCorners, openingAt } from './windowFit.js';
 import { findRail, RAIL } from '../world/railing.js';
-import { WINDOWS, windowFits, WIN_COLOURS } from '../world/windows.js';
-import { DOORS, doorFits, isDoor } from '../world/doors.js';
+import { WINDOWS, windowFits, WIN_COLOURS, buildWindow, buildCorner } from '../world/windows.js';
+import { FitJob, drill, part, at } from './fitJob.js';
+import { DOORS, doorFits, isDoor, buildDoor } from '../world/doors.js';
 import { RoofWork } from './roofTool.js';
 import { FacadeWork } from './facadeTool.js';
 import { BlindWork } from './blindTool.js';
@@ -955,6 +956,46 @@ export class WallTool {
     this.tray.title = w ? `На поддоне: ${left}` : '';
   }
 
+  // a window / a door set in (fitJob.js): on two wedges, brought in from outside, the level on
+  // it, anchors drilled through the jambs into the wall, the gap foamed round it
+  _fitWindow(r, save) {
+    const app = this.app, steps = [], parts = [], S1 = 1 / 1000 / MODEL_SCALE;
+    const g = r.corner ? buildCorner(r.corner, r.h, r.col || 'anth') : (isDoor(r.key) ? buildDoor : buildWindow)(r.key, r.w, r.h, r.t, r.col || 'white');
+    const holder = new THREE.Group(); holder.add(g); parts.push(holder);
+    if (r.corner) {
+      const c = r.corner; g.matrixAutoUpdate = false;
+      g.matrix.makeBasis(new THREE.Vector3(c.dA[0] * S1, 0, c.dA[1] * S1), new THREE.Vector3(0, S1, 0), new THREE.Vector3(c.dB[0] * S1, 0, c.dB[1] * S1)).setPosition(c.O[0], r.y, c.O[1]);
+      const out = new THREE.Vector3(-c.dB[0] - c.dA[0], 0, -c.dB[1] - c.dA[1]).normalize();
+      steps.push([0.7, (u) => { holder.visible = true; holder.position.copy(out).multiplyScalar(MM(400) * (1 - u * u * (3 - 2 * u))); }]);
+      new FitJob(app, { steps, parts, commit: save });
+      return;
+    }
+    g.position.set(r.x, r.y, r.z); g.rotation.set(0, r.yaw, 0); g.updateMatrixWorld();
+    const L = (x, y, z) => new THREE.Vector3(x * S1, y * S1, z * S1).applyMatrix4(g.matrixWorld);
+    const ax = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), r.yaw), nz = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), r.yaw);
+    // the wedges under the frame's bottom corners
+    for (const x of [-r.w / 2 + 120, r.w / 2 - 120]) {
+      const wd = new THREE.Mesh(new THREE.BoxGeometry(MM(80), MM(12), MM(r.t * 0.8)), new THREE.MeshStandardMaterial({ color: 0x3d6fb3, roughness: 0.6 }));
+      wd.position.copy(L(x, -6, 0)); wd.rotation.y = r.yaw; wd.visible = false; parts.push(wd);
+      steps.push([0.15, () => { wd.visible = true; }]);
+    }
+    steps.push([0.65, (u) => { holder.visible = true; holder.position.copy(nz).multiplyScalar(MM(450) * (1 - u * u * (3 - 2 * u))); }]);
+    steps.push([0.45, () => app.handTools.set('level', L(0, r.h + 2, 0), new THREE.Vector3(0, 1, 0), nz, 0)]);
+    // the anchors through the jambs: from inside the frame into the reveals
+    for (const [sx, y] of [[-1, 0.25], [-1, 0.75], [1, 0.25], [1, 0.75]]) {
+      const p = L(sx * (r.w / 2 - 35), r.h * y, 0), n = ax.clone().multiplyScalar(-sx), an = at(part('anchor'), p, n);
+      parts.push(an);
+      steps.push(drill(app, p, n, 0.3, 120, null, 'drill'), [0.08, () => { an.userData.obj.visible = true; }]);
+    }
+    // the foam round it (up one side, over the top, down the other): a bead growing out of the gun
+    const pts = [L(-r.w / 2 - 8, 0, 0), L(-r.w / 2 - 8, r.h + 8, 0), L(r.w / 2 + 8, r.h + 8, 0), L(r.w / 2 + 8, 0, 0)];
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.02), tube = new THREE.TubeGeometry(curve, 120, MM(14), 6, false);
+    const foam = new THREE.Mesh(tube, new THREE.MeshStandardMaterial({ color: 0xe3c56a, roughness: 0.9 })); foam.geometry.setDrawRange(0, 0); parts.push(foam);
+    const total = tube.index ? tube.index.count : tube.attributes.position.count;
+    steps.push([1.3, (u) => { foam.geometry.setDrawRange(0, Math.floor(total * u / 6) * 6); app.handTools.set('foam', curve.getPoint(Math.min(1, u)).addScaledVector(nz, MM(30)), nz, ax, 0); }]);
+    new FitJob(app, { steps, parts, commit: save });
+  }
+
   _carryCancel() {
     const v = this.app.wallView;
     if (this.carry?.kind === 'ucage') { this.app.rebarView.live = null; this.app.rebarView.dirty = true; }
@@ -1007,7 +1048,8 @@ export class WallTool {
       if (!o) { app.ui.toast(door ? 'Дверь — в проём до пола: оставьте его в кладке (перемычка или перекрытие сверху) и поднесите дверь к нему' : 'Окно — в проём: оставьте его в кладке (перемычка или перекрытие сверху) и поднесите окно к нему'); return; }
       if (o.why2) { app.ui.toast(o.why2); return; }
       const corner = o.corner ? { O: o.O, dA: o.dA.map((v) => +v.toFixed(6)), dB: o.dB.map((v) => +v.toFixed(6)), wA: o.wA, wB: o.wB, floor: o.floor } : undefined;
-      app.journal.act(door ? 'door' : 'window', {}, app.clock, () => app.objects.add({ type: 'window', key, ...(door ? {} : { col: app.settings.winCol || (key === 'corner' || key === 'floor' ? 'anth' : 'white') }), ...(corner ? { corner } : {}), w: o.w, h: o.h, t: o.t, x: +o.x.toFixed(6), y: +o.y0.toFixed(6), z: +o.z.toFixed(6), yaw: +o.yaw.toFixed(5) }));
+      const wrec = { type: 'window', key, ...(door ? {} : { col: app.settings.winCol || (key === 'corner' || key === 'floor' ? 'anth' : 'white') }), ...(corner ? { corner } : {}), w: o.w, h: o.h, t: o.t, x: +o.x.toFixed(6), y: +o.y0.toFixed(6), z: +o.z.toFixed(6), yaw: +o.yaw.toFixed(5) };
+      this._fitWindow(wrec, () => app.journal.act(door ? 'door' : 'window', {}, app.clock, () => app.objects.add(wrec)));
       if (corner) { app.ui.toast(`Угловое остекление ${o.wA} + ${o.wB} × ${o.h} мм: рамы только у кладки, по полу и по плите; в углу стеклопакеты стык в стык на чёрном структурном силиконе, без стойки — угол держит плита`); return; }
       if (key === 'floor') { app.ui.toast(`Витраж в пол ${o.w} × ${o.h} мм: рама утоплена в пол на 40 мм под стяжку, порог с водоотводом, стекло — закалённый триплекс`); return; }
       app.ui.toast(door && DOORS[key].garage ? `${DOORS[key].name}: ${o.w} × ${o.h} мм — ${{ sectional: 'панели 40 мм на направляющих изнутри, торсионный вал с пружинами над проёмом, уплотнители', roller: 'короб над проёмом, шины по бокам, ламели 77 мм, нижняя планка с замком', swing: 'стальная рама в проёме, две створки из доски на ригелях с раскосами, полосовые петли, засов и проушины под замок' }[DOORS[key].garage]}` : door ? `${DOORS[key].name}: ${o.w} × ${o.h} мм — коробка на пене с зазором 15 мм, полотно на ${DOORS[key].entrance ? 'трёх петлях, порог' : 'двух петлях'}, наличники` : `${WINDOWS[key].name}: ${o.w} × ${o.h} мм — рама с зазором 18 мм на пене, снаружи лента и ${WINDOWS[key].sill ? 'отлив, внутри подоконник' : 'пароизоляция внутри'}`);
