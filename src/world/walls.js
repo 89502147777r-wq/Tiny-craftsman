@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { levels, worked, uLinks, UN } from '../tools/uPour.js';
 import { plan, boardsOf, toWorld, snapS, BELT } from '../tools/belt.js';
 import { SlabFormView, floorUnder } from './slabForm.js';
+import { ColumnView } from './columns.js';
+import { withBitumen } from './bitumen.js';
 import { buildWindow, buildCorner } from './windows.js';
 import { buildRail } from './railing.js';
 import { buildDoor, isDoor } from './doors.js';
@@ -405,6 +407,10 @@ export class WallView {
     this.beltBoards.castShadow = this.beltBoards.receiveShadow = true; this.beltBoards.frustumCulled = false; this.beltBoards.count = 0; this.group.add(this.beltBoards);
     // the formwork under a floor slab: deck, beams, props (slabForm.js)
     this.slabForm = new SlabFormView(this.group, tex);
+    // the cast columns and the piles (columns.js)
+    this.columns = new ColumnView(this.group, this.slabForm.deckMat); this.columns.setConcreteUniforms(this.concU);
+    // the bitumen mastic brushed on any of it (bitumen.js)
+    for (const m of [block, brick, this.lintels.material, this.fill.material, this.columns.concMat]) withBitumen(m);
     // corner U-blocks: the side wall cut where the channel across comes in (one mesh each)
     this.ucut = new THREE.Group(); this.group.add(this.ucut);
     this._uGeo = new Map();
@@ -1087,7 +1093,7 @@ function loadCinder(mesh) {
     const L = new THREE.TextureLoader(), map = L.load(base + 'col.jpg'), nor = L.load(base + 'nor.jpg');
     map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = nor.anisotropy = 4;
     for (const t of [map, nor]) t.wrapS = t.wrapT = THREE.RepeatWrapping;   // (box-projected uv: the concrete tiles round it)
-    mesh.material = new THREE.MeshStandardMaterial({ map, normalMap: nor, normalScale: new THREE.Vector2(1.6, 1.6), color: 0xb4b1ab, roughness: 0.95, side: THREE.DoubleSide });
+    mesh.material = withBitumen(new THREE.MeshStandardMaterial({ map, normalMap: nor, normalScale: new THREE.Vector2(1.6, 1.6), color: 0xb4b1ab, roughness: 0.95, side: THREE.DoubleSide }));
     mesh.geometry = g;
   }).catch(() => {});
 }

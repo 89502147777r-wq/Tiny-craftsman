@@ -25,10 +25,10 @@ export const PANEL_TYPES = {
   clinker: ['Клинкер', { red: ['Красный', ['#9c4a33', '#7c3626', '#b35d40']], brown: ['Коричневый', ['#5e3a2a', '#6f4632', '#4c2e22']], straw: ['Соломенный', ['#d5b779', '#c7a663', '#e0c58e']], graphite: ['Графит', ['#3d3d40', '#4a494b', '#2f2f32']], white: ['Белый', ['#e8e4dc', '#d9d4ca', '#f1eee8']] }],
   wood: ['Планкен', { oak: ['Светлый дуб', ['#b98a58', '#8c6038']], walnut: ['Термо-орех', ['#6b4429', '#43281a']], wenge: ['Венге', ['#3f2a20', '#24170f']], grey: ['Серый состаренный', ['#8d8a83', '#5f5c56']] }],
   // the ventilated facade (навесной вентфасад): big flat panels on an aluminium subframe, open joints
-  porc: ['Керамогранит 1200×600', { concrete: ['Под бетон', ['#b4b3ae', '#a09f9a', '#c2c0ba']], marble: ['Мрамор белый', ['#e9e7e2', '#c9c6c0', '#8d8b88']], anthracite: ['Антрацит', ['#3b3c3e', '#2f3032', '#47484a']], travertine: ['Травертин', ['#d8c9ab', '#c4b393', '#e3d7be']] }],
-  fc: ['Фиброцемент', { white: ['Белый', ['#e6e5e0']], grey: ['Светло-серый', ['#b6b7b4']], graphite: ['Графит', ['#4a4c4f']], terra: ['Терракота', ['#a8644a']] }],
-  hpl: ['HPL-панели', { oak: ['Дуб (декор)', ['#b8895a', '#8a5f39']], walnut: ['Орех (декор)', ['#6e472d', '#4a2e1c']], white: ['Белый глянец', ['#efeeea']], anthracite: ['Антрацит', ['#36383b']] }],
-  cas: ['Металлокассеты', { graphite: ['RAL 7016 графит', ['#474d53']], silver: ['RAL 9006 серебро', ['#a5a8a6']], black: ['RAL 9005 чёрный', ['#1d1e20']], corten: ['Кортен', ['#8a4a26', '#6f3a1e', '#a35c30']] }],
+  porc: ['Керамогранит 1200×600', { concrete: ['Под бетон', ['#b4b3ae', '#a09f9a', '#c2c0ba']], anthracite: ['Бетон антрацит', ['#3b3c3e', '#2f3032', '#47484a']], marble: ['Мрамор белый', ['#e9e7e2', '#c9c6c0', '#8d8b88']], nero: ['Мрамор неро', ['#1d1e20', '#2b2c2e', '#8d8e90']], travertine: ['Травертин', ['#d8c9ab', '#c4b393', '#e3d7be']], granite: ['Гранит серый', ['#a9a7a2', '#8f8d88', '#c3c1bc']], terrazzo: ['Терраццо', ['#e4ded6', '#b9a99c', '#6b6f69']] }],
+  fc: ['Фиброцемент', { white: ['Белый', ['#e6e5e0']], grey: ['Светло-серый', ['#b6b7b4']], sand: ['Песочный', ['#cbb994']], olive: ['Оливковый', ['#7c8270']], terra: ['Терракота', ['#a8644a']], graphite: ['Графит', ['#4a4c4f']] }],
+  hpl: ['HPL-панели', { oak: ['Дуб (декор)', ['#b8895a', '#8a5f39']], walnut: ['Орех (декор)', ['#6e472d', '#4a2e1c']], wenge: ['Венге (декор)', ['#3d2f27', '#2a201a']], white: ['Белый глянец', ['#efeeea']], red: ['Красный', ['#8e2b25']], anthracite: ['Антрацит', ['#36383b']] }],
+  cas: ['Металлокассеты', { graphite: ['RAL 7016 графит', ['#474d53']], silver: ['RAL 9006 серебро', ['#a5a8a6']], white: ['RAL 9016 белый', ['#eeeee8']], bronze: ['Бронза', ['#5f4a37']], black: ['RAL 9005 чёрный', ['#1d1e20']], corten: ['Кортен', ['#8a4a26', '#6f3a1e', '#a35c30']] }],
 };
 const KIND = { stone: 'stone', clinker: 'brick', wood: 'wood', porc: 'porc', fc: 'fc', hpl: 'hpl', cas: 'cas' };
 // the size of one panel (mm, along × up) — the old kinds: 1000 × 500 boards of a pattern
@@ -135,9 +135,12 @@ export function meshTex() {
 export function looseMeshTex() {
   if (TEX.loose) return TEX.loose;
   const n = 512, c = canvas(n), g = c.getContext('2d');
-  strands(g, n, () => `rgb(${226 + rnd() * 20},${128 + rnd() * 20},${58 + rnd() * 10})`, 1.6, 0.6);
+  // (strands thick enough that far off — the smaller mip levels — they still hold their alpha: thin
+  // ones fade out under the cut-off and the mesh flickers away at a glancing angle)
+  strands(g, n, () => `rgb(${226 + rnd() * 20},${128 + rnd() * 20},${58 + rnd() * 10})`, 2.6, 0.6);
   g.fillStyle = 'rgba(40,40,40,0.8)'; g.font = 'bold 13px sans-serif'; g.fillText('ФАСАДНАЯ 160', 40, 30);
-  return (TEX.loose = { map: asTex(c) });
+  const t = asTex(c); t.anisotropy = 8;
+  return (TEX.loose = { map: t });
 }
 // a smooth wet coat of the plaster (before the float): the colour, the trowel's sweeps
 export function wetTex(colour) {
@@ -275,12 +278,36 @@ function brickTex(cols) {
 //   hpl  – compact laminate: a smooth decor (wood or plain), a little gloss; riveted;
 //   cas  – metal cassettes: folded steel, the face flat, its edges turned in (a bright arris along
 //          the top, a shadow under), hung on hooks — no fixings seen; the joints wider.
-function ventTex(kind, cols, mod, key) {
+// the photographs of the materials (ambientCG, CC0 — CREDITS.md): a porcelain slab printed from
+// the stone / the concrete, a wood decor under the HPL overlay, the weathered corten; fibre cement:
+// its fibrous face, tinted to the colour. (Each piece of the pattern a window of the photo, ~1,6 m.)
+const PHOTO = {
+  'porc:concrete': 'facade/porc_concrete', 'porc:anthracite': 'facade/porc_anthracite', 'porc:marble': 'facade/porc_marble', 'porc:nero': 'facade/porc_nero', 'porc:travertine': 'travertine',
+  'porc:granite': 'facade/porc_granite', 'porc:terrazzo': 'facade/porc_terrazzo', 'hpl:oak': 'facade/hpl_oak', 'hpl:walnut': 'facade/hpl_walnut', 'hpl:wenge': 'facade/hpl_wenge', 'cas:corten': 'facade/cas_corten',
+};
+const photoOf = (key) => PHOTO[key] || (key.startsWith('fc:') ? 'facade/fc_fibre' : null);
+const _img = {};
+function photo(path, cb) {
+  if (typeof Image === 'undefined') return;
+  const P = _img[path] || (_img[path] = { img: null, wait: [] });
+  if (P.img) { cb(P.img); return; }
+  P.wait.push(cb);
+  if (P.wait.length > 1) return;
+  const im = new Image(); im.onload = () => { P.img = im; for (const f of P.wait.splice(0)) f(im); }; im.onerror = () => { P.wait.length = 0; }; im.src = `assets/textures/${path}/col.jpg`;
+}
+function ventTex(kind, cols, mod, key, img = null) {
   const W = 512, H = Math.round(W * mod[1] / mod[0]), c = canvas(W, H), g = c.getContext('2d'), hc = canvas(W, H), h = hc.getContext('2d');
   const px = W / mod[0], j = Math.max(2.2, (kind === 'cas' ? 15 : 10) * px / 2);   // half a joint
   const r = rnd, col = (i, f = 1) => shade(cols[i % cols.length], f);
   g.fillStyle = col(0); g.fillRect(0, 0, W, H); h.fillStyle = '#9a9a9a'; h.fillRect(0, 0, W, H);
-  if (kind === 'porc') {
+  if (img) {
+    // the photo: a window of it the size of the panel (it covers ~1,6 m), the same one each time
+    const sw = Math.min(img.width, img.width * mod[0] / 1600), sh = sw * H / W, sx = (img.width - sw) * 0.37, sy = (img.height - sh) * 0.61;
+    if (kind === 'fc') { try { g.filter = 'grayscale(1) contrast(0.55) brightness(1.35)'; } catch { /* no filters */ } }
+    g.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+    g.filter = 'none';
+    if (kind === 'fc') { g.globalCompositeOperation = 'multiply'; g.fillStyle = col(0); g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'source-over'; }
+  } else if (kind === 'porc') {
     if (/marble/.test(key)) {
       // veins: long soft curves, a few sharper ones, the grey of the stone
       for (let v = 0; v < 9; v++) {
@@ -339,7 +366,12 @@ function ventTex(kind, cols, mod, key) {
 export function panelTex(key) {
   if (TEX[key]) return TEX[key];
   const [, kind, cols] = PANELS[key];
-  if (MOD[kind]) return (TEX[key] = ventTex(kind, cols, MOD[kind], key));
+  if (MOD[kind]) {
+    const t = (TEX[key] = ventTex(kind, cols, MOD[kind], key)), ph = photoOf(key);
+    // (drawn at once from the colours; the photo put in when it has come)
+    if (ph) photo(ph, (im) => { const q = ventTex(kind, cols, MOD[kind], key, im); t.map.image = q.map.image; t.map.needsUpdate = true; t.normalMap.image = q.normalMap.image; t.normalMap.needsUpdate = true; });
+    return t;
+  }
   return (TEX[key] = kind === 'wood' ? woodTex(cols) : kind === 'stone' ? stoneTex(cols) : brickTex(cols));
 }
 
@@ -579,22 +611,29 @@ export function slotAt(F, a, y, kind, mod = [1000, 500]) {
 // the lines of the rails (along the face, model): every 600 mm from the face's left end (as seen
 // from outside) — the panels' joints fall on every other one — the ends 40 mm in
 export function railCols(F) {
-  const e = ext(F, OFF.vent), C = MM(VENT_SUB.col), out = [], fromLeft = F.ru > 0;
+  // (the end lines on the wall itself, 60 mm in from its corner — the brackets go on the masonry;
+  // the panels' ends run on past them round the corner)
+  const e = ext(F, OFF.vent), w = ext(F, 0), lo = Math.max(e[0], w[0]) + MM(60), hi = Math.min(e[2], w[2]) - MM(60), C = MM(VENT_SUB.col), out = [], fromLeft = F.ru > 0;
   for (let k = 0; ; k++) {
     let a = fromLeft ? e[0] + k * C : e[2] - k * C;
     if (fromLeft ? a > e[2] + MM(1) : a < e[0] - MM(1)) break;
-    a = Math.max(e[0] + MM(40), Math.min(e[2] - MM(40), a));
-    out.push(+a.toFixed(6));
+    a = Math.max(lo, Math.min(hi, a));
+    if (!out.some((c) => Math.abs(c - a) < MM(90))) out.push(+a.toFixed(6));
   }
-  // (and one more each side of an opening, 70 mm off its jamb: the cut panels by it rest on it)
-  for (const h of F.holes) for (const a of [h[0] - MM(70), h[2] + MM(70)]) if (a > e[0] + MM(40) && a < e[2] - MM(40) && !out.some((c) => Math.abs(c - a) < MM(150))) out.push(+a.toFixed(6));
+  // (and one more each side of an opening, 70 mm off its jamb: the cut panels by it rest on it —
+  // in a narrow pier between two windows both, however close)
+  for (const h of F.holes) for (const a of [h[0] - MM(70), h[2] + MM(70)]) if (a > lo - MM(1) && a < hi + MM(1) && !out.some((c) => Math.abs(c - a) < MM(90))) out.push(+a.toFixed(6));
   return out.sort((p, q) => p - q);
 }
-// the heights of the brackets on a rail's line: 300 mm up from the face's bottom, every 800
+// the heights of the brackets on a rail's line: 300 mm up from the face's bottom, every 800; and
+// 150 mm under a sill / over a head, 200 under the top — a short stretch (over a window, a low
+// wall) gets two at the least, as a rail needs
 export function bracketRows(F) {
-  const out = [];
-  for (let y = F.y0 + MM(VENT_SUB.row0); y < F.y1 - MM(100); y += MM(VENT_SUB.row)) out.push(+y.toFixed(6));
-  return out;
+  const out = [], add = (y) => { if (y > F.y0 + MM(100) && y < F.y1 - MM(100) && !out.some((q) => Math.abs(q - y) < MM(300))) out.push(+y.toFixed(6)); };
+  for (let y = F.y0 + MM(VENT_SUB.row0); y < F.y1 - MM(100); y += MM(VENT_SUB.row)) add(y);
+  for (const h of F.holes) { add(h[1] - MM(150)); add(h[3] + MM(150)); }
+  add(F.y1 - MM(200));
+  return out.sort((p, q) => p - q);
 }
 // a slot of the wool (staggered by half) or of a ventilated panel (its own size), from the face's
 // bottom and its left end
@@ -609,9 +648,12 @@ export function ventSlot(F, a, y, kind, mod) {
 // it (a joint rail at its edge counts) running over most of its height — two, a narrow strip one
 export function railsHold(rec, pieces) {
   if (!pieces.length) return false;
-  const a0 = Math.min(...pieces.map((r) => r[0])), a1 = Math.max(...pieces.map((r) => r[2])), y0 = Math.min(...pieces.map((r) => r[1])), y1 = Math.max(...pieces.map((r) => r[3]));
-  const n = (rec?.rl || []).filter(([a, r0, r1]) => a >= a0 - MM(5) && a <= a1 + MM(5) && Math.min(r1, y1) - Math.max(r0, y0) > (y1 - y0) * 0.6).length;
-  return n >= (a1 - a0 < MM(450) ? 1 : 2);
+  // (each piece as cut — by an opening a panel falls into strips: each on its own rails)
+  return pieces.every(([a0, y0, a1, y1]) => {
+    if (a1 - a0 < MM(60) || y1 - y0 < MM(60)) return true;
+    const n = (rec?.rl || []).filter(([a, r0, r1]) => a >= a0 - MM(5) && a <= a1 + MM(5) && Math.min(r1, y1) - Math.max(r0, y0) > Math.min(y1 - y0, MM(300)) * 0.6).length;
+    return n >= (a1 - a0 < MM(450) ? 1 : 2);
+  });
 }
 export const sameSlot = (p, q) => Math.abs(p[0] - q[0]) < MM(2) && Math.abs(p[1] - q[1]) < MM(2);
 
@@ -679,6 +721,14 @@ export function woolDowels(F, s) {
 // { layer, slot | rect | cells, variant, dir, tool: { kind, a, y } }
 export function buildFacade(F, rec, live, recG = null) {
   const group = new THREE.Group();
+  // (an area being laid: its pieces so far / to go, as if they were on)
+  if (live?.extra?.length) rec = { ...rec, [live.layer]: [...(rec[live.layer] || []), ...live.extra] };
+  if (live?.area) {
+    const ga = new Geo(), r = live.area, o = (live.layer === 'eps' || live.layer === 'mw' ? OFF.eps : live.layer === 'vp' ? OFF.vent : OFF.pan) + MM(4);
+    sheet(ga, F, [r], o, [1000, 1000]);
+    const m = ga.mesh(mat('areaSel', () => new THREE.MeshBasicMaterial({ color: 0x35d06a, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide })));
+    if (m) { m.userData.noPick = true; m.renderOrder = 6; group.add(m); }
+  }
   const eps = [...(rec.eps || [])], mesh = [...(rec.mesh || [])], pan = [...(rec.pan || [])];
   const glue = new Set(cellsOf(rec.glue)), emb = new Set(cellsOf(rec.emb)), pl = {}, fl = { v: new Set(cellsOf(rec.fl?.v)), h: new Set(cellsOf(rec.fl?.h)) };
   for (const [k, runs] of Object.entries(rec.pl || {})) pl[k] = new Set(cellsOf(runs));
@@ -736,7 +786,8 @@ export function buildFacade(F, rec, live, recG = null) {
       sheet(gl, F, [c], OFF.loose + sag, [500, 500], [r[0], r[1]]);
     }
   }
-  add(gl.mesh(mat('loose', () => { const m = new THREE.MeshStandardMaterial({ map: looseMeshTex().map, transparent: true, alphaTest: 0.3, roughness: 0.7, side: THREE.DoubleSide }); return m; })));
+  // (cut out, not blended: a blended sheet is sorted with the coats round it and drops out at some angles)
+  add(gl.mesh(mat('loose', () => { const m = new THREE.MeshStandardMaterial({ map: looseMeshTex().map, alphaTest: 0.12, roughness: 0.7, side: THREE.DoubleSide }); m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -4; return m; })));
   const meshCells = new Set([...embIn].filter((k) => { const [i, j] = cij(k), a = (i + 0.5) * CELL, y = (j + 0.5) * CELL; return mesh.some((r) => inR(r, a, y)); }));
   const gm = new Geo(); sheet(gm, F, cellsCut(F, meshCells, OFF.emb), OFF.emb, [500, 500]); add(gm.mesh(mat('emb', () => stdMat(meshTex(), {}, 2))));
   // the plaster: wet (smooth, the colour) → floated (its texture, the way the float went)
@@ -766,9 +817,12 @@ export function buildFacade(F, rec, live, recG = null) {
   // the brackets: an L of 2 mm aluminium (its foot dowelled to the wall on a paronite pad), the arm out to the rail
   const br = [...(rec.br || []), ...(live?.layer === 'br' ? live.pts || [] : [])];
   if (br.length) {
-    const im = new THREE.InstancedMesh(bracketGeo(), alu, br.length);
-    br.forEach(([a, y], i) => im.setMatrixAt(i, at(a, y, 0)));
-    im.castShadow = true; group.add(im);
+    const G2 = bracketGeo(), dk = mat('brDark', () => new THREE.MeshStandardMaterial({ color: 0x222325, roughness: 0.7, metalness: 0.2 }));
+    for (const [geo, m] of [[G2.alu, alu], [G2.dark, dk]]) {
+      const im = new THREE.InstancedMesh(geo, m, br.length);
+      br.forEach(([a, y], i) => im.setMatrixAt(i, at(a, y, 0)));
+      im.castShadow = true; group.add(im);
+    }
   }
   // the mineral wool slabs (slit round the brackets — they come through), two plate dowels each
   const mw = [...(rec.mw || [])], gw = new Geo(), wd = [];
@@ -926,10 +980,21 @@ function cornerPieces(group, F, e, aEnd, y0, y1, key) {
 // a facade bracket (local: x along the face, y up, z out of the wall): the foot 50 wide × 100 high on
 // the wall, a paronite pad under it, the arm 80 high out to the rail's line
 let _brGeo = null;
+// a bracket of the subframe (кронштейн), as on site: the foot 50 × 110 × 3 aluminium on a paronite
+// pad (it breaks the cold bridge), dowelled through its slot with a facade anchor; the arm — a web
+// 2,5 mm tapering 80 → 60 mm out to 150 mm, a flange folded along its bottom; on its end the slide
+// (удлинитель) that sets the reach, two rivets through it. → { alu, dark } (local: x along the wall,
+// y up, z out of it; the foot on the wall at z = 0)
 function bracketGeo() {
   if (_brGeo) return _brGeo;
   const b = (w, h, d, x, y, z) => new THREE.BoxGeometry(MM(w), MM(h), MM(d)).translate(MM(x), MM(y), MM(z));
-  return (_brGeo = mergeGeometries([b(50, 100, 3, 0, 0, 1.5), b(2, 80, 150, 0, 0, 75), b(50, 2, 6, 0, -40, 4)]));
+  const web = (() => { const sh = new THREE.Shape([new THREE.Vector2(MM(3), MM(-40)), new THREE.Vector2(MM(150), MM(-30)), new THREE.Vector2(MM(150), MM(30)), new THREE.Vector2(MM(3), MM(40))]); const g = new THREE.ExtrudeGeometry(sh, { depth: MM(2.5), bevelEnabled: false }); g.rotateY(-Math.PI / 2); g.translate(MM(1.25), 0, 0); return g.toNonIndexed(); })();
+  const cyl = (r, h, x, y, z, rotX = true) => { const g = new THREE.CylinderGeometry(MM(r), MM(r), MM(h), 10); if (rotX) g.rotateX(Math.PI / 2); else g.rotateZ(Math.PI / 2); g.translate(MM(x), MM(y), MM(z)); return g.toNonIndexed(); };
+  const ni = (g) => (g.index ? g.toNonIndexed() : g);
+  const strip = (g) => { for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k); return g; };
+  const alu = [b(50, 110, 3, 0, 0, 4.5), web, b(16, 2.5, 120, 8, -34, 90), b(2.5, 60, 70, -3, 0, 170)].map(ni).map(strip);
+  const dark = [b(54, 114, 3, 0, 0, 1.5), cyl(9, 2, 0, 18, 7), cyl(6.5, 6, 0, 18, 11), cyl(3.5, 3, -4.5, 12, 150, false), cyl(3.5, 3, -4.5, -12, 150, false)].map(ni).map(strip);
+  return (_brGeo = { alu: mergeGeometries(alu), dark: mergeGeometries(dark) });
 }
 // a ventilated facade's corner: a folded aluminium angle 50 × 50 over the panels' ends, coated in
 // their colour

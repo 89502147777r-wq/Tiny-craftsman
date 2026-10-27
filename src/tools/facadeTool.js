@@ -70,6 +70,7 @@ export class FacadeWork {
   // ---- the spatula, the float, the roll: the finger on the wall ----
   down(p, e) {
     const app = this.app, L = this.layer;
+    if (this.areaMode) return this._areaDown(e);
     if (this.isCarry) { app.ui.toast(`${NAME[L]}: тяните ${L === 'eps' ? 'лист' : L === 'mw' ? 'плиту' : 'панель'} из лотка справа на стену`); return true; }
     if (L === 'br' || L === 'rl') return this._ventDown(e);
     const off = L === 'mesh' ? OFF.loose : L === 'mb' ? OFF.mb : L === 'glue' ? OFF.eps : OFF.glue;
@@ -90,6 +91,7 @@ export class FacadeWork {
     const h = this._hit(e, d.off, d.F);
     if (!h) return;
     const L = this.layer;
+    if (d.area) { d.a = h.a; d.y = h.y; this._areaShow(); return; }
     if (d.vent) { this._ventMove(h); return; }
     if (L === 'mesh' || L === 'mb') { d.a = h.a; d.y = h.y; d.rect = this._strip(d); }
     else {
@@ -132,6 +134,7 @@ export class FacadeWork {
     this.drag = null; this._live(null); app.ui.hideMeasure();
     if (!d) return;
     const F = d.F, rec = this._rec(F) || {};
+    if (d.area) { this._areaUp(d); return; }
     if (d.vent) { this._ventUp(d, rec); return; }
     if (L === 'mb') {
       if (!d.rect) { app.ui.toast('Мембрана: проведите пальцем вдоль стены — рулон 1,5 м раскатается по минвате'); return; }
@@ -271,9 +274,18 @@ export class FacadeWork {
     const V = L === 'mw' || L === 'vp', key = L === 'vp' ? this.ventKey : this.app.settings.facPanel || 'stone:sandstone', md = L === 'mw' ? [VENT_SUB.mwL, VENT_SUB.mwW] : panelMod(key);
     const F = h.F, rec = this._rec(F), slot = V ? ventSlot(F, h.a, h.y, L, md) : slotAt(F, h.a, h.y, L, md), off = L === 'eps' ? OFF.eps : L === 'mw' ? OFF.mw : L === 'vp' ? OFF.vent : OFF.pan;
     const piece = cutPiece(F, slot, off), full = L === 'eps' ? MM(FACADE.epsL) * MM(FACADE.epsW) : MM(md[0]) * MM(md[1]);
+    const why = this._why(F, rec, L, slot, piece);
+    const cut = !why && Math.abs(area(piece) - full) > full * 0.01;
+    this.place = { F, slot, why, cut, size: piece.length ? [Math.round((Math.max(...piece.map((r) => r[2])) - Math.min(...piece.map((r) => r[0]))) / S), Math.round((Math.max(...piece.map((r) => r[3])) - Math.min(...piece.map((r) => r[1]))) / S)] : [0, 0] };
+    this._live(F, { layer: L, slot, ok: !why, key });
+    return { ok: !why, why, cut };
+  }
+  // why a piece cannot go in a slot (null: it can); more: the pieces chosen with it (an area)
+  _why(F, rec, L, slot, piece, more = []) {
     let why = null;
+    const over = (s) => sameSlot(s, slot) || Math.min(s[2], slot[2]) - Math.max(s[0], slot[0]) > MM(20) && Math.min(s[3], slot[3]) - Math.max(s[1], slot[1]) > MM(20) && (L === 'pan' || more.includes(s));
     if (!piece.length) why = 'Здесь проём — лист не нужен';
-    else if ((rec?.[L] || []).some((s) => sameSlot(s, slot) || (L === 'pan' && Math.min(s[2], slot[2]) - Math.max(s[0], slot[0]) > MM(20) && Math.min(s[3], slot[3]) - Math.max(s[1], slot[1]) > MM(20)))) why = 'Это место уже закрыто';
+    else if ((rec?.[L] || []).some(over) || more.some(over)) why = 'Это место уже закрыто';
     else if (L === 'mw' && (rec?.eps?.length || rec?.pan?.length)) why = 'Здесь мокрый фасад — вентфасад на него не делают';
     else if (L === 'mw' && !(rec?.br || []).some(([a, y]) => inR([slot[0] - MM(300), slot[1] - MM(800), slot[2] + MM(300), slot[3] + MM(800)], a, y))) why = 'Сначала кронштейны: минвату ставят между ними (они проходят сквозь плиту)';
     else if (L === 'vp' && !railsHold(rec, piece)) why = 'Панель крепят к направляющим: под ней нужно минимум две (на её краях — на стыках)';
@@ -286,10 +298,57 @@ export class FacadeWork {
       if (!pts.every(([a, y]) => eps.some((r) => inR(r, a, y)))) why = 'Панели вешают на утеплитель: сначала листы ППС';
       else if (pts.some(([a, y]) => pl.some((s) => s.has(ck(Math.floor(a / CELL), Math.floor(y / CELL)))))) why = 'Здесь уже штукатурка';
     }
-    const cut = !why && Math.abs(area(piece) - full) > full * 0.01;
-    this.place = { F, slot, why, cut, size: piece.length ? [Math.round((Math.max(...piece.map((r) => r[2])) - Math.min(...piece.map((r) => r[0]))) / S), Math.round((Math.max(...piece.map((r) => r[3])) - Math.min(...piece.map((r) => r[1]))) / S)] : [0, 0] };
-    this._live(F, { layer: L, slot, ok: !why, key });
-    return { ok: !why, why, cut };
+    return why;
+  }
+
+  // ---- an area (as a course of blocks): the finger draws a rectangle on the wall, the boards /
+  // the slabs / the panels go on all over it — staggered as by hand, cut at the openings — quicker,
+  // one after the other, as one entry ----
+  get areaMode() { return !!this.app.settings.facArea && this.isCarry; }
+  _areaSlots(F, rect) {
+    const L = this.layer, V = L === 'mw' || L === 'vp', key = L === 'vp' ? this.ventKey : this.app.settings.facPanel || 'stone:sandstone', md = L === 'eps' ? [FACADE.epsL, FACADE.epsW] : L === 'mw' ? [VENT_SUB.mwL, VENT_SUB.mwW] : panelMod(key);
+    const off = L === 'eps' ? OFF.eps : L === 'mw' ? OFF.mw : L === 'vp' ? OFF.vent : OFF.pan, rec = this._rec(F), out = [];
+    const [a0, y0, a1, y1] = rect, sa = MM(md[0]) / 4, sy = MM(md[1]) / 2;
+    for (let y = y0 + sy / 2; y <= y1; y += sy) for (let a = a0 + sa / 2; a <= a1; a += sa) {
+      const slot = V ? ventSlot(F, a, y, L, md) : slotAt(F, a, y, L, md), ca = (slot[0] + slot[2]) / 2, cy = (slot[1] + slot[3]) / 2;
+      if (ca < a0 - MM(40) || ca > a1 + MM(40) || cy < y0 - MM(40) || cy > y1 + MM(40)) continue;
+      if (out.some((q) => sameSlot(q, slot))) continue;
+      const piece = cutPiece(F, slot, off);
+      if (!this._why(F, rec, L, slot, piece, out)) out.push(slot);
+    }
+    // (bottom up, along each row: as they go on)
+    out.sort((p, q) => p[1] - q[1] || (p[0] - q[0]) * (F.ru || 1));
+    return { slots: out, key };
+  }
+  _areaDown(e) {
+    const L = this.layer, h = this._hit(e, L === 'eps' || L === 'mw' ? 0 : OFF.eps);
+    if (!h) { this.app.ui.toast(this.faces().length ? 'Проведите по наружной стороне стены — от угла до угла участка' : 'Фасад — по наружным стенам: сначала кладка'); return true; }
+    this.drag = { area: true, F: h.F, off: L === 'eps' || L === 'mw' ? 0 : OFF.eps, a0: h.a, y0: h.y, a: h.a, y: h.y };
+    this._areaShow();
+    return true;
+  }
+  _areaRect(d) { const e = ext(d.F, d.off), snap = MM(250); let a0 = Math.min(d.a0, d.a), a1 = Math.max(d.a0, d.a), y0 = Math.min(d.y0, d.y), y1 = Math.max(d.y0, d.y); if (a0 - e[0] < snap) a0 = e[0]; if (e[2] - a1 < snap) a1 = e[2]; if (y0 - e[1] < snap) y0 = e[1]; if (e[3] - y1 < snap) y1 = e[3]; return [a0, y0, a1, y1]; }
+  _areaShow() {
+    const d = this.drag, r = this._areaRect(d), A = this._areaSlots(d.F, r);
+    d.rect = r; d.slots = A.slots; d.key = A.key;
+    this._live(d.F, { layer: this.layer, area: r, extra: A.slots.map((q) => (this.layer === 'pan' || this.layer === 'vp' ? [...q, A.key] : q)), extraGhost: true });
+    this.app.ui.showMeasure(`Участок ${((r[2] - r[0]) / S / 1000).toFixed(2).replace('.', ',')} × ${((r[3] - r[1]) / S / 1000).toFixed(2).replace('.', ',')} м — ${A.slots.length} шт.`);
+  }
+  _areaUp(d) {
+    const app = this.app, L = this.layer, F = d.F;
+    if (!d.slots?.length) { app.ui.toast('Здесь класть нечего: участок уже закрыт, проём или нет основания'); return; }
+    const slots = d.slots, key = d.key, list = L === 'pan' || L === 'vp' ? slots.map((q) => [...q, key]) : slots;
+    let shown = 0;
+    const steps = list.map((_, i) => [0.14, (u) => { if (u >= 1 && shown <= i) { shown = i + 1; this._live(F, { layer: L, extra: list.slice(0, shown) }); app.sfx?.stab?.(); } }]);
+    new FitJob(app, {
+      steps,
+      cleanup: () => this._live(null),
+      commit: () => {
+        const r = this._rec(F) || {};
+        this._save(F, { [L]: [...(r[L] || []), ...list] }, 'facade-area-' + L);
+        app.ui.toast(`${{ eps: 'Листов ППС', mw: 'Плит минваты', pan: 'Панелей', vp: 'Панелей' }[L]}: ${list.length} — по участку, швы вразбежку, у проёмов подрезаны${L === 'eps' ? '; на клей и по 5 дюбелей' : L === 'mw' ? '; по 2 тарельчатых дюбеля' : ''}`);
+      },
+    });
   }
   carryDrop() {
     const app = this.app, P = this.place, L = this.layer;

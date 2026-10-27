@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { boxOf } from './freeBrick.js';
 import { FitJob, drive, hammer } from './fitJob.js';
-import { plan as beltPlan, toWorld as beltWorld } from './belt.js';
+import { plan as beltPlan, toWorld as beltWorld, beltContains } from './belt.js';
 import { RWIN_TYPES, rwinSpan } from '../world/roofWindows.js';
 import { wingShape, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
@@ -28,15 +28,21 @@ let _outside = null;
 // outside, false inside, null on a wall — or null when there is no house
 export function houseOutside(app) { _outside = null; findHouse(app, null, true); return _outside; }
 // the buildings on the plot: the masonry in groups — units touching (within 100 mm) belong to one
-// (a garage beside the house is its own building, with its own roof); cached till units change
+// (a garage beside the house is its own building, with its own roof). A floor slab cast between
+// two tiers parts them: the walls on a slab are a building of their own (two small houses on one
+// big slab — each its own wall plate and roof). Cached till units / slabs change
 let _bk = null, _bs = null;
 export function buildings(app) {
-  const us = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel), key = us.length + ':' + (us.at(-1)?.id ?? 0);
+  const us = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel), slabs = app.objects.all('belt').filter((b) => b.kind === 'slab');
+  const key = us.length + ':' + (us.at(-1)?.id ?? 0) + ':' + slabs.map((b) => b.id).join(',');
   if (key === _bk) return _bs;
   const bx = us.map(boxOf), n = bx.length, par = Int32Array.from({ length: n }, (_, i) => i), gap = MM(100);
   const root = (i) => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
   const rad = bx.map((b) => Math.hypot(b.hl, b.hw));
   const apart = (a, b) => {
+    // (one over the other with a slab between: apart)
+    const [lo, hi] = a.top <= b.bot + MM(5) ? [a, b] : b.top <= a.bot + MM(5) ? [b, a] : [null, null];
+    if (lo && hi.bot - lo.top > gap && slabs.some((s) => s.top > lo.top - MM(40) && s.top < hi.bot && (beltContains(s, lo.x, lo.z) || beltContains(s, hi.x, hi.z)))) return true;
     // (the boxes' gap along their sides — the axes of either)
     for (const [ax, az] of [[a.ux, a.uz], [-a.uz, a.ux], [b.ux, b.uz], [-b.uz, b.ux]]) {
       const ra = Math.abs(a.hl * (a.ux * ax + a.uz * az)) + Math.abs(a.hw * (-a.uz * ax + a.ux * az)), rb = Math.abs(b.hl * (b.ux * ax + b.uz * az)) + Math.abs(b.hw * (-b.uz * ax + b.ux * az));
@@ -63,16 +69,21 @@ export function buildingAt(app, p) {
   const bs = buildings(app);
   if (!p || bs.length < 2) return bs[0] || null;
   let best = null, bd = Infinity;
-  for (const B of bs) for (const b of B) { const d = Math.hypot(b.x - p.x, b.z - p.z) - Math.hypot(b.hl, b.hw); if (d < bd) bd = d, best = B; }
+  // (in height too: the walls of the tier the finger is at)
+  for (const B of bs) for (const b of B) { const d = Math.hypot(b.x - p.x, b.z - p.z) - Math.hypot(b.hl, b.hw) + (p.y != null ? Math.max(0, b.bot - p.y, p.y - b.top) : 0); if (d < bd) bd = d, best = B; }
   return best;
 }
 // near: the building the finger is at (else the biggest); whole: all the masonry as one
-export function findHouse(app, near = null, whole = false) {
+// base: the plan of its lowest courses (the blind area goes round the foot of the house, not
+// round an upper floor set out over it)
+// band: the walls up to this level only (a lean-to: the garage's walls and the house's under their top)
+export function findHouse(app, near = null, whole = false, base = false, band = null) {
   const all = whole ? app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel).map(boxOf) : buildingAt(app, near) || [];
   if (all.length < 8) return null;
   // the walls the roof stands on: the upper courses (a plinth, a wider first tier under them
   // would push the outline out)
-  const yMax = Math.max(...all.map((b) => b.top)), units = all.filter((b) => b.top > yMax - MM(1500));
+  const yMax = band ?? Math.max(...all.map((b) => b.top)), yMin = Math.min(...all.map((b) => b.bot));
+  const units = all.filter((b) => (base ? b.bot < yMin + MM(1500) : band != null ? b.top <= band + MM(30) && b.top > band - MM(1500) : b.top > yMax - MM(1500)));
   if (units.length < 8) return null;
   // the way the walls run: the most common direction (mod 90°), then the mean of the units
   // near it (laid by hand: each a little off — the plate must follow the walls, not a 1,4° step)
@@ -148,6 +159,21 @@ export function findHouse(app, near = null, whole = false) {
     rects.push(best);
     for (let j = best.j0; j < best.j1; j++) for (let i = best.i0; i < best.i1; i++) left[j * ni + i] = 0;
   }
+  // a lean-to (band): only the room the finger is at — its inside cells (walled in by its own walls
+  // and the house's), out to the outer faces of its walls; not the whole plan round the house
+  if (band != null && near) {
+    const Tm = [...units.map((b) => 2 * Math.min(b.hw, b.hl))].sort((p, q) => p - q)[Math.floor(units.length / 2)], nT = Math.max(1, Math.round(Tm / C));
+    const pi = Math.floor((toA(near.x, near.z) - a0) / C), pj = Math.floor((toD(near.x, near.z) - d0) / C);
+    let seed = -1, sd = Infinity;
+    for (let j = pj - 12; j <= pj + 12; j++) for (let i = pi - 12; i <= pi + 12; i++) { if (i < 0 || j < 0 || i >= ni || j >= nj) continue; const k = j * ni + i; if (grid[k] || out[k]) continue; const dd = (i - pi) ** 2 + (j - pj) ** 2; if (dd < sd) sd = dd, seed = k; }
+    if (seed >= 0) {
+      const seen = new Uint8Array(ni * nj), st2 = [seed]; seen[seed] = 1;
+      let i0 = ni, i1 = -1, j0 = nj, j1 = -1;
+      while (st2.length) { const k = st2.pop(), i = k % ni, j = (k - i) / ni; i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); for (const q of [i > 0 ? k - 1 : -1, i < ni - 1 ? k + 1 : -1, k - ni, k + ni]) if (q >= 0 && q < ni * nj && !seen[q] && !grid[q] && !out[q]) { seen[q] = 1; st2.push(q); } }
+      rects.length = 0;
+      rects.push({ ar: (i1 - i0 + 1) * (j1 - j0 + 1), i0: Math.max(0, i0 - nT), i1: Math.min(ni, i1 + 1 + nT), j0: Math.max(0, j0 - nT), j1: Math.min(nj, j1 + 1 + nT) });
+    }
+  }
   if (!rects.length) return null;
   // the wings: the ridge along the longer side; an end touching another rectangle joins it.
   // Each side of a rectangle (on the 100 mm grid) goes onto the true outer face of the
@@ -189,10 +215,60 @@ export function findHouse(app, near = null, whole = false) {
   }
   // the top: the walls, or a ring beam cast on them
   let y0 = Math.max(...units.map((b) => b.top));
-  for (const b of app.objects.all('belt')) if (b.kind !== 'pool' && b.fill > 0.5 && b.top + b.H > y0 - MM(50) && b.top + b.H < y0 + MM(400)) y0 = Math.max(y0, b.top + b.H);
+  for (const b of app.objects.all('belt')) if (b.kind !== 'pool' && b.fill > 0.5 && b.top + b.H > y0 - MM(50) && b.top + b.H < y0 + MM(400) && (band == null || wings.some((w) => beltContains(b, w.cx, w.cz)))) y0 = Math.max(y0, b.top + b.H);
   const T = [...units.map((b) => 2 * Math.min(b.hw, b.hl))].sort((p, q) => p - q)[Math.floor(units.length / 2)];
   const g = Math.min(...all.map((b) => b.bot)) - MM(20);
   return { y0: +y0.toFixed(6), T: +T.toFixed(6), g: +g.toFixed(6), wings: wings.map((w) => ({ cx: +w.cx.toFixed(6), cz: +w.cz.toFixed(6), ux: +w.ux.toFixed(6), uz: +w.uz.toFixed(6), A: +w.A.toFixed(6), B: +w.B.toFixed(6), e: w.e, x: w.x.map((v) => +v.toFixed(6)) })) };
+}
+
+// A lean-to (пристройка) built on to a higher house — a garage of three walls, the fourth the house:
+// the finger at the top of its walls (well under the house's top). The plan of the walls up to that
+// level (the garage's and the house's under it) → the rectangle the finger is over: the garage; the
+// side of it against walls going on up: the house. Its roof: one slope, rising to the house.
+export function findLean(app, p) {
+  if (!p) return null;
+  const B = buildingAt(app, p);
+  if (!B || B.length < 8) return null;
+  const yMax = Math.max(...B.map((b) => b.top));
+  // the unit nearest the finger: the top of the walls there
+  let nb = null, bd = Infinity;
+  for (const b of B) { const dx = p.x - b.x, dz = p.z - b.z, a = Math.max(0, Math.abs(dx * b.ux + dz * b.uz) - b.hl), d = Math.max(0, Math.abs(-dx * b.uz + dz * b.ux) - b.hw), dy = Math.max(0, b.bot - p.y, p.y - b.top), q = Math.hypot(a, d, dy); if (q < bd) bd = q, nb = b; }
+  if (!nb) return null;
+  // (the top of that wall: the highest unit stacked there)
+  const yT = Math.max(...B.filter((b) => Math.hypot(b.x - nb.x, b.z - nb.z) < b.hl + nb.hl + MM(20) && b.top < yMax - MM(600) && b.top > nb.top - MM(800)).map((b) => b.top), nb.top);
+  if (yMax - yT < MM(800)) return null;
+  // (the same walls, the same part: as found before — the finger moving over it)
+  const ck = B.length + ':' + B[0].u.id + ':' + Math.round(yT * 1e5) + ':' + app.objects.all('belt').length;
+  if (_lean.key === ck && (!_lean.val || _lean.val.wings.some((q) => { const dx = p.x - q.cx, dz = p.z - q.cz; return Math.abs(dx * q.ux + dz * q.uz) <= q.A + MM(400) && Math.abs(-dx * q.uz + dz * q.ux) <= q.B + MM(400); }))) return _lean.val;
+  const val = leanOf(app, p, B, yT);
+  _lean.key = ck; _lean.val = val;
+  return val;
+}
+const _lean = { key: null, val: null };
+function leanOf(app, p, B, yT) {
+  const H = findHouse(app, p, false, false, yT);
+  if (!H) return null;
+  const inW = (w, x, z, o = 0) => { const dx = x - w.cx, dz = z - w.cz; return Math.abs(dx * w.ux + dz * w.uz) <= w.A + o && Math.abs(-dx * w.uz + dz * w.ux) <= w.B + o; };
+  const w = H.wings.find((q) => inW(q, p.x, p.z, MM(400))) || H.wings.reduce((a, q) => (Math.hypot(q.cx - p.x, q.cz - p.z) < Math.hypot(a.cx - p.x, a.cz - p.z) ? q : a));
+  // the side against the house: units going on up over the lean-to's walls just past it
+  const high = B.filter((b) => b.top > yT + MM(500));
+  const vx = -w.uz, vz = w.ux, sides = [[0, vx, vz, w.B, w.A, w.ux, w.uz], [1, -vx, -vz, w.B, w.A, w.ux, w.uz], [2, w.ux, w.uz, w.A, w.B, vx, vz], [3, -w.ux, -w.uz, w.A, w.B, vx, vz]];
+  let md = -1, best = 0, inner = false;
+  const isHigh = (x, z) => high.some((b) => { const dx = x - b.x, dz = z - b.z; return Math.abs(dx * b.ux + dz * b.uz) <= b.hl + MM(10) && Math.abs(-dx * b.uz + dz * b.ux) <= b.hw + MM(10); });
+  for (const [k, nx, nz, off, len, ax, az] of sides) {
+    // (in the wall along that side — the house's wall may be taken in with the lean-to — and just past it)
+    for (const [o, inn] of [[off - H.T / 2, true], [off + MM(120), false]]) {
+      let hits = 0;
+      for (let i = -2; i <= 2; i++) if (isHigh(w.cx + nx * o + ax * len * i * 0.4, w.cz + nz * o + az * len * i * 0.4)) hits++;
+      if (hits > best) best = hits, md = k, inner = inn;
+    }
+  }
+  if (md < 0 || best < 3) return null;
+  // (the house's wall is not the lean-to's: its edge on the outer face of that wall)
+  const T = inner ? H.T : 0, nw = { ...w };
+  if (md <= 1) { const sg = md === 0 ? 1 : -1; nw.B = w.B - T / 2; nw.cx = w.cx - vx * sg * T / 2; nw.cz = w.cz - vz * sg * T / 2; }
+  else { const sg = md === 2 ? 1 : -1; nw.A = w.A - T / 2; nw.cx = w.cx - w.ux * sg * T / 2; nw.cz = w.cz - w.uz * sg * T / 2; }
+  return { ...H, lean: true, wings: [{ ...nw, e: ['end', 'end'], x: [0, 0], style: 'mono', md, abut: true, pitch: 12 }] };
 }
 
 export class PitchedWork {
@@ -406,8 +482,9 @@ export class PitchedWork {
     this.place = null; this.why = null;
     if (L === 'plate') {
       // the building at the finger (a house, a garage beside it: each its own roof)
-      const B = buildingAt(app, p), key = app.objects.all('unit').length + ':' + app.objects.all('belt').length + ':' + (B?.[0]?.u.id ?? 0);
-      if (this._hk !== key) { this._hk = key; this._house = findHouse(app, p); }
+      // (at the top of a lower part built on to a house — a garage — its own lean-to roof)
+      const B = buildingAt(app, p), lean = findLean(app, p), key = app.objects.all('unit').length + ':' + app.objects.all('belt').length + ':' + (B?.[0]?.u.id ?? 0) + ':' + (lean ? Math.round(lean.y0 * 1e4) + ':' + Math.round(lean.wings[0].cx * 1e3) : '');
+      if (this._hk !== key) { this._hk = key; this._house = lean || findHouse(app, p); }
       const H = this._house;
       if (!H) { this._live(null); this.why = 'Не нахожу дом: нужны стены не меньше 2 × 2 м, замкнутые по контуру (крыша встаёт на их верх)'; return { ok: false, why: this.why }; }
       // (a roof already on this building)

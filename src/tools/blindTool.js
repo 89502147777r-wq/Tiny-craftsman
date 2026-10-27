@@ -55,9 +55,25 @@ export class BlindWork {
     return { a, d, q };
   }
   // the house with the ground it stands on
+  // (by the plan of its lowest courses; each side out to the edge of the foundation slab it stands
+  // on when the slab runs on past the wall — the area starts at the slab, not over it)
   _house(p) {
-    const app = this.app, H = findHouse(app, p);
+    const app = this.app, H = findHouse(app, p ? { x: p.x, z: p.z, y: app.terrain.inside(p.x, p.z) ? app.terrain.heightAt(p.x, p.z) : p.y } : null, false, true);
     if (!H) return null;
+    const t = app.terrain, step = MM(25), inW = (w, x, z) => { const dx = x - w.cx, dz = z - w.cz; return Math.abs(dx * w.ux + dz * w.uz) < w.A + MM(5) && Math.abs(-dx * w.uz + dz * w.ux) < w.B + MM(5); };
+    for (const w of H.wings) {
+      const vx = -w.uz, vz = w.ux;
+      for (const [nx, nz, half, ax, az, len] of [[w.ux, w.uz, 'A', vx, vz, w.B], [-w.ux, -w.uz, 'A', vx, vz, w.B], [vx, vz, 'B', w.ux, w.uz, w.A], [-vx, -vz, 'B', w.ux, w.uz, w.A]]) {
+        let ext = Infinity, n = 0;
+        for (let k = -2; k <= 2; k++) {
+          const off = w[half] + MM(10), x0 = w.cx + nx * off + ax * len * k * 0.4, z0 = w.cz + nz * off + az * len * k * 0.4;
+          if (H.wings.some((o) => o !== w && inW(o, x0, z0))) continue;
+          let e = 0; while (e < MM(600) && t.inside(x0 + nx * e, z0 + nz * e) && t.conc[t.index(x0 + nx * e, z0 + nz * e)] > MM(50) && t.heightAt(x0 + nx * e, z0 + nz * e) > H.g - MM(30)) e += step;
+          ext = Math.min(ext, e); n++;
+        }
+        if (n && ext > MM(40) && ext < MM(600)) { w[half] += ext / 2; w.cx += nx * ext / 2; w.cz += nz * ext / 2; }
+      }
+    }
     return H;
   }
 

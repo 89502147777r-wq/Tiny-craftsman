@@ -31,6 +31,24 @@
 | `assets/textures/travertine/` — бортовой камень, травертин | Travertine 009 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Travertine009 |
 | `assets/textures/pool_coat/` — обмазочная гидроизоляция, бортовой камень «керамогранит» | Concrete 034 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Concrete034 |
 
+## Текстуры вентфасада (ambientCG, CC0 1.0)
+
+Цвет 1024 px. Панель — окно фото (~1,6 м) под её размер, швы, кляммеры и заклёпки дорисованы поверх. Фиброцемент — одно фото, обесцвеченное и тонированное под каждый цвет. Травертин — тот же, что у бассейна.
+
+| Файл в проекте | Ассет | Автор | Лицензия | Источник |
+|---|---|---|---|---|
+| `assets/textures/facade/porc_concrete/` — керамогранит «под бетон» | Concrete 046 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Concrete046 |
+| `assets/textures/facade/porc_anthracite/` — керамогранит «бетон антрацит» | Concrete 031 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Concrete031 |
+| `assets/textures/facade/porc_marble/` — керамогранит «мрамор белый» | Marble 012 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Marble012 |
+| `assets/textures/facade/porc_nero/` — керамогранит «мрамор неро» | Marble 016 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Marble016 |
+| `assets/textures/facade/porc_granite/` — керамогранит «гранит серый» | Granite 002 A | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Granite002A |
+| `assets/textures/facade/porc_terrazzo/` — керамогранит «терраццо» | Terrazzo 013 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Terrazzo013 |
+| `assets/textures/facade/hpl_oak/` — HPL «дуб» | Wood 049 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Wood049 |
+| `assets/textures/facade/hpl_walnut/` — HPL «орех» | Wood 066 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Wood066 |
+| `assets/textures/facade/hpl_wenge/` — HPL «венге» | Wood 051 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Wood051 |
+| `assets/textures/facade/cas_corten/` — металлокассеты «кортен» | Rust 009 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Rust009 |
+| `assets/textures/facade/fc_fibre/` — фактура фиброцемента (тонируется) | Concrete 048 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Concrete048 |
+
 ## HDRI (Poly Haven, CC0 1.0)
 
 | Файл | Ассет | Автор | Лицензия | Источник |

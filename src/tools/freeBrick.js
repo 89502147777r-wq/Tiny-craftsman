@@ -145,18 +145,20 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   // the course already there nearby, and its bed is whatever is between it and the slab
   // (0,4 … 2,5 × the usual bed). The first unit sets the level: the highest point of the
   // slab under it + the usual bed.
-  const groundCourse = boxes.filter((b) => b.kind === D.grp && b.u.free && (() => { const g = groundUnder(t, b.x, b.z, b); return g > -Infinity && b.bot - g < B0 * 2.6 && !boxes.some((o) => o !== b && o.top <= b.bot + 1e-5 && o.top > g + 1e-4 && overlap2(o, b)); })());
+  const groundCourse = boxes.filter((b) => b.kind === D.grp && b.u.free && (() => { const g = groundUnder(t, b.x, b.z, b); return g > -Infinity && b.bot - g < Math.max(B0 * 2.6, BEDMAX + 1e-6) && !boxes.some((o) => o !== b && o.top <= b.bot + 1e-5 && o.top > g + 1e-4 && overlap2(o, b)); })());
   for (const c of cands) {
     if (c.how === 'top' || c.gone) continue;
     const g = groundUnder(t, c.x, c.z, c);
     if (g === -Infinity || boxes.some((o) => o.top <= c.bot + 1e-5 && o.top > g + 1e-4 && overlap2(o, c))) continue;   // (not on the ground)
     if (c.how === 'ground' && !c.snap) {
       let lv = null, dl = 0.2;
-      for (const b of groundCourse) { const d = Math.hypot(b.x - c.x, b.z - c.z); if (d < dl && Math.abs(b.bot - c.bot) < 0.35 * H) { dl = d; lv = b.bot; } }
-      if (lv != null && lv - g >= B0 * 0.4 && lv - g <= B0 * 2.5) { c.bot = lv; c.top = lv + H; }
+      for (const b of groundCourse) { const d = Math.hypot(b.x - c.x, b.z - c.z); if (d < dl && Math.abs(b.bot - c.bot) < Math.max(0.35 * H, BEDMAX)) { dl = d; lv = b.bot; } }
+      // (the first unit on a slab: its level from the slab's highest point)
+      if (lv == null) { const top = slabTop(app, c.x, c.z); if (top != null && top + B0 - g <= BEDMAX) lv = Math.max(g + B0 * 0.4, top + B0); }
+      if (lv != null && lv - g >= B0 * 0.4 && lv - g <= Math.max(B0 * 2.5, BEDMAX)) { c.bot = lv; c.top = lv + H; }
     }
     const bed = c.bot - g;
-    if (bed >= B0 * 0.4 && bed <= B0 * 2.5) c.bed = bed;
+    if (bed >= B0 * 0.4 && bed <= Math.max(B0 * 2.5, BEDMAX)) c.bed = bed;
   }
   // score: on the screen (the top centre of it), else in the plot
   // a magnet: a place on the top or on the ground near a unit of the same course is set
@@ -169,7 +171,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     for (const n of boxes) {
       // (auto-alignment: a neighbour a little higher or lower — an uneven slab, a course
       // laid a little off — still sets the line; within a third of a course)
-      if ((n.kind !== D.grp && n.kind !== 'lintel') || Math.abs(n.bot - c.bot) > 0.35 * H) continue;
+      if ((n.kind !== D.grp && n.kind !== 'lintel') || Math.abs(n.bot - c.bot) > Math.max(0.35 * H, c.how === 'ground' ? BEDMAX : 0)) continue;
       const dx = c.x - n.x, dz = c.z - n.z, along = dx * n.ux + dz * n.uz, side = -dx * n.uz + dz * n.ux;
       const par = Math.abs(Math.sin(c.yaw - n.yaw)) < 0.05, perp = Math.abs(Math.cos(c.yaw - n.yaw)) < 0.05;
       const spots = [];
@@ -195,7 +197,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
           if (Math.abs(n.bot - c.bot) > 0.0006) {
             if (c.how === 'ground') {
               const g = groundUnder(t, x, z, c);
-              if (n.bot - g >= B0 * 0.4 && n.bot - g <= B0 * 2.5) bed = n.bot - g;
+              if (n.bot - g >= B0 * 0.4 && n.bot - g <= Math.max(B0 * 2.5, BEDMAX)) bed = n.bot - g;   // (a low spot: a thicker bed)
               else { bot = g + B0; bed = B0; }
             } else { bot = c.bot; bed = c.bed; }
           }
@@ -273,6 +275,31 @@ function alignToBelow(t, boxes, c, D) {
 }
 
 // the highest ground under a place (its middle and near its corners)
+// the highest point of the slab / the foundation (the cast concrete joined to the point):
+// the first course is set to it, as on site — the level line from the top of the highest
+// bump; everywhere lower the bed of mortar is thicker (null: not on concrete)
+const _slab = { v: -1, seen: null, max: 0, start: -1 };
+function slabTop(app, x, z) {
+  const t = app.terrain;
+  if (!t.inside(x, z)) return null;
+  const i0 = t.index(x, z);
+  if (!(t.conc[i0] > 1e-6)) return null;
+  if (_slab.v === t.version && _slab.seen && _slab.seen[i0]) return _slab.max;
+  const seen = (_slab.seen && _slab.seen.length === t.conc.length) ? _slab.seen.fill(0) : new Uint8Array(t.conc.length), n = t.nx, st = [i0];
+  let max = -Infinity, k = 0;
+  seen[i0] = 1;
+  while (st.length && k++ < 600000) {
+    const i = st.pop(), h = t.hAt(i);
+    if (h > max) max = h;
+    const ix = i % n;
+    for (const j of [ix > 0 ? i - 1 : -1, ix < n - 1 ? i + 1 : -1, i - n, i + n]) if (j >= 0 && j < seen.length && !seen[j] && t.conc[j] > 1e-6) { seen[j] = 1; st.push(j); }
+  }
+  Object.assign(_slab, { v: t.version, seen, max });
+  return max;
+}
+// the thickest a bed of mortar under the first course may be
+const BEDMAX = 0.12 / MODEL_SCALE;
+
 function groundUnder(t, x, z, c) {
   let g = -Infinity;
   for (const [a, b] of [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {

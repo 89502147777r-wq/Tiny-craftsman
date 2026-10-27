@@ -44,7 +44,9 @@ export function findOpenings(app) {
     if (L.units.length < 3) continue;
     // its courses: the levels of the bottoms of the units
     const lv = [];
-    for (const u of [...L.units].sort((p, q) => p.bot - q.bot)) if (!lv.length || u.bot - lv.at(-1).bot > (u.top - u.bot) * 0.5) lv.push({ bot: u.bot, top: u.top, us: [u] }); else { const c = lv.at(-1); c.us.push(u); c.top = Math.max(c.top, u.top); }
+    // (a course of bricks under blocks is a course of its own: the step to the next one is
+    // over half the lower of the two units, not of the block)
+    for (const u of [...L.units].sort((p, q) => p.bot - q.bot)) if (!lv.length || u.bot - lv.at(-1).bot > Math.min(u.top - u.bot, lv.at(-1).us[0].top - lv.at(-1).us[0].bot) * 0.5) lv.push({ bot: u.bot, top: u.top, us: [u] }); else { const c = lv.at(-1); c.us.push(u); c.top = Math.max(c.top, u.top); }
     // each course: the masonry along it (joints bridged), the gaps between
     const covered = (c) => { const iv = c.us.map((u) => [u.a0, u.a1]).sort((p, q) => p[0] - q[0]), m = []; for (const v of iv) { if (m.length && v[0] <= m.at(-1)[1] + MM(30)) m.at(-1)[1] = Math.max(m.at(-1)[1], v[1]); else m.push([...v]); } return m; };
     const gaps = lv.map((c) => { const m = covered(c), g = []; for (let i = 1; i < m.length; i++) if (m[i][0] - m[i - 1][1] >= MM(MIN_W)) g.push([m[i - 1][1], m[i][0]]); return g; });
@@ -80,7 +82,13 @@ export function findOpenings(app) {
       const deep = Math.min(...near.map((q) => q.b.bot - (q.b.u.bedT ?? MM(20))));
       if (!under && deep < y0 - MM(30)) y0 = deep;
       // the top: a lintel / U-blocks / the next course spanning it, or a ring beam / a slab on the walls
-      const mid = (a0 + a1) / 2, x = L.ux * mid - L.uz * L.d, z = L.uz * mid + L.ux * L.d;
+      // the plane of this storey's wall by the opening (a wall upstairs set a little off the one
+      // under it is on the same line, but the window goes in its own plane): the middle of the
+      // units of these courses near it
+      let Ld = L.d;
+      { const ds = []; for (let q = k; q <= top; q++) for (const u of lv[q].us) if (u.a1 > a0 - MM(1200) && u.a0 < a1 + MM(1200)) ds.push(-u.b.x * L.uz + u.b.z * L.ux);
+        if (ds.length) { ds.sort((p, q) => p - q); Ld = ds[ds.length >> 1]; } }
+      const mid = (a0 + a1) / 2, x = L.ux * mid - L.uz * Ld, z = L.uz * mid + L.ux * Ld;
       let y1 = null, why = null;
       const over = L.units.filter((u) => u.bot > yTop - MM(5) && u.bot < yTop + MM(80) && u.a0 < a1 && u.a1 > a0);
       if (over.length) {
@@ -91,7 +99,7 @@ export function findOpenings(app) {
       } else {
         // a ring beam / a slab cast on the walls each side of it (its plan may stop at the gap:
         // it was set out on the masonry) spans it
-        const side = (a) => [L.ux * a - L.uz * L.d, L.uz * a + L.ux * L.d];
+        const side = (a) => [L.ux * a - L.uz * Ld, L.uz * a + L.ux * Ld];
         const bl = app.objects.all('belt').find((b) => b.fill > 0.3 && b.top > yTop - MM(30) && b.top < yTop + MM(80) && (beltContains(b, x, z) || (beltContains(b, ...side(a0 - MM(150))) && beltContains(b, ...side(a1 + MM(150))))));
         if (bl) y1 = bl.top;
         else { y1 = yTop; why = 'Над проёмом нет перемычки — сначала перемычка, U-блоки или перекрытие'; }
@@ -144,7 +152,7 @@ export function findCorners(app) {
   // a course of a line: its bottom, top and what it covers along it (the joints bridged)
   const courses = (L) => {
     const lv = [];
-    for (const u of [...L.units].sort((p, q) => p.bot - q.bot)) if (!lv.length || u.bot - lv.at(-1).bot > (u.top - u.bot) * 0.5) lv.push({ bot: u.bot, top: u.top, us: [u] }); else { const c = lv.at(-1); c.us.push(u); c.top = Math.max(c.top, u.top); }
+    for (const u of [...L.units].sort((p, q) => p.bot - q.bot)) if (!lv.length || u.bot - lv.at(-1).bot > Math.min(u.top - u.bot, lv.at(-1).us[0].top - lv.at(-1).us[0].bot) * 0.5) lv.push({ bot: u.bot, top: u.top, us: [u] }); else { const c = lv.at(-1); c.us.push(u); c.top = Math.max(c.top, u.top); }
     for (const c of lv) { const iv = c.us.map((u) => [u.a0, u.a1]).sort((p, q) => p[0] - q[0]), m = []; for (const v of iv) { if (m.length && v[0] <= m.at(-1)[1] + MM(30)) m.at(-1)[1] = Math.max(m.at(-1)[1], v[1]); else m.push([...v]); } c.m = m; }
     return lv;
   };

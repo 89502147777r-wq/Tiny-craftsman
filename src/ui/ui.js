@@ -6,6 +6,7 @@ import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
 import { POOL_LAYERS, MOSAICS, COPES } from '../world/pool.js';
+import { COL_SECS, COURSES, COL_STAGES, TILTS, courseH } from '../world/columns.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
 import { LAYERS as FAC_LAYERS, VLAYERS as FAC_VLAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES, VENT } from '../world/facade.js';
 import { RWIN_TYPES } from '../world/roofWindows.js';
@@ -51,7 +52,7 @@ const HINTS = {
     lay: 'Тяните блок или кирпич из лотка: к кладке — встанет впритык в ряд, на кладку — сверху, на плиту — у края. Направление — как у последнего уложенного, «↻ Повернуть» — на 90° (для угла). Зелёный — встанет, красный — некуда',
     delete: 'Коснитесь блока или кирпича, чтобы снять (только верхний), оранжевой рамки — убрать проём, пустой линии — убрать стену',
   },
-  bitumen: 'Ведите кистью по бетону — грани и верх фундамента покроются битумной мастикой',
+  bitumen: 'Ведите кистью по бетону, кладке, перемычкам, поясам и перекрытиям — первый проход тонкий (фактура видна), каждый следующий по тому же месту — слой толще, до сплошного чёрного',
   plate: 'Ведите виброплиту по засыпке — грунт, песок, щебень уплотняются и оседают. Пройдите 3–4 раза',
   breaker: 'Лом: держите палец на застывшем наплыве бетона (у фундамента, у опалубок) и ведите — корка откалывается и уходит в мусор; фундамент и плиты (толще 10 см) не трогает',
   trowel: `Ведите кельмой по свежему бетону — поверхность станет гладкой (пока бетон не схватился, ~${Math.round(0.75 * CONCRETE.cure)} с)`,
@@ -454,6 +455,17 @@ export class UI {
       const masonry = [K('block', 'Газоблок'), K('brick', 'Кирпич'), K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];
       if (has('block', 'brick', 'ublock', 'cinder')) masonry.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
       if (has('block', 'brick', 'cinder')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
+      // the columns and the piles: the stage; the section, the height by the courses, the slope
+      const cw = wt.col, cset = (o) => { lay({ wallKind: 'column', ...o }); const r = cw.rec; if (r && (r.stage ?? 0) < 3 && ('colN' in o || 'colCourse' in o || 'colTilt' in o || 'colDir' in o)) cw.restyle(r); };
+      const CS = cw.stage, cols = [
+        ...COL_STAGES.map(([k, l], i) => C(`${i + 1} · ${l}`, has('column') && CS === k, () => cset({ colStage: k }))),
+        G('csec', `Сечение: ${COL_SECS[cw.sec].name}`, Object.entries(COL_SECS).map(([k, q]) => C(q.name, cw.sec === k, () => cset({ colSec: k, colStage: 'set' }))), 'Сечение'),
+        G('ccourse', `По кладке: ${COURSES[cw.course].name}`, Object.entries(COURSES).map(([k, q]) => C(q.name[0].toUpperCase() + q.name.slice(1), cw.course === k, () => cset({ colCourse: k, colN: null }))), 'Кладка'),
+        C(`− ряд (${cw.n})`, false, () => cset({ colN: Math.max(1, cw.n - 1) })),
+        C(`+ ряд → ${courseH(cw.course, cw.n + 1)} мм`, false, () => cset({ colN: cw.n + 1 })),
+        G('ctilt', `Наклон: ${cw.tiltDeg}°`, TILTS.map((d) => C(d ? `${d}°` : 'Вертикально', cw.tiltDeg === d, () => cset({ colTilt: d }))), 'Наклон'),
+        ...(cw.tiltDeg ? [C(`↻ Сторона наклона (${cw.dirDeg}°)`, false, () => cset({ colDir: (cw.dirDeg + 45) % 360 }))] : []),
+      ];
       // the roof: its layer → the colour
       const RL = s.roofLayer || 'vap';
       const roof = ROOF_LAYERS.map(([k, l], i) => {
@@ -537,7 +549,7 @@ export class UI {
       const hid = (n) => ({ ...n, hidden: true });
       // the top row's own groups (hidden here: opened from there), then the walls themselves
       return [
-        hid(G('facade', 'Фасад', [G('wet', 'Мокрый фасад', facade, null, C('', has('facade') && !isV, () => lay({ wallKind: 'facade', facLayer: isV ? 'eps' : FL }))), G('vent', 'Вентфасад', vent, null, C('', has('facade') && isV, () => lay({ wallKind: 'facade', facLayer: isV ? FL : 'br' }))), del()], null, C('', has('facade'), () => lay({ wallKind: 'facade' })))),
+        hid(G('facade', 'Фасад', [G('wet', 'Мокрый фасад', facade, null, C('', has('facade') && !isV, () => lay({ wallKind: 'facade', facLayer: isV ? 'eps' : FL }))), G('vent', 'Вентфасад', vent, null, C('', has('facade') && isV, () => lay({ wallKind: 'facade', facLayer: isV ? FL : 'br' }))), C(s.facArea ? '▦ Площадью: вкл' : '▦ Площадью', !!s.facArea, () => { lay({ wallKind: 'facade', facArea: !s.facArea }); if (!s.facArea) return; app.ui.toast('Площадью: проведите пальцем по стене от угла до угла участка — утеплитель, минвата или панели лягут на весь участок, швы вразбежку, у проёмов подрезка'); }), del()], null, C('', has('facade'), () => lay({ wallKind: 'facade' })))),
         hid(G('win', 'Окна и двери', [
           G('wins', 'Окна', [...pick([['pvc1', '1 · ПВХ 1 ств.'], ['pvc2', '2 · ПВХ 2 ств.'], ['pvc3', '3 · ПВХ 3 ств.'], ['pano', '4 · Панорамное'], ['floor', '5 · Витраж в пол'], ['corner', '6 · Угловое остекление'], ['portal', '7 · Портал']], 'windowKey', 'window', 'pvc2'), G('wcol', `Цвет: ${WIN_COLOURS[s.winCol || 'white'][0]}`, Object.entries(WIN_COLOURS).map(([k, [l]]) => C('◼ ' + l, (s.winCol || 'white') === k, () => lay({ wallKind: 'window', winCol: k }))), 'Цвет')], null, C('', has('window'), () => lay({ wallKind: 'window' }))),
           G('door', 'Двери', pick([['door1', '1 · Стальная'], ['door2', '2 · Хай-тек'], ['door3', '3 · Дуб'], ['door4', '4 · Белая со стеклом'], ['door5', '5 · Двустворчатая']], 'doorKey', 'door', 'door1'), null, C('', has('door'), () => lay({ wallKind: 'door' }))),
@@ -555,7 +567,7 @@ export class UI {
         hid(G('pool', 'Бассейн', [...pool, del()], null, C('', has('pool'), () => lay({ wallKind: 'pool' })))),
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
-        G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
+        G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие')), G('cols', 'Колонны и сваи', cols, null, C('', has('column'), () => lay({ wallKind: 'column' })))], null, C('', has('belt', 'studs', 'slab', 'column'))),
         del(),
       ];
     }

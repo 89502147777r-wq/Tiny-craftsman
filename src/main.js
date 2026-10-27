@@ -39,6 +39,7 @@ import { Sfx } from './audio/sfx.js';
 import { UI } from './ui/ui.js';
 import { ProjectView } from './world/projectView.js';
 import { PoolView } from './world/poolView.js';
+import { buildBitumen } from './world/bitumen.js';
 import { HandTools } from './world/handTools.js';
 
 const app = (window.__tc = { ready: false, BUILD });
@@ -74,7 +75,7 @@ async function main() {
   if (typeof app.settings.pump === 'number') app.settings.pump = PUMP.reduce((a, v) => (Math.abs(v - app.settings.pump) < Math.abs(a - app.settings.pump) ? v : a));   // the nearest step
   if (!PUMP.includes(app.settings.pump)) app.settings.pump = DEFAULT_SETTINGS.pump;   // BUILD 23: real pump rates
   if (!DELIVERY.includes(app.settings.delivery)) app.settings.delivery = DEFAULT_SETTINGS.delivery;   // BUILD 36: truck-sized deliveries
-  if (app.settings.wallKind && !['block', 'brick', 'cinder', 'blind', 'lform', 'studs', 'lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'pool'].includes(app.settings.wallKind)) app.settings.wallKind = 'brick';   // BUILD 45: free brickwork (no thickness modes)
+  if (app.settings.wallKind && !['block', 'brick', 'cinder', 'blind', 'lform', 'studs', 'lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'pool', 'column'].includes(app.settings.wallKind)) app.settings.wallKind = 'brick';   // BUILD 45: free brickwork (no thickness modes)
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
   const params = new URLSearchParams(location.search);
   if (params.get('quality')) app.settings.quality = params.get('quality');
@@ -109,6 +110,9 @@ async function main() {
   app.wallView = new WallView(app.objects, tex); scene.add(app.wallView.group); app.wallView.app = app;
   app.wallView.terrain = terrain;   // (what the props of a slab stand on)
   app.poolView = new PoolView(app.objects); app.wallView.group.add(app.poolView.group);   // (picked as the walls are)
+  // the bitumen coats (bitumen.js): the textures the walls look them up in, built anew when they change
+  { let dirty = true; app.objects.on((id, rec) => { if (rec?.type === 'bitumen' || id === app._bitId) dirty = true; });
+    app.bitumenSync = () => { if (!dirty) return; dirty = false; const r = app.objects.all('bitumen')[0] || null; app._bitId = r?.id ?? null; buildBitumen(r, terrain.halfX, terrain.halfZ); }; }
   app.wallView.terrainY = (x, z) => terrain.heightAt(x, z);
   const u = app.terrainMat.userData.uniforms;
   u.tMask.value = app.outlineView.mask;
@@ -279,6 +283,8 @@ function step(dt, time, render = true) {
   app.rebarView.update();
   app.wallView.update();
   app.poolView.update(dt, app);
+  app.wallView.columns.update(app.objects);
+  app.bitumenSync();
   app.shovel.update(dt);
   app.rake.update(dt);
   app.concreteGear.update(dt, app.camera.position);

@@ -46,8 +46,27 @@ export function findOpening(app, p, screen, finger) {
     d -= top * 1e-3;   // (stacked courses with the same gap: the top one — where a lintel goes)
     if (d < bd) bd = d, best = { ux, uz, nx: -uz, nz: ux, yaw: Math.atan2(-uz, ux), o: [ox, oz], c0: e0, c1: e1, top, ty, width: Math.min(a.hw, b.hw) * 2, side: Math.abs(side), gap, kind: a.kind, a, b };
   }
+  if (best) fullWidth(best, boxes);
   return best;
 }
+// the whole thickness of the wall by the opening (a brick wall of 1 – 2½ bricks: its leaves side by
+// side, headers across) — what spans it spans all of it: the line moved to its middle
+function fullWidth(op, boxes) {
+  let lo = Infinity, hi = -Infinity;
+  for (const b of boxes) {
+    if (Math.abs(b.top - op.top) > op.ty || Math.abs(Math.sin(b.yaw - op.yaw) * Math.cos(b.yaw - op.yaw)) > 0.05) continue;
+    const dx = b.x - op.o[0], dz = b.z - op.o[1], s = dx * op.ux + dz * op.uz, sd = -dx * op.uz + dz * op.ux;
+    const ha = Math.abs(b.hl * (b.ux * op.ux + b.uz * op.uz)) + Math.abs(b.hw * (-b.uz * op.ux + b.ux * op.uz)), hd = Math.abs(b.hl * (-b.uz * op.ux + b.ux * op.uz)) + Math.abs(b.hw * (b.ux * op.ux + b.uz * op.uz));
+    // (beside the opening, within 600 mm of its sides, across the line up to 700 mm)
+    if (Math.abs(sd) > 700 * S || s + ha < op.c0 - 600 * S || s - ha > op.c1 + 600 * S || (s - ha > op.c0 - 1e-4 && s + ha < op.c1 + 1e-4)) continue;
+    lo = Math.min(lo, sd - hd); hi = Math.max(hi, sd + hd);
+  }
+  if (!(hi - lo > op.width + 5 * S)) return;
+  const m = (lo + hi) / 2;
+  op.o = [op.o[0] - op.uz * m, op.o[1] + op.ux * m]; op.width = hi - lo;
+}
+// the masonry the opening is in: its course height (a lintel the height of a course — two of bricks)
+const kindOf = (op) => KINDS[op.kind === 'block' || op.kind === 'ublock' ? 'block' : op.kind === 'cinder' ? 'cinder' : 'brick'];
 
 // the course beside the opening carries it for `len` (model) from the gap end, each side:
 // the top it rests on (the highest unit under its ends — hand-laid courses differ by a few
@@ -75,7 +94,7 @@ function bears(app, op, len) {
 export function placeLintel(app, p, screen, finger) {
   const op = findOpening(app, p, screen, finger);
   if (!op) return null;
-  const k = KINDS[op.kind === 'block' || op.kind === 'ublock' ? 'block' : 'brick'];
+  const k = kindOf(op);
   const len = LINTEL_LENGTHS.find((l) => l >= op.gap + 2 * BEAR);
   const H = (op.kind === 'brick' ? 2 * k.H + k.bed : k.H) * S, bed = k.bed * S;
   const mid = (op.c0 + op.c1) / 2;
@@ -100,7 +119,7 @@ export function placeLintel(app, p, screen, finger) {
 export function placeLintelForm(app, p, screen, finger) {
   const op = findOpening(app, p, screen, finger);
   if (!op) return null;
-  const k = KINDS[op.kind === 'block' || op.kind === 'ublock' ? 'block' : 'brick'];
+  const k = kindOf(op);
   const c = 50 * S, bear = BEAR * S, W = op.width;
   const sup = bears(app, op, bear - 0.0001);
   const top = sup ?? op.top, H = (op.kind === 'brick' ? 2 * k.H + k.bed : k.H) * S;

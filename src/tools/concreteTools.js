@@ -7,6 +7,7 @@ import { houseOutside } from './pitchedTool.js';
 import { boxOf } from './freeBrick.js';
 import { BlindChannel } from './blindPour.js';
 import { BLIND, layerSet } from '../world/blind.js';
+import { BIT, dab } from '../world/bitumen.js';
 
 // the concrete cast in place on the walls: a run of U-blocks or a ring beam
 const makeChannel = (app, t) => (t.type === 'belt' ? new BeltChannel(app, t) : t.type === 'blind' ? new BlindChannel(app, t) : new Channel(app, t));
@@ -535,13 +536,44 @@ export class TrowelTool extends ConcreteTool {
 export class BitumenTool extends ConcreteTool {
   constructor(app) { super(app, 'bitumen'); }
 
-  down(p) {
+  // what the brush is on: the masonry, a lintel, a ring beam / a slab, a column (the coats in
+  // bitumen.js) — nearer than the ground under the finger — or the concrete of the ground
+  _wall(e, p) {
+    if (!e || e.clientX === undefined) return null;
+    const app = this.app, v = app.wallView;
+    _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
+    const list = [v.blocks, v.bricks, v.cinders, v.lintels, v.ublocks, v.fill, ...v.slabForm.decks.children, v.columns?.group].filter(Boolean);
+    const h = _ray.intersectObjects(list, true).find((q) => q.object !== v.mortar && !(q.object.material?.transparent));
+    if (!h || (p && h.distance > p.distanceTo(_ray.ray.origin) - 1e-4)) return null;
+    // (the slab's deck is the formwork, not the concrete: only the concrete takes it)
+    if (v.slabForm.decks.children.includes(h.object)) return null;
+    const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : new THREE.Vector3(0, 1, 0);
+    if (h.object.isInstancedMesh && h.instanceId != null) { const m = new THREE.Matrix4(); h.object.getMatrixAt(h.instanceId, m); n.copy(h.face.normal).transformDirection(m).transformDirection(h.object.matrixWorld); }
+    return { p: h.point.clone(), n: n.normalize() };
+  }
+  _rec() {
+    const app = this.app;
+    let r = app.objects.all('bitumen')[0];
+    if (!r) r = app.objects.add({ type: 'bitumen', d: [] });
+    return r;
+  }
+  _dabs(a, b) {
+    const r = this._rec(), d = r.d.slice(), rec = { d }, step = MM(BIT.r) * 0.75, n = Math.max(1, Math.ceil(a.distanceTo(b) / step)), q = new THREE.Vector3();
+    let any = false;
+    for (let k = a === b ? 0 : 1; k <= n; k++) { q.lerpVectors(a, b, k / n); any = dab(rec, q, this.touched) || any; }
+    this.app.objects.update(r.id, { d: rec.d });
+    if (any) this.coated += 1;
+  }
+
+  down(p, e) {
     if (this.state === 'settle') this.finish();   // (a new press: what still flows is taken as it is)
     if (this.state !== 'idle') return true;
-    if (!this.app.terrain.inside(p.x, p.z)) return false;
-    this.begin('bitumen', {}, p);
-    this.coated = 0;
+    const W = this._wall(e, p);
+    if (!W && !this.app.terrain.inside(p.x, p.z)) return false;
+    this.begin('bitumen', {}, W ? W.p : p);
+    this.coated = 0; this.touched = new Set(); this.wallAt = W ? W.p : null;
     this.app.sfx.scrapeStart();
+    if (W) { this.gear.set('brush', W.p, 0, true); this._dabs(W.p, W.p); return true; }
     this.gear.set('brush', this._at(p), 0, true);
     this._paint(p);
     return true;
@@ -553,8 +585,19 @@ export class BitumenTool extends ConcreteTool {
     this.coated += this.app.terrain.paintBitumen(p.x, p.z, 0.09 / MODEL_SCALE, 0.3);
   }
 
-  move(p) {
+  move(p, e) {
     if (this.state !== 'work') return;
+    // on a wall: along its face (up and down too)
+    if (this.wallAt) {
+      const W = this._wall(e, p);
+      if (!W) return;
+      if (W.p.distanceTo(this.wallAt) < MM(BIT.r) * 0.4) return;
+      this._dabs(this.wallAt, W.p);
+      this.app.sfx.scrapeLevel(0.15);
+      this.gear.set('brush', W.p, Math.atan2(W.p.x - this.wallAt.x, W.p.z - this.wallAt.z));
+      this.wallAt = W.p;
+      return;
+    }
     const t = this.app.terrain, len = this.steer(p);
     if (!len) return;
     const n = Math.ceil(len / (t.cell * 2)), q = new THREE.Vector3();
@@ -564,7 +607,7 @@ export class BitumenTool extends ConcreteTool {
     this.gear.set('brush', this._at(p), Math.atan2(this.dir.x, this.dir.y));
   }
 
-  done() { if (!this.coated) this.app.ui?.toast('Битумом мажут бетон — грани и верх фундамента'); }
+  done() { if (!this.coated) this.app.ui?.toast('Битумом мажут бетон, кладку, перемычки, пояса и перекрытия — ведите кистью по поверхности'); else if (this.wallAt && !this.hinted) this.hinted = true, this.app.ui?.toast('Слой мастики: первый проход тонкий — фактура видна; ещё 2–3 прохода по тому же месту — сплошной чёрный слой'); }
 }
 
 // Plate compactor: drag it over loose soil / sand / crushed stone — it shakes along and

@@ -36,6 +36,7 @@ export class Gestures {
     if (this.mode === 'tool') { try { this.app.activeTool()?.up(null, {}); } catch { /* the tool needed the point */ } this.app.ui?.refresh(); }
     this.ptrs.clear();
     this.mode = 'none';
+    this.app.rig.held = false;
   }
 
   ndc(x, y) {
@@ -46,6 +47,19 @@ export class Gestures {
   pick(x, y) {
     this.ray.setFromCamera(this.ndc(x, y), this.app.camera);
     return this.app.terrain.raycast(this.ray.ray);
+  }
+  // for the camera: the nearest thing under the finger — the masonry, the slabs, the roof … or
+  // the ground (a wall up close in front of the ground)
+  pickAll(x, y) {
+    const t = this.pick(x, y), w = this.app.wallView?.group;
+    let best = t ? { point: t.point.clone(), distance: t.point.distanceTo(this.ray.ray.origin) } : null;
+    if (w) {
+      try {
+        const h = this.ray.intersectObject(w, true).find((q) => q.object.visible !== false && !q.object.material?.transparent);
+        if (h && (!best || h.distance < best.distance)) best = { point: h.point.clone(), distance: h.distance };
+      } catch { /* a mesh without a position to test */ }
+    }
+    return best;
   }
 
   // ground point under the finger, or on a horizontal plane when off the soil
@@ -74,6 +88,13 @@ export class Gestures {
       }
       this.mode = 'pinch';
       this.pinch = this.pinchState();
+      // what is between the fingers: it stays under them (its depth for the pan, the point the
+      // pinch zooms to); the twist and the spread count only past a small dead zone (two fingers
+      // moving the picture always turn it a little)
+      const s = this.pinch, a = this.pickAll(s.mx, s.my), cam = app.camera;
+      this.anchor = a ? { p: a.point, depth: Math.max(0.01, a.point.clone().sub(cam.position).dot(cam.getWorldDirection(new THREE.Vector3()))) } : null;
+      this.pinch0 = { d: s.d, a: s.a, twist: false, spread: false };
+      app.rig.held = true;
       return;
     }
     if (this.ptrs.size > 2) return;
@@ -106,12 +127,13 @@ export class Gestures {
     if (this.mode === 'pinch' && this.ptrs.size >= 2) {
       // the ground follows the fingers: midpoint drag = move over the plot,
       // spread = zoom, twist = turn around
-      const s = this.pinchState(), q = this.pinch;
-      if (q.d > 0 && s.d > 0) app.rig.zoom(q.d / s.d);
-      let da = s.a - q.a;
-      if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2;
-      app.rig.pan((s.mx - q.mx) / H, (s.my - q.my) / H);
-      app.rig.orbit(-da, 0);
+      const s = this.pinchState(), q = this.pinch, z0 = this.pinch0, A = this.anchor;
+      const wrap = (v) => (v > Math.PI ? v - Math.PI * 2 : v < -Math.PI ? v + Math.PI * 2 : v);
+      if (!z0.spread && z0.d > 0 && Math.abs(Math.log(s.d / z0.d)) > 0.06) z0.spread = true;
+      if (!z0.twist && Math.abs(wrap(s.a - z0.a)) > 0.12) z0.twist = true;
+      if (z0.spread && q.d > 0 && s.d > 0) { const f = q.d / s.d; app.rig.zoomAt(f, A?.p); if (A) A.depth *= f; }
+      app.rig.pan((s.mx - q.mx) / H, (s.my - q.my) / H, A?.depth);
+      if (z0.twist) app.rig.orbit(-wrap(s.a - q.a), 0);
       this.pinch = s;
       return;
     }
@@ -127,19 +149,20 @@ export class Gestures {
     if (!p) return;
     this.ptrs.delete(e.pointerId);
     const app = this.app;
-    const isTap = performance.now() - p.t0 < 280 && Math.hypot(p.x - p.x0, p.y - p.y0) < 10;
+    const isTap = performance.now() - p.t0 < 350 && Math.hypot(p.x - p.x0, p.y - p.y0) < 14;
     if (this.mode === 'tool') {
       app.activeTool()?.up(this.ground(e.clientX, e.clientY), e);
       this.mode = 'none';
       app.ui.refresh();
     } else if (this.mode === 'orbit' && isTap && app.tool === 'camera') {
       const now = performance.now();
-      if (now - this.lastTap.t < 330 && Math.hypot(p.x - this.lastTap.x, p.y - this.lastTap.y) < 30) {
-        const hit = this.pick(p.x, p.y);
+      if (now - this.lastTap.t < 380 && Math.hypot(p.x - this.lastTap.x, p.y - this.lastTap.y) < 40) {
+        const hit = this.pickAll(p.x, p.y);
         if (hit) { app.rig.lookAtPoint(hit.point); app.focusPoint = null; }
         this.lastTap.t = 0;
       } else this.lastTap = { t: now, x: p.x, y: p.y };
     }
+    if (this.ptrs.size < 2) this.app.rig.held = false;
     if (this.ptrs.size === 0) this.mode = 'none';
     else if (this.mode === 'pinch' && this.ptrs.size === 1) this.mode = 'hold'; // wait for all fingers up
   }
