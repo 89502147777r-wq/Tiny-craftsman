@@ -41,7 +41,7 @@ export function underwater(mat, U) {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vPW;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvPW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vPW;\nuniform float uWaterY, uTime, uSun, uNightGlow;\n${CAUSTIC}`)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vPW;\nuniform float uWaterY, uTime, uSun, uNightGlow, uLamp;\nuniform vec3 uLampP0, uLampP1, uLampD0, uLampD1;\n${CAUSTIC}`)
       .replace('#include <opaque_fragment>', `
       {
         float dw = uWaterY - vPW.y;
@@ -52,6 +52,15 @@ export function underwater(mat, U) {
           float c = poolCaustic((vPW.xz + vec2(0.55, 0.35) * vPW.y) * 230.0, uTime * 1.3);
           outgoingLight *= 1.0 + (smoothstep(0.3, 0.75, c) * 1.5 - 0.1) * uSun * smoothstep(0.0, 0.004, dw) * (1.0 - 0.5 * k);
           outgoingLight += vec3(0.02, 0.09, 0.12) * uNightGlow * (1.0 - k * 0.3);
+          // the lights: a cone each across the pool (the walls and the floor lit in a pool of
+          // light, softly out to its edge), a halo round the lens
+          if (uLamp > 0.001) {
+            vec3 d0 = vPW - uLampP0, d1 = vPW - uLampP1;
+            float l0 = length(d0), l1 = length(d1);
+            float c0 = smoothstep(0.35, 0.9, dot(d0 / max(l0, 1e-5), uLampD0)), c1 = smoothstep(0.35, 0.9, dot(d1 / max(l1, 1e-5), uLampD1));
+            float f = c0 * exp(-l0 / 0.22) + c1 * exp(-l1 / 0.22) + 1.6 * (exp(-l0 / 0.012) + exp(-l1 / 0.012));
+            outgoingLight += vec3(0.5, 0.85, 1.0) * uLamp * f * 1.4;
+          }
         }
       }
       #include <opaque_fragment>`);
@@ -159,7 +168,7 @@ export class PoolView {
     this.parts = new Map();   // pool id → { key per part, groups }
     this.live = null;          // the tool's copy of a pool being worked (or a new one: id null)
     this.fillAt = null;        // the hose: { id, on } while water runs in
-    this.U = { uWaterY: { value: -1e9 }, uTime: { value: 0 }, uSun: { value: 1 }, uNightGlow: { value: 0 } };
+    this.U = { uWaterY: { value: -1e9 }, uTime: { value: 0 }, uSun: { value: 1 }, uNightGlow: { value: 0 }, uLamp: { value: 0 }, uLampP0: { value: new THREE.Vector3(0, -1e3, 0) }, uLampP1: { value: new THREE.Vector3(0, -1e3, 0) }, uLampD0: { value: new THREE.Vector3(0, 0, 1) }, uLampD1: { value: new THREE.Vector3(0, 0, 1) } };
     this.dirty = true;
     objects.on((id, rec) => { if (rec?.type === 'pool' || isPoolBelt(rec) || rec?.poolId != null || this.parts.has(id) || this._belts?.has(id)) this.dirty = true; });
   }
@@ -189,8 +198,13 @@ export class PoolView {
         const glow = r.light ? night : 0;
         e.U.uNightGlow.value = glow;
         if (e.water) { e.water.material.userData.U.uTime.value = U.uTime.value; e.water.material.userData.U.uGlow.value = glow; }
+        // (on: by day the beams show faintly in the water, by night they light it)
+        const lamp = r.light ? 0.35 + 0.65 * night : 0;
+        e.U.uLamp.value = lamp;
+        if (e.water) e.water.material.userData.U.uGlow.value = Math.max(glow * 0.4, lamp * 0.12);
         for (const L of e.lights || []) L.intensity = 0.06 * glow;
-        if (e.lens) e.lens.material.emissiveIntensity = 0.2 + 3 * glow;
+        if (e.lights?.length) { e.U.uLampP0.value.copy(e.lights[0].position); e.U.uLampD0.value.copy(e.lights[0].target.position).sub(e.lights[0].position).normalize(); const L1 = e.lights[1] || e.lights[0]; e.U.uLampP1.value.copy(L1.position); e.U.uLampD1.value.copy(L1.target.position).sub(L1.position).normalize(); }
+        if (e.lens) e.lens.material.emissiveIntensity = r.light ? 1.2 + 4 * night : 0.2;
       }
       if (e.stream) {
         const on = this.fillAt?.id === r.id && this.fillAt.on;
@@ -235,7 +249,7 @@ export class PoolView {
     if (fb) this._belts.add(fb.id); if (wb) this._belts.add(wb.id);
     const geo = [r.o, r.u, r.L, r.W, r.ft, r.hw].join();
     // the uniforms of this pool (the water's level)
-    if (!e.U) e.U = { uWaterY: { value: -1e9 }, uTime: { value: 0 }, uSun: { value: 1 }, uNightGlow: { value: 0 } };
+    if (!e.U) e.U = { uWaterY: { value: -1e9 }, uTime: { value: 0 }, uSun: { value: 1 }, uNightGlow: { value: 0 }, uLamp: { value: 0 }, uLampP0: { value: new THREE.Vector3(0, -1e3, 0) }, uLampP1: { value: new THREE.Vector3(0, -1e3, 0) }, uLampD0: { value: new THREE.Vector3(0, 0, 1) }, uLampD1: { value: new THREE.Vector3(0, 0, 1) } };
     e.U.uWaterY.value = r.water > 1 ? floorTopY(r) + MM(r.water) : -1e9;
     // the ghost while it is set out (no id yet): the water's volume, the pit's outline
     this._part(e, 'ghost', r.id == null ? geo : null, () => (r.id == null ? ghost(r) : null));

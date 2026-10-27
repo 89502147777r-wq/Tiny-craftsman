@@ -153,20 +153,30 @@ export class PoolWork {
   _dig(r, fb) {
     const app = this.app, t = app.terrain;
     if (fb) { this.toast('Котлован уже готов — днище стоит'); return; }
-    const [s0, t0, s1, t1] = pitRect(r), y = r.g - MM(POOL.pitDepth), n = 14, steps = [];
-    const inStrip = (a, b) => (x, z) => { const [s, tt] = PF(r, x, z); return s >= s0 + (s1 - s0) * a && s <= s0 + (s1 - s0) * b && tt >= t0 && tt <= t1; };
-    const box = pitBox(r), before = t.totalVolume();
+    const [s0, t0, s1, t1] = pitRect(r), y = r.g - MM(POOL.pitDepth), n = 10, layers = 4, steps = [];
+    const inBit = (a, b) => (x, z) => { const [s, tt] = PF(r, x, z); return s >= s0 + (s1 - s0) * a && s <= s0 + (s1 - s0) * b && tt >= t0 && tt <= t1; };
+    const box = pitBox(r), before = t.totalVolume(), dir = new THREE.Vector2(r.u[0], r.u[1]);
     app.journal.begin('pool-dig', {}, app.clock);
-    for (let k = 0; k < n; k++) {
-      const f = inStrip(k / n, (k + 1) / n);
-      steps.push([0.22, (u) => {
+    // (dug as on site: layer by layer, ~460 mm a pass, bite after bite along the pit — each bite the
+    // spade goes in, the soil flies up out of the pit onto the truck's side)
+    const sh = app.shovel, vis = sh.root.visible;
+    sh.root.visible = true;
+    for (let L = 0; L < layers; L++) for (let k0 = 0; k0 < n; k0++) {
+      const k = L % 2 ? n - 1 - k0 : k0, yL = r.g - MM(POOL.pitDepth) * (L + 1) / layers, f = inBit(k / n, (k + 1) / n);
+      const [x, z] = PW(r, s0 + (s1 - s0) * (k + 0.5) / n, (t0 + t1) / 2);
+      steps.push([0.09, (u) => {
+        // (the spade in: down to the new level; out: lifted, the soil thrown)
+        const p = new THREE.Vector3(x, 0, z);
+        if (u < 0.5) sh.poseDig(p, dir, yL + MM(300) * (1 - u * 2), u < 0.1);
+        else sh.poseAim(p, dir, r.g + MM(200));
         if (u < 1) return;
-        t.levelTo(f, y, box);
-        const [x, z] = PW(r, s0 + (s1 - s0) * (k + 0.5) / n, (t0 + t1) / 2), rr = Math.random;
-        for (let q = 0; q < 6; q++) app.particles?.emit(new THREE.Vector3(x, y + MM(300), z), new THREE.Vector3((rr() - 0.5) * 0.1, 0.25 + rr() * 0.2, (rr() - 0.5) * 0.1), 0, MM(40), 0, 0, 0);
-        app.sfx?.stab?.();
+        t.levelTo(f, yL, box);
+        const rr = Math.random, out = new THREE.Vector3(-r.u[1], 0, r.u[0]).multiplyScalar(rr() < 0.5 ? 1 : -1);
+        for (let q = 0; q < 9; q++) app.particles?.emit(new THREE.Vector3(x + (rr() - 0.5) * MM(800), yL + MM(250), z + (rr() - 0.5) * MM(800)), new THREE.Vector3(out.x * (0.08 + rr() * 0.06) + (rr() - 0.5) * 0.03, 0.22 + rr() * 0.16, out.z * (0.08 + rr() * 0.06) + (rr() - 0.5) * 0.03), 0, MM(30 + rr() * 50), 0, 0, 0);
+        if (k0 % 2 === 0) app.sfx?.stab?.();
       }]);
     }
+    steps.push([0, () => { sh.root.visible = vis; }]);
     // (the loose topsoil round the edge taken off with it: it would slide in off the walls)
     steps.push([0.1, (u) => {
       if (u < 1) return;
@@ -200,14 +210,30 @@ export class PoolWork {
     const cells = (f) => { const ix0 = Math.max(0, Math.floor(t.toCellX(box[0]))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(box[2]))), iz0 = Math.max(0, Math.floor(t.toCellZ(box[1]))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(box[3]))); for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (inPit(x, z)) f(iz * t.nx + ix, x, z); } t._touch(ix0, iz0, ix1, iz1); };
     app.journal.begin('pool-bed', {}, app.clock);
     const steps = [], n = 10;
-    // the floor trimmed level, then the stone in strips
+    // the floor trimmed level, then the stone: tipped into the pit in heaps (each where a barrow of
+    // it is dumped — a cone at its slope), then raked out level, 200 mm, lane by lane
     steps.push([0.2, (u) => { if (u >= 1) t.levelTo(inPit, y0, box); }]);
-    for (let k = 0; k < n; k++) steps.push([0.18, (u) => {
-      if (u < 1) return;
-      const a = s0 + (s1 - s0) * k / n, b = s0 + (s1 - s0) * (k + 1) / n;
-      cells((i, x, z) => { const [s] = PF(r, x, z); if (s >= a && s <= b) t._push(i, MM(POOL.gravel) - t.loose[i] > 0 ? MM(POOL.gravel) - t.loose[i] : 0, M_G20); });
-      app.sfx?.pour?.(0.6);
+    const area = (s1 - s0) * (t1 - t0) * S * S, vol = area * MM(POOL.gravel), nH = 6, heaps = [];
+    for (let h = 0; h < nH; h++) {
+      const [hx, hz] = PW(r, s0 + (s1 - s0) * (h % 3 + 0.5) / 3, t0 + (t1 - t0) * (Math.floor(h / 3) + 0.5) / 2);
+      steps.push([0.45, (u) => {
+        if (!heaps[h]) heaps[h] = t.heapStart(hx, hz, vol / nH, Math.tan(39 * Math.PI / 180));
+        t.heapTo(heaps[h], vol / nH * u, M_G20);
+        if (Math.random() < 0.7) app.particles?.emit(new THREE.Vector3(hx, y0 + MM(1200), hz), new THREE.Vector3((Math.random() - 0.5) * 0.02, -0.15, (Math.random() - 0.5) * 0.02), 0, MM(20 + Math.random() * 25), 0, 0, 3);
+        if (u < 1 && Math.random() < 0.25) app.sfx?.pour?.(0.4);
+      }]);
+    }
+    // (the rake: across the pit, lane after lane; behind it the stone lies level at 200 mm)
+    const rk = app.rake, rvis = rk.root.visible, lanes = 4, rpos = rk.target.pos.clone(), rdir = rk.target.dir.clone(), rlift = rk.target.lift;
+    steps.push([0, () => { rk.root.visible = true; }]);
+    for (let k = 0; k < lanes; k++) steps.push([0.55, (u) => {
+      const tt = t0 + (t1 - t0) * (k + 0.5) / lanes, ss = s0 + (s1 - s0) * (k % 2 ? 1 - u : u), [x, z] = PW(r, ss, tt);
+      rk.setPose({ pos: new THREE.Vector3(x, y0 + MM(POOL.gravel) + MM(10), z), dir: new THREE.Vector2(-r.u[1], -r.u[0]), lift: 0.55 }, u === 0);
+      // (what the rake has passed over: the lane level)
+      const a = k % 2 ? ss : s0 - 1, b = k % 2 ? s1 + 1 : ss, lo = t0 + (t1 - t0) * k / lanes, hi = t0 + (t1 - t0) * (k + 1) / lanes;
+      cells((i, cx, cz) => { const [s2, t2] = PF(r, cx, cz); if (s2 >= a && s2 <= b && t2 >= lo && t2 <= hi) { const want = MM(POOL.gravel); if (Math.abs(t.loose[i] - want) > 1e-7) { if (t.loose[i] > want) t._pop(i, t.loose[i] - want); else t._push(i, want - t.loose[i], M_G20); } } });
     }]);
+    steps.push([0, () => { rk.setPose({ pos: rpos, dir: rdir, lift: rlift }, true); rk.root.visible = rvis; }]);
     // the plate over it, lane by lane
     for (let k = 0; k < 6; k++) steps.push([0.25, (u) => {
       const tt = t0 + (t1 - t0) * (k + 0.5) / 6, s = s0 + (s1 - s0) * (k % 2 ? 1 - u : u), [x, z] = PW(r, s, tt);
@@ -216,7 +242,7 @@ export class PoolWork {
     }]);
     // the lean concrete: 100 over the stone (fresh grey, it sets)
     steps.push([0.6, (u) => { if (u >= 1) cells((i) => { t.conc[i] = MM(POOL.lean); t.cTime[i] = app.clock; t.cSm[i] = 0.6; t.cBase[i] = 0; }); }]);
-    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); app.concreteGear.set(null); }, commit: () => {
+    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); app.concreteGear.set(null); rk.setPose({ pos: rpos, dir: rdir, lift: rlift }, true); rk.root.visible = rvis; }, commit: () => {
       app.journal.commit(app.clock);
       this.toast('Щебень 20–40 слоем 200 мм утрамбован виброплитой, сверху подбетонка 100 мм — ровное чистое основание на отметке −1,55 м. Дальше «4 · Опалубка днища»');
     } });
@@ -419,6 +445,31 @@ export class PoolWork {
     return null;
   }
 
+  // what is next on the pool (from what is done): [stage, what to do] — the menu shows it as a chip
+  next(r = this.rec) {
+    if (!r) return ['pit', 'Разметьте бассейн: коснитесь участка'];
+    const app = this.app, t = app.terrain, { fb, wb } = this._belts(r);
+    const done = (L) => { const m = this._progress(r, L); return !!m && !/\d+ %|из \d/.test(m); };
+    if (!fb) {
+      const [cx, cz] = PW(r, r.L / 2, r.W / 2), have = (r.g - t.nat[t.index(cx, cz)]) / S;
+      if (have < POOL.pitDepth - 150) return ['dig', 'Выкопайте котлован'];
+      if (!(t.conc[t.index(cx, cz)] > 1e-6)) return ['bed', 'Щебень и подбетонка'];
+      return ['form1', 'Опалубка днища'];
+    }
+    if (!(r.cage1 != null && app.objects.get(r.cage1))) return ['cage1', 'Арматура днища'];
+    if (!(fb.fill >= 0.95)) return ['concrete', 'Залейте днище: «Бетон» → шланг по днищу, вибратор, правило'];
+    if (!(r.cage2 != null && app.objects.get(r.cage2))) return ['cage2', 'Арматура стен'];
+    if (!wb) return ['form2', 'Опалубка стен и закладные'];
+    if (!(wb.fill >= 0.95)) return ['concrete', 'Залейте стены: «Бетон» → шланг по верху щитов, вибратор'];
+    if (!fb.stripped || !wb.stripped) return ['strip', 'Снимите опалубку, когда бетон наберёт прочность'];
+    if (!done('proof')) return ['proof', 'Гидроизоляция в 2 слоя'];
+    if (!done('tile')) return ['tile', 'Мозаика'];
+    if (!done('cope')) return ['cope', 'Бортовой камень'];
+    if ((r.water || 0) < waterMax(r) - 1) return ['water', 'Наполните водой'];
+    if (!r.light) return ['light', 'Включите подсветку'];
+    return [null, 'Бассейн готов 🎉'];
+  }
+
   status(carry) {
     void carry;
     const r = this.rec, L = this.layer;
@@ -437,7 +488,8 @@ export class PoolWork {
       water: 'Держите палец — шланг наполняет чашу (или насос сливает)',
       light: 'Коснитесь чаши — включить / выключить подсветку',
     };
-    return (!r && L !== 'pit' ? 'Сначала «1 · Разметка». ' : '') + H[L];
+    const [nx, nw] = this.next(r);
+    return (!r && L !== 'pit' ? 'Сначала «1 · Разметка». ' : '') + H[L] + (r && nx !== L ? ` · Следующий шаг: ${nw}` : '');
   }
 
   remove(id) {
