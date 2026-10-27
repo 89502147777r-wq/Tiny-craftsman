@@ -519,9 +519,10 @@ export class UI {
       const PL = s.poolLayer || 'pit', plset = (o) => lay({ wallKind: 'pool', ...o });
       const pool = POOL_LAYERS.map(([k, l], i) => {
         const c = C(`${i + 1} · ${l}`, has('pool') && PL === k, () => plset({ poolLayer: k }));
-        if (k === 'pit') return G('ppit', c.label, [C('Разметить', has('pool') && PL === 'pit', () => plset({ poolLayer: 'pit' })), C('↻ Повернуть', !!s.poolTurn, () => plset({ poolLayer: 'pit', poolTurn: !s.poolTurn }))], null, c);
+        if (k === 'pit') return G('ppit', c.label, [C('Разметить', has('pool') && PL === 'pit', () => plset({ poolLayer: 'pit' })), C('↻ Повернуть', !!s.poolTurn, () => plset({ poolLayer: 'pit', poolTurn: !s.poolTurn })), C('📏 Замер', !!s.poolMeasure, () => plset({ poolMeasure: !s.poolMeasure }))], null, c);
         if (k === 'tile') return G('ptile', c.label, Object.entries(MOSAICS).map(([q, [n]]) => C('◼ ' + n, (s.poolMos || 'turq') === q, () => plset({ poolLayer: 'tile', poolMos: q }))), null, c);
         if (k === 'cope') return G('pcope', c.label, Object.entries(COPES).map(([q, [n]]) => C('◼ ' + n, (s.poolCope || 'trav') === q, () => plset({ poolLayer: 'cope', poolCope: q }))), null, c);
+        if (k === 'dig') return G('pdig', c.label, [C('Копать по разметке', has('pool') && PL === 'dig', () => plset({ poolLayer: 'dig' })), C('📏 Замер', !!s.poolMeasure, () => plset({ poolMeasure: !s.poolMeasure }))], null, c);
         if (k === 'water') return G('pwater', c.label, [C('Наполнить', s.poolWater !== 'drain', () => plset({ poolLayer: 'water', poolWater: 'fill' })), C('Слить', s.poolWater === 'drain', () => plset({ poolLayer: 'water', poolWater: 'drain' }))], null, c);
         return c;
       });

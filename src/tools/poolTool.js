@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { MODEL_SCALE, TRAY } from '../config.js';
+import { MODEL_SCALE, TRAY, M_G20 } from '../config.js';
 import { uStrength } from './lintels.js';
 import { FitJob, hammer, part, at, M as MMf } from './fitJob.js';
 import { buildMosaic, buildCoping } from '../world/poolView.js';
 import {
   POOL, POOL_LAYERS, MOSAICS, COPES, newPool, poolFits, pitOutline, pitBox, floorBelt, wallBelt, floorCage, wallCage, faces, cellsOf, sheetsOf, sheetRect, faceStr,
-  copeLayout, hitInner, hitRim, hitGround, slabRect, PW, PF, wallTopY, waterMax, isPoolBelt, floorTopY, rimY,
+  copeLayout, hitInner, hitRim, hitGround, slabRect, pitRect, PW, PF, wallTopY, waterMax, isPoolBelt, floorTopY, rimY,
 } from '../world/pool.js';
 
 // The pool done by the finger (pool.js): «Бассейн» → its stages one after the other. The pit,
@@ -50,8 +50,10 @@ export class PoolWork {
       return true;
     }
     const r = this.pick(p);
-    if (!r) { this.toast('Сначала «1 · Котлован»: коснитесь места бассейна на участке'); return true; }
+    if (!r) { this.toast('Сначала «1 · Разметка»: коснитесь места бассейна на участке'); return true; }
     const { fb, wb } = this._belts(r);
+    if (L === 'dig') return this._dig(r, fb), true;
+    if (L === 'bed') return this._bed(r, fb), true;
     if (L === 'form1') return this._form1(r, fb), true;
     if (L === 'cage1') return this._cage1(r, fb), true;
     if (L === 'cage2') return this._cage2(r, fb), true;
@@ -108,7 +110,7 @@ export class PoolWork {
       const why = poolFits(app, rec);
       if (why) { this.toast(why); return; }
       this._save('pool-set-out', () => { const out = app.objects.add(pitOutline(rec)); const pr = app.objects.add({ ...rec, pit: out.id }); this.sel = pr.id; app.objects.update(out.id, { poolId: pr.id }); });
-      this.toast(`Бассейн ${POOL.L / 1000} × ${POOL.W / 1000} м${snapped ? ' — по проекту' : ''}: размечен котлован ${((POOL.L + 1700) / 1000).toFixed(1)} × ${((POOL.W + 1700) / 1000).toFixed(1)} м глубиной 1,85 м. Копайте («Земля» или погрузчик) до отметки, потом щебень 200 мм + виброплита, подбетонка 100 мм шлангом. Дальше «2 · Опалубка днища»`.replace(/(\d)\.(\d)/g, '$1,$2'));
+      this.toast(`Бассейн ${POOL.L / 1000} × ${POOL.W / 1000} м${snapped ? ' — по проекту' : ''}: размечен котлован ${((POOL.L + 1700) / 1000).toFixed(1)} × ${((POOL.W + 1700) / 1000).toFixed(1)} м глубиной 1,85 м. Дальше «2 · Котлован» — выкопается по разметке (или копайте сами: «Земля», погрузчик), потом «3 · Щебень и подбетонка»`.replace(/(\d)\.(\d)/g, '$1,$2'));
       return;
     }
     const r = d.live, id = r.id;
@@ -146,9 +148,83 @@ export class PoolWork {
 
   // ---- the bowl ---------------------------------------------------------------------------------
   // the bottom slab's edge boards on the lean concrete: where it is (its top measured there)
+  // the pit dug (or trimmed) to its outline: strip by strip, the walls straight down, the
+  // floor level at −1,85 (what is dug out goes away by truck)
+  _dig(r, fb) {
+    const app = this.app, t = app.terrain;
+    if (fb) { this.toast('Котлован уже готов — днище стоит'); return; }
+    const [s0, t0, s1, t1] = pitRect(r), y = r.g - MM(POOL.pitDepth), n = 14, steps = [];
+    const inStrip = (a, b) => (x, z) => { const [s, tt] = PF(r, x, z); return s >= s0 + (s1 - s0) * a && s <= s0 + (s1 - s0) * b && tt >= t0 && tt <= t1; };
+    const box = pitBox(r), before = t.totalVolume();
+    app.journal.begin('pool-dig', {}, app.clock);
+    for (let k = 0; k < n; k++) {
+      const f = inStrip(k / n, (k + 1) / n);
+      steps.push([0.22, (u) => {
+        if (u < 1) return;
+        t.levelTo(f, y, box);
+        const [x, z] = PW(r, s0 + (s1 - s0) * (k + 0.5) / n, (t0 + t1) / 2), rr = Math.random;
+        for (let q = 0; q < 6; q++) app.particles?.emit(new THREE.Vector3(x, y + MM(300), z), new THREE.Vector3((rr() - 0.5) * 0.1, 0.25 + rr() * 0.2, (rr() - 0.5) * 0.1), 0, MM(40), 0, 0, 0);
+        app.sfx?.stab?.();
+      }]);
+    }
+    // (the loose topsoil round the edge taken off with it: it would slide in off the walls)
+    steps.push([0.1, (u) => {
+      if (u < 1) return;
+      const e = 700, [a0, b0, a1, b1] = [s0 - e, t0 - e, s1 + e, t1 + e], bx = [box[0] - MM(e), box[1] - MM(e), box[2] + MM(e), box[3] + MM(e)];
+      const ix0 = Math.max(0, Math.floor(t.toCellX(bx[0]))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(bx[2]))), iz0 = Math.max(0, Math.floor(t.toCellZ(bx[1]))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(bx[3])));
+      for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+        const [s, tt] = PF(r, t.toWorldX(ix), t.toWorldZ(iz)); if (s < a0 || s > a1 || tt < b0 || tt > b1) continue;
+        const i = iz * t.nx + ix; if (t.conc[i] > 1e-6 || !(t.loose[i] > 0)) continue;
+        t.loose[i] = 0; t.lN[i] = 0; for (let q = 0; q < 3; q++) t.lH[i * 3 + q] = 0;
+      }
+      t._touch(ix0, iz0, ix1, iz1);
+      t.levelTo((x, z) => { const [ss, tt] = PF(r, x, z); return ss >= s0 && ss <= s1 && tt >= t0 && tt <= t1; }, y, box);
+    }]);
+    new FitJob(app, { steps, parts: [], onAbort: () => app.journal.cancel(), commit: () => {
+      app.journal.commit(app.clock);
+      const out = Math.max(0, before - t.totalVolume()) * MODEL_SCALE ** 3;
+      this.toast(`Котлован ${((s1 - s0) / 1000).toFixed(1)} × ${((t1 - t0) / 1000).toFixed(1)} м, глубина 1,85 м — вынуто ${out.toFixed(1)} м³ (вывезено самосвалом). Стенки зачищены лопатой отвесно. Дальше «3 · Щебень и подбетонка»`.replace(/(\d)\.(\d)/g, '$1,$2'));
+    } });
+  }
+  // the bed under the bowl: crushed stone 20–40, 200 mm, rammed with the plate compactor; then
+  // 100 mm of lean concrete (подбетонка: a thin plain concrete over the stone — a clean, level
+  // base for the slab's bars and its formwork)
+  _bed(r, fb) {
+    const app = this.app, t = app.terrain;
+    if (fb) { this.toast('Основание уже готово — днище стоит'); return; }
+    const [s0, t0, s1, t1] = pitRect(r), box = pitBox(r), y0 = r.g - MM(POOL.pitDepth);
+    const inPit = (x, z) => { const [s, tt] = PF(r, x, z); return s >= s0 && s <= s1 && tt >= t0 && tt <= t1; };
+    // (dug deep enough? the middle of the pit's floor)
+    const [cx, cz] = PW(r, r.L / 2, r.W / 2), have = Math.round((r.g - t.nat[t.index(cx, cz)]) / S);   // (dug in the native ground: what crumbled in off the edges is cleared with it)
+    if (have < POOL.pitDepth - 150) { this.toast(`Котлован ещё мелкий: ${have} мм из 1850 — «2 · Котлован» (или докопайте лопатой)`); return; }
+    const cells = (f) => { const ix0 = Math.max(0, Math.floor(t.toCellX(box[0]))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(box[2]))), iz0 = Math.max(0, Math.floor(t.toCellZ(box[1]))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(box[3]))); for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (inPit(x, z)) f(iz * t.nx + ix, x, z); } t._touch(ix0, iz0, ix1, iz1); };
+    app.journal.begin('pool-bed', {}, app.clock);
+    const steps = [], n = 10;
+    // the floor trimmed level, then the stone in strips
+    steps.push([0.2, (u) => { if (u >= 1) t.levelTo(inPit, y0, box); }]);
+    for (let k = 0; k < n; k++) steps.push([0.18, (u) => {
+      if (u < 1) return;
+      const a = s0 + (s1 - s0) * k / n, b = s0 + (s1 - s0) * (k + 1) / n;
+      cells((i, x, z) => { const [s] = PF(r, x, z); if (s >= a && s <= b) t._push(i, MM(POOL.gravel) - t.loose[i] > 0 ? MM(POOL.gravel) - t.loose[i] : 0, M_G20); });
+      app.sfx?.pour?.(0.6);
+    }]);
+    // the plate over it, lane by lane
+    for (let k = 0; k < 6; k++) steps.push([0.25, (u) => {
+      const tt = t0 + (t1 - t0) * (k + 0.5) / 6, s = s0 + (s1 - s0) * (k % 2 ? 1 - u : u), [x, z] = PW(r, s, tt);
+      app.concreteGear.plateOn = true; app.concreteGear.set('plate', new THREE.Vector3(x, y0 + MM(POOL.gravel), z), Math.atan2(-r.u[1], r.u[0]) + (k % 2 ? Math.PI : 0));
+      if (u >= 1 && k === 5) { cells((i) => { t.comp[i] = 1; }); app.concreteGear.plateOn = false; app.concreteGear.set(null); }
+    }]);
+    // the lean concrete: 100 over the stone (fresh grey, it sets)
+    steps.push([0.6, (u) => { if (u >= 1) cells((i) => { t.conc[i] = MM(POOL.lean); t.cTime[i] = app.clock; t.cSm[i] = 0.6; t.cBase[i] = 0; }); }]);
+    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); app.concreteGear.set(null); }, commit: () => {
+      app.journal.commit(app.clock);
+      this.toast('Щебень 20–40 слоем 200 мм утрамбован виброплитой, сверху подбетонка 100 мм — ровное чистое основание на отметке −1,55 м. Дальше «4 · Опалубка днища»');
+    } });
+  }
+
   _form1(r, fb) {
     const app = this.app, t = app.terrain;
-    if (fb) { this.toast(fb.fill > 0.05 ? 'Днище уже залито — дальше «4 · Арматура стен»' : 'Опалубка днища уже стоит — дальше «3 · Арматура днища»'); return; }
+    if (fb) { this.toast(fb.fill > 0.05 ? 'Днище уже залито — дальше «6 · Арматура стен»' : 'Опалубка днища уже стоит — дальше «5 · Арматура днища»'); return; }
     // the bed: the middle height of the pit's floor under the slab (crushed stone, lean concrete)
     const [s0, t0, s1, t1] = slabRect(r), hs = [];
     for (let i = 0; i <= 12; i++) for (let j = 0; j <= 6; j++) { const [x, z] = PW(r, s0 + (s1 - s0) * i / 12, t0 + (t1 - t0) * j / 6); if (t.inside(x, z)) hs.push(t.heightAt(x, z)); }
@@ -157,11 +233,11 @@ export class PoolWork {
     if (dmm > 120) { this.toast(`Котлован не готов: дно на ${dmm} мм выше отметки. Копайте до −1,85 м, щебень 200 мм с виброплитой, подбетонка 100 мм — днище чаши ложится на −1,55 м`); return; }
     const ft = bed + MM(POOL.F), hw = Math.round((wallTopY(r) - ft) / S);
     this._save('pool-form1', () => { const b = app.objects.add(floorBelt({ ...r }, bed)); app.objects.update(r.id, { floor: b.id, ft: +ft.toFixed(6), hw }); });
-    this.toast(`Опалубка днища: доски по краю плиты ${((r.L + 700) / 1000).toFixed(1)} × ${((r.W + 700) / 1000).toFixed(1)} м, 250 мм.${dmm < -120 ? ` Дно ниже отметки на ${-dmm} мм — стены выйдут выше (${hw} мм).` : ''} Дальше «3 · Арматура днища»`.replace(/(\d)\.(\d)/g, '$1,$2'));
+    this.toast(`Опалубка днища: доски по краю плиты ${((r.L + 700) / 1000).toFixed(1)} × ${((r.W + 700) / 1000).toFixed(1)} м, 250 мм.${dmm < -120 ? ` Дно ниже отметки на ${-dmm} мм — стены выйдут выше (${hw} мм).` : ''} Дальше «5 · Арматура днища»`.replace(/(\d)\.(\d)/g, '$1,$2'));
   }
   _cage1(r, fb) {
     const app = this.app;
-    if (!fb) { this.toast('Сначала «2 · Опалубка днища»'); return; }
+    if (!fb) { this.toast('Сначала «4 · Опалубка днища»'); return; }
     if (r.cage1 != null && app.objects.get(r.cage1)) { this.toast('Арматура днища уже связана — заливайте: «Бетон» → шланг по днищу, вибратор, правило по доскам'); return; }
     this._save('pool-cage1', () => { const c = app.objects.add(floorCage(r, fb.top)); app.objects.update(r.id, { cage1: c.id }); });
     this.toast('Две сетки Ø12 шаг 200 на стульчиках и «лягушках», выпуски под стены. Теперь бетон: «Бетон» → шланг по днищу, вибратор, правило по доскам');
@@ -169,14 +245,14 @@ export class PoolWork {
   _cage2(r, fb) {
     const app = this.app;
     if (!fb || !(fb.fill >= 0.95)) { this.toast(!fb ? 'Сначала днище' : 'Днище ещё не залито доверху — «Бетон» → шланг'); return; }
-    if (r.cage2 != null && app.objects.get(r.cage2)) { this.toast('Арматура стен уже стоит — дальше «5 · Опалубка стен и закладные»'); return; }
+    if (r.cage2 != null && app.objects.get(r.cage2)) { this.toast('Арматура стен уже стоит — дальше «7 · Опалубка стен и закладные»'); return; }
     this._save('pool-cage2', () => { const c = app.objects.add(wallCage(r)); app.objects.update(r.id, { cage2: c.id }); });
-    this.toast('Стены: вертикали и горизонтали Ø12 шаг 200 в две сетки, связаны с выпусками; по шву — бентонитовый шнур. Дальше «5 · Опалубка стен и закладные»');
+    this.toast('Стены: вертикали и горизонтали Ø12 шаг 200 в две сетки, связаны с выпусками; по шву — бентонитовый шнур. Дальше «7 · Опалубка стен и закладные»');
   }
   _form2(r, fb, wb) {
     const app = this.app;
     if (wb) { this.toast(wb.fill > 0.05 ? 'Стены уже залиты' : 'Опалубка стен стоит — заливайте: «Бетон» → шланг по верху щитов, вибратор'); return; }
-    if (!(r.cage2 != null && app.objects.get(r.cage2))) { this.toast('Сначала «4 · Арматура стен»'); return; }
+    if (!(r.cage2 != null && app.objects.get(r.cage2))) { this.toast('Сначала «6 · Арматура стен»'); return; }
     if (uStrength(fb, app.clock) < 0.5) { this.toast(`Днище набирает прочность: ${Math.round(uStrength(fb, app.clock) * 200)} % от нужной для щитов — подождите`); return; }
     this._save('pool-form2', () => { const b = app.objects.add(wallBelt(r)); app.objects.update(r.id, { wall: b.id }); });
     this.toast(`Щиты с двух сторон, ригели, стяжки; в щитах закладные: 2 скиммера, 3 форсунки, 2 прожектора, донный слив. Стены ${((r.hw || POOL.wallH) / 1000).toFixed(2).replace('.', ',')} м — заливайте: «Бетон» → шланг по верху щитов, вибратор`);
@@ -192,7 +268,7 @@ export class PoolWork {
     }
     if (!todo.length) { this.toast(wait.length ? 'Рано снимать: ' + wait.join(', ') : !wb ? 'Снимать нечего — опалубка стен ещё не стоит' : 'Опалубка уже снята'); return; }
     this._save('pool-strip', () => { for (const b of todo) app.objects.update(b.id, { stripped: true, set: true }); });
-    this.toast(todo.some((b) => b.part === 'wall') ? 'Щиты, ригели и стяжки сняли — чаша готова. Пазухи можно засыпать; внутри — «7 · Гидроизоляция»' : 'Доски днища сняли');
+    this.toast(todo.some((b) => b.part === 'wall') ? 'Щиты, ригели и стяжки сняли — чаша готова. Пазухи можно засыпать; внутри — «9 · Гидроизоляция»' : 'Доски днища сняли');
   }
 
   // ---- inside the bowl ----------------------------------------------------------------------
@@ -234,7 +310,7 @@ export class PoolWork {
       // the coating under it: two coats over most of it
       let n = 0, ok = 0;
       for (let b = Math.floor(b0 / POOL.cell); b < Math.ceil(b1 / POOL.cell); b++) for (let a = Math.floor(a0 / POOL.cell); a < Math.ceil(a1 / POOL.cell); a++) { n++; if (coat[b * ci + a] === '2') ok++; }
-      if (ok < n * 0.8) { if (!d.said) { d.said = true; this.toast('Мозаика — по гидроизоляции в 2 слоя: сначала «7 · Гидроизоляция» здесь'); } continue; }
+      if (ok < n * 0.8) { if (!d.said) { d.said = true; this.toast('Мозаика — по гидроизоляции в 2 слоя: сначала «9 · Гидроизоляция» здесь'); } continue; }
       str[j * ni + i] = letter; changed = true;
     }
     if (changed) { r.tile[f.k] = str.join(''); for (let k = 0; k < 5; k++) if (r.tile[k] == null) r.tile[k] = ''; this._live(r); this.app.sfx?.stab?.(); }
@@ -328,17 +404,17 @@ export class PoolWork {
     if (L === 'proof') {
       let n = 0, c1 = 0, c2 = 0;
       for (const f of F) { const [ni, nj] = cellsOf(f), s = faceStr(r.proof, f.k, ni * nj); for (const ch of s) { n++; if (ch >= '1') c1++; if (ch === '2') c2++; } }
-      return c2 >= n * 0.98 ? 'Гидроизоляция в 2 слоя готова, ленты в углах вклеены — дальше «8 · Мозаика»' : `Гидроизоляция: 1-й слой ${Math.round(c1 / n * 100)} %, 2-й слой ${Math.round(c2 / n * 100)} %. Второй слой — новыми проходами`;
+      return c2 >= n * 0.98 ? 'Гидроизоляция в 2 слоя готова, ленты в углах вклеены — дальше «10 · Мозаика»' : `Гидроизоляция: 1-й слой ${Math.round(c1 / n * 100)} %, 2-й слой ${Math.round(c2 / n * 100)} %. Второй слой — новыми проходами`;
     }
     if (L === 'tile') {
       let n = 0, k = 0;
       for (const f of F) { const [ni, nj] = sheetsOf(f), s = faceStr(r.tile, f.k, ni * nj); for (const ch of s) { n++; if (ch !== '0') k++; } }
-      return k >= n ? 'Мозаика уложена и затёрта — дальше «9 · Бортовой камень»' : `Мозаика: ${k} из ${n} листов 316 × 316`;
+      return k >= n ? 'Мозаика уложена и затёрта — дальше «11 · Бортовой камень»' : `Мозаика: ${k} из ${n} листов 316 × 316`;
     }
     if (L === 'cope') {
       let n = 0, k = 0;
       for (const sd of copeLayout(r)) { const s = faceStr(r.cope, sd.side, sd.n); n += sd.n; for (const ch of s) if (ch === '1') k++; }
-      return k >= n ? 'Бортовой камень уложен — наполняйте: «10 · Вода»' : `Бортовой камень: ${k} из ${n}`;
+      return k >= n ? 'Бортовой камень уложен — наполняйте: «12 · Вода»' : `Бортовой камень: ${k} из ${n}`;
     }
     return null;
   }
@@ -348,6 +424,8 @@ export class PoolWork {
     const r = this.rec, L = this.layer;
     const H = {
       pit: 'Коснитесь участка — разметится бассейн 8 × 3,5 м и котлован под него (рядом с проектом — встанет по проекту)',
+      dig: 'Коснитесь разметки — котлован выкопается по размерам (или копайте лопатой и погрузчиком; касание зачистит борта и дно по разметке)',
+      bed: 'Коснитесь котлована — щебень 200 мм с трамбовкой и подбетонка 100 мм',
       form1: 'Коснитесь котлована — доски опалубки днища встанут на подбетонку',
       cage1: 'Коснитесь днища — две сетки Ø12 и выпуски под стены',
       cage2: 'Коснитесь днища — арматура стен (днище должно быть залито)',
@@ -359,7 +437,7 @@ export class PoolWork {
       water: 'Держите палец — шланг наполняет чашу (или насос сливает)',
       light: 'Коснитесь чаши — включить / выключить подсветку',
     };
-    return (!r && L !== 'pit' ? 'Сначала «1 · Котлован». ' : '') + H[L];
+    return (!r && L !== 'pit' ? 'Сначала «1 · Разметка». ' : '') + H[L];
   }
 
   remove(id) {

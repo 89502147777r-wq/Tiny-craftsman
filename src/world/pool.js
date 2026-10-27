@@ -37,7 +37,7 @@ export const POOL = {
   bar: 12, step: 200, coverF: 50, coverW: 40,
 };
 export const POOL_LAYERS = [
-  ['pit', 'Котлован'], ['form1', 'Опалубка днища'], ['cage1', 'Арматура днища'], ['cage2', 'Арматура стен'], ['form2', 'Опалубка стен и закладные'],
+  ['pit', 'Разметка'], ['dig', 'Котлован'], ['bed', 'Щебень и подбетонка'], ['form1', 'Опалубка днища'], ['cage1', 'Арматура днища'], ['cage2', 'Арматура стен'], ['form2', 'Опалубка стен и закладные'],
   ['strip', 'Снять опалубку'], ['proof', 'Гидроизоляция'], ['tile', 'Мозаика'], ['cope', 'Бортовой камень'], ['water', 'Вода'], ['light', 'Подсветка'],
 ];
 // the mosaic: name, texture folder, chips across the texture (the chips 25 mm, joints 1,4)

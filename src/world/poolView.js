@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import {
   POOL, MOSAICS, MOSAIC_BY_LETTER, COPES, PW, faces, cellsOf, sheetsOf, sheetRect, faceStr, copeLayout, embeds, wallLines,
-  floorTopY, wallH, rimY, waterMax, pitRect, outer, isPoolBelt,
+  floorTopY, wallH, rimY, waterMax, pitRect, outer, isPoolBelt, PF,
 } from './pool.js';
 
 // The pool drawn (pool.js): what is not concrete, reinforcement or boards (those are the
@@ -168,6 +168,16 @@ export class PoolView {
   update(dt, app) {
     const U = this.U;
     U.uTime.value += dt;
+    // the measuring tape (on demand): the pit's sizes and how deep it is now, read twice a second
+    if ((this._mT = (this._mT || 0) + dt) > 0.5) {
+      this._mT = 0;
+      const on = !!app.settings.poolMeasure, t = app.terrain;
+      for (const e of this.parts.values()) {
+        const r = e.rec; if (r.id == null) continue;
+        const [cx, cz] = PW(r, r.L / 2, r.W / 2), d = on ? Math.round((r.g - t.heightAt(cx, cz)) / (1 / 1000 / MODEL_SCALE) / 10) * 10 : null;
+        this._part(e, 'measure', on ? [r.o, r.L, r.W, d].join() : null, () => (on ? measure(r, d) : null));
+      }
+    }
     const sky = app.sky, night = sky?.night ?? 0;
     U.uSun.value = (1 - night) * (1 - 0.7 * (sky?.over ?? 0));
     if (this.dirty) this._build(app);
@@ -260,6 +270,30 @@ export class PoolView {
 function dispose(g) { g?.traverse((o) => { if (o.isMesh || o.isLine) o.geometry?.dispose(); }); }
 
 // ---- the parts --------------------------------------------------------------------------------
+// a label (canvas sprite) over the plot
+function label(text, h) {
+  const c = document.createElement('canvas'), g = c.getContext('2d'); c.width = 512; c.height = 128;
+  g.fillStyle = 'rgba(20,22,26,0.82)'; g.beginPath(); g.roundRect(4, 14, 504, 100, 30); g.fill();
+  g.fillStyle = '#ffd24a'; g.font = 'bold 64px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, 66);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+  sp.scale.set(h * 4, h, 1); sp.renderOrder = 20; sp.userData.noPick = true;
+  return sp;
+}
+// the measuring tape along the pit's sides and down into it; its sizes and its depth now
+function measure(r, depth) {
+  const g = new THREE.Group(), [s0, t0, s1, t1] = pitRect(r), y = r.g + MM(60), mat = new THREE.LineBasicMaterial({ color: 0xffd24a, depthTest: false });
+  const P = (s, t, yy = y) => { const [x, z] = PW(r, s, t); return new THREE.Vector3(x, yy, z); };
+  const line = (a, b) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), mat); l.renderOrder = 19; l.userData.noPick = true; g.add(l); };
+  line(P(s0, t0 - 250), P(s1, t0 - 250)); line(P(s0 - 250, t0), P(s0 - 250, t1));
+  const yd = r.g - MM(depth || 0); line(P((s0 + s1) / 2, (t0 + t1) / 2), P((s0 + s1) / 2, (t0 + t1) / 2, yd));
+  const h = MM(650);
+  const a = label(`${((s1 - s0) / 1000).toFixed(2)} м`.replace('.', ','), h); a.position.copy(P((s0 + s1) / 2, t0 - 600, y + MM(200))); g.add(a);
+  const b = label(`${((t1 - t0) / 1000).toFixed(2)} м`.replace('.', ','), h); b.position.copy(P(s0 - 600, (t0 + t1) / 2, y + MM(200))); g.add(b);
+  const c = label(`глуб. ${((depth || 0) / 1000).toFixed(2)} м`.replace('.', ','), h); c.position.copy(P((s0 + s1) / 2, (t0 + t1) / 2, y + MM(400))); g.add(c);
+  return g;
+}
+
 function ghost(r) {
   const g = new THREE.Group(), [s0, t0, s1, t1] = pitRect(r), H = wallH(r), wl = waterMax(r);
   const water = new THREE.Mesh(fbox(r, 0, 0, r.L, r.W, 0, wl), new THREE.MeshBasicMaterial({ color: 0x39a8e6, transparent: true, opacity: 0.35, depthWrite: false }));

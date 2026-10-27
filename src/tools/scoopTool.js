@@ -41,6 +41,8 @@ export class ScoopTool {
     const { app, imp } = this;
     p = imp.clampReach(p.clone());
     if (this.state === 'loaded') { this.state = 'aim'; this.aim(p); return true; }
+    // (the last throw still landing: it lands at once — the next cut does not wait for it)
+    if (this.state === 'dump' || this.state === 'settle') this.finish(true);
     if (this.state !== 'idle') return true;
     const camDir = new THREE.Vector3();
     app.camera.getWorldDirection(camDir);
@@ -254,7 +256,7 @@ export class ScoopTool {
   }
 
   // land everything, let the pile come to rest and commit the scoop
-  finish() {
+  finish(quick = false) {
     const app = this.app;
     if (this.state === 'dump') {
       // emit what is left instantly
@@ -270,7 +272,9 @@ export class ScoopTool {
     }
     if (this.state === 'dump' || this.state === 'settle') {
       app.particles.flush();
-      for (let i = 0; i < 40000 && app.terrain.active; i++) app.terrain.relax(1);
+      // (the next cut started: what is still sliding goes on in the frames after — a long loop here froze the game)
+      const t0 = performance.now();
+      for (let i = 0; i < 40000 && app.terrain.active && (!quick || performance.now() - t0 < 4); i++) app.terrain.relax(1);
       // tipped concrete: let it slump, then it stays (undo stays exact)
       for (let i = 0; i < 60 && app.terrain.cActive; i++) app.terrain.concStep(1 / 30, 2);
       app.terrain.cActive = null;
