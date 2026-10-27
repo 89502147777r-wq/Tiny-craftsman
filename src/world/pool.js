@@ -39,7 +39,33 @@ export const POOL = {
 export const POOL_LAYERS = [
   ['pit', 'Разметка'], ['dig', 'Котлован'], ['bed', 'Щебень и подбетонка'], ['form1', 'Опалубка днища'], ['cage1', 'Арматура днища'], ['cage2', 'Арматура стен'], ['form2', 'Опалубка стен и закладные'],
   ['strip', 'Снять опалубку'], ['proof', 'Гидроизоляция'], ['tile', 'Мозаика'], ['cope', 'Бортовой камень'], ['water', 'Вода'], ['light', 'Подсветка'],
+  ['fill', 'Обратная засыпка'], ['base', 'Основание площадки'], ['deck', 'Покрытие площадки'],
 ];
+// the deck round the pool (its top flush with the coping's): the kind of base under it, the boards /
+// the tiles — photographs (ambientCG, CC0: CREDITS.md); { name, base: 'joists' (on pads and joists,
+// boards 140 × 25 with a 6 mm gap) | 'slab' (crushed stone, a concrete slab, tiles on glue), tile
+// (mm, along × across), tex folder, tint, usd per m² }
+export const DECKS = {
+  'wpc:teak': { name: 'ДПК · тик', base: 'joists', tex: 'deck/teak', tile: [4000, 140], usd: 62, tint: 0xd9c7b6 },
+  'wpc:walnut': { name: 'ДПК · орех', base: 'joists', tex: 'deck/walnut', tile: [4000, 140], usd: 62 },
+  'wpc:wenge': { name: 'ДПК · венге', base: 'joists', tex: 'deck/wenge', tile: [4000, 140], usd: 62 },
+  'wpc:grey': { name: 'ДПК · серый', base: 'joists', tex: 'deck/grey', tile: [4000, 140], usd: 62, tint: 0xd8d8d8 },
+  'wpc:graphite': { name: 'ДПК · графит', base: 'joists', tex: 'deck/graphite', tile: [4000, 140], usd: 62, tint: 0xb8b8b8 },
+  'thermo:ash': { name: 'Термоясень', base: 'joists', tex: 'deck/thermo', tile: [3000, 120], usd: 74 },
+  'porc:oak': { name: 'Керамогранит 20 мм · под дуб', base: 'slab', tex: 'deck/oakporc', tile: [1200, 200], usd: 58 },
+  'porc:concrete': { name: 'Керамогранит 20 мм · бетон', base: 'slab', tex: 'facade/porc_concrete', tile: [600, 600], usd: 55 },
+  'porc:anthracite': { name: 'Керамогранит 20 мм · антрацит', base: 'slab', tex: 'facade/porc_anthracite', tile: [600, 600], usd: 55 },
+  'trav': { name: 'Травертин', base: 'slab', tex: 'travertine', tile: [600, 400], usd: 82 },
+};
+export const DECK_WIDTHS = [1000, 1500, 2000, 3000];
+// the deck's plan: four rects in the pool's frame (s, t; mm) — the long sides full length with the
+// corners, the short ones between — from the coping's outer edge (300 out of the water's edge) out W
+export function deckRing(r, W) {
+  const o = POOL.stoneW - POOL.stoneOver, L = r.L, Wd = r.W;
+  return [[-o - W, -o - W, L + o + W, -o], [-o - W, Wd + o, L + o + W, Wd + o + W], [-o - W, -o, -o, Wd + o], [L + o, -o, L + o + W, Wd + o]];
+}
+// the gap between the walls' outer face and the pit's side (filled back with sand): [inner, outer] out of the water's edge
+export const fillBand = () => [POOL.T, 850];
 // the mosaic: name, texture folder, chips across the texture (the chips 25 mm, joints 1,4)
 export const MOSAICS = {
   turq: ['Бирюзовая', 'pool_mosaic_turq', 12, 't'],
@@ -69,7 +95,7 @@ export const yW = (r, y) => floorTopY(r) + MM(y);
 export const outer = (r) => [-POOL.T, -POOL.T, r.L + POOL.T, r.W + POOL.T];
 export const slabRect = (r) => { const e = POOL.T + POOL.slabOut; return [-e, -e, r.L + e, r.W + e]; };
 export const pitRect = (r) => { const e = POOL.T + POOL.slabOut + POOL.room; return [-e, -e, r.L + e, r.W + e]; };
-function worldBox(r, [s0, t0, s1, t1]) {
+export function worldBox(r, [s0, t0, s1, t1]) {
   const cs = [PW(r, s0, t0), PW(r, s1, t0), PW(r, s0, t1), PW(r, s1, t1)];
   return [Math.min(...cs.map((c) => c[0])), Math.min(...cs.map((c) => c[1])), Math.max(...cs.map((c) => c[0])), Math.max(...cs.map((c) => c[1]))];
 }

@@ -58,6 +58,19 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | `assets/models/tools/drill_01/` — аккумуляторная дрель-шуруповёрт | Drill 01 | Fernando Quinn | CC0 | https://polyhaven.com/a/Drill_01 |
 | `assets/models/tools/cross_pein_hammer/` — слесарный молоток | Cross Pein Hammer | Tics | CC0 | https://polyhaven.com/a/cross_pein_hammer |
 
+## Текстуры площадки у бассейна (ambientCG, CC0 1.0)
+
+Цвет 1024 px, нормали 512 px. «Орех», «венге» — те же фото, что у HPL (Wood 066, Wood 051); керамогранит «бетон», «антрацит» — фото вентфасада; травертин — бассейна.
+
+| Файл в проекте | Ассет | Автор | Лицензия | Источник |
+|---|---|---|---|---|
+| `assets/textures/deck/teak/` — ДПК «тик» | Wood 092 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Wood092 |
+| `assets/textures/deck/grey/` — ДПК «серый» | Wood 094 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Wood094 |
+| `assets/textures/deck/graphite/` — ДПК «графит» | Wood 062 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Wood062 |
+| `assets/textures/deck/thermo/` — термоясень | Wood 058 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Wood058 |
+| `assets/textures/deck/oakporc/` — керамогранит «под дуб» | Wood 095 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Wood095 |
+| `assets/textures/deck/walnut/`, `assets/textures/deck/wenge/` | Wood 066, Wood 051 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Wood066 , https://ambientcg.com/a/Wood051 |
+
 ## HDRI (Poly Haven, CC0 1.0)
 
 | Файл | Ассет | Автор | Лицензия | Источник |

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { MODEL_SCALE, TRAY, M_G20 } from '../config.js';
+import { MODEL_SCALE, TRAY, M_G20, M_SAND } from '../config.js';
 import { uStrength } from './lintels.js';
 import { FitJob, hammer, part, at, M as MMf } from './fitJob.js';
 import { buildMosaic, buildCoping } from '../world/poolView.js';
 import {
-  POOL, POOL_LAYERS, MOSAICS, COPES, newPool, poolFits, pitOutline, pitBox, floorBelt, wallBelt, floorCage, wallCage, faces, cellsOf, sheetsOf, sheetRect, faceStr,
+  POOL, POOL_LAYERS, MOSAICS, COPES, DECKS, DECK_WIDTHS, deckRing, fillBand, worldBox, newPool, poolFits, pitOutline, pitBox, floorBelt, wallBelt, floorCage, wallCage, faces, cellsOf, sheetsOf, sheetRect, faceStr,
   copeLayout, hitInner, hitRim, hitGround, slabRect, pitRect, PW, PF, wallTopY, waterMax, isPoolBelt, floorTopY, rimY,
 } from '../world/pool.js';
 
@@ -59,6 +59,9 @@ export class PoolWork {
     if (L === 'cage2') return this._cage2(r, fb), true;
     if (L === 'form2') return this._form2(r, fb, wb), true;
     if (L === 'strip') return this._strip(r, fb, wb), true;
+    if (L === 'fill') return this._fill(r, fb, wb), true;
+    if (L === 'base') return this._base(r), true;
+    if (L === 'deck') return this._deck(r), true;
     if (L === 'light') {
       if (!wb) { this.toast('Прожекторы ставятся в опалубку стен вместе с закладными'); return true; }
       const on = !r.light;
@@ -283,6 +286,90 @@ export class PoolWork {
     this._save('pool-form2', () => { const b = app.objects.add(wallBelt(r)); app.objects.update(r.id, { wall: b.id }); });
     this.toast(`Щиты с двух сторон, ригели, стяжки; в щитах закладные: 2 скиммера, 3 форсунки, 2 прожектора, донный слив. Стены ${((r.hw || POOL.wallH) / 1000).toFixed(2).replace('.', ',')} м — заливайте: «Бетон» → шланг по верху щитов, вибратор`);
   }
+  // ---- round the pool: the backfill, the deck's base, the deck ----
+  get deckKey() { return DECKS[this.app.settings.poolDeck] ? this.app.settings.poolDeck : 'wpc:teak'; }
+  get deckW() { return DECK_WIDTHS.includes(this.app.settings.poolDeckW) ? this.app.settings.poolDeckW : 1500; }
+  // the gap between the walls and the pit's sides filled back with sand, 300 mm at a time, each
+  // layer rammed with the plate — up to the ground
+  _fill(r, fb, wb) {
+    const app = this.app, t = app.terrain;
+    if (!wb || !wb.stripped || !fb?.stripped) { this.toast('Засыпают, когда стены залиты и опалубка снята — бетон держит грунт'); return; }
+    if (r.filled) { this.toast('Пазухи уже засыпаны — дальше «14 · Основание площадки»'); return; }
+    const [bi, bo] = fillBand(), box = worldBox(r, [-bo, -bo, r.L + bo, r.W + bo]);
+    const inBand = (x, z) => { const [s2, t2] = PF(r, x, z); const inO = s2 >= -bo && s2 <= r.L + bo && t2 >= -bo && t2 <= r.W + bo, inI = s2 > -bi && s2 < r.L + bi && t2 > -bi && t2 < r.W + bi; return inO && !inI; };
+    const ix0 = Math.max(0, Math.floor(t.toCellX(box[0]))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(box[2]))), iz0 = Math.max(0, Math.floor(t.toCellZ(box[1]))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(box[3])));
+    const cells = []; for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (inBand(x, z)) cells.push([iz * t.nx + ix, x, z]); }
+    app.journal.begin('pool-fill', {}, app.clock);
+    const low = Math.min(...cells.map(([i]) => t.hAt(i))), layers = Math.max(1, Math.ceil((r.g - low) / MM(300))), steps = [];
+    const along = (u) => { const per = 2 * (r.L + r.W + 4 * 550), d = u * per, w = r.L + 1100, h = r.W + 1100, m = -550; return d < w ? [m + d, -550] : d < w + h ? [r.L + 550, m + d - w] : d < 2 * w + h ? [r.L + 550 - (d - w - h), r.W + 550] : [-550, r.W + 550 - (d - 2 * w - h)]; };
+    for (let k = 0; k < layers; k++) {
+      const lv = Math.min(r.g, low + MM(300) * (k + 1));
+      steps.push([0.5, (u) => {
+        // (the sand tipped in round the pool, the layer coming up)
+        const y = low + MM(300) * k + (lv - low - MM(300) * k) * u;
+        for (const [i] of cells) { const h = t.hAt(i); if (h < y) t._push(i, y - h, M_SAND); }
+        t._touch(ix0, iz0, ix1, iz1);
+        const [ss, tt] = along(u), [x, z] = PW(r, ss, tt);
+        if (Math.random() < 0.8) app.particles?.emit(new THREE.Vector3(x, r.g + MM(600), z), new THREE.Vector3(0, -0.15, 0), 0, MM(18 + Math.random() * 20), 0, 0, 1);
+        if (Math.random() < 0.15) app.sfx?.pour?.(0.4);
+      }]);
+      steps.push([0.6, (u) => {
+        // (the plate round it, the layer rammed)
+        const [ss, tt] = along(u), [x, z] = PW(r, ss, tt);
+        app.concreteGear.plateOn = true; app.concreteGear.set('plate', new THREE.Vector3(x, lv, z), Math.atan2(-r.u[1], r.u[0]), u === 0);
+        if (u >= 1) { for (const [i] of cells) t.comp[i] = 1; app.concreteGear.plateOn = false; }
+      }]);
+    }
+    steps.push([0, () => app.concreteGear.set(null)]);
+    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); app.concreteGear.set(null); }, commit: () => {
+      app.objects.update(r.id, { filled: true });
+      app.journal.commit(app.clock);
+      this.toast(`Пазухи засыпаны песком слоями по 300 мм, каждый утрамбован виброплитой (${layers} слоя). Дальше «14 · Основание площадки»: выберите покрытие и ширину`);
+    } });
+  }
+  // the deck's base, for the chosen covering: boards — concrete pads on the ground and joists 50 × 100
+  // every 400 (the top 300 over the ground: flush with the coping); tiles, stone — crushed stone, then a
+  // slab of concrete with a mesh, its top 30 under the coping (the glue and the tile)
+  _base(r) {
+    const app = this.app, t = app.terrain, key = this.deckKey, W = this.deckW, D = DECKS[key];
+    if (!r.filled) { this.toast('Сначала «13 · Обратная засыпка»'); return; }
+    if (r.base) { this.toast(r.deck ? 'Площадка готова' : 'Основание уже готово — дальше «15 · Покрытие площадки»'); return; }
+    const base = { key, w: W }, ring = deckRing(r, W), steps = [];
+    app.journal.begin('pool-base', { key }, app.clock);
+    if (D.base === 'slab') {
+      const box = worldBox(r, [ring[0][0], ring[0][1], ring[1][2], ring[1][3]]), cells = [];
+      const ix0 = Math.max(0, Math.floor(t.toCellX(box[0]))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(box[2]))), iz0 = Math.max(0, Math.floor(t.toCellZ(box[1]))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(box[3])));
+      for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz), [s2, t2] = PF(r, x, z); if (ring.some(([a0, b0, a1, b1]) => s2 >= a0 && s2 <= a1 && t2 >= b0 && t2 <= b1)) cells.push(iz * t.nx + ix); }
+      const ys = rimY(r) - MM(130), yc = rimY(r) - MM(30);
+      steps.push([0.8, (u) => { for (const i of cells) { const h = t.hAt(i), want = r.g + (ys - r.g) * u; if (h < want) t._push(i, want - h, M_G20); } t._touch(ix0, iz0, ix1, iz1); if (Math.random() < 0.3) app.sfx?.pour?.(0.4); }]);
+      steps.push([0.6, (u) => { if (u >= 1) for (const i of cells) t.comp[i] = 1; }]);
+      steps.push([0.9, (u) => { for (const i of cells) { const h = t.hAt(i), want = ys + (yc - ys) * u; if (h < want) { t.conc[i] += want - h; t.cTime[i] = app.clock; t.cSm[i] = 0.8; } } t._touch(ix0, iz0, ix1, iz1); }]);
+    } else {
+      // (the joists go up side by side — drawn by the pool's view from the record)
+      for (let k = 1; k <= 4; k++) steps.push([0.45, (u) => { app.poolView.deckLive = { id: r.id, sides: 0, base: (k - 1 + u) / 4 }; app.poolView.dirty = true; if (u >= 1) app.sfx?.stab?.(); }]);
+    }
+    const cleanup = () => { app.poolView.deckLive = null; app.poolView.dirty = true; };
+    // (the record first: the view draws the joists from it while they go up)
+    app.objects.update(r.id, { base });
+    new FitJob(app, { steps, parts: [], cleanup, onAbort: () => { app.journal.cancel(); cleanup(); }, commit: () => {
+      app.journal.commit(app.clock);
+      const A = ring.reduce((a, q) => a + (q[2] - q[0]) * (q[3] - q[1]), 0) / 1e6;
+      this.toast(D.base === 'slab' ? `Основание: щебень с трамбовкой, бетонная плита 100 мм с сеткой, уклон 1 % от бассейна — ${A.toFixed(1)} м² под «${D.name}». Дальше «15 · Покрытие площадки»` : `Основание: бетонные опоры через 600 мм, лаги 50 × 100 через 400 мм — ${A.toFixed(1)} м² под «${D.name}». Дальше «15 · Покрытие площадки»`);
+    } });
+  }
+  // the covering: side after side, board by board (tile by tile)
+  _deck(r) {
+    const app = this.app;
+    if (!r.base) { this.toast('Сначала «14 · Основание площадки»'); return; }
+    if (r.deck) { this.toast('Площадка уже уложена'); return; }
+    const D = DECKS[r.base.key], steps = [], cleanup = () => { app.poolView.deckLive = null; app.poolView.dirty = true; };
+    for (let k = 1; k <= 4; k++) steps.push([0.7, (u) => { if (u >= 1) { app.poolView.deckLive = { id: r.id, sides: k, base: 1 }; app.poolView.dirty = true; app.sfx?.stab?.(); } }]);
+    new FitJob(app, { steps, parts: [], cleanup, onAbort: cleanup, commit: () => {
+      this._save('pool-deck', () => app.objects.update(r.id, { deck: true }));
+      this.toast(`Площадка: ${D.name}${D.base === 'joists' ? ' — доски на скрытом крепеже, зазор 6 мм' : ' — на клею, шов 3 мм'}. Бассейн с площадкой готов`);
+    } });
+  }
+
   _strip(r, fb, wb) {
     const app = this.app, todo = [], wait = [];
     for (const b of [fb, wb]) {
@@ -466,6 +553,9 @@ export class PoolWork {
     if (!done('tile')) return ['tile', 'Мозаика'];
     if (!done('cope')) return ['cope', 'Бортовой камень'];
     if ((r.water || 0) < waterMax(r) - 1) return ['water', 'Наполните водой'];
+    if (!r.filled) return ['fill', 'Засыпьте пазухи вокруг чаши'];
+    if (!r.base) return ['base', 'Основание площадки вокруг'];
+    if (!r.deck) return ['deck', 'Покрытие площадки'];
     if (!r.light) return ['light', 'Включите подсветку'];
     return [null, 'Бассейн готов 🎉'];
   }
@@ -487,6 +577,9 @@ export class PoolWork {
       cope: 'Ведите пальцем по краю чаши — бортовой камень ложится на клей',
       water: 'Держите палец — шланг наполняет чашу (или насос сливает)',
       light: 'Коснитесь чаши — включить / выключить подсветку',
+      fill: 'Коснитесь бассейна — пазухи засыпаются песком слоями с трамбовкой',
+      base: 'Выберите покрытие и ширину площадки, коснитесь бассейна — встанет основание',
+      deck: 'Коснитесь бассейна — покрытие площадки уложится вокруг',
     };
     const [nx, nw] = this.next(r);
     return (!r && L !== 'pit' ? 'Сначала «1 · Разметка». ' : '') + H[L] + (r && nx !== L ? ` · Следующий шаг: ${nw}` : '');
