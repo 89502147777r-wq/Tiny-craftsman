@@ -62,6 +62,8 @@ export class Director {
   // ---- what the script waits for ---------------------------------------------------------------
   sec(s) { const t1 = this.t + s; return () => this.t >= t1; }
   job() { return () => !this.app.busy(); }
+  // the work done — and the shot on the screen long enough to be seen (min seconds)
+  held(min = 1.3) { return () => !this.app.busy() && (!this.shot || this.t - this.shot.t0 >= min); }
   until(f) { return f; }
   // (something done every frame while the script goes on: f(dt of the work) → true when it is over)
   each(f) { this.tasks.add(f); return f; }
@@ -75,26 +77,26 @@ export class Director {
   _full(v, from) { return { target: (v.target || from.target).clone(), yaw: v.yaw ?? from.yaw, pitch: v.pitch ?? from.pitch, dist: v.dist ?? from.dist }; }
   cut(v, o = {}) {
     const g = this._full(v, this._now());
-    this.shot = { from: g, goal: g, t0: this.t, dur: 1e-3, drift: o.drift ?? 0.05, push: o.push ?? 0.04, k: 1 };
+    this._shot({ from: g, goal: g, t0: this.t, dur: 1e-3, drift: o.drift ?? 0.05, push: o.push ?? 0.04, k: 1 });
     if (o.fx) this.trans(o.fx);
   }
   move(v, dur = 1.2, o = {}) {
     const from = this.shot ? this._eval(this.shot) : this._now(), goal = this._full(v, from);
     goal.yaw = from.yaw + Math.atan2(Math.sin(goal.yaw - from.yaw), Math.cos(goal.yaw - from.yaw));   // (the short way round)
-    this.shot = { from, goal, t0: this.t, dur: Math.max(1e-3, dur), drift: o.drift ?? 0.03, push: o.push ?? 0, k: 1 };
+    this._shot({ from, goal, t0: this.t, dur: Math.max(1e-3, dur), drift: o.drift ?? 0.03, push: o.push ?? 0, k: 1 });
     if (o.fx) this.trans(o.fx);
   }
   // a flight along a path: keys [[eye, at], …] (points in the plot) — the camera through the eyes,
   // looking at the ats, both on smooth curves, in dur seconds (o.ease: start and stop gently)
   fly(keys, dur, o = {}) {
     const eyes = new THREE.CatmullRomCurve3(keys.map((k) => k[0].clone())), ats = new THREE.CatmullRomCurve3(keys.map((k) => k[1].clone()));
-    this.shot = { eyes, ats, t0: this.t, dur, k: 1, drift: 0, push: 0, ease: o.ease ?? 'inout' };
+    this._shot({ eyes, ats, t0: this.t, dur, k: 1, drift: 0, push: 0, ease: o.ease ?? 'inout' });
     if (o.fx) this.trans(o.fx);
   }
   // follow f() (a point in the plot) from a view's yaw / pitch / dist; lag: how slowly it keeps up
   follow(f, v, o = {}) {
     const p = f() || this._now().target, g = { target: p.clone(), yaw: v.yaw, pitch: v.pitch, dist: v.dist };
-    this.shot = { from: g, goal: g, t0: this.t, dur: 1e-3, drift: o.drift ?? 0.06, push: o.push ?? 0.03, k: 1, f, lag: o.lag ?? 6, at: p.clone() };
+    this._shot({ from: g, goal: g, t0: this.t, dur: 1e-3, drift: o.drift ?? 0.06, push: o.push ?? 0.03, k: 1, f, lag: o.lag ?? 6, at: p.clone() });
     if (o.fx) this.trans(o.fx);
   }
   // a zoom punch: the distance × k, quickly, overshooting a little (it stays till the next shot)
@@ -105,10 +107,11 @@ export class Director {
     const d = { flash: 0.22, blur: 0.25, zoom: 0.28, whip: 0.24 }[kind];
     if (d) this.fx.push({ kind, t0: this.t, t1: this.t + d, dir: Math.random() < 0.5 ? -1 : 1 });
   }
+  _shot(s) { s.n = (this.shotN = (this.shotN || 0) + 1); this.shot = s; }
   _eval(s) {
     if (s.eyes) {
       const u0 = clamp01((this.t - s.t0) / s.dur), u = s.ease === 'inout' ? ease(u0) : s.ease === 'out' ? easeOut(u0) : u0;
-      const v = look(s.eyes.getPoint(u), s.ats.getPoint(u));
+      const v = look(s.eyes.getPointAt(u), s.ats.getPointAt(u));
       v.dist *= s.k;
       return v;
     }
@@ -125,11 +128,11 @@ export class Director {
     for (const e of [...this.fx]) {
       if (this.t > e.t1) { this.fx.splice(this.fx.indexOf(e), 1); continue; }
       const u = clamp01((this.t - e.t0) / (e.t1 - e.t0));
-      if (e.kind === 'shake') { const a = e.a * (1 - u), t = this.t * 47; v.yaw += a * Math.sin(t) * 1.4; v.pitch += a * Math.sin(t * 1.37 + 1); v.target.y += a * v.dist * 0.4 * Math.sin(t * 0.91 + 2); }
+      if (e.kind === 'shake') { const a = e.a * (1 - u), t = this.t * 17; v.yaw += a * Math.sin(t) * 1.4; v.pitch += a * Math.sin(t * 1.37 + 1); v.target.y += a * v.dist * 0.4 * Math.sin(t * 0.91 + 2); }
       if (e.kind === 'flash') white = Math.max(white, (1 - u) ** 2 * 0.6);
       if (e.kind === 'blur') blur = Math.max(blur, 6 * (1 - u));
       if (e.kind === 'zoom') { scale = 1 + 0.16 * (1 - easeOut(u)); blur = Math.max(blur, 3 * (1 - u) ** 2); }
-      if (e.kind === 'whip') { v.yaw += e.dir * 0.5 * (1 - easeOut(u)); blur = Math.max(blur, 7 * (1 - u) ** 2); }
+      if (e.kind === 'whip') { v.yaw += e.dir * 0.3 * (1 - easeOut(u)); blur = Math.max(blur, 7 * (1 - u) ** 2); }
     }
     this.app.rig.setState({ target: v.target.toArray(), yaw: v.yaw, pitch: v.pitch, dist: v.dist }, true);
     this.app.focusPoint = this.shot.f ? this.shot.at : null;
@@ -153,7 +156,10 @@ export class Director {
     const T = h.querySelector('.f-title');
     for (const w of main.split(' ')) { const s = document.createElement('span'); s.textContent = w; T.appendChild(s); T.appendChild(document.createTextNode(' ')); }
     h.querySelector('.f-sub').textContent = sub;
-    const it = this._item(h, this.$('.f-heads'), Infinity, (el, age, it) => {
+    const wait = this.items.some((q) => q.head && q.out != null && q.t1 > this.t) ? 0.24 : 0;
+    const it = this._item(h, this.$('.f-heads'), Infinity, (el, age0, it) => {
+      const age = age0 - wait;
+      el.style.visibility = age < 0 ? 'hidden' : '';
       const out = it.out != null ? clamp01((this.t - it.out) / 0.22) : 0;
       el.style.opacity = (1 - out).toFixed(3);
       el.style.transform = `translateY(${(-30 * easeOut(out)).toFixed(1)}px)`;
@@ -219,16 +225,19 @@ export class Director {
   money(on) { this.$('.f-money').hidden = !on; this.cash = this.app.budget.money; }
   bill(usd, at) {
     (this.bills = this.bills || []).push({ step: this.stepName || 'SETTING OUT', usd });
+    // (bills that come together — the forms and the bars of one go — shown as one sum)
+    const last = this.items.find((q) => q.bill && this.t - q.t0 < 0.9);
+    if (last) { last.usd += usd; last.el.textContent = `−$${Math.round(last.usd).toLocaleString('en-US')}`; last.t0 = this.t; last.t1 = this.t + 1.6; this.moneyKick = this.t; return; }
     const e = document.createElement('div');
     e.className = 'f-bill'; e.textContent = `−$${Math.round(usd).toLocaleString('en-US')}`;
-    let x = 0.5, y = 0.42;
-    if (at) { _v.copy(at).project(this.app.camera); if (_v.z < 1) { x = Math.max(0.2, Math.min(0.8, (_v.x + 1) / 2)); y = Math.max(0.4, Math.min(0.75, (1 - _v.y) / 2)); } }
-    e.style.left = `${x * 100}%`; e.style.top = `${y * 100}%`;
-    this._item(e, this.el, this.t + 1.6, (el, age) => {
+    // (low in the frame, clear of the titles, the counters and the big words)
+    e.style.left = '50%'; e.style.top = this.items.some((q) => q.pick) ? '36%' : '81%';
+    const it = this._item(e, this.el, this.t + 1.6, (el, age) => {
       const u = clamp01(age / 1.6), p = clamp01(age / 0.18);
       el.style.opacity = (Math.min(1, p * 2) * (1 - clamp01((age - 1.1) / 0.5))).toFixed(3);
-      el.style.transform = `translate(-50%, -50%) translateY(${(-90 * easeOut(u)).toFixed(1)}px) scale(${(0.5 + 0.5 * back(p)).toFixed(3)})`;
+      el.style.transform = `translate(-50%, -50%) translateY(${(-30 * easeOut(u)).toFixed(1)}px) scale(${(0.5 + 0.5 * back(p)).toFixed(3)})`;
     });
+    it.bill = true; it.usd = usd;
     this.moneyKick = this.t;
   }
   // the game's material choice: a card of swatches comes up, the finger goes to one and taps it;
@@ -237,7 +246,7 @@ export class Director {
     const e = document.createElement('div');
     e.className = 'f-pick';
     e.innerHTML = `<div class="f-card"><small>${title}</small><div class="f-sw">${list.map((q) => `<div><i style="background-image:url(${q.img})"></i><span>${q.name}</span></div>`).join('')}</div></div><div class="f-finger"></div>`;
-    this._item(e, this.el, this.t + dur, (el, age, it) => {
+    const pk = this._item(e, this.el, this.t + dur, (el, age, it) => {
       const life = it.t1 - it.t0, card = el.querySelector('.f-card'), f = el.querySelector('.f-finger'), cells = el.querySelectorAll('.f-sw > div');
       const inn = clamp01(age / 0.3), out = clamp01((age - life + 0.3) / 0.3);
       card.style.transform = `translateY(${((1 - easeOut(inn)) * 120 + easeOut(out) * 140).toFixed(1)}px)`;
@@ -252,6 +261,8 @@ export class Director {
       f.style.setProperty('--ring', tap > 0 && tap < 1 ? (tap * 1.6).toFixed(3) : 0);
       cells.forEach((q, i) => q.classList.toggle('on', i === pick && age > 1.12));
     });
+    pk.pick = true;
+    for (const q of this.items) if (q.bill) q.t1 = Math.min(q.t1, this.t + 0.15);   // (a bill still up goes before the card)
     return this.sec(dur);
   }
   // the bill of the whole job, as a till receipt: it comes up, the stages run down it line by
