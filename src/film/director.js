@@ -145,7 +145,7 @@ export class Director {
   // a stage's title: the step's chip pops, the words come up one by one, the sub line slides in
   title(main, sub = '', step = 0) {
     for (const it of this.items) if (it.head && it.out == null) { it.out = this.t; it.t1 = this.t + 0.22; }
-    if (step) { this.stepAt = step; this.stepT = this.t; }
+    if (step) { this.stepAt = step; this.stepT = this.t; this.stepName = main; }
     if (!main) return;
     const h = document.createElement('div');
     h.className = 'f-head';
@@ -218,6 +218,7 @@ export class Director {
   // each bill a «−$…» flying up from the work (with the till's sound)
   money(on) { this.$('.f-money').hidden = !on; this.cash = this.app.budget.money; }
   bill(usd, at) {
+    (this.bills = this.bills || []).push({ step: this.stepName || 'SETTING OUT', usd });
     const e = document.createElement('div');
     e.className = 'f-bill'; e.textContent = `−$${Math.round(usd).toLocaleString('en-US')}`;
     let x = 0.5, y = 0.42;
@@ -250,6 +251,30 @@ export class Director {
       f.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${(1 - 0.25 * Math.sin(Math.PI * tap)).toFixed(3)})`;
       f.style.setProperty('--ring', tap > 0 && tap < 1 ? (tap * 1.6).toFixed(3) : 0);
       cells.forEach((q, i) => q.classList.toggle('on', i === pick && age > 1.12));
+    });
+    return this.sec(dur);
+  }
+  // the bill of the whole job, as a till receipt: it comes up, the stages run down it line by
+  // line (what each cost), the total stamped at the bottom; → a wait for dur
+  receipt(head, dur = 3.2, foot = '') {
+    const by = new Map();
+    for (const b of this.bills || []) by.set(b.step, (by.get(b.step) || 0) + b.usd);
+    const usd = (v) => '$' + Math.round(v).toLocaleString('en-US'), cap = (w) => w.charAt(0) + w.slice(1).toLowerCase();
+    const lines = [...by].map(([k, v]) => `<div class="l"><span>${cap(k)}</span><b>${usd(v)}</b></div>`).join('');
+    const total = [...by.values()].reduce((a, v) => a + v, 0);
+    const e = document.createElement('div');
+    e.className = 'f-rcpt';
+    e.innerHTML = `<div class="paper"><img src="assets/brand/logo-line-dark.png" alt=""><small>${head}</small>${lines}<div class="sum"><span>TOTAL</span><b>${usd(total)}</b></div>${foot ? `<small class="foot">${foot}</small>` : ''}</div>`;
+    this._item(e, this.el, this.t + dur, (el, age, it) => {
+      const life = it.t1 - it.t0, p = el.querySelector('.paper'), ls = el.querySelectorAll('.l'), sm = el.querySelector('.sum');
+      const inn = clamp01(age / 0.35), out = clamp01((age - life + 0.25) / 0.25);
+      p.style.transform = `translateY(${((1 - back(inn)) * 110 + out * -40).toFixed(1)}%)`;
+      el.style.opacity = (1 - out).toFixed(3);
+      const step = Math.min(0.13, 1.3 / Math.max(1, ls.length));
+      ls.forEach((l, i) => { const u = clamp01((age - 0.35 - i * step) / 0.12); l.style.opacity = u.toFixed(3); l.style.transform = `translateX(${((1 - easeOut(u)) * -16).toFixed(1)}px)`; });
+      const ts = 0.45 + ls.length * step, u = clamp01((age - ts) / 0.3);
+      sm.style.opacity = clamp01(u * 3).toFixed(3); sm.style.transform = `scale(${(1.8 - 0.8 * back(u)).toFixed(3)}) rotate(${(-4 * (1 - u)).toFixed(2)}deg)`;
+      if (u > 0 && !it.thud) { it.thud = true; this.shake(0.006, 0.25); }
     });
     return this.sec(dur);
   }

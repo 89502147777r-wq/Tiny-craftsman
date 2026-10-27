@@ -176,7 +176,7 @@ export function* poolFilm(d, app) {
   { const p = mid(floorTopY(R())); pw.down(p, scr(p)); }
   const water = () => fl(POOL.L * 0.25, W2, (pw.drag?.live?.water || R().water || 0));
   d.follow(water, { yaw: 1.3, pitch: 0.12, dist: 0.3 }, { fx: 'flash', drift: 0.06, push: 0.08, lag: 8 });
-  d.title('');
+  d.title(''); d.stepName = 'WATER & LIGHTS';
   d.count('water', Math.round(POOL.L * POOL.W * waterMax(R()) / 1e9), ' m³', 2.2, 0, 2.4);
   yield d.sec(1.6);
   d.cut({ target: mid(rimY(R()) - MM(400)), yaw: 0.9, pitch: 0.55, dist: 0.95 }, { fx: 'whip', drift: 0.12 });
@@ -188,21 +188,26 @@ export function* poolFilm(d, app) {
   pw._save('pool-light', () => app.objects.update(R().id, { light: true }));
   const h0 = 17.8;
   d.each(((k) => () => { k += d.dt / 1.8; app.sky.setHour(h0 + 2.4 * Math.min(1, k)); return k >= 1; })(0));
-  d.fly([[gy(-2800, -2600, 1400), gy(3800, W2, -600)], [gy(3000, -4200, 1100), gy(4200, W2, -600)], [gy(9600, -3200, 1500), gy(4400, W2, -600)]], 4.4, { fx: 'flash', ease: 'linear' });
-  yield d.sec(1.2);
-  d.kick('FROM DIRT TO THIS', 1.7, 'gold');
-  yield d.sec(2.0);
-  d.end('Built step by step in Tiny Craftsman');
-  yield d.sec(2.0);
+  d.fly([[gy(-2800, -2600, 1400), gy(3800, W2, -600)], [gy(3000, -4200, 1100), gy(4200, W2, -600)], [gy(9600, -3200, 1500), gy(4400, W2, -600)]], 5.8, { fx: 'flash', ease: 'linear' });
+  yield d.sec(0.9);
+  d.kick('FROM DIRT TO THIS', 1.3, 'gold');
+  yield d.sec(1.3);
+  // the answer to the hook's question: the bill of it all, stage by stage, the total stamped
+  yield d.receipt('MATERIALS · POOL 8 × 3.5 M', 3.4, 'materials & machine hire · labour not included');
 
-  // the hook (put first by the renderer): the pool done, in the sun, a slow drone pass — «how?»
+  // the loop: back into the sun, a drone flight that ends just where the film begins (the hook,
+  // put first by the renderer, goes on with the same flight) — played round, it never stops
   d.clear();
   app.sky.setHour(12.5);
-  d.fly([[gy(11000, -3600, 3200), gy(4200, W2, -700)], [gy(9600, -2400, 2300), gy(3800, W2, -500)]], 1.7, { ease: 'linear' });
+  const A = [gy(11000, -3600, 3200), gy(4200, W2, -700)], B = [gy(9600, -2400, 2300), gy(3800, W2, -500)];
+  const back = (k) => [A[0].clone().lerp(B[0], -k), A[1].clone().lerp(B[1], -k)];
+  d.fly([back(0.6), A], 1.0, { fx: 'flash', ease: 'linear' });   // (the same speed as the hook's: 0.6 of A→B in 1 s, A→B in 1.7 s)
+  yield d.sec(1.0);
+  d.fly([A, B], 1.7, { ease: 'linear' });
   d.mark('hook');
   yield d.sec(0.05);
-  d.title('HOW IS THIS BUILT?', 'every step, from bare ground');
-  yield d.sec(1.6);
+  d.title('WHAT DID THIS POOL COST?', 'every step, every dollar — guess first');
+  yield d.sec(1.65);
   d.mark('hookEnd');
 }
 

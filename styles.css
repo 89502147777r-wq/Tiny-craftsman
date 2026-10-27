@@ -375,3 +375,13 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-sw span { display: block; margin-top: 0.35em; font-size: clamp(9px, 2.7vw, 17px); font-weight: 700; line-height: 1.15; }
 #film .f-finger { position: absolute; left: 0; top: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: rgba(255,255,255,0.85); box-shadow: 0 4px 14px rgba(0,0,0,0.45); --ring: 0; }
 #film .f-finger::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.9); transform: scale(calc(1 + var(--ring))); opacity: calc(1 - var(--ring) / 1.6); }
+#film .f-rcpt { position: absolute; left: 0; right: 0; top: 14%; bottom: 14%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#film .f-rcpt .paper { width: 74%; max-width: 460px; padding: 1.1em 1.1em 1.2em; background: #f6f2ea; color: #1a1712; border-radius: 6px 6px 2px 2px; box-shadow: 0 14px 40px rgba(0,0,0,0.55); font-family: "SF Mono", Menlo, "DejaVu Sans Mono", monospace; -webkit-mask: radial-gradient(circle at 6px 100%, transparent 5px, #000 5.5px) -6px 0 / 12px 100% repeat-x; mask: radial-gradient(circle at 6px 100%, transparent 5px, #000 5.5px) -6px 0 / 12px 100% repeat-x; }
+#film .f-rcpt img { display: block; width: 62%; margin: 0 auto 0.4em; }
+#film .f-rcpt small { display: block; text-align: center; font-size: clamp(9px, 2.6vw, 15px); letter-spacing: 0.12em; color: #6b6458; padding-bottom: 0.6em; margin-bottom: 0.5em; border-bottom: 2px dashed #c9c1b2; }
+#film .f-rcpt .l { display: flex; justify-content: space-between; gap: 1em; font-size: clamp(11px, 3.3vw, 19px); line-height: 1.55; }
+#film .f-rcpt .l b { font-weight: 700; }
+#film .f-rcpt .sum { display: flex; justify-content: space-between; align-items: baseline; margin-top: 0.5em; padding-top: 0.45em; border-top: 2px dashed #c9c1b2; font-weight: 900; transform-origin: 50% 50%; }
+#film .f-rcpt .sum span { font-size: clamp(13px, 4vw, 24px); }
+#film .f-rcpt .sum b { font-size: clamp(24px, 8.4vw, 50px); color: #c8321f; font-family: -apple-system, "Inter Display", Arial, sans-serif; }
+#film .f-rcpt small.foot { border: 0; margin: 0.6em 0 0; padding: 0; letter-spacing: 0.04em; }
