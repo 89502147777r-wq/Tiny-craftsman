@@ -5,7 +5,7 @@ import { DAY_LENGTHS, WEATHER } from '../world/sky.js';
 import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
-import { POOL_LAYERS, MOSAICS, COPES } from '../world/pool.js';
+import { POOL_LAYERS, MOSAICS, COPES, DECKS, DECK_WIDTHS } from '../world/pool.js';
 import { COL_SECS, COURSES, COL_STAGES, TILTS, courseH } from '../world/columns.js';
 import { PALLETS } from '../core/budget.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
@@ -539,6 +539,10 @@ export class UI {
         if (k === 'tile') return G('ptile', c.label, Object.entries(MOSAICS).map(([q, [n]]) => C('◼ ' + n, (s.poolMos || 'turq') === q, () => plset({ poolLayer: 'tile', poolMos: q }))), null, c);
         if (k === 'cope') return G('pcope', c.label, Object.entries(COPES).map(([q, [n]]) => C('◼ ' + n, (s.poolCope || 'trav') === q, () => plset({ poolLayer: 'cope', poolCope: q }))), null, c);
         if (k === 'dig') return G('pdig', c.label, [C('Копать по разметке', has('pool') && PL === 'dig', () => plset({ poolLayer: 'dig' })), C('📏 Замер', !!s.poolMeasure, () => plset({ poolMeasure: !s.poolMeasure }))], null, c);
+        if (k === 'base') return G('pbase', c.label, [
+          ...Object.entries(DECKS).map(([q, D]) => C('▦ ' + D.name, wt.pool.deckKey === q, () => plset({ poolLayer: 'base', poolDeck: q }))),
+          ...DECK_WIDTHS.map((w) => C(`Ширина ${(w / 1000).toString().replace('.', ',')} м`, wt.pool.deckW === w, () => plset({ poolLayer: 'base', poolDeckW: w }))),
+        ], null, c);
         if (k === 'water') return G('pwater', c.label, [C('Наполнить', s.poolWater !== 'drain', () => plset({ poolLayer: 'water', poolWater: 'fill' })), C('Слить', s.poolWater === 'drain', () => plset({ poolLayer: 'water', poolWater: 'drain' }))], null, c);
         return c;
       });
