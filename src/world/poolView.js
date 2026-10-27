@@ -471,7 +471,7 @@ function mosaicMat(key, U) {
   m.userData.period = n * POOL.sheet / 12;
   return underwater(m, U);
 }
-function buildMosaic(r, U) {
+export function buildMosaic(r, U) {
   const F = faces(r), by = new Map(), off = 8;
   for (const f of F) {
     const [ni, nj] = sheetsOf(f), str = faceStr(r.tile, f.k, ni * nj);
@@ -504,7 +504,7 @@ function buildMosaic(r, U) {
 // the coping: stones 40 thick on 10 of glue on the walls' top, bullnosed on the water's side
 // (a half round), 4 mm joints; travertine with its veins running along each stone (each from
 // another place in the slab), or porcelain
-function buildCoping(r) {
+export function buildCoping(r, only = null) {
   const lay = copeLayout(r), top = (rimY(r) - floorTopY(r)) / S, th = POOL.cope, R = th / 2, geos = [];
   let seed = 17; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   // the profile across (c: from the water's edge out), up from the stone's bottom
@@ -515,6 +515,7 @@ function buildCoping(r) {
     for (const st of sd.list) {
       if (str[st.i] !== '1') continue;
       const c0 = st.c0, c1 = st.c1, ox = rnd() * 3000, oy = rnd() * 3000, tint = 0.8 + rnd() * 0.1;
+      if (only && !only.has(sd.side + ':' + st.i)) continue;   // (one stone on its own: as it will be drawn)
       // the section: the bullnose (from its bottom round to its top), then back along the top
       // and down the back (c1)
       const sec = [...prof.map(([c, y]) => [c0 + c, y]).reverse(), [c1, 0], [c1, th]];
@@ -522,9 +523,9 @@ function buildCoping(r) {
       const W3 = (a, c, y) => { const [s, t] = sd.P(a, c); return V(r, s, t, top - th + y); };
       const n = sec.length;
       for (const a of [st.a0, st.a1]) for (const [c, y] of sec) { pos.push(...W3(a, c, y)); uv.push((a + ox) / 1000, (c + y * 1.5 + oy) / 1000); col.push(tint, tint, tint * 0.99); }
-      for (let k = 0; k < n; k++) { const k2 = (k + 1) % n; idx.push(k, n + k, n + k2, k, n + k2, k2); }
+      for (let k = 0; k < n; k++) { const k2 = (k + 1) % n; idx.push(k, n + k2, n + k, k, k2, n + k2); }
       // the ends
-      const cap = (o, flip) => { const c0i = pos.length / 3; for (let k = 0; k < n; k++) { pos.push(pos[(o + k) * 3], pos[(o + k) * 3 + 1], pos[(o + k) * 3 + 2]); uv.push(uv[(o + k) * 2] + 0.3, uv[(o + k) * 2 + 1]); col.push(tint, tint, tint); } for (let k = 1; k + 1 < n; k++) idx.push(...(flip ? [c0i, c0i + k + 1, c0i + k] : [c0i, c0i + k, c0i + k + 1])); };
+      const cap = (o, flip) => { const c0i = pos.length / 3; for (let k = 0; k < n; k++) { pos.push(pos[(o + k) * 3], pos[(o + k) * 3 + 1], pos[(o + k) * 3 + 2]); uv.push(uv[(o + k) * 2] + 0.3, uv[(o + k) * 2 + 1]); col.push(tint, tint, tint); } for (let k = 1; k + 1 < n; k++) idx.push(...(flip ? [c0i, c0i + k, c0i + k + 1] : [c0i, c0i + k + 1, c0i + k])); };
       cap(0, false); cap(n, true);
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);

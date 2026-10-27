@@ -55,6 +55,14 @@ export class HandTools {
       g.add(arm);
       this.tools.hammer = { g, arm, pivot: M(-300) };
     }
+    // the rubber mallet: a black rubber head Ø 65 × 110 (its face at the origin), the handle down
+    {
+      const g = new THREE.Group(), arm = new THREE.Group();
+      arm.add(alongZ(cyl(32, 32, 110, mat(0x141414, 0.85), 18), 55));
+      const h = cyl(13, 15, 320, wood, 10); h.position.set(0, M(-160), M(55)); arm.add(h);
+      g.add(arm);
+      this.tools.mallet = { g, arm, pivot: M(-320) };
+    }
     // the notched trowel: its toothed edge on the origin, the blade up the surface (+y), lying on it
     {
       const g = new THREE.Group(), sh = new THREE.Shape();

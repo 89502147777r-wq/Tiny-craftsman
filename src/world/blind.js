@@ -380,6 +380,15 @@ export function setStream(o, rec, st) {
 }
 const merge = (gs) => { const ok = gs.filter(Boolean).map((g) => (g.index ? g.toNonIndexed() : g)); if (!ok.length) return null; const n = ok.reduce((s, g) => s + g.attributes.position.count, 0), pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), uv = new Float32Array(n * 2); let o = 0; for (const g of ok) { pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2); o += g.attributes.position.count; } const m = new THREE.BufferGeometry(); m.setAttribute('position', new THREE.BufferAttribute(pos, 3)); m.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); m.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); return m; };
 
+// a few tiles of the paving on their own (fitted by hand: fitJob.js) — cell keys
+export function tilePiece(rec, cells, col) {
+  const P = planOf(rec), top = (a, d) => finTop(rec, P.distAt(a, d));
+  const o = new THREE.Mesh(slab(P, new Set(cells), top, rec.g + MM(TOP.grav) - MM(2), MM(800)), tileMat(col || rec.finCol || 'grey'));
+  o.castShadow = o.receiveShadow = true; o.userData.keepGeo = false;
+  return o;
+}
+export function cellPos(rec, k) { const P = planOf(rec), c = P.cells.get(k); if (!c) return null; const [x, z] = P.W2(c.a, c.d); return [x, finTop(rec, c.dist), z, c.a, c.d]; }
+
 // the area as it is (rec), with what is being done over it (live: { layer, cells } or { seg, ok }
 // or { form: rec })
 export function buildBlind(rec, live) {

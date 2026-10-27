@@ -5,6 +5,8 @@ import { cageForRect, cageForTrench, meshPanel, singleBar } from '../world/rebar
 import { loadPhysics, physicsReady } from '../world/physics.js';
 import { StripJob } from './stripJob.js';
 import { RebarJob } from './rebarJob.js';
+import { FitJob, hammer } from './fitJob.js';
+import { runPieces } from '../world/formwork.js';
 
 const MM = (v) => v / 1000 / MODEL_SCALE;
 
@@ -128,11 +130,38 @@ export class BuildTool {
   formAround(o) {
     const { app } = this;
     if (app.objects.all('form').some((r) => r.outlineId === o.id)) { app.ui.toast('Опалубка по этому контуру уже стоит'); return; }
-    const y1 = this.topFor(o);
-    app.journal.act('formwork', { outlineId: o.id }, app.clock, () => {
-      for (const e of edges(o)) app.objects.add(this.run(e.a, e.b, e.n, y1, { outlineId: o.id }));
+    const y1 = this.topFor(o), runs = edges(o).map((e) => this.run(e.a, e.b, e.n, y1, { outlineId: o.id }));
+    this._fitRuns(runs, false, () => {
+      app.journal.act('formwork', { outlineId: o.id }, app.clock, () => { for (const r of runs) app.objects.add(r); });
+      app.ui.toast('Опалубка установлена');
     });
-    app.ui.toast('Опалубка установлена');
+  }
+
+  // the formwork put up as it is done (fitJob.js): the stakes driven in, the boards set on
+  // edge from the bottom up and nailed to them, the braces; one run by hand in full, the
+  // whole outline quickly
+  _fitRuns(runs, one, save) {
+    const app = this.app, t = app.terrain, mat = app.formView.stakes.material, steps = [], parts = [], up = new THREE.Vector3(0, 1, 0);
+    const box = new THREE.BoxGeometry(1, 1, 1), stakeGeo = app.formView.stakes.geometry;
+    const all = runs.map((r) => runPieces(r, t)), nPieces = all.reduce((a, p) => a + p.length, 0);
+    const T = one ? 1 : Math.min(1, 4 / (nPieces * 0.09));
+    const mk = (pc) => { const m = new THREE.Mesh(pc.k === 'stake' ? stakeGeo : box, mat); m.position.copy(pc.p); m.quaternion.copy(pc.q); m.scale.copy(pc.s); m.castShadow = true; m.visible = false; m.userData.keepGeo = true; parts.push(m); return m; };
+    runs.forEach((r, ri) => {
+      const ps = all[ri], n = new THREE.Vector3(r.n[0], 0, r.n[1]);
+      // the stakes first (driven down), then the boards from the bottom, then the braces
+      for (const pc of ps.filter((q) => q.k === 'stake')) {
+        const m = mk(pc), top = pc.p.clone().setY(pc.p.y + pc.s.y), y0 = pc.p.y;
+        if (one) steps.push([0.15, () => { m.visible = true; m.position.y = y0 + MM(150); }], hammer(app, top.clone().setY(top.y + MM(150)), up, 3, 0.16, (k) => { m.position.y = y0 + MM(150) * (1 - k / 3); }, n));
+        else steps.push([0.09 * T, (u) => { m.visible = true; m.position.y = y0 + MM(80) * (1 - u); }]);
+      }
+      for (const pc of ps.filter((q) => q.k === 'board')) {
+        const m = mk(pc), p0 = pc.p.clone();
+        steps.push([(one ? 0.25 : 0.09) * T, (u) => { m.visible = true; m.position.copy(p0).addScaledVector(n, -MM(one ? 200 : 60) * (1 - u)); }]);
+        if (one) { const at = p0.clone().addScaledVector(n, -MM(14)); steps.push(hammer(app, at, n.clone().negate(), 2, 0.14)); }
+      }
+      for (const pc of ps.filter((q) => q.k === 'brace')) { const m = mk(pc); steps.push([(one ? 0.2 : 0.06) * T, () => { m.visible = true; }]); }
+    });
+    new FitJob(app, { steps, parts, commit: save });
   }
 
   // Stripping: all the runs of the outline tapped (or the run of the board tapped)
@@ -217,7 +246,8 @@ export class BuildTool {
     const o = app.outlineView.pickOutline(mid[0] - n[0] * 0.004, mid[1] - n[1] * 0.004) || app.outlineView.pickOutline(mid[0] + n[0] * 0.004, mid[1] + n[1] * 0.004);
     if (o && contains(o, mid[0] + n[0] * 0.004, mid[1] + n[1] * 0.004)) n = [-n[0], -n[1]];
     const y1 = o ? this.topFor(o) : t.minAlong(a[0], a[1], b[0], b[1]) + MM(this.app.settings.slab);
-    app.journal.act('formwork-board', {}, app.clock, () => app.objects.add(this.run(a, b, n, y1)));
+    const run = this.run(a, b, n, y1);
+    this._fitRuns([run], true, () => app.journal.act('formwork-board', {}, app.clock, () => app.objects.add(run)));
   }
 
   // ---- reinforcement -------------------------------------------------------------------------
@@ -237,8 +267,18 @@ export class BuildTool {
     const cage = app.objects.all('cage').find((r) => r.outlineId === o.id);
     if (!cage) { app.ui.toast('Сначала разложите каркас'); return; }
     if (cage.tied) { app.ui.toast('Уже связано'); return; }
-    app.journal.act('rebar-tie', { id: cage.id }, app.clock, () => app.objects.update(cage.id, { tied: true }));
-    app.ui.toast(`Вязка: ${cage.ties.length} узлов`);
+    // (the twister going over the crossings, the wire twisted at each; the rest done with it)
+    const ties = cage.ties, n = Math.min(28, ties.length), steps = [], parts = [], up = new THREE.Vector3(0, 1, 0);
+    const geo = new THREE.TorusGeometry(1, 0.28, 5, 10), mat = app.rebarView.ties.material;
+    for (let k = 0; k < n; k++) {
+      const tt = ties[Math.floor(k * ties.length / n)], p = new THREE.Vector3(tt[0], tt[1], tt[2]);
+      const m = new THREE.Mesh(geo, mat); m.position.copy(p); m.rotation.set(Math.PI / 2, 0, tt[4] || 0.785); m.scale.setScalar(tt[3] || MM(7)); m.visible = false; m.userData.keepGeo = true; parts.push(m);
+      steps.push([0.13, (u) => { app.handTools.set('hook', p.clone().add(new THREE.Vector3(0, MM(6), 0)), up, null, u * 40); if (u >= 1) m.visible = true; }]);
+    }
+    new FitJob(app, { steps, parts, commit: () => {
+      app.journal.act('rebar-tie', { id: cage.id }, app.clock, () => app.objects.update(cage.id, { tied: true }));
+      app.ui.toast(`Вязка: ${cage.ties.length} узлов`);
+    } });
   }
 
   // thin line showing what is being drawn
