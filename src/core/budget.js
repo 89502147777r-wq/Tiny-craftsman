@@ -288,10 +288,10 @@ export class Budget {
     const usd = Math.round(items.reduce((s, q) => s + q.usd, 0));
     if (!usd) return;
     app.objects.update(r.id, { money: Math.round(r.money - usd) });
-    this.popup(usd, items, at);
+    if (app.film) { if (usd > 0) app.film.bill(usd, at); } else this.popup(usd, items, at);
     if (usd > 0) app.sfx?.cash?.(); else app.sfx?.stab?.();
     this.refresh();
-    if (r.money - usd < 0 && r.money >= 0) app.ui.toast('Бюджет кончился — дальше стройка в долг (сумма красная)');
+    if (r.money - usd < 0 && r.money >= 0 && !app.film) app.ui.toast('Бюджет кончился — дальше стройка в долг (сумма красная)');
   }
   popup(usd, what, at) {
     if (!this.pops) return;
