@@ -4,6 +4,7 @@ import { plan, boardsOf, toWorld, snapS, BELT } from '../tools/belt.js';
 import { SlabFormView, floorUnder } from './slabForm.js';
 import { ColumnView } from './columns.js';
 import { withBitumen } from './bitumen.js';
+import { PALLETS } from '../core/budget.js';
 import { buildWindow, buildCorner } from './windows.js';
 import { buildRail } from './railing.js';
 import { buildDoor, isDoor } from './doors.js';
@@ -467,6 +468,7 @@ export class WallView {
       if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; if (rec?.type === 'proof' || !rec) { this.dirty = true; this._faces = null; this.facadeDirty = true; } return; }   // (the nuts on the studs follow the wall plate)
       if (rec?.type === 'rail' || this._railIds?.has(id)) { this.railDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
+      if (rec?.type === 'stock' || this._stockIds?.has(id)) { this.dirty = true; return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
     });
   }
@@ -688,6 +690,24 @@ export class WallView {
       }
       // the clamps round the boards every 500 mm
       for (let s = 150 * S; s < b.ni * b.c - 100 * S; s += 500 * S) at(s, Wc / 2, b.top + b.H * 0.6, 40 * S, 40 * S, Wc + 2 * th + 80 * S);
+    }
+    // the pallets bought (the budget): the wooden pallet, what is left on it stacked as it came
+    this._stockIds = new Set(); const P3 = new THREE.Vector3();
+    for (const s of O.all('stock')) {
+      this._stockIds.add(s.id);
+      const P = PALLETS[s.kind]; if (!P) continue;
+      const g = this.terrainY ? this.terrainY(s.x, s.z) : 0, pq = new THREE.Quaternion().setFromAxisAngle(_Y, s.yaw || 0), ex = new THREE.Vector3(1, 0, 0).applyQuaternion(pq), ez = new THREE.Vector3(0, 0, 1).applyQuaternion(pq);
+      const pl = (a, y, c, sx, sy, sz) => { P3.set(s.x + ex.x * a * S + ez.x * c * S, g + y * S, s.z + ex.z * a * S + ez.z * c * S); Sv.set(sx * S, sy * S, sz * S); return m.compose(P3, pq, Sv); };
+      const pw = P.na * (P.L + 4) + 40, pd = P.nc * (P.T + 4) + 40;
+      for (const c of [-pd / 2 + 50, 0, pd / 2 - 50]) if (nw < this.max.wood) { this.wood.setMatrixAt(nw, pl(0, 50, c, pw, 100, 100)); this.owner.wood[nw++] = s.id; }
+      for (let a = -pw / 2 + 50; a <= pw / 2 - 49; a += (pw - 100) / 7) if (nw < this.max.wood) { this.wood.setMatrixAt(nw, pl(a, 111, 0, 100, 22, pd)); this.owner.wood[nw++] = s.id; }
+      const per = P.na * P.nc;
+      for (let i = 0; i < s.n; i++) {
+        const lay = Math.floor(i / per), j = i % per, ia = j % P.na, ic = Math.floor(j / P.na);
+        const a = (ia - (P.na - 1) / 2) * (P.L + 4), c = (ic - (P.nc - 1) / 2) * (P.T + 4), y = 122 + lay * (P.H + 2) + P.H / 2;
+        pl(a, y, c, P.L, P.H, P.T);
+        put({ p: P3.toArray(), q: pq.toArray(), s: Sv.toArray(), kind: s.kind, row: lay, i: j, off: 0 }, s.id);
+      }
     }
     if (this.terrain) this.slabForm.build([...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])], floorUnder(this.terrain, O.all('belt')));
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;

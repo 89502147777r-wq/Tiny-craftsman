@@ -104,6 +104,7 @@ export class Gestures {
     const tool = app.activeTool();
     if (tool) {
       const p = this.ground(e.clientX, e.clientY);
+      if (p) app.lastPoint = p.clone();
       if (p && tool.down(p, e)) {
         this.mode = 'tool';
         this.toolT0 = performance.now();
@@ -139,7 +140,7 @@ export class Gestures {
     }
     if (this.mode === 'tool') {
       const g = this.ground(e.clientX, e.clientY);
-      if (g) app.activeTool()?.move(g, e);
+      if (g) { app.activeTool()?.move(g, e); app.lastPoint = g.clone(); }
       app.ui.moveMeasure(e.clientX, e.clientY);
     }
   }

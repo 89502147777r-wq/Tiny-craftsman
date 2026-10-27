@@ -95,6 +95,20 @@ export class Sfx {
 
   stab() { this._burst(0.09, 2200, 1.6, 0.6); }
 
+  // the till: the drawer's clunk, the bell (two partials, ringing out), a few coins
+  cash() {
+    if (!this.enabled || !this.ctx) return;
+    this._burst(0.06, 380, 1.2, 0.5);
+    const t = this.ctx.currentTime + 0.05;
+    for (const [f, v] of [[2093, 0.22], [3136, 0.12], [4186, 0.06]]) {
+      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0008, t + 0.9);
+      o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + 0.95);
+    }
+    for (let i = 0; i < 5; i++) setTimeout(() => this._burst(0.03, 5200 + Math.random() * 2500, 6, 0.18), 110 + i * 45 + Math.random() * 30);
+  }
+
   pour(amount = 1) {
     if (!this.enabled || !this.ctx) return;
     // a stream of tiny ticks + a soft hiss

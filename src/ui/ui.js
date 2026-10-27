@@ -7,6 +7,7 @@ import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
 import { POOL_LAYERS, MOSAICS, COPES } from '../world/pool.js';
 import { COL_SECS, COURSES, COL_STAGES, TILTS, courseH } from '../world/columns.js';
+import { PALLETS } from '../core/budget.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
 import { LAYERS as FAC_LAYERS, VLAYERS as FAC_VLAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES, VENT } from '../world/facade.js';
 import { RWIN_TYPES } from '../world/roofWindows.js';
@@ -125,6 +126,7 @@ export class UI {
     hb.addEventListener('click', () => showHints(ui.classList.contains('no-hints')));
     $('menu-close').addEventListener('click', () => this.openMenu(false));
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
+    for (const b of document.querySelectorAll('#budget-row button')) b.addEventListener('click', () => { const v = +b.dataset.b; if (v) app.budget.start(v); else app.budget.stop(); this.openMenu(false); this.refresh(); });
     $('act-export').addEventListener('click', () => app.exportProject());
     $('act-import').addEventListener('click', () => $('import-file').click());
     $('import-file').addEventListener('change', async (e) => {
@@ -455,6 +457,8 @@ export class UI {
       const masonry = [K('block', 'Газоблок'), K('brick', 'Кирпич'), K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];
       if (has('block', 'brick', 'ublock', 'cinder')) masonry.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
       if (has('block', 'brick', 'cinder')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
+      // the budget: pallets bought onto the plot (the units laid come off them)
+      if (app.budget?.on) masonry.push(G('shop', '🛒 Купить поддон', Object.entries(PALLETS).map(([k, P]) => C(`${P.short} · ${P.n} шт · $${P.usd} (на участке ${app.budget.stockOf(k)})`, false, () => { app.budget.buy(k); this.refresh(); })), 'Купить'));
       // the columns and the piles: the stage; the section, the height by the courses, the slope
       const cw = wt.col, cset = (o) => { lay({ wallKind: 'column', ...o }); const r = cw.rec; if (r && (r.stage ?? 0) < 3 && ('colN' in o || 'colCourse' in o || 'colTilt' in o || 'colDir' in o)) cw.restyle(r); };
       const CS = cw.stage, cols = [

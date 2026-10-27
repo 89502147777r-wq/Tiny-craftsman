@@ -315,3 +315,17 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .wall-del[hidden] { display: none; }
 .wall-del svg { width: 18px; height: 18px; } .wall-del b { font-size: 10px; font-weight: 600; }
 .wall-del.active { outline: 2px solid #ff9b86; background: rgba(255, 120, 100, .25); }
+
+/* ---- the budget: the money in the top bar, the «−$…» popups ------------------------------------ */
+#money { align-self: center; font-weight: 800; font-size: 14px; color: #9fe39a; letter-spacing: .02em; padding: 7px 11px; border-radius: 11px; border: 1px solid var(--line); background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+#money[hidden] { display: none; }
+#money.neg { color: #ff6a5a; }
+#pops { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
+#pops .pop { position: absolute; transform: translate(-50%, -50%); display: grid; justify-items: center; animation: popUp 2.2s ease-out forwards; text-shadow: 0 2px 8px rgba(0,0,0,.75); }
+#pops .pop b { font-size: 24px; font-weight: 900; color: #ff5b4a; }
+#pops .pop.plus b { color: #7ee07a; }
+#pops .pop span { font-size: 11px; color: #f2eee6; opacity: .9; max-width: 220px; text-align: center; }
+@keyframes popUp { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.8); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); } 25% { transform: translate(-50%, -55%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -160%); } }
+.budget-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.budget-row button { flex: 0 0 auto; width: auto !important; padding: 6px 10px; }
+.budget-row button.on { outline: 2px solid var(--accent); }
