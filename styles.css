@@ -329,3 +329,24 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .budget-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 .budget-row button { flex: 0 0 auto; width: auto !important; padding: 6px 10px; }
 .budget-row button.on { outline: 2px solid var(--accent); }
+
+/* ---- the film mode (src/film/director.js): the words of a short over the picture ---- */
+body.filming #ui, body.filming #toast, body.filming #pops, body.filming #money { display: none !important; }
+#film { position: fixed; inset: 0; pointer-events: none; z-index: 50; font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif; color: #fff; }
+#film .f-head { position: absolute; left: 6%; right: 6%; top: 7.5%; text-align: center; opacity: 0; }
+#film .f-step { display: inline-block; font-size: clamp(11px, 3.1vw, 22px); font-weight: 800; letter-spacing: 0.18em; padding: 0.3em 0.75em; border-radius: 99px; background: #f2b134; color: #1b1406; margin-bottom: 0.55em; }
+#film .f-step:empty { display: none; }
+#film .f-title { font-size: clamp(22px, 8.4vw, 64px); font-weight: 900; line-height: 1.02; letter-spacing: 0.01em; text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 4px 22px rgba(0,0,0,0.55); }
+#film .f-sub { margin-top: 0.45em; font-size: clamp(12px, 3.7vw, 28px); font-weight: 600; line-height: 1.25; text-shadow: 0 1px 2px rgba(0,0,0,0.8), 0 2px 14px rgba(0,0,0,0.6); }
+#film .f-flash { position: absolute; left: 50%; top: 46%; font-size: clamp(24px, 9vw, 70px); font-weight: 900; letter-spacing: 0.04em; white-space: nowrap; opacity: 0; text-shadow: 0 3px 24px rgba(0,0,0,0.7); }
+#film .f-pin { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; }
+#film .f-pin i { position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 50%; background: #f2b134; box-shadow: 0 0 0 3px rgba(242,177,52,0.35), 0 1px 6px rgba(0,0,0,0.6); }
+#film .f-pin b { position: absolute; left: 0; top: -54px; width: 2px; height: 54px; background: #fff; box-shadow: 0 0 4px rgba(0,0,0,0.6); }
+#film .f-pin span { position: absolute; left: -2px; top: -88px; white-space: nowrap; font-size: clamp(12px, 3.8vw, 26px); font-weight: 800; padding: 0.25em 0.6em; border-radius: 6px; background: rgba(15,14,12,0.78); }
+#film .f-pin.left span { left: auto; right: -2px; }
+#film .f-end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2em; background: radial-gradient(ellipse at center, rgba(8,10,14,0.35), rgba(8,10,14,0.7)); opacity: 0; }
+#film .f-end img { width: 58%; max-width: 420px; filter: drop-shadow(0 4px 18px rgba(0,0,0,0.6)); }
+#film .f-end span { font-size: clamp(13px, 3.9vw, 28px); font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,0.7); }
+#film .f-gate { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8em; text-align: center; padding: 0 10%; background: rgba(8,10,14,0.55); }
+#film .f-gate b { font-size: clamp(20px, 6.5vw, 40px); font-weight: 900; }
+#film .f-gate span { font-size: clamp(13px, 3.8vw, 20px); line-height: 1.4; opacity: 0.85; }

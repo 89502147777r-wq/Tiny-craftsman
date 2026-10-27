@@ -80,6 +80,10 @@ async function main() {
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
   const params = new URLSearchParams(location.search);
   if (params.get('quality')) app.settings.quality = params.get('quality');
+  // the film mode (film/director.js): a short played out on a clean plot of its own — nothing is
+  // read from the saved project or written over it; ?offline=1: drawn frame by frame by a script
+  app.filmMode = params.get('film') || null;
+  app.filmOffline = !!app.filmMode && params.get('offline') === '1';
   app.dprOverride = params.get('dpr') ? Number(params.get('dpr')) : 0;
   const scene = (app.scene = new THREE.Scene());
   const camera = (app.camera = new THREE.PerspectiveCamera(45, 1, 0.008, 40));
@@ -146,8 +150,9 @@ async function main() {
   // ---- restore the saved project, or start a fresh plot -------------------------------------
   // (saved by parts since BUILD 187; before, one record)
   let saved = null, byParts = false;
-  try { saved = assembleParts(await loadParts()); byParts = !!saved; } catch (e) { console.warn('could not read the saved parts', e); }
-  if (!saved) { saved = await loadLocal(); SAVE.legacy = !!saved; }
+  if (!app.filmMode) try { saved = assembleParts(await loadParts()); byParts = !!saved; } catch (e) { console.warn('could not read the saved parts', e); }
+  if (!saved && !app.filmMode) { saved = await loadLocal(); SAVE.legacy = !!saved; }
+  if (app.filmMode) saved = null;
   let restored = false;
   if (saved) {
     try { applyProject(saved); restored = true; } catch (e) { console.warn('could not restore project', e); }
@@ -155,6 +160,7 @@ async function main() {
   // (what was just read is what is stored: nothing to write until something changes)
   if (restored && byParts && !app.migrated) { app.terrain.sDirty.fill(0); for (const r of [...app.journal.done, ...app.journal.undone]) SAVE.j.add(r.id); SAVE.trackT = performance.now(); }
   if (!restored) freshPlot();
+  if (app.filmMode) { app.objects.load({ nextId: 1, items: [] }); app.settings.quiet = false; app.settings.orbit = false; app.settings.hints = false; }
 
   app.ui = new UI(app);
   app.gestures = new Gestures(app, canvas);
@@ -194,6 +200,7 @@ async function main() {
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    if (app.film) { if (!app.filmOffline) app.filmStep(dt, now / 1000); requestAnimationFrame(frame); return; }
     const recent = now - app.lastInput < 1500, mv = moving();
     const due = recent || (now - lastDraw > (mv ? 30 : 480));
     // (the hand-held sway runs only while drawn smoothly; the shadows are drawn again only when
@@ -210,8 +217,9 @@ async function main() {
     requestAnimationFrame(frame);
   }
   document.getElementById('loading').classList.add('done');
-  document.getElementById('ui').hidden = false;
+  document.getElementById('ui').hidden = !!app.filmMode;
   app.ready = true;
+  if (app.filmMode) await startFilm(app.filmMode);
   requestAnimationFrame(frame);
 }
 
@@ -314,6 +322,28 @@ function step(dt, time, render = true) {
   app.recorder.sample(app.clock, dt, trackRow);
   app.ui.tick(dt);
 }
+
+// the film mode: the director's frame, then the work `speed` times as fast (in steps of a 30th
+// at most), drawn once
+async function startFilm(name) {
+  const [{ Director }, films] = await Promise.all([import('./film/director.js'), import('./film/poolFilm.js')]);
+  const script = { pool: films.poolFilm }[name];
+  if (!script) { app.ui.toast('Нет такого ролика: ' + name); return; }
+  app.rig.shake = false;
+  // (a back garden: a meadow round the plot, not the construction yard's blocks of flats)
+  app.settings.backdrop = 'meadow';
+  try { await app.backdrop.set('meadow'); } catch (e) { console.warn(e); }
+  app.sfx.unlock?.();
+  app.film = new Director(app, script, app.filmOffline);
+}
+app.filmStep = (dt, time = performance.now() / 1000, draw = true) => {
+  const f = app.film; if (!f) return;
+  f.update(dt);
+  // (on the phone at most 5 steps a frame — it stays smooth; frame by frame, a 30th each)
+  const sim = dt * f.speed, n = Math.max(1, Math.min(app.filmOffline ? 1e3 : 5, Math.ceil(sim / (1 / 30))));
+  app.rig.live = true; app.shadowLive = true;
+  for (let i = 0; i < n; i++) step(sim / n, time, draw && i === n - 1);
+};
 
 // run the simulation ahead without drawing (tests, slow software renderers)
 app.simulate = (seconds, dt = 1 / 30) => {
@@ -470,7 +500,7 @@ function readSettings() {
 }
 function applySettings() {
   const s = app.settings;
-  try { localStorage.setItem('tc-settings', JSON.stringify(s)); } catch { /* private mode */ }
+  if (!app.filmMode) try { localStorage.setItem('tc-settings', JSON.stringify(s)); } catch { /* private mode */ }
   if (app.shovel.type !== s.shovel && !app.shovelTool.busy) app.shovel.setType(s.shovel);
   app.terrainMat.userData.uniforms.uLevel.value = s.level ? 1 : 0;
   app.terrainMat.userData.uniforms.uLayer.value = SOIL.layer = Math.max(0.004, s.bite / 1000);
@@ -658,6 +688,7 @@ function migrateGrid(p) {
 const SAVE = { j: new Set(), trackT: -1e9, legacy: false, wait0: 0 };
 let saveTimer = 0;
 function scheduleSave() {
+  if (app.filmMode) return;   // (a film's plot is never saved)
   app.ui?.setSaveState('pending');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(lazySave, 1500);
@@ -720,7 +751,7 @@ function assembleParts(parts) {
 // saves are serialised: a request during a running save waits for it and then saves again
 function saveNow(force = false) {
   clearTimeout(saveTimer);
-  if (!app.ready) return Promise.resolve();
+  if (!app.ready || app.filmMode) return Promise.resolve();
   saveChain = saveChain.then(async () => {
     try {
       if (app.shovelTool.state === 'settle' || app.shovelTool.state === 'dump') app.shovelTool.finish();
