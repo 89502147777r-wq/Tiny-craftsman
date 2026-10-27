@@ -344,7 +344,7 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-sub { display: inline-block; margin-top: 0.55em; font-size: clamp(12px, 3.8vw, 28px); font-weight: 700; line-height: 1.25; padding: 0.3em 0.7em; border-radius: 8px; background: rgba(12,12,12,0.55); backdrop-filter: blur(4px); }
 #film .f-kick { position: absolute; left: 50%; top: 45%; width: 92%; text-align: center; line-height: 1.0; font-size: clamp(28px, 11vw, 86px); font-weight: 900; letter-spacing: -0.01em; text-transform: uppercase; color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,0.25), 0 6px 30px rgba(0,0,0,0.7); }
 #film .f-kick.gold { color: #f2b134; }
-#film .f-count { position: absolute; left: 50%; top: 62%; text-align: center; padding: 0.35em 0.9em 0.45em; border-radius: 14px; background: rgba(12,12,12,0.62); backdrop-filter: blur(5px); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+#film .f-count { position: absolute; left: 50%; top: 57%; text-align: center; padding: 0.35em 0.9em 0.45em; border-radius: 14px; background: rgba(12,12,12,0.62); backdrop-filter: blur(5px); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
 #film .f-count small { display: block; font-size: clamp(10px, 3vw, 20px); font-weight: 800; letter-spacing: 0.14em; color: #f2b134; text-transform: uppercase; }
 #film .f-count b { display: block; font-size: clamp(26px, 10vw, 76px); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.05; }
 #film .f-flash { position: absolute; inset: 0; background: #fff; opacity: 0; }

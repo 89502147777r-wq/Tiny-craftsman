@@ -20,6 +20,9 @@ export function* poolFilm(d, app) {
   // (the game's budget: $100k, every stage billed)
   if (!app.budget.on) app.objects.add({ type: 'budget', money: 100000, start: 100000 });
   d.bar(12);
+  // (the textures of what comes later fetched now: a material's first frame is never drawn black)
+  THREE.Cache.enabled = true;
+  for (const dir of ['deck/graphite', 'travertine', 'pool_mosaic_turq', 'pool_coat']) for (const f of ['col.jpg', 'nor.jpg', 'rough.jpg']) new THREE.ImageLoader().load(`assets/textures/${dir}/${f}`, () => {}, undefined, () => {});
 
   // the place: the middle of the plot, along it; points in the pool's frame (mm)
   const C = new V(0, TRAY.soil, 0.06);
@@ -51,14 +54,14 @@ export function* poolFilm(d, app) {
   yield d.sec(1.1);
 
   // 2 · the pit: a drone dropping into it as it is dug, then on the spade
-  d.speed = 2.6;
+  d.speed = 2.2;
   pw._dig(R(), null);
-  d.fly([[gy(-2500, -3500, 6000), gy(POOL.L / 2, W2, -1200)], [gy(1000, -1200, 2200), gy(POOL.L / 2, W2, -1600)]], 1.4, { fx: 'whip' });
+  d.follow(shovel, { yaw: 1.2, pitch: 0.42, dist: 0.32 }, { fx: 'whip', drift: 0.1, push: 0.05, lag: 1.1 });
   d.title('EXCAVATION', '1.85 m deep, walls trimmed by hand', 2);
-  d.count('soil hauled away', 93, ' m³', 1.6, 0, 2.2);
-  yield d.sec(1.3);
-  d.follow(shovel, { yaw: 1.2, pitch: 0.42, dist: 0.3 }, { fx: 'zoom', drift: 0.12, push: 0.06, lag: 3 });
-  yield d.job();
+  yield d.sec(1.2);
+  d.fly([[gy(-2500, -3500, 6000), gy(POOL.L / 2, W2, -1200)], [gy(1000, -1200, 2200), gy(POOL.L / 2, W2, -1600)]], 1.8, { fx: 'zoom' });
+  d.count('soil hauled away', 93, ' m³', 1.2, 0, 1.9);
+  yield d.held(1.6);
 
   // 3 · the stone: low between the heaps as they are tipped, then on the plate
   d.speed = 3.2;
@@ -68,9 +71,9 @@ export function* poolFilm(d, app) {
   d.title('GRAVEL BASE', '200 mm crushed stone, compacted', 3);
   d.shake(0.008, 0.4);
   yield d.sec(1.7);
-  d.follow(plate, { yaw: 2.3, pitch: 0.55, dist: 0.4 }, { fx: 'whip', drift: 0.12, lag: 4 });
+  d.fly([[gy(8800, -1800, 1400), gy(5200, W2, pitY + 200)], [gy(8600, 4800, 1500), gy(3200, W2, pitY + 200)]], 2.2, { fx: 'whip', ease: 'linear' });
   d.pin('+ 100 mm lean concrete', fl(POOL.L * 0.7, POOL.W * 0.3, -280), 1.4, -1);
-  yield d.job();
+  yield d.held(1.3);
 
   // 4 · the floor's bars: the flight — low over the mesh, the ties going by under the lens
   d.speed = 1;
@@ -80,18 +83,16 @@ export function* poolFilm(d, app) {
   d.fly([
     [fl(-500, W2 - 500, ty + 260), fl(900, W2, ty)],
     [fl(2200, W2 - 200, ty + 160), fl(3800, W2 + 100, ty - 30)],
-    [fl(5200, W2 + 300, ty + 200), fl(6800, W2 + 200, ty - 20)],
-    [fl(7600, W2 + 900, ty + 900), fl(5200, W2, ty - 100)],
+    [fl(5200, W2 + 300, ty + 220), fl(6800, W2 + 200, ty - 40)],
   ], 3.0, { fx: 'flash', ease: 'out' });
   d.title('FLOOR REBAR', 'two meshes Ø12, every crossing tied', 4);
   yield d.sec(1.2);
-  d.pin('starter bars for the walls', fl(POOL.L, W2 + 400, 250), 1.5);
   yield d.sec(1.8);
 
   // 5 · the floor poured: on the hose; a crane up off the concrete to straight down
   yield* pour(d, app, pw, 'floor', () => {
     d.title('CONCRETE FLOOR', '250 mm slab, pumped in one go', 5);
-    d.follow(gear, { yaw: 0.6, pitch: 0.5, dist: 0.24 }, { fx: 'whip', drift: 0.12, push: 0.04, lag: 5 });
+    d.follow(gear, { yaw: 0.6, pitch: 0.5, dist: 0.26 }, { fx: 'whip', drift: 0.1, push: 0.03, lag: 2.2 });
   }, () => {
     d.fly([[fl(1800, -300, 600), fl(2600, W2, 0)], [fl(2600, 600, 3500), fl(POOL.L / 2, W2, 0)], [fl(POOL.L / 2 - 200, W2 - 50, 9500), fl(POOL.L / 2, W2, 0)]], 2.2, { fx: 'zoom' });
     d.count('concrete', 9.1, ' m³', 1.0, 0, 1.6, 1);
@@ -112,7 +113,7 @@ export function* poolFilm(d, app) {
   yield d.sec(1.6);
   yield* pour(d, app, pw, 'wall', () => {
     d.title('CONCRETE WALLS', 'poured in one go — no cold joints', 7);
-    d.follow(gear, { yaw: 2.4, pitch: 0.95, dist: 0.38 }, { fx: 'zoom', drift: -0.12, lag: 5 });
+    d.fly([[gy(-1300, -1300, 1700), gy(1500, 0, 250)], [gy(2600, -1700, 1500), gy(5600, 0, 250)]], 2.4, { fx: 'zoom', ease: 'linear' });
   }, () => d.cut({ target: mid(wallTopY(R())), yaw: 0.8, pitch: 0.7, dist: 1.0 }, { fx: 'whip', drift: 0.14 }));
 
   // 8 · stripped, the gap filled back
@@ -123,9 +124,9 @@ export function* poolFilm(d, app) {
   yield d.sec(0.8);
   d.speed = 4;
   { const r = R(), { fb, wb } = pw._belts(r); pw._fill(r, fb, wb); }
-  d.follow(plate, { yaw: 2.6, pitch: 0.8, dist: 0.36 }, { fx: 'whip', drift: 0.12, lag: 4 });
+  d.fly([[gy(-2200, W2, 2200), gy(0, W2, -300)], [gy(-1900, -2300, 2000), gy(2500, -500, -300)], [gy(2600, -2700, 1800), gy(6000, -500, -300)]], 2.6, { fx: 'whip', ease: 'linear' });
   d.title('BACKFILL', 'sand in 300 mm layers, each compacted', 8);
-  yield d.job();
+  yield d.held(1.3);
   // (the setting-out — stakes and strings round the pit — comes away once it is filled back)
   { const r = R(); if (r.pit != null && app.objects.get(r.pit)) pw._save('pit-out', () => app.objects.remove(r.pit)); }
 
@@ -145,18 +146,18 @@ export function* poolFilm(d, app) {
     const live = { ...old, tile: faces(r).map((f) => { const [ni, nj] = sheetsOf(f); return L.repeat(ni * nj); }) };
     pw._fitSheets(live, old, () => pw._save('pool-tile', () => app.objects.update(r.id, { tile: live.tile }))); }
   d.fly([[fl(7300, 3000, 1100), fl(2600, 0, 600)], [fl(5200, 2900, 700), fl(1200, 0, 500)]], 2.4, { ease: 'linear' });
-  yield d.job();
+  yield d.held(1.3);
 
   // 11 · the coping: on the mallet, then a skim along the stones
   d.speed = 2;
   { const r = R(), old = JSON.parse(JSON.stringify(r));
     const live = { ...old, copeCol: st.poolCope, cope: copeLayout(r).map((s) => '1'.repeat(s.n)) };
     pw._fitStones(live, old, () => pw._save('pool-cope', () => app.objects.update(r.id, { cope: live.cope, copeCol: live.copeCol }))); }
-  d.follow(hand, { yaw: 0.5, pitch: 0.42, dist: 0.2 }, { fx: 'flash', drift: 0.1, lag: 7 });
+  d.follow(hand, { yaw: 0.5, pitch: 0.42, dist: 0.22 }, { fx: 'flash', drift: 0.1, lag: 1.0 });
   d.title('COPING', 'travertine, 30 mm over the water', 11);
   yield d.sec(1.1);
   d.fly([[gy(-900, -600, 650), gy(1500, 0, 300)], [gy(3000, -500, 500), gy(6000, 0, 280)], [gy(7600, -900, 900), gy(8000, W2, 200)]], 2.4, { fx: 'whip', ease: 'linear' });
-  yield d.job();
+  yield d.held(1.3);
 
   // 12 · the deck: chosen by the finger, then the joists and the boards — a low flight along it
   d.title('POOL DECK', 'pick the deck — joists, then boards', 12);
@@ -165,10 +166,10 @@ export function* poolFilm(d, app) {
   d.speed = 2.6;
   pw._base(R());
   d.fly([[gy(-2200, -2600, 900), gy(2000, -900, 150)], [gy(2500, -2500, 700), gy(6500, -800, 150)]], 1.9, { fx: 'zoom', ease: 'linear' });
-  yield d.job();
+  yield d.held(1.3);
   pw._deck(R());
   d.fly([[gy(9800, -2600, 800), gy(6000, -900, 200)], [gy(6500, -2900, 1200), gy(2000, -700, 150)]], 2.6, { fx: 'whip', ease: 'linear' });
-  yield d.job();
+  yield d.held(1.3);
 
   // the water: a skim over the surface as it comes up, then wide
   d.speed = 14;
@@ -242,7 +243,7 @@ function* pour(d, app, pw, part, start, then) {
   });
   yield d.sec(1.3);
   then();
-  const t1 = d.t + 1.6;
+  const t1 = d.t + 1.8;
   yield d.until(() => full() || d.t > t1);
   done = true;
   hs.up();
