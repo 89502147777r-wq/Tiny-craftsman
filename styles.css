@@ -332,21 +332,30 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 
 /* ---- the film mode (src/film/director.js): the words of a short over the picture ---- */
 body.filming #ui, body.filming #toast, body.filming #pops, body.filming #money { display: none !important; }
-#film { position: fixed; inset: 0; pointer-events: none; z-index: 50; font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif; color: #fff; }
-#film .f-head { position: absolute; left: 6%; right: 6%; top: 7.5%; text-align: center; opacity: 0; }
-#film .f-step { display: inline-block; font-size: clamp(11px, 3.1vw, 22px); font-weight: 800; letter-spacing: 0.18em; padding: 0.3em 0.75em; border-radius: 99px; background: #f2b134; color: #1b1406; margin-bottom: 0.55em; }
-#film .f-step:empty { display: none; }
-#film .f-title { font-size: clamp(22px, 8.4vw, 64px); font-weight: 900; line-height: 1.02; letter-spacing: 0.01em; text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 4px 22px rgba(0,0,0,0.55); }
-#film .f-sub { margin-top: 0.45em; font-size: clamp(12px, 3.7vw, 28px); font-weight: 600; line-height: 1.25; text-shadow: 0 1px 2px rgba(0,0,0,0.8), 0 2px 14px rgba(0,0,0,0.6); }
-#film .f-flash { position: absolute; left: 50%; top: 46%; font-size: clamp(24px, 9vw, 70px); font-weight: 900; letter-spacing: 0.04em; white-space: nowrap; opacity: 0; text-shadow: 0 3px 24px rgba(0,0,0,0.7); }
-#film .f-pin { position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; }
-#film .f-pin i { position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 50%; background: #f2b134; box-shadow: 0 0 0 3px rgba(242,177,52,0.35), 0 1px 6px rgba(0,0,0,0.6); }
-#film .f-pin b { position: absolute; left: 0; top: -54px; width: 2px; height: 54px; background: #fff; box-shadow: 0 0 4px rgba(0,0,0,0.6); }
-#film .f-pin span { position: absolute; left: -2px; top: -88px; white-space: nowrap; font-size: clamp(12px, 3.8vw, 26px); font-weight: 800; padding: 0.25em 0.6em; border-radius: 6px; background: rgba(15,14,12,0.78); }
+body.filming #view { transform-origin: 50% 50%; }
+#film { position: fixed; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; font-family: -apple-system, "SF Pro Display", "Inter Display", "Helvetica Neue", Arial, sans-serif; color: #fff; }
+#film .f-bar { position: absolute; left: 5%; right: 5%; top: 3.2%; display: flex; gap: 4px; opacity: 0; }
+#film .f-bar i { flex: 1; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.28); overflow: hidden; position: relative; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
+#film .f-bar i::after { content: ""; position: absolute; inset: 0; background: #f2b134; transform-origin: 0 50%; transform: scaleX(var(--f, 0)); }
+#film .f-head { position: absolute; left: 5%; right: 5%; top: 6.5%; text-align: center; }
+#film .f-step { display: inline-block; font-size: clamp(11px, 3.2vw, 22px); font-weight: 900; letter-spacing: 0.16em; padding: 0.32em 0.8em; border-radius: 99px; background: #f2b134; color: #1b1406; margin-bottom: 0.5em; box-shadow: 0 3px 14px rgba(0,0,0,0.35); }
+#film .f-title { font-size: clamp(24px, 9.6vw, 72px); font-weight: 900; line-height: 1.0; letter-spacing: -0.01em; text-transform: uppercase; }
+#film .f-title span { display: inline-block; text-shadow: 0 3px 0 rgba(0,0,0,0.3), 0 4px 24px rgba(0,0,0,0.6); }
+#film .f-sub { display: inline-block; margin-top: 0.55em; font-size: clamp(12px, 3.8vw, 28px); font-weight: 700; line-height: 1.25; padding: 0.3em 0.7em; border-radius: 8px; background: rgba(12,12,12,0.55); backdrop-filter: blur(4px); }
+#film .f-kick { position: absolute; left: 50%; top: 45%; width: 92%; text-align: center; line-height: 1.0; font-size: clamp(28px, 11vw, 86px); font-weight: 900; letter-spacing: -0.01em; text-transform: uppercase; color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,0.25), 0 6px 30px rgba(0,0,0,0.7); }
+#film .f-kick.gold { color: #f2b134; }
+#film .f-count { position: absolute; left: 50%; top: 62%; text-align: center; padding: 0.35em 0.9em 0.45em; border-radius: 14px; background: rgba(12,12,12,0.62); backdrop-filter: blur(5px); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+#film .f-count small { display: block; font-size: clamp(10px, 3vw, 20px); font-weight: 800; letter-spacing: 0.14em; color: #f2b134; text-transform: uppercase; }
+#film .f-count b { display: block; font-size: clamp(26px, 10vw, 76px); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.05; }
+#film .f-flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+#film .f-pin { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+#film .f-pin i { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; background: #f2b134; box-shadow: 0 0 0 4px rgba(242,177,52,0.35), 0 1px 6px rgba(0,0,0,0.6); }
+#film .f-pin b { position: absolute; left: -1px; top: -58px; width: 2px; height: 58px; background: #fff; transform-origin: 50% 100%; box-shadow: 0 0 4px rgba(0,0,0,0.6); }
+#film .f-pin span { position: absolute; left: -2px; top: -94px; white-space: nowrap; font-size: clamp(13px, 4vw, 28px); font-weight: 900; padding: 0.25em 0.65em; border-radius: 8px; background: #fff; color: #15130f; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
 #film .f-pin.left span { left: auto; right: -2px; }
-#film .f-end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2em; background: radial-gradient(ellipse at center, rgba(8,10,14,0.35), rgba(8,10,14,0.7)); opacity: 0; }
-#film .f-end img { width: 58%; max-width: 420px; filter: drop-shadow(0 4px 18px rgba(0,0,0,0.6)); }
-#film .f-end span { font-size: clamp(13px, 3.9vw, 28px); font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,0.7); }
+#film .f-end { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2em; background: radial-gradient(ellipse at center, rgba(8,10,14,0.3), rgba(8,10,14,0.72)); opacity: 0; }
+#film .f-end img { width: 62%; max-width: 440px; filter: drop-shadow(0 4px 18px rgba(0,0,0,0.6)); }
+#film .f-end span { font-size: clamp(13px, 4vw, 28px); font-weight: 800; text-shadow: 0 2px 10px rgba(0,0,0,0.7); }
 #film .f-gate { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8em; text-align: center; padding: 0 10%; background: rgba(8,10,14,0.55); }
 #film .f-gate b { font-size: clamp(20px, 6.5vw, 40px); font-weight: 900; }
 #film .f-gate span { font-size: clamp(13px, 3.8vw, 20px); line-height: 1.4; opacity: 0.85; }
