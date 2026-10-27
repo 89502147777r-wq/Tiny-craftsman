@@ -955,6 +955,29 @@ export class Terrain {
     }
     if (any) this._touch(ix0, iz0, ix1, iz1);
   }
+  // a bite out of the ground (a spadeful at a time, fast): a rounded hollow at (x, z) of radius r,
+  // flat at yLow in its middle and rising to yTop at its ragged rim — the ground only lowered,
+  // only where at(x, z); what lay loose there goes with it
+  scoop(x, z, r, yLow, yTop, at, seed = 0) {
+    const ix0 = Math.max(0, Math.floor(this.toCellX(x - r))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(x + r)));
+    const iz0 = Math.max(0, Math.floor(this.toCellZ(z - r))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(z + r)));
+    let any = false;
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const wx = this.toWorldX(ix), wz = this.toWorldZ(iz), a = Math.atan2(wz - z, wx - x);
+      // (the rim wobbles: no two bites the same round)
+      const d = Math.hypot(wx - x, wz - z) / r * (1 + 0.16 * Math.sin(a * 5 + seed) + 0.09 * Math.sin(a * 9 + seed * 2.3));
+      if (d >= 1 || !at(wx, wz)) continue;
+      const i = iz * this.nx + ix;
+      if (this.conc[i] > 1e-6) continue;
+      const u = Math.max(0, (d - 0.35) / 0.65), want = yLow + (yTop - yLow) * u * u * (3 - 2 * u);
+      if (this.nat[i] + this.loose[i] <= want) continue;
+      if (this.nat[i] > want) this.nat[i] = want;
+      this.loose[i] = 0; this.lN[i] = 0; this.ldep[i] = 0; this.top[i] = 0;
+      for (let k = 0; k < LAYERS; k++) this.lH[i * LAYERS + k] = 0;
+      any = true;
+    }
+    if (any) this._touch(ix0, iz0, ix1, iz1);
+  }
   // the native ground set to y under what lies on it (its loose cover stays, moved with it)
   setBase(at, y, box) {
     const ix0 = Math.max(0, Math.floor(this.toCellX(box[0]))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(box[2])));

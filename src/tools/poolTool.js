@@ -156,28 +156,36 @@ export class PoolWork {
   _dig(r, fb) {
     const app = this.app, t = app.terrain;
     if (fb) { this.toast('Котлован уже готов — днище стоит'); return; }
-    const [s0, t0, s1, t1] = pitRect(r), y = r.g - MM(POOL.pitDepth), n = 10, layers = 4, steps = [];
-    const inBit = (a, b) => (x, z) => { const [s, tt] = PF(r, x, z); return s >= s0 + (s1 - s0) * a && s <= s0 + (s1 - s0) * b && tt >= t0 && tt <= t1; };
+    const [s0, t0, s1, t1] = pitRect(r), y = r.g - MM(POOL.pitDepth), layers = 3, steps = [];
+    const inPit = (x, z) => { const [s, tt] = PF(r, x, z); return s >= s0 && s <= s1 && tt >= t0 && tt <= t1; };
     const box = pitBox(r), before = t.totalVolume(), dir = new THREE.Vector2(r.u[0], r.u[1]);
     app.journal.begin('pool-dig', {}, app.clock);
-    // (dug as on site: layer by layer, ~460 mm a pass, bite after bite along the pit — each bite the
-    // spade goes in, the soil flies up out of the pit onto the truck's side)
-    const sh = app.shovel, vis = sh.root.visible;
+    // (dug as on site: layer by layer, bite after bite — each a rounded hollow with a ragged rim, the
+    // bites overlapping, back and forth over the pit; the walls cut straight and the floor trimmed
+    // level only at the end. Each bite the spade goes in, the soil flies up out of the pit)
+    const sh = app.shovel, vis = sh.root.visible, R = 1250, SP = 1350, rr = Math.random;
     sh.root.visible = true;
-    for (let L = 0; L < layers; L++) for (let k0 = 0; k0 < n; k0++) {
-      const k = L % 2 ? n - 1 - k0 : k0, yL = r.g - MM(POOL.pitDepth) * (L + 1) / layers, f = inBit(k / n, (k + 1) / n);
-      const [x, z] = PW(r, s0 + (s1 - s0) * (k + 0.5) / n, (t0 + t1) / 2);
-      steps.push([0.09, (u) => {
-        // (the spade in: down to the new level; out: lifted, the soil thrown)
-        const p = new THREE.Vector3(x, 0, z);
-        if (u < 0.5) sh.poseDig(p, dir, yL + MM(300) * (1 - u * 2), u < 0.1);
-        else sh.poseAim(p, dir, r.g + MM(200));
-        if (u < 1) return;
-        t.levelTo(f, yL, box);
-        const rr = Math.random, out = new THREE.Vector3(-r.u[1], 0, r.u[0]).multiplyScalar(rr() < 0.5 ? 1 : -1);
-        for (let q = 0; q < 9; q++) app.particles?.emit(new THREE.Vector3(x + (rr() - 0.5) * MM(800), yL + MM(250), z + (rr() - 0.5) * MM(800)), new THREE.Vector3(out.x * (0.08 + rr() * 0.06) + (rr() - 0.5) * 0.03, 0.22 + rr() * 0.16, out.z * (0.08 + rr() * 0.06) + (rr() - 0.5) * 0.03), 0, MM(30 + rr() * 50), 0, 0, 0);
-        if (k0 % 2 === 0) app.sfx?.stab?.();
-      }]);
+    const ns = Math.ceil((s1 - s0) / SP), nt = Math.ceil((t1 - t0) / SP);
+    let k0 = 0;
+    for (let L = 0; L < layers; L++) {
+      const yT = r.g - MM(POOL.pitDepth) * L / layers, yL = r.g - MM(POOL.pitDepth) * (L + 1) / layers - MM(L === layers - 1 ? 0 : 60);
+      for (let j = 0; j <= nt; j++) for (let i0 = 0; i0 <= ns; i0++) {
+        const i = (j + L) % 2 ? ns - i0 : i0;
+        const bs = s0 + (s1 - s0) * i / ns + (rr() - 0.5) * SP * 0.8, bt = t0 + (t1 - t0) * j / nt + (rr() - 0.5) * SP * 0.8, br = R * (0.8 + rr() * 0.45);
+        const [x, z] = PW(r, Math.max(s0, Math.min(s1, bs)), Math.max(t0, Math.min(t1, bt))), seed = rr() * 6.28, kk = k0++;
+        const deep = yL - MM(rr() * 80);
+        steps.push([0.05, (u) => {
+          // (the spade in: down into the bite; out: lifted, the soil thrown)
+          const p = new THREE.Vector3(x, 0, z);
+          if (u < 0.5) sh.poseDig(p, dir, deep + MM(300) * (1 - u * 2), u < 0.1);
+          else sh.poseAim(p, dir, r.g + MM(200));
+          if (u < 1) return;
+          t.scoop(x, z, MM(br), deep, yT, inPit, seed);
+          const out = new THREE.Vector3(-r.u[1], 0, r.u[0]).multiplyScalar(rr() < 0.5 ? 1 : -1);
+          for (let q = 0; q < 6; q++) app.particles?.emit(new THREE.Vector3(x + (rr() - 0.5) * MM(800), deep + MM(250), z + (rr() - 0.5) * MM(800)), new THREE.Vector3(out.x * (0.08 + rr() * 0.06) + (rr() - 0.5) * 0.03, 0.22 + rr() * 0.16, out.z * (0.08 + rr() * 0.06) + (rr() - 0.5) * 0.03), 0, MM(30 + rr() * 50), 0, 0, 0);
+          if (kk % 3 === 0) app.sfx?.stab?.();
+        }]);
+      }
     }
     steps.push([0, () => { sh.root.visible = vis; }]);
     // (the loose topsoil round the edge taken off with it: it would slide in off the walls)
