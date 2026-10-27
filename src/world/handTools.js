@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MODEL_SCALE } from '../config.js';
 
 // The hand tools of the fitting work (fitJob.js), drawn in real sizes:
@@ -127,4 +128,36 @@ export class HandTools {
     }
   }
   hide() { for (const t of Object.values(this.tools)) t.g.visible = false; this.cur = null; }
+
+  // the scanned / modelled tools (Poly Haven, CC0 — CREDITS.md) in place of the drawn bodies, once
+  // they have come: the cordless drill-driver, the hammer. (The bits and the swing stay as they are.)
+  loadModels() {
+    const L = new GLTFLoader();
+    for (const [which, M0] of Object.entries(TOOL_MODELS)) {
+      L.load(M0.url, (g) => {
+        const t = this.tools[which]; if (!t) return;
+        const o = g.scene;
+        o.traverse((q) => { if (q.isMesh) { q.castShadow = true; q.receiveShadow = true; } });
+        // (to the tool's frame: from metres to the model's scale, turned about y, shifted so its
+        // working point — the chuck's nose, the hammer's face — is where the drawn one's was)
+        const holder = new THREE.Group(); holder.add(o);
+        o.scale.setScalar(M(1000)); o.rotation.y = M0.rotY;
+        o.position.set(...M0.shift.map(M));
+        const host = t.arm || t.g;
+        for (const ch of [...host.children]) if (ch !== t.spin) host.remove(ch);
+        if (t.arm) holder.userData.base = new THREE.Vector3(0, 0, 0);
+        host.add(holder);
+      }, undefined, () => { /* keep the drawn one */ });
+    }
+  }
 }
+
+// how each model sits in its tool's frame: turned about y (the drill's chuck out of −x to −z, the
+// hammer's face out of +x to −z), then shifted (mm): the chuck's nose 50 / 160 mm back of the bit's
+// tip (the screwdriver's bit, the drill's), its axis on the bit's; the hammer's face on the origin
+const DRILL = 'assets/models/tools/drill_01/Drill_01.gltf';
+const TOOL_MODELS = {
+  driver: { url: DRILL, rotY: -Math.PI / 2, shift: [0, -142, 178] },
+  drill: { url: DRILL, rotY: -Math.PI / 2, shift: [0, -142, 290] },
+  hammer: { url: 'assets/models/tools/cross_pein_hammer/cross_pein_hammer.gltf', rotY: Math.PI / 2, shift: [0, -165, 55] },
+};

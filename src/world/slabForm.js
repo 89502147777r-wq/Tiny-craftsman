@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { toWorld, beltContains } from '../tools/belt.js';
+import { toWorld, cellAt, plan } from '../tools/belt.js';
 import { SLAB, isSlab, slabForm } from '../tools/slab.js';
 import { variant } from './assets.js';
 
@@ -90,9 +90,14 @@ export class SlabFormView {
 export function floorUnder(terrain, belts) {
   return (x, z, below) => {
     let h = terrain.inside(x, z) ? terrain.heightAt(x, z) : terrain.heightAt(Math.max(-terrain.halfX, Math.min(terrain.halfX, x)), Math.max(-terrain.halfZ, Math.min(terrain.halfZ, z)));
+    // (a slab / a ring beam cast lower down: its concrete in the cell over the point, however
+    // full the rest of it is — the props stand on it, not through it to the ground)
     for (const b of belts) {
-      if (!isSlab(b) || !(b.fill > 0.5) || b.top + b.H > below || !beltContains(b, x, z)) continue;
-      h = Math.max(h, b.top + b.H);
+      if (b.kind === 'pool' || b.top > below) continue;
+      const k = cellAt(b, x, z), i = k >= 0 ? plan(b).index[k] : -1;
+      if (i < 0) continue;
+      const y = b.top + (b.lv?.[i] || 0) * S;
+      if (y > b.top + MM(20) && y <= below) h = Math.max(h, y);
     }
     return h;
   };

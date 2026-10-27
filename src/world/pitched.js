@@ -27,7 +27,9 @@ import { buildRoofWindow, rwinSpan } from './roofWindows.js';
 //   wing { cx, cz, ux, uz (along its ridge), A, B (half sizes to the outer faces of the
 //          walls), e: [end at −a, end at +a] ('join' or free), x: [how far a join runs on],
 //          style, pitch (its own; else the roof's), md (a mono-pitch wing: which way its
-//          slope rises — 0: +d, 1: −d, 2: +a, 3: −a) }
+//          slope rises — 0: +d, 1: −d, 2: +a, 3: −a), abut (a mono-pitch lean-to: its high edge
+//          against the wall of the house — a garage built on to it: no overhang there, no wall plate
+//          on that wall but a ledger anchored to it, the abutment flashing up the wall) }
 //   roof { y0 (the top of the walls), T (their thickness), style ('gable'|'hip'|'mono'),
 //          pitch (°), cover { kind, col }, gut { kind, col } (the gutters: GUTTERS, GUTTER_COLOURS), wings: […], done: { stage: true | [[w, a0, a1]…] } }
 // A stage laid by the finger is done over stretches along a wing's ridge (a0…a1).
@@ -112,16 +114,18 @@ export function wingShape(roof, w) {
   // the ends: a join runs on into the wing it meets; a free end — a hip, or a gable (a mono-pitch
   // roof sloping along the ridge: its low end an eave)
   const ends = [0, 1].map((k) => (w.e[k] === 'join' ? 'join' : style === 'hip' ? 'hip' : 'gable'));
-  const lowEnd = md === 2 ? 0 : md === 3 ? 1 : -1;
-  const ext = [0, 1].map((k) => (ends[k] === 'join' ? (w.x?.[k] ?? 0) : ends[k] === 'hip' || k === lowEnd ? Oe : Og));
+  const lowEnd = md === 2 ? 0 : md === 3 ? 1 : -1, ab = mono && !!w.abut, hiEnd = md === 2 ? 1 : md === 3 ? 0 : -1;
+  const ext = [0, 1].map((k) => (ab && k === hiEnd ? 0 : ends[k] === 'join' ? (w.x?.[k] ?? 0) : ends[k] === 'hip' || k === lowEnd ? Oe : Og));
   const lo = -(w.A + ext[0]), hi = w.A + ext[1], side = md >= 2 ? Og : Oe;   // (a mono along the ridge: its long sides are verges)
+  // (a lean-to: across, up to the face of the wall it leans on — no overhang on that side)
+  const dLo = -(w.B + (ab && md === 1 ? 0 : side)), dHi = w.B + (ab && md === 0 ? 0 : side);
   const L = (x, z) => { const dx = x - w.cx, dz = z - w.cz; return [dx * w.ux + dz * w.uz, -dx * w.uz + dz * w.ux]; };
   const W = (a, d, y) => [w.cx + w.ux * a - w.uz * d, y, w.cz + w.uz * a + w.ux * d];
   const hipLim = (a) => (a < 0 ? (ends[0] === 'hip' ? Ra + a : Infinity) : (ends[1] === 'hip' ? Ra - a : Infinity));
   const run = (a, d) => (md === 0 ? R + d : md === 1 ? R - d : md === 2 ? Ra + a : md === 3 ? Ra - a : Math.min(R - Math.abs(d), hipLim(a)));
   const top = (a, d) => base + run(a, d) * tn;
-  const inside = (a, d, o = 0) => a >= lo - o && a <= hi + o && Math.abs(d) <= w.B + side + o;
-  return { style, pitch, al, tn, cs, R, Ra, base, Oe, Og, side, ext, ends, lo, hi, L, W, top, inside, mono, md, ridge: base + R * tn, ridgeA: [ends[0] === 'hip' ? -(Ra - R) : lo, ends[1] === 'hip' ? Ra - R : hi] };
+  const inside = (a, d, o = 0) => a >= lo - o && a <= hi + o && d >= dLo - o && d <= dHi + o;
+  return { style, pitch, al, tn, cs, R, Ra, base, Oe, Og, side, ext, ends, lo, hi, L, W, top, inside, mono, md, ab, ridge: base + R * tn, ridgeA: [ends[0] === 'hip' ? -(Ra - R) : lo, ends[1] === 'hip' ? Ra - R : hi] };
 }
 // the roof over a point: the highest of the wings over it (−∞: none)
 export function roofTop(roof, shapes, x, z, skip = -1) {
@@ -136,12 +140,13 @@ export function planes(roof, w, f) {
   const out = [], Le = w.B + f.Oe;
   if (f.md === 0 || f.md === 1) {
     const s = f.md === 0 ? 1 : -1;
-    out.push({ key: 'm', L: 2 * Le / f.cs, at: (x, t) => [x, s * (-Le + t * f.cs)], xa: () => f.lo, xb: () => f.hi, ea: f.ends[0], eb: f.ends[1], hiEdge: true });
+    // (a lean-to: up to 15 mm off the wall it leans on — the high edge under the flashing)
+    out.push({ key: 'm', L: (f.ab ? Le + w.B - MM(15) : 2 * Le) / f.cs, at: (x, t) => [x, s * (-Le + t * f.cs)], xa: () => f.lo, xb: () => f.hi, ea: f.ends[0], eb: f.ends[1], hiEdge: !f.ab });
     return out;
   }
   if (f.md >= 2) {
     const s = f.md === 2 ? 1 : -1, a0 = s > 0 ? f.lo : f.hi, Ls = w.B + f.side;
-    out.push({ key: 'm', xd: true, L: (f.hi - f.lo) / f.cs, at: (x, t) => [a0 + s * t * f.cs, x], xa: () => -Ls, xb: () => Ls, ea: 'gable', eb: 'gable', hiEdge: f.ends[s > 0 ? 1 : 0] !== 'join', tOfA: (a) => (a - a0) * s / f.cs });
+    out.push({ key: 'm', xd: true, L: (f.hi - f.lo) / f.cs, at: (x, t) => [a0 + s * t * f.cs, x], xa: () => -Ls, xb: () => Ls, ea: 'gable', eb: 'gable', hiEdge: !f.ab && f.ends[s > 0 ? 1 : 0] !== 'join', tOfA: (a) => (a - a0) * s / f.cs });
     return out;
   }
   for (const sg of [-1, 1]) {
@@ -339,8 +344,13 @@ export function buildPitched(roof, live = null, wins = []) {
     if (has('plate')) {
       const ya = roof.y0 + MM(75), ia = w.A - roof.T / 2, ib = w.B - roof.T / 2, pl = MM(PITCHED.plate);
       for (const s of [-1, 1]) {
-        beams.add(f.W(-ia - MM(75), s * ib, ya), f.W(ia + MM(75), s * ib, ya), pl, pl);
-        if (f.ends[s < 0 ? 0 : 1] !== 'join') beams.add(f.W(s * ia, -ib + MM(75), ya), f.W(s * ia, ib - MM(75), ya), pl, pl);
+        // (a lean-to: on the wall of the house it leans on no plate — a ledger 75 × 200 on anchors
+        // against its face, under the rafters' upper ends)
+        const abD = f.ab && f.md === (s > 0 ? 0 : 1), abA = f.ab && f.md === (s > 0 ? 2 : 3);
+        if (abD) { const d = s * (w.B - MM(38)), y = f.top(0, d) - tie / f.cs - MM(100); beams.add(f.W(-w.A + MM(10), d, y), f.W(w.A - MM(10), d, y), MM(75), MM(200)); }
+        else beams.add(f.W(-ia - MM(75), s * ib, ya), f.W(ia + MM(75), s * ib, ya), pl, pl);
+        if (abA) { const a = s * (w.A - MM(38)), y = f.top(a, 0) - tie / f.cs - MM(100); beams.add(f.W(a, -w.B + MM(10), y), f.W(a, w.B - MM(10), y), MM(75), MM(200)); }
+        else if (f.ends[s < 0 ? 0 : 1] !== 'join') beams.add(f.W(s * ia, -ib + MM(75), ya), f.W(s * ia, ib - MM(75), ya), pl, pl);
       }
       walls(G, roof, w, f);
     }
@@ -474,8 +484,8 @@ export function gableWalls(roof) {
   roof.wings.forEach((w) => {
     const f = wingShape(roof, w), T = roof.T, y0 = roof.y0, ub = (a, d) => Math.max(y0, f.top(a, d) - MM(PITCHED.rafterH) / f.cs - MM(5));
     const faces = [];
-    for (const k of [0, 1]) if (f.ends[k] !== 'join') { const s = k ? 1 : -1; faces.push({ q0: -w.B, q1: w.B, at: (q, e) => [s * (w.A - e), q] }); }
-    for (const s of [-1, 1]) faces.push({ q0: -w.A, q1: w.A, at: (q, e) => [q, s * (w.B - e)] });
+    for (const k of [0, 1]) if (f.ends[k] !== 'join' && !(f.ab && f.md === (k ? 2 : 3))) { const s = k ? 1 : -1; faces.push({ q0: -w.B, q1: w.B, at: (q, e) => [s * (w.A - e), q] }); }
+    for (const s of [-1, 1]) if (!(f.ab && f.md === (s > 0 ? 0 : 1))) faces.push({ q0: -w.A, q1: w.A, at: (q, e) => [q, s * (w.B - e)] });
     for (const F of faces) {
       const N = 32, pts = [];
       for (let k = 0; k <= N; k++) { const q = F.q0 + (F.q1 - F.q0) * k / N, [a, d] = F.at(q, T / 2), [ao, do_] = F.at(q, 0); pts.push(f.W(ao, do_, ub(a, d))); }
@@ -496,8 +506,9 @@ function walls(G, roof, w, f) {
   });
   const T = roof.T, y0 = roof.y0, ub = (a, d) => Math.max(y0, f.top(a, d) - MM(PITCHED.rafterH) / f.cs - MM(5));
   const faces = [];
-  for (const k of [0, 1]) if (f.ends[k] !== 'join') { const s = k ? 1 : -1; faces.push({ q0: -w.B, q1: w.B, at: (q, e) => [s * (w.A - e), q] }); }
-  for (const s of [-1, 1]) faces.push({ q0: -w.A, q1: w.A, at: (q, e) => [q, s * (w.B - e)] });
+  // (not the wall of the house a lean-to leans on: it is there already, higher)
+  for (const k of [0, 1]) if (f.ends[k] !== 'join' && !(f.ab && f.md === (k ? 2 : 3))) { const s = k ? 1 : -1; faces.push({ q0: -w.B, q1: w.B, at: (q, e) => [s * (w.A - e), q] }); }
+  for (const s of [-1, 1]) if (!(f.ab && f.md === (s > 0 ? 0 : 1))) faces.push({ q0: -w.A, q1: w.A, at: (q, e) => [q, s * (w.B - e)] });
   for (const F of faces) {
     const N = 16, top = [];
     for (let k = 0; k <= N; k++) { const q = F.q0 + (F.q1 - F.q0) * k / N, [a, d] = F.at(q, T / 2); top.push([q, ub(a, d)]); }
@@ -573,6 +584,19 @@ function trims(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
         if (P.hiEdge && t1 > P.L - MM(1)) { const H = F.pt(xe, P.L), ovH = P.xd ? Og : f.Oe; G.add(boxEnd(F, xe, P.L, up.clone().negate(), -(tie * sa + MM(31)), ovH + MM(5), H.y - tie * ca - MM(30), (u) => F.pt(xe, P.L - u / f.cs, bot + MM(10)).y, endM)); }
       }
     }
+  }
+  // a lean-to against the house: the abutment flashing (планка примыкания) — its leg 150 mm on the
+  // covering, its leg 150 mm up the wall, the top edge turned into a chase cut in the wall
+  // (штроба) and sealed; under the covering the inner apron (нижний фартук) to the same line
+  if (f.ab) for (const P of PL) {
+    const F = frameOf(f, P), up = F.et.clone().setY(0).normalize(), Y = new THREE.Vector3(0, 1, 0);
+    const xa = P.xa(P.L), xb = P.xb(P.L), lay = MM(150), tl = Math.max(0, P.L - lay);
+    fas.add(F.pt(xa, (tl + P.L) / 2, coff + MM(24)).toArray(), F.pt(xb, (tl + P.L) / 2, coff + MM(24)).toArray(), lay, MM(1.5), F.n);
+    const E0 = F.pt(xa, P.L, coff + MM(24)).addScaledVector(up, MM(13)), E1 = F.pt(xb, P.L, coff + MM(24)).addScaledVector(up, MM(13));
+    const yb = Math.max(E0.y, E1.y) - MM(10);
+    fas.add([E0.x, yb + MM(75), E0.z], [E1.x, yb + MM(75), E1.z], MM(1.5), MM(150), Y);
+    const seal = new Beams(); seal.add([E0.x + up.x * MM(4), yb + MM(152), E0.z + up.z * MM(4)], [E1.x + up.x * MM(4), yb + MM(152), E1.z + up.z * MM(4)], MM(10), MM(8), Y);
+    const sm = seal.mesh(mat('sealant', () => new THREE.MeshStandardMaterial({ color: 0x1f2022, roughness: 0.55 }))); if (sm) G.add(sm);
   }
   const m1 = fas.mesh(trimM); if (m1) G.add(m1);
   const m2 = sof.mesh(mat('sof', () => new THREE.MeshStandardMaterial({ color: 0xe8e6e0, roughness: 0.6 }))); if (m2) G.add(m2);

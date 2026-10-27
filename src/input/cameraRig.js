@@ -24,15 +24,27 @@ export class CameraRig {
   zoom(f) {
     this.goal.dist = THREE.MathUtils.clamp(this.goal.dist * f, this.limits.minDist, this.limits.maxDist);
   }
+  // zoom toward a point (what is between the fingers stays under them): the target moves
+  // along with the distance
+  zoomAt(f, p) {
+    const d0 = this.goal.dist;
+    this.zoom(f);
+    if (!p) return;
+    const k = 1 - this.goal.dist / d0;
+    this.goal.target.addScaledVector(p.clone().sub(this.goal.target), k);
+    this.clampTarget();
+  }
 
   // slide the target over the plot so the ground follows the fingers
   // (dx, dy in screen heights); works at any zoom
-  pan(dx, dy) {
+  // depth: how far from the camera the thing under the fingers is (it moves with them, not the
+  // target — up close a wall in front of the target or the ground far behind it)
+  pan(dx, dy, depth = null) {
     const yaw = this.goal.yaw;
     const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
     const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
     // visible ground height at the target ≈ 2·dist·tan(fov/2), foreshortened by the pitch
-    const h = 2 * this.goal.dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const h = 2 * (depth ?? this.goal.dist) * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
     // in the plane of the screen: across — sideways, up / down — along the camera's own up
     // (from above that is over the ground, from low down it is up the picture), so the
     // picture follows the fingers both ways alike (not a dolly in and out)
@@ -51,7 +63,8 @@ export class CameraRig {
   lookAtPoint(p) { this.goal.target.copy(p); this.clampTarget(); }
 
   update(dt) {
-    const k = 1 - Math.exp(-dt * 10);
+    // (while the fingers hold the picture it follows them closely)
+    const k = 1 - Math.exp(-dt * (this.held ? 28 : 10));
     this.target.lerp(this.goal.target, k);
     this.yaw += (this.goal.yaw - this.yaw) * k;
     this.pitch += (this.goal.pitch - this.pitch) * k;
