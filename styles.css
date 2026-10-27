@@ -31,7 +31,7 @@ button { font: inherit; color: inherit; }
   position: fixed; inset: 0; display: grid; place-content: center; gap: 10px; text-align: center;
   background: radial-gradient(ellipse at 50% 40%, #2b2219, #100d0a 70%); z-index: 50; transition: opacity .6s;
 }
-#loading .brand { letter-spacing: .32em; font-weight: 700; font-size: 18px; }
+#loading .brand { width: min(62vw, 280px); height: auto; margin: 0 auto 4px; display: block; }
 #loading .sub { color: var(--ink-dim); }
 #loading .bar { width: 180px; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin: 6px auto 0; }
 #loading .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
@@ -48,7 +48,7 @@ button { font: inherit; color: inherit; }
 }
 .top > * { pointer-events: auto; }
 .title { display: grid; text-shadow: 0 1px 6px rgba(0,0,0,.6); }
-.title b { letter-spacing: .24em; font-size: 10px; line-height: 1.2; }
+.title .logo { height: 16px; width: auto; display: block; margin-bottom: 3px; filter: drop-shadow(0 1px 4px rgba(0,0,0,.6)); }
 .title span { color: var(--ink-dim); font-size: 10px; line-height: 1.2; }
 .title em { font-style: normal; color: var(--accent); }
 .top-actions { display: flex; gap: 5px; }
