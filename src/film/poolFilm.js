@@ -31,7 +31,6 @@ export function* poolFilm(d, app) {
   const gy = (s, t, y) => at(s, t, R().g + MM(y));                      // (mm over the ground)
   const fl = (s, t, y = 0) => at(s, t, floorTopY(R()) + MM(y));         // (mm over the bowl's floor)
   const mid = (y) => at(POOL.L / 2, POOL.W / 2, y);
-  const shovel = () => app.shovel.root.position;
   const gear = () => app.concreteGear.pos;
   const plate = () => (app.concreteGear.show === 'plate' ? gear() : null);
   const hand = () => { const h = app.handTools, t = h.cur && h.tools[h.cur]; return t?.g.visible ? t.g.position : null; };
@@ -54,11 +53,11 @@ export function* poolFilm(d, app) {
   yield d.sec(1.1);
 
   // 2 · the pit: a drone dropping into it as it is dug, then on the spade
-  d.speed = 2.2;
+  d.speed = 3;
   pw._dig(R(), null);
-  d.follow(shovel, { yaw: 1.2, pitch: 0.42, dist: 0.32 }, { fx: 'whip', drift: 0.1, push: 0.05, lag: 1.1 });
+  d.cut(look(gy(-1500, -2600, 3600), gy(POOL.L * 0.45, W2, -900)), { fx: 'whip', drift: 0.05, push: 0.1 });
   d.title('EXCAVATION', '1.85 m deep, walls trimmed by hand', 2);
-  yield d.sec(1.2);
+  yield d.sec(1.4);
   d.fly([[gy(-2500, -3500, 6000), gy(POOL.L / 2, W2, -1200)], [gy(1000, -1200, 2200), gy(POOL.L / 2, W2, -1600)]], 1.8, { fx: 'zoom' });
   d.count('soil hauled away', 93, ' m³', 1.2, 0, 1.9);
   yield d.held(1.6);
