@@ -90,6 +90,7 @@ export class WallTool {
         if (this.kind === 'pool') { app.ui.toast(this.pool.status(false)); return; }
         if (this.kind === 'column') { app.ui.toast(this.col.status(false)); return; }
         if (this.kind === 'proof' && !this.proof.isCarry) { app.ui.toast(this.proof.status(false)); return; }
+        if (!app.budget.has(this.kind)) { app.budget.noStock(this.kind); return; }   // (the budget: off the pallets on the plot)
         const w = this._trayWall();
         try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ }
         this.carry = { kind: this.kind, pallet: w, snap: null, tray: true };
@@ -470,6 +471,7 @@ export class WallTool {
       this._rowStop(J.n ? 'Дальше по линии ряд не встаёт (мешает кладка, проём или нет опоры)' : 'Здесь ряд не встаёт: ведите линию от кирпича-ориентира по верху кладки или по плите');
       return;
     }
+    if (!app.budget.has(r.kind)) { this._rowStop(); app.budget.noStock(r.kind); return; }
     const u = { type: 'unit', free: true, kind: r.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +r.bedT.toFixed(6), s: r.s.toArray().map((x) => +x.toFixed(6)), ...(r.half ? { cut: true } : {}) };
     app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, [], null, null, true);   // (a course: quick, no trimming)
     // the rest of the plan follows where this one really went (and at its height)
@@ -1099,6 +1101,7 @@ export class WallTool {
             : `Сюда ${ck === 'block' || ck === 'ublock' ? 'блок' : ck === 'cinder' ? 'шлакоблок' : 'кирпич'} не встанет (врезается в кладку или висит в воздухе) — вернули на поддон`);
         return;
       }
+      if (!app.budget.has(free.kind)) { app.budget.noStock(free.kind); return; }
       const u = { type: 'unit', free: true, kind: free.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)), ...(free.half ? { cut: true } : {}),
         ...(free.kind === 'lintel' ? { lintel: true } : {}), ...(free.post != null ? { post: +free.post.toFixed(6) } : {}) };
       if (free.kind === 'lintel') app.ui.toast(`Перемычка ${free.lenMm} мм над проёмом ${free.gapMm} мм — опора по ${Math.round((free.lenMm - free.gapMm) / 2)} мм`);
@@ -1206,6 +1209,7 @@ export class WallTool {
     if (id && app.objects.get(id)?.type === 'blind') { this.blind.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'pool') { this.pool.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'column') { this.col.remove(id); return; }
+    if (id && app.objects.get(id)?.type === 'stock') { app.budget.remove(id); return; }
     if (id && isPoolBelt(app.objects.get(id))) { this.pool.belt(app.objects.get(id)); return; }
     if (id && app.objects.get(id)?.type === 'proof') { this.proof.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'rail') { app.journal.act('rail-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Ограждение сняли'); return; }
@@ -1285,6 +1289,7 @@ class LayJob {
     this.unit = unit;
     this.target = target;
     this.pending = app.journal.begin('lay', w ? { wall: w.id, row: unit.row, i: unit.i } : { free: unit.kind }, app.clock);
+    if (!unit.lintel) app.budget?.take(unit.kind, target.p);   // (one off the nearest pallet — the same entry: undo puts it back)
     if (cap) app.objects.update(cap.id, { height: cap.height });   // the wall below ends where it is laid to
     if (newWall) app.objects.add(newWall);   // the first block starts the wall (same journal entry)
     // the mortar is spread first (same journal entry)

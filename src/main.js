@@ -40,6 +40,7 @@ import { UI } from './ui/ui.js';
 import { ProjectView } from './world/projectView.js';
 import { PoolView } from './world/poolView.js';
 import { buildBitumen } from './world/bitumen.js';
+import { Budget } from './core/budget.js';
 import { HandTools } from './world/handTools.js';
 
 const app = (window.__tc = { ready: false, BUILD });
@@ -137,7 +138,8 @@ async function main() {
   app.machineTool = new MachineTool(app);
   app.backdrop = new Backdrop(app);
   app.sky = new Sky(app);   // the time of day and the weather (sky.js)
-  app.journal.onBeforeCommit = () => app.machineTool.sync();
+  app.budget = new Budget(app);
+  app.journal.onBeforeCommit = (p) => { app.machineTool.sync(); app.budget.price(p); };   // (what an action used is paid in its own entry)
   app.clock = 0;
   app.tool = 'shovel';
 
@@ -156,7 +158,8 @@ async function main() {
 
   app.ui = new UI(app);
   app.gestures = new Gestures(app, canvas);
-  app.journal.onChange = () => { app.ui.refresh(); scheduleSave(); };
+  app.journal.onChange = () => { app.ui.refresh(); app.budget.refresh(); scheduleSave(); };
+  app.budget.mount();
   app.onShovelState = () => app.ui.refresh();
   applySettings();
   setTool(app.tool);
