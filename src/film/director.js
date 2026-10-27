@@ -16,6 +16,8 @@ const ease = (u) => u * u * (3 - 2 * u);
 const easeOut = (u) => 1 - (1 - u) ** 3;
 const back = (u) => { const c = 1.9; return 1 + (c + 1) * (u - 1) ** 3 + c * (u - 1) ** 2; };   // (overshoots, settles)
 const _v = new THREE.Vector3();
+// a view from a point at a point: the rig's target, yaw, pitch, distance
+export const look = (eye, at) => { const v = eye.clone().sub(at), dist = v.length(); return { target: at.clone(), yaw: Math.atan2(v.x, v.z), pitch: Math.asin(v.y / dist), dist }; };
 
 export class Director {
   constructor(app, script, offline = false) {
@@ -24,7 +26,7 @@ export class Director {
     this.stepAt = 0; this.stepT = 0; this.fin = null;
     const el = (this.el = document.createElement('div'));
     el.id = 'film';
-    el.innerHTML = '<div class="f-bar"></div><div class="f-heads"></div><div class="f-pins"></div><div class="f-flash"></div><div class="f-end"><img src="assets/brand/logo-stack-light.png" alt=""><span></span></div>';
+    el.innerHTML = '<div class="f-money" hidden><small>BUDGET</small><b></b></div><div class="f-bar"></div><div class="f-heads"></div><div class="f-pins"></div><div class="f-flash"></div><div class="f-end"><img src="assets/brand/logo-stack-light.png" alt=""><span></span></div>';
     document.body.appendChild(el);
     document.body.classList.add('filming');
     this.$ = (c) => el.querySelector(c);
@@ -55,7 +57,7 @@ export class Director {
   // a named moment of the film (the renderer moves the «hook» … «hookEnd» part to the front)
   mark(name) { this.marks = this.marks || {}; this.marks[name] = this.t; }
   // the words cleared at once (a clean shot)
-  clear() { for (const it of this.items) it.t1 = -1; this.fin = null; this.stepAt = 0; }
+  clear() { for (const it of this.items) it.t1 = -1; this.fin = null; this.stepAt = 0; this.$('.f-money').hidden = true; }
 
   // ---- what the script waits for ---------------------------------------------------------------
   sec(s) { const t1 = this.t + s; return () => this.t >= t1; }
@@ -82,6 +84,13 @@ export class Director {
     this.shot = { from, goal, t0: this.t, dur: Math.max(1e-3, dur), drift: o.drift ?? 0.03, push: o.push ?? 0, k: 1 };
     if (o.fx) this.trans(o.fx);
   }
+  // a flight along a path: keys [[eye, at], …] (points in the plot) — the camera through the eyes,
+  // looking at the ats, both on smooth curves, in dur seconds (o.ease: start and stop gently)
+  fly(keys, dur, o = {}) {
+    const eyes = new THREE.CatmullRomCurve3(keys.map((k) => k[0].clone())), ats = new THREE.CatmullRomCurve3(keys.map((k) => k[1].clone()));
+    this.shot = { eyes, ats, t0: this.t, dur, k: 1, drift: 0, push: 0, ease: o.ease ?? 'inout' };
+    if (o.fx) this.trans(o.fx);
+  }
   // follow f() (a point in the plot) from a view's yaw / pitch / dist; lag: how slowly it keeps up
   follow(f, v, o = {}) {
     const p = f() || this._now().target, g = { target: p.clone(), yaw: v.yaw, pitch: v.pitch, dist: v.dist };
@@ -97,6 +106,12 @@ export class Director {
     if (d) this.fx.push({ kind, t0: this.t, t1: this.t + d, dir: Math.random() < 0.5 ? -1 : 1 });
   }
   _eval(s) {
+    if (s.eyes) {
+      const u0 = clamp01((this.t - s.t0) / s.dur), u = s.ease === 'inout' ? ease(u0) : s.ease === 'out' ? easeOut(u0) : u0;
+      const v = look(s.eyes.getPoint(u), s.ats.getPoint(u));
+      v.dist *= s.k;
+      return v;
+    }
     const u = ease(clamp01((this.t - s.t0) / s.dur)), f = s.from, g = s.goal, age = this.t - s.t0;
     let target;
     if (s.f) { const p = s.f(); if (p) s.at.lerp(p, 1 - Math.exp(-this.dt * s.lag)); target = s.at.clone(); }
@@ -199,6 +214,45 @@ export class Director {
       s.style.opacity = u.toFixed(3); s.style.transform = `translateX(${((1 - easeOut(u)) * (left ? 24 : -24)).toFixed(1)}px)`;
     });
   }
+  // the game's budget (budget.js) shown the film's way: the money in the corner running down,
+  // each bill a «−$…» flying up from the work (with the till's sound)
+  money(on) { this.$('.f-money').hidden = !on; this.cash = this.app.budget.money; }
+  bill(usd, at) {
+    const e = document.createElement('div');
+    e.className = 'f-bill'; e.textContent = `−$${Math.round(usd).toLocaleString('en-US')}`;
+    let x = 0.5, y = 0.42;
+    if (at) { _v.copy(at).project(this.app.camera); if (_v.z < 1) { x = Math.max(0.2, Math.min(0.8, (_v.x + 1) / 2)); y = Math.max(0.4, Math.min(0.75, (1 - _v.y) / 2)); } }
+    e.style.left = `${x * 100}%`; e.style.top = `${y * 100}%`;
+    this._item(e, this.el, this.t + 1.6, (el, age) => {
+      const u = clamp01(age / 1.6), p = clamp01(age / 0.18);
+      el.style.opacity = (Math.min(1, p * 2) * (1 - clamp01((age - 1.1) / 0.5))).toFixed(3);
+      el.style.transform = `translate(-50%, -50%) translateY(${(-90 * easeOut(u)).toFixed(1)}px) scale(${(0.5 + 0.5 * back(p)).toFixed(3)})`;
+    });
+    this.moneyKick = this.t;
+  }
+  // the game's material choice: a card of swatches comes up, the finger goes to one and taps it;
+  // list [{ name, img }], pick — the index; → a wait (till the card is gone)
+  picker(title, list, pick, dur = 2.2) {
+    const e = document.createElement('div');
+    e.className = 'f-pick';
+    e.innerHTML = `<div class="f-card"><small>${title}</small><div class="f-sw">${list.map((q) => `<div><i style="background-image:url(${q.img})"></i><span>${q.name}</span></div>`).join('')}</div></div><div class="f-finger"></div>`;
+    this._item(e, this.el, this.t + dur, (el, age, it) => {
+      const life = it.t1 - it.t0, card = el.querySelector('.f-card'), f = el.querySelector('.f-finger'), cells = el.querySelectorAll('.f-sw > div');
+      const inn = clamp01(age / 0.3), out = clamp01((age - life + 0.3) / 0.3);
+      card.style.transform = `translateY(${((1 - easeOut(inn)) * 120 + easeOut(out) * 140).toFixed(1)}px)`;
+      card.style.opacity = (inn * (1 - out)).toFixed(3);
+      // (the finger: in from below right, over the swatch, a tap, the swatch chosen)
+      const c = cells[pick], r = c.getBoundingClientRect(), cr = el.getBoundingClientRect();
+      const tx = r.left - cr.left + r.width * 0.55, ty = r.top - cr.top + r.height * 0.45;
+      const m = easeOut(clamp01((age - 0.35) / 0.6)), tap = clamp01((age - 1.0) / 0.25);
+      const x = cr.width * 0.92 + (tx - cr.width * 0.92) * m, y = cr.height * 1.05 + (ty - cr.height * 1.05) * m;
+      f.style.opacity = (clamp01((age - 0.3) / 0.15) * (1 - out)).toFixed(3);
+      f.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${(1 - 0.25 * Math.sin(Math.PI * tap)).toFixed(3)})`;
+      f.style.setProperty('--ring', tap > 0 && tap < 1 ? (tap * 1.6).toFixed(3) : 0);
+      cells.forEach((q, i) => q.classList.toggle('on', i === pick && age > 1.12));
+    });
+    return this.sec(dur);
+  }
   end(text) { this.title(''); this.$('.f-end span').textContent = text || ''; this.fin = this.t; }
   _words() {
     for (const it of [...this.items]) {
@@ -209,6 +263,15 @@ export class Director {
     const bar = this.$('.f-bar'), segs = bar.children;
     for (let i = 0; i < segs.length; i++) segs[i].style.setProperty('--f', i < this.stepAt - 1 ? 1 : i === this.stepAt - 1 ? clamp01((this.t - this.stepT) / 0.5).toFixed(3) : 0);
     bar.style.opacity = this.fin != null ? clamp01(1 - (this.t - this.fin) / 0.3) : this.stepAt ? 1 : 0;
+    if (!this.$('.f-money').hidden) {
+      const m = this.app.budget.money;
+      this.cash += (m - this.cash) * (1 - Math.exp(-this.dt * 5));
+      const b = this.$('.f-money b'), k = this.moneyKick != null ? clamp01((this.t - this.moneyKick) / 0.35) : 1;
+      b.textContent = `$${Math.round(this.cash).toLocaleString('en-US')}`;
+      this.$('.f-money').style.transform = `scale(${(1 + 0.12 * Math.sin(Math.PI * k)).toFixed(3)})`;
+      this.$('.f-money').classList.toggle('hit', k < 1);
+      this.$('.f-money').style.opacity = this.fin != null ? clamp01(1 - (this.t - this.fin) / 0.3) : 1;
+    }
     const e = this.$('.f-end');
     if (this.fin != null) { const u = clamp01((this.t - this.fin) / 0.5); e.style.opacity = u; e.querySelector('img').style.transform = `scale(${(0.7 + 0.3 * back(u)).toFixed(3)})`; } else e.style.opacity = 0;
   }
