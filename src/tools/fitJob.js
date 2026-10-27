@@ -13,8 +13,8 @@ export const ease = (u) => u * u * (3 - 2 * u);
 export class FitJob {
   // steps: [[seconds, (u 0…1, job) => {}], …]; commit: () => {} (puts the records in);
   // parts: objects shown while it runs (added to the scene, removed at the end)
-  constructor(app, { steps, commit, parts = [], cleanup = null }) {
-    this.app = app; this.steps = steps; this.commitFn = commit; this.parts = parts; this.cleanup = cleanup;
+  constructor(app, { steps, commit, parts = [], cleanup = null, onAbort = null }) {
+    this.app = app; this.steps = steps; this.commitFn = commit; this.parts = parts; this.cleanup = cleanup; this.onAbort = onAbort;
     this.k = 0; this.t = 0; this.done = false; this.fit = true;
     if (app.physJob && app.physJob !== this) app.physJob.fit ? app.physJob.finish() : app.physJob.finish?.();
     for (const p of parts) app.scene.add(p);
@@ -48,7 +48,7 @@ export class FitJob {
     for (; this.k < this.steps.length; this.k++) this.steps[this.k][1](1, this);
     this._end();
   }
-  abort() { if (this.done) return false; this._clear(); this.app.ui?.refresh(); return true; }
+  abort() { if (this.done) return false; this._clear(); this.onAbort?.(); this.app.ui?.refresh(); return true; }
 }
 
 // ---- the steps ------------------------------------------------------------------------------
