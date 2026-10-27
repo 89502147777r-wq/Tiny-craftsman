@@ -49,6 +49,15 @@
 | `assets/textures/facade/cas_corten/` — металлокассеты «кортен» | Rust 009 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Rust009 |
 | `assets/textures/facade/fc_fibre/` — фактура фиброцемента (тонируется) | Concrete 048 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Concrete048 |
 
+## Модели инструментов (Poly Haven, CC0 1.0)
+
+glTF 1k, текстуры ужаты до 512 px. Дрель — в руке шуруповёрта и при сверлении (сверло и бита дорисованы), молоток — при забивании дюбелей и гвоздей.
+
+| Файл в проекте | Ассет | Автор | Лицензия | Источник |
+|---|---|---|---|---|
+| `assets/models/tools/drill_01/` — аккумуляторная дрель-шуруповёрт | Drill 01 | Fernando Quinn | CC0 | https://polyhaven.com/a/Drill_01 |
+| `assets/models/tools/cross_pein_hammer/` — слесарный молоток | Cross Pein Hammer | Tics | CC0 | https://polyhaven.com/a/cross_pein_hammer |
+
 ## HDRI (Poly Haven, CC0 1.0)
 
 | Файл | Ассет | Автор | Лицензия | Источник |

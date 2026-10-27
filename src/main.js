@@ -99,7 +99,7 @@ async function main() {
   app.shovel.setType(app.settings.shovel);
   app.rake = new Rake(tex); scene.add(app.rake.root);
   app.concreteGear = new ConcreteGear(); scene.add(app.concreteGear.root);
-  app.handTools = new HandTools(); scene.add(app.handTools.root);
+  app.handTools = new HandTools(); scene.add(app.handTools.root); app.handTools.loadModels();
   app.dust = makeDust(); scene.add(app.dust.points);
 
   app.objects = new ObjectStore();

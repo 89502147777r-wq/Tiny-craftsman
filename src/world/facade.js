@@ -355,7 +355,7 @@ function ventTex(kind, cols, mod, key, img = null) {
   h.fillStyle = '#101010'; h.fillRect(0, 0, W, j); h.fillRect(0, H - j, W, j); h.fillRect(0, 0, j, H); h.fillRect(W - j, 0, j, H);
   if (kind === 'porc') {
     // the clips: stainless tabs in the horizontal joints, a fifth in from each end, holding the tile's edges
-    for (const fx of [0.18, 0.82]) for (const y of [0, H - j - 3]) { const x = W * fx - 9 * px; g.fillStyle = '#7d8185'; g.fillRect(x, y, 18 * px, j + 3); h.fillStyle = '#b0b0b0'; h.fillRect(x, y, 18 * px, j + 3); }
+    for (const fx of [0.18, 0.82]) for (const y of [0, H - j]) { const x = W * fx - 9 * px; g.fillStyle = '#8a8e92'; g.fillRect(x, y, 18 * px, j); h.fillStyle = '#a0a0a0'; h.fillRect(x, y, 18 * px, j); }
   }
   bake(c, hc, 0.6, 0.3);
   const t = asTex(c); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
@@ -527,7 +527,9 @@ export const recOf = (recs, F) => recs.find((r) => r.ux * F.ux + r.uz * F.uz > 0
 export const W = (F, a, y, off) => { const c = F.P + F.sg * off; return [F.ux * a + F.nx * c, y, F.uz * a + F.nz * c]; };
 // the face's extent at an offset (round the corner it wraps)
 // (the face that stops at a corner: its coats run on over the end of the other's insulation)
-const endOff = (F, e, off) => ((e ? F.wrap1 : F.wrap0) ? off : (e ? F.cn1 : F.cn0) && off > OFF.eps + 1e-9 && off < OFF.pan - 1e-9 ? OFF.eps : 0);
+// (a ventilated facade: the panels of the face that stops run on to the back of the other's panels —
+// the angle covers the joint; no gap down the corner)
+const endOff = (F, e, off) => ((e ? F.wrap1 : F.wrap0) ? off : !(e ? F.cn1 : F.cn0) ? 0 : off > OFF.eps + 1e-9 && off < OFF.pan - 1e-9 ? OFF.eps : off >= OFF.vent0 - 1e-9 ? OFF.vent0 - MM(1) : 0);
 export const ext = (F, off) => [F.a0 - endOff(F, 0, off), F.y0, F.a1 + endOff(F, 1, off), F.y1];
 
 // ---- rects and cells ----------------------------------------------------------------------------

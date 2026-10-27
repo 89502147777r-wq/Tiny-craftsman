@@ -14,7 +14,6 @@ import { MODEL_SCALE } from '../config.js';
 // of the trowel …) on a surface and the surface's outward normal: local +z is that normal
 // (the tool stands out from the surface along it), local +y is "up" in the surface.
 const M = (v) => v / 1000 / MODEL_SCALE;
-export { M as toolMM };
 const mat = (c, r = 0.55, m = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
 const box = (w, h, d, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(M(w), M(h), M(d)), m); o.position.set(M(x), M(y), M(z)); return o; };
 const cyl = (r0, r1, h, m, seg = 16) => new THREE.Mesh(new THREE.CylinderGeometry(M(r0), M(r1), M(h), seg), m);
@@ -139,16 +138,13 @@ export class HandTools {
         const t = this.tools[which]; if (!t) return;
         const o = g.scene;
         o.traverse((q) => { if (q.isMesh) { q.castShadow = true; q.receiveShadow = true; } });
-        // (to the tool's frame: scaled from metres to the model's mm, turned, its working point on the origin)
+        // (to the tool's frame: from metres to the model's scale, turned about y, shifted so its
+        // working point — the chuck's nose, the hammer's face — is where the drawn one's was)
         const holder = new THREE.Group(); holder.add(o);
-        o.scale.setScalar(M(1000) * (M0.scale || 1));
-        o.rotation.set(...M0.rot);
-        o.updateMatrixWorld(true);
-        const b = new THREE.Box3().setFromObject(o), c = b.getCenter(new THREE.Vector3());
-        o.position.sub(c).add(new THREE.Vector3(...M0.at.map(M)));
-        o.position.add(M0.align(b, M));
+        o.scale.setScalar(M(1000)); o.rotation.y = M0.rotY;
+        o.position.set(...M0.shift.map(M));
         const host = t.arm || t.g;
-        for (const ch of [...host.children]) if (ch !== t.spin && !(M0.keep || []).includes(host.children.indexOf(ch))) host.remove(ch);
+        for (const ch of [...host.children]) if (ch !== t.spin) host.remove(ch);
         if (t.arm) holder.userData.base = new THREE.Vector3(0, 0, 0);
         host.add(holder);
       }, undefined, () => { /* keep the drawn one */ });
@@ -156,11 +152,12 @@ export class HandTools {
   }
 }
 
-// how each model sits in its tool's frame: rot (euler, rad) turns it so its working end is at the
-// origin side and its axis along +z (the drill's chuck out along +z, the grip down −y; the hammer's
-// face toward −z, the handle down −y); at: where its middle goes (mm); align(box, M): a shift from
-// its bounds (the chuck's nose 50 mm out — the bit before it; the face on the origin)
+// how each model sits in its tool's frame: turned about y (the drill's chuck out of −x to −z, the
+// hammer's face out of +x to −z), then shifted (mm): the chuck's nose 50 / 160 mm back of the bit's
+// tip (the screwdriver's bit, the drill's), its axis on the bit's; the hammer's face on the origin
+const DRILL = 'assets/models/tools/drill_01/Drill_01.gltf';
 const TOOL_MODELS = {
-  driver: { url: 'assets/models/tools/drill_01/Drill_01.gltf', rot: [0, Math.PI / 2, 0], at: [0, -45, 0], align: (b, M) => new THREE.Vector3(0, 0, M(50) - b.min.z + (b.min.z + b.max.z) / 2 - (b.min.z + b.max.z) / 2) },
-  hammer: { url: 'assets/models/tools/cross_pein_hammer/cross_pein_hammer.gltf', rot: [0, 0, 0], at: [0, -120, 0], align: () => new THREE.Vector3() },
+  driver: { url: DRILL, rotY: -Math.PI / 2, shift: [0, -142, 178] },
+  drill: { url: DRILL, rotY: -Math.PI / 2, shift: [0, -142, 290] },
+  hammer: { url: 'assets/models/tools/cross_pein_hammer/cross_pein_hammer.gltf', rotY: Math.PI / 2, shift: [0, -165, 55] },
 };
