@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, M_SAND, M_G5, M_G20 } from '../config.js';
-import { pitBox } from '../world/pool.js';
+import { pitBox, DECKS, deckRing } from '../world/pool.js';
 
 // The budget (a mode of play): the money to build the house with, in US dollars.
 //   – the masonry units come on pallets bought beforehand (gas block, brick, cinder block): a
@@ -40,7 +40,7 @@ export const PRICE = {
   column: { cage: 45, form: 35 },
   // the pool: the coating per m² per coat, the glass mosaic per m² (with its glue), a coping stone,
   // the embeds (2 skimmers, 3 inlets, 2 lights, the main drain), water per m³
-  pool: { coat: 6, mosaic: 48, stone: 28, embeds: 1250, water: 2 },
+  pool: { coat: 6, mosaic: 48, stone: 28, embeds: 1250, water: 2, joists: 24 },
   haul: 18,          // m³ of soil taken off the plot by the dump truck
 };
 
@@ -222,6 +222,10 @@ export class Budget {
       if (a && a.wall != null && b?.wall == null) add(P.pool.embeds, 'Закладные: 2 скиммера, 3 форсунки, 2 прожектора, слив');
       const dw = ((a?.water || 0) - (b?.water || 0)) / 1000 * (a?.L || 0) / 1000 * (a?.W || 0) / 1000;
       if (dw > 0.05) add(P.pool.water * dw, `Вода · ${dw.toFixed(1)} м³`);
+      // the deck round it: its base (pads and joists — the slab is in the ground's concrete), the covering
+      const dA = (q) => deckRing(q, q.base.w || 1500).reduce((s2, z) => s2 + (z[2] - z[0]) * (z[3] - z[1]), 0) / 1e6;
+      if (a?.base && !b?.base && DECKS[a.base.key]?.base === 'joists') { const A = dA(a); add(P.pool.joists * A, `Опоры и лаги 50×100 · ${A.toFixed(1)} м² (${Math.ceil(A / 0.4 * 1.0)} м лаг)`); }
+      if (a?.deck && !b?.deck && a.base) { const A = dA(a), D = DECKS[a.base.key]; add(D.usd * A, `${D.name} · ${A.toFixed(1)} м²${D.base === 'joists' ? ` (${Math.ceil(A / 0.146 / 4 * 1.05)} досок по 4 м)` : ` (${Math.ceil(A / (D.tile[0] * D.tile[1] / 1e6) * 1.05)} шт)`}`); }
     } else if (type === 'bitumen') {
       const sum = (r) => (r?.d || []).reduce((s, v, i) => s + (i % 4 === 3 ? v : 0), 0);
       add(P.bitumen * Math.max(0, sum(a) - sum(b)) * 0.006, 'Битум');

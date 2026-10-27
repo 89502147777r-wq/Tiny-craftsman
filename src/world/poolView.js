@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import {
   POOL, MOSAICS, MOSAIC_BY_LETTER, COPES, PW, faces, cellsOf, sheetsOf, sheetRect, faceStr, copeLayout, embeds, wallLines,
-  floorTopY, wallH, rimY, waterMax, pitRect, outer, isPoolBelt, PF,
+  floorTopY, wallH, rimY, waterMax, pitRect, outer, isPoolBelt, PF, DECKS, deckRing,
 } from './pool.js';
 
 // The pool drawn (pool.js): what is not concrete, reinforcement or boards (those are the
@@ -269,6 +269,10 @@ export class PoolView {
     // the coping
     const ck = (r.cope || []).join('|') + ':' + (r.copeCol || 'trav');
     this._part(e, 'cope', (r.cope || []).some((q) => q.includes('1')) ? geo + ck : null, () => buildCoping(r));
+    // the deck round it: its base (pads and joists / crushed stone and a slab — the slab is the
+    // ground's), the boards / the tiles (as many sides as laid; the live job shows them going on)
+    const dl = this.deckLive?.id === r.id ? this.deckLive : null, sides = dl ? dl.sides : r.deck ? 4 : 0, bk = r.base ? JSON.stringify(r.base) : '';
+    this._part(e, 'deck', r.base ? geo + bk + ':' + sides + ':' + (dl?.base ?? 1) : null, () => (r.base ? buildDeck(r, sides, dl ? dl.base : 1) : null));
     // the water and the hose
     const w = this._part(e, 'water', wb ? geo : null, () => (wb ? buildWater(r) : null));
     e.water = w?.userData.water || null; e.stream = w?.userData.stream || null; e.hose = w?.userData.hose || null;
@@ -645,3 +649,64 @@ function buildWater(r) {
 }
 
 export { wallLines };
+
+// ---- the deck round the pool ---------------------------------------------------------------------
+// base: how much of the joists is up (0…1, by side); sides: how many sides are covered
+export function buildDeck(r, sides = 4, base = 1) {
+  const B = r.base, D = DECKS[B.key] || DECKS['wpc:teak'], ring = deckRing(r, B.w || 1500), g = new THREE.Group();
+  const top = (rimY(r) - floorTopY(r)) / S - 1, gy = (r.g - floorTopY(r)) / S;   // (mm over the slab: the deck's top, the ground)
+  let seed = 31; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const box = (list, s0, t0, s1, t1, y0, y1, u = null) => {
+    const q = new THREE.BoxGeometry(1, 1, 1), sx = s1 - s0, tz = t1 - t0, P = q.attributes.position, UV = q.attributes.uv, N = q.attributes.normal;
+    for (let i = 0; i < P.count; i++) {
+      const s = s0 + (P.getX(i) + 0.5) * sx, t = t0 + (P.getZ(i) + 0.5) * tz, y = y0 + (P.getY(i) + 0.5) * (y1 - y0);
+      P.setXYZ(i, ...V(r, s, t, y));
+      if (u) { const up = Math.abs(N.getY(i)) > 0.5; UV.setXY(i, ...u(s, t, y, up)); }
+    }
+    q.computeVertexNormals(); list.push(q.index ? q.toNonIndexed() : q);
+  };
+  // the base under the boards: concrete pads on the ground every 600, joists 50 × 100 across them every 400
+  if (D.base === 'joists') {
+    const pads = [], joists = [], jt = top - 25, jb = jt - 100;
+    ring.forEach(([s0, t0, s1, t1], k) => {
+      if (k >= Math.ceil(base * 4 - 1e-6)) return;
+      for (let s = s0 + 200; s <= s1 - 100; s += 400) {
+        box(joists, s - 25, t0 + 20, s + 25, t1 - 20, jb, jt);
+        for (let t = t0 + 200; t <= t1 - 100; t += 600) box(pads, s - 100, t - 100, s + 100, t + 100, gy - 50, jb);
+      }
+    });
+    if (pads.length) { const m = new THREE.Mesh(mergeGeometries(pads), new THREE.MeshStandardMaterial({ color: 0x9a9890, roughness: 0.9 })); m.castShadow = m.receiveShadow = true; g.add(m); }
+    if (joists.length) { const m = new THREE.Mesh(mergeGeometries(joists), new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.8 })); m.castShadow = m.receiveShadow = true; g.add(m); }
+  }
+  // the covering
+  const cov = [], [TL, TW] = D.tile, joint = D.base === 'joists' ? 6 : 3, th = D.base === 'joists' ? 25 : 20, photo = 1600;
+  ring.forEach(([s0, t0, s1, t1], k) => {
+    if (k >= sides) return;
+    let row = 0;
+    for (let t = t0; t < t1 - 20; t += TW + joint, row++) {
+      const tb = Math.min(t1, t + TW), off = D.base === 'joists' ? (row * 1300) % TL : (row % 2) * TL / 2;
+      for (let s = s0 - off; s < s1; s += TL + joint) {
+        const a = Math.max(s0, s), b = Math.min(s1, s + TL);
+        if (b - a < 30) continue;
+        const ou = rnd() * photo, ov = rnd() * photo;
+        box(cov, a, t, b, tb, top - th, top, (ss, tt, y, up) => (up ? [(ss + ou) / photo, (tt + ov) / photo] : [(ss + tt + ou) / photo, (y + ov) / photo]));
+      }
+    }
+  });
+  if (cov.length) {
+    const map = tex(D.tex, 'col.jpg', true), nor = D.tex.startsWith('deck/') ? tex(D.tex, 'nor.jpg', false) : null;
+    const m = new THREE.MeshStandardMaterial({ map, normalMap: nor, color: D.tint ?? 0xffffff, roughness: D.base === 'joists' ? 0.72 : 0.55 });
+    // (a deck on joists: its outer edge closed with a fascia board of the same, down to the ground)
+    if (D.base === 'joists' && sides >= 4) {
+      const R = ring, sMin = R[0][0], sMax = R[0][2], tMin = R[0][1], tMax = R[1][3], ft = 18;
+      box(cov, sMin, tMin, sMax, tMin + ft, gy, top - th, (ss, tt, y) => [ss / photo, y / photo]);
+      box(cov, sMin, tMax - ft, sMax, tMax, gy, top - th, (ss, tt, y) => [ss / photo, y / photo]);
+      box(cov, sMin, tMin, sMin + ft, tMax, gy, top - th, (ss, tt, y) => [tt / photo, y / photo]);
+      box(cov, sMax - ft, tMin, sMax, tMax, gy, top - th, (ss, tt, y) => [tt / photo, y / photo]);
+    }
+    const mesh = new THREE.Mesh(mergeGeometries(cov), m); mesh.castShadow = mesh.receiveShadow = true; g.add(mesh);
+    // (under the tiles: the grey of the glue and the grout in the joints)
+    if (D.base === 'slab') { const gr = []; ring.forEach(([s0, t0, s1, t1], k) => { if (k < sides) box(gr, s0, t0, s1, t1, top - th - 10, top - 4); }); if (gr.length) { const gm = new THREE.Mesh(mergeGeometries(gr), new THREE.MeshStandardMaterial({ color: 0x8c8a84, roughness: 0.95 })); gm.receiveShadow = true; g.add(gm); } }
+  }
+  return g;
+}
