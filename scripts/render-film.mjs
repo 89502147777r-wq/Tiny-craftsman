@@ -31,7 +31,17 @@ for (;;) {
   if (k % (FPS * 2) === 0) console.log(`film ${st.t.toFixed(1)} s · ${n} frames · ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   if (st.done || st.t > MAX) break;
 }
+const marks = await page.evaluate(() => window.__tc.film.marks || {});
 await browser.close(); server.close();
 const fr = FPS / EVERY;
-execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fr), '-i', path.join(out, 'frames', 'f%05d.jpg'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium', '-movflags', '+faststart', path.join(out, `${film}.mp4`)]);
+// the cut: the hook (marked «hook» … «hookEnd» at the end of the film) first, then the film up to it
+let src = path.join(out, 'frames', 'f%05d.jpg');
+if (marks.hook != null && marks.hookEnd != null) {
+  const fi = (t) => Math.ceil(t * fr) + 1, all = fs.readdirSync(path.join(out, 'frames')).sort(), cut = path.join(out, 'cut');
+  fs.rmSync(cut, { recursive: true, force: true }); fs.mkdirSync(cut);
+  const order = [...all.slice(fi(marks.hook), fi(marks.hookEnd)), ...all.slice(0, fi(marks.hook) - 1)];
+  order.forEach((f, i) => fs.copyFileSync(path.join(out, 'frames', f), path.join(cut, `c${String(i).padStart(5, '0')}.jpg`)));
+  src = path.join(cut, 'c%05d.jpg');
+}
+execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fr), '-i', src, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium', '-movflags', '+faststart', path.join(out, `${film}.mp4`)]);
 console.log('done', path.join(out, `${film}.mp4`), n, 'frames');
