@@ -7,6 +7,7 @@ import { placeLintel, placeProp, placeLintelForm, uRun, cageRec, uStrength } fro
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds, rle } from './belt.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
+import { PALLETS } from '../core/budget.js';
 import { findOpenings, findCorners, openingAt } from './windowFit.js';
 import { findRail, RAIL } from '../world/railing.js';
 import { WINDOWS, windowFits, WIN_COLOURS, buildWindow, buildCorner } from '../world/windows.js';
@@ -649,23 +650,59 @@ export class WallTool {
       id = O.add({ type: 'stock', kind: s.kind, x: s.x, z: s.z, yaw: s.yaw, n: 0, e: 1 }).id;
     } else id = em.stock.id;
     const r = O.get(id);
-    this.palletDrag = { id, dx: r.x - p.x, dz: r.z - p.z, x0: r.x, z0: r.z };
+    this.palletDrag = { id, dx: r.x - p.x, dz: r.z - p.z, x0: r.x, z0: r.z, yaw0: r.yaw || 0 };
+    O.update(id, { lift: 150 });
     app.sfx?.stab?.();
-    app.ui.toast('Пустой поддон — несите его и отпустите: на землю или на другой пустой поддон, в стопку');
+    app.ui.toast('Пустой поддон — несите его, вторым пальцем поворачивайте; отпустите на землю или на другой пустой поддон, в стопку');
   }
+  // carried: held a little off the ground; over another empty pallet (a stack) it is lifted onto it
+  // and squared up with it, over a loaded one held above its load — never through anything
   _palletMove(p) {
-    const d = this.palletDrag, t = this.app.terrain, x = p.x + d.dx, z = p.z + d.dz;
+    const d = this.palletDrag, t = this.app.terrain, O = this.app.objects, x = p.x + d.dx, z = p.z + d.dz;
     if (!t.inside(x, z)) return;
-    this.app.objects.update(d.id, { x: +x.toFixed(6), z: +z.toFixed(6) });
+    const r = O.get(d.id); if (!r) return;
+    const under = this._palletUnder(r.id, x, z);
+    let up = { x: +x.toFixed(6), z: +z.toFixed(6), lift: 150 };
+    if (under?.empty) {
+      const g0 = t.heightAt(under.s.x, under.s.z), g1 = t.heightAt(x, z);
+      up = { x: under.s.x, z: under.s.z, yaw: under.s.yaw, lift: Math.max(0, (g0 - g1) / MM(1) + (under.s.e || 1) * 122 + 40) };
+      up.x = under.s.x; up.z = under.s.z;
+    } else if (under) up.lift = under.top + 60;
+    d.over = under;
+    O.update(d.id, up);
   }
+  // what the pallet in the hand is over: another pallet whose footprint its own overlaps
+  _palletUnder(id, x, z) {
+    const O = this.app.objects, r = O.get(id), P = PALLETS[r?.kind] || PALLETS.block, R = (s2) => { const Q = PALLETS[s2.kind] || PALLETS.block; return (Q.na * (Q.L + 4) + 40) / 2; };
+    let best = null, bd = Infinity;
+    for (const s2 of O.all('stock')) {
+      if (s2.id === id) continue;
+      const dd = Math.hypot(s2.x - x, s2.z - z) / MM(1);
+      if (dd > R(s2) + (P.na * (P.L + 4) + 40) / 2 * 0.6 || dd >= bd) continue;
+      const Q = PALLETS[s2.kind] || PALLETS.block, layers = Math.ceil((s2.n || 0) / (Q.na * Q.nc));
+      bd = dd; best = { s: s2, empty: !s2.n, top: (s2.e || 1) * 122 + layers * (Q.H + 2) };
+    }
+    return best;
+  }
+  // turned by the second finger, about its own middle
+  palletTwist(da) {
+    const d = this.palletDrag; if (!d || d.over?.empty) return;
+    const r = this.app.objects.get(d.id); if (!r) return;
+    this.app.objects.update(d.id, { yaw: +(((r.yaw || 0) + da) % (Math.PI * 2)).toFixed(4) });
+  }
+  twistable() { return !!this.palletDrag; }
+  twist(da) { this.palletTwist(da); }
   _palletDrop() {
     const app = this.app, O = app.objects, d = this.palletDrag; this.palletDrag = null;
     const r = O.get(d.id); if (!r) { app.journal.cancel(); return; }
+    O.update(r.id, { lift: 0 });
+    // over a loaded pallet: an empty one is not put on the blocks
+    if (d.over && !d.over.empty) { O.update(r.id, { x: d.x0, z: d.z0, yaw: d.yaw0 }); app.journal.commit(app.clock); app.ui.toast('На поддон с блоками пустой не кладут — на землю или на другой пустой'); return; }
     // onto another empty pallet (or stack): the pallets one on another, squared up
-    const on = O.all('stock').filter((s) => s.id !== r.id && !s.n && Math.hypot(s.x - r.x, s.z - r.z) < MM(800)).sort((a, b) => Math.hypot(a.x - r.x, a.z - r.z) - Math.hypot(b.x - r.x, b.z - r.z))[0];
+    const on = d.over?.empty ? O.get(d.over.s.id) : null;
     if (on) {
       const n = (on.e || 1) + (r.e || 1);
-      if (n > 12) { O.update(r.id, { x: d.x0, z: d.z0 }); app.journal.commit(app.clock); app.ui.toast('Стопка уже 12 поддонов — выше не складывают, начните новую'); return; }
+      if (n > 12) { O.update(r.id, { x: d.x0, z: d.z0, yaw: d.yaw0 }); app.journal.commit(app.clock); app.ui.toast('Стопка уже 12 поддонов — выше не складывают, начните новую'); return; }
       O.update(on.id, { e: n }); O.remove(r.id);
       app.journal.commit(app.clock); app.sfx?.thud?.() || app.sfx?.stab?.();
       app.ui.toast(`Поддон в стопку — в ней ${n}`);
@@ -674,7 +711,7 @@ export class WallTool {
     // on the ground: not into a pit, onto the concrete, onto a wall
     const t = app.terrain, i = t.index(r.x, r.z);
     if (t.conc[i] > 1e-6 || Math.abs(t.heightAt(r.x, r.z) - t.heightAt(d.x0, d.z0)) > MM(400) || O.all('unit').some((u) => u.p && Math.hypot(u.p[0] - r.x, u.p[2] - r.z) < MM(700))) {
-      O.update(r.id, { x: d.x0, z: d.z0 }); app.journal.commit(app.clock);
+      O.update(r.id, { x: d.x0, z: d.z0, yaw: d.yaw0 }); app.journal.commit(app.clock);
       app.ui.toast('Сюда поддон не поставить — на землю рядом, не на бетон, не в яму, не к стене'); return;
     }
     app.journal.commit(app.clock);

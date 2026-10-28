@@ -79,7 +79,15 @@ export class Gestures {
     if (e.pointerType === 'touch' && e.isPrimary && this.ptrs.size) this.reset();
     this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), button: e.button });
     if (this.ptrs.size === 2) {
-      // second finger: always a camera gesture
+      // second finger while the tool carries something it can turn (an empty pallet): it turns it
+      // round its middle — the first finger keeps carrying
+      const tt = app.activeTool();
+      if (this.mode === 'tool' && tt?.twistable?.()) {
+        const [first] = [...this.ptrs.keys()], f = this.ptrs.get(first);
+        this.mode = 'twist'; this.tw = { id: e.pointerId, first, a: Math.atan2(e.clientY - f.y, e.clientX - f.x) };
+        return;
+      }
+      // otherwise the second finger: a camera gesture
       if (this.mode === 'tool') {
         const t = app.activeTool();
         // fingers of a pinch land a few ms apart: a stroke that just started was not meant
@@ -138,6 +146,16 @@ export class Gestures {
       this.pinch = s;
       return;
     }
+    if (this.mode === 'twist') {
+      const tw = this.tw, f = this.ptrs.get(tw.first), sc = this.ptrs.get(tw.id);
+      if (e.pointerId === tw.first) { const g = this.ground(e.clientX, e.clientY); if (g) { app.activeTool()?.move(g, e); app.lastPoint = g.clone(); } }
+      if (f && sc) {
+        const a = Math.atan2(sc.y - f.y, sc.x - f.x); let d = a - tw.a; tw.a = a;
+        if (d > Math.PI) d -= Math.PI * 2; else if (d < -Math.PI) d += Math.PI * 2;
+        app.activeTool()?.twist?.(-d);   // (clockwise on the screen: clockwise seen from above)
+      }
+      return;
+    }
     if (this.mode === 'tool') {
       const g = this.ground(e.clientX, e.clientY);
       if (g) { app.activeTool()?.move(g, e); app.lastPoint = g.clone(); }
@@ -151,6 +169,14 @@ export class Gestures {
     this.ptrs.delete(e.pointerId);
     const app = this.app;
     const isTap = performance.now() - p.t0 < 350 && Math.hypot(p.x - p.x0, p.y - p.y0) < 14;
+    if (this.mode === 'twist') {
+      // the turning finger off: carrying goes on; the carrying finger off: it is put down
+      if (e.pointerId === this.tw.id) { this.mode = 'tool'; return; }
+      app.activeTool()?.up(this.ground(e.clientX, e.clientY), e);
+      this.mode = 'hold'; app.ui.refresh();
+      if (this.ptrs.size === 0) this.mode = 'none';
+      return;
+    }
     if (this.mode === 'tool') {
       app.activeTool()?.up(this.ground(e.clientX, e.clientY), e);
       this.mode = 'none';

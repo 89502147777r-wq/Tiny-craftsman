@@ -704,7 +704,7 @@ export class WallView {
     for (const s of O.all('stock')) {
       this._stockIds.add(s.id);
       const P = PALLETS[s.kind]; if (!P) continue;
-      const g = this.terrainY ? this.terrainY(s.x, s.z) : 0, pq = new THREE.Quaternion().setFromAxisAngle(_Y, s.yaw || 0), ex = new THREE.Vector3(1, 0, 0).applyQuaternion(pq), ez = new THREE.Vector3(0, 0, 1).applyQuaternion(pq);
+      const g = (this.terrainY ? this.terrainY(s.x, s.z) : 0) + (s.lift || 0) * S, pq = new THREE.Quaternion().setFromAxisAngle(_Y, s.yaw || 0), ex = new THREE.Vector3(1, 0, 0).applyQuaternion(pq), ez = new THREE.Vector3(0, 0, 1).applyQuaternion(pq);
       const pl = (a, y, c, sx, sy, sz) => { P3.set(s.x + ex.x * a * S + ez.x * c * S, g + y * S, s.z + ex.z * a * S + ez.z * c * S); Sv.set(sx * S, sy * S, sz * S); return m.compose(P3, pq, Sv); };
       const pw = P.na * (P.L + 4) + 40, pd = P.nc * (P.T + 4) + 40;
       // (empty ones may be stacked: e pallets one on another, each a little askew)
