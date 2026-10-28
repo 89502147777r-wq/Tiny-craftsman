@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
 import { KINDS } from '../world/walls.js';
-import { boxOf, unitBoxes } from './freeBrick.js';
+import { boxOf, unitBoxes, boxesNear } from './freeBrick.js';
 import { rle } from './belt.js';
 
 // Openings in free masonry and what spans them:
@@ -43,7 +43,13 @@ export function findOpening(app, p, screen, finger) {
       if (gap < 300 || gap > MAX_GAP) continue;
       // nothing of that course in between
       const sg = Math.sign(along), e0 = a.hl, e1 = Math.abs(along) - b.hl;
-      if (NB.some((k) => k !== i && k !== j && Math.abs(boxes[k].top - a.top) < ty && (() => { const u = boxes[k], ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux; return Math.abs(sd - side / 2) < a.hw && s + u.hl > e0 + 0.0001 && s - u.hl < e1 - 0.0001; })())) continue;
+      // (any unit of that course: turned ones too — the corner of a cross wall is no opening)
+      const gx = a.x + a.ux * sg * (e0 + e1) / 2, gz = a.z + a.uz * sg * (e0 + e1) / 2;
+      if (boxesNear(app, gx, gz, (e1 - e0) / 2 + 0.01).some((u) => u !== a && u !== b && u.u.kind !== 'prop' && Math.abs(u.top - a.top) < ty && (() => {
+        const ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux;
+        const ha = Math.abs(u.hl * (u.ux * a.ux + u.uz * a.uz)) + Math.abs(u.hw * (-u.uz * a.ux + u.ux * a.uz)), hd = Math.abs(u.hl * (-u.uz * a.ux + u.ux * a.uz)) + Math.abs(u.hw * (u.ux * a.ux + u.uz * a.uz));
+        return Math.abs(sd - side / 2) < a.hw + hd && s + ha > e0 + 0.0001 && s - ha < e1 - 0.0001;
+      })())) continue;
       const ux = a.ux * sg, uz = a.uz * sg, top = Math.max(a.top, b.top);
       // the line: halfway between the two sides
       const ox = a.x - a.uz * side / 2, oz = a.z + a.ux * side / 2;
@@ -64,6 +70,8 @@ function fullWidth(op, boxes) {
   let lo = Infinity, hi = -Infinity;
   for (const b of boxes) {
     if (Math.abs(b.top - op.top) > op.ty || Math.abs(Math.sin(b.yaw - op.yaw) * Math.cos(b.yaw - op.yaw)) > 0.05) continue;
+    // (a turned unit is a header only in brickwork; by a block or cinder wall it is a cross wall)
+    if (Math.abs(Math.sin(b.yaw - op.yaw)) > 0.5 && (op.kind !== 'brick' || b.kind !== 'brick')) continue;
     const dx = b.x - op.o[0], dz = b.z - op.o[1], s = dx * op.ux + dz * op.uz, sd = -dx * op.uz + dz * op.ux;
     const ha = Math.abs(b.hl * (b.ux * op.ux + b.uz * op.uz)) + Math.abs(b.hw * (-b.uz * op.ux + b.ux * op.uz)), hd = Math.abs(b.hl * (-b.uz * op.ux + b.ux * op.uz)) + Math.abs(b.hw * (b.ux * op.ux + b.uz * op.uz));
     // (beside the opening, within 600 mm of its sides, across the line up to 700 mm)

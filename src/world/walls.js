@@ -616,7 +616,9 @@ export class WallView {
     }
     // free masonry: the units, the bed under each and a head joint only between neighbours
     for (const u of O.all('unit')) if (u.free) put(u, u.id);
-    for (const j of mortarOf(O.all('unit'))) {
+    // (the joints worked out once for each state of the plot — not for each move of a unit in the hand)
+    if (!this._mort || this._mort.v !== O.ver) this._mort = { v: O.ver, list: mortarOf(O.all('unit')) };
+    for (const j of this._mort.list) {
       if (nm >= this.max.mortar) break;
       P.set(j.x, j.y, j.z); Q.setFromAxisAngle(_Y, j.yaw); Sv.set(j.l, j.h, j.w);
       this.mortar.setMatrixAt(nm++, m.compose(P, Q, Sv));
