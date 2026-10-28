@@ -231,7 +231,8 @@ export class Director {
     const e = document.createElement('div');
     e.className = 'f-bill'; e.textContent = `−$${Math.round(usd).toLocaleString('en-US')}`;
     // (low in the frame, clear of the titles, the counters and the big words)
-    e.style.left = '50%'; e.style.top = this.items.some((q) => q.pick) ? '36%' : '81%';
+    const up = this.items.filter((q) => q.bill && q.t1 > this.t).length;   // (another still up: this one over it)
+    e.style.left = '50%'; e.style.top = `${(this.items.some((q) => q.pick) ? 36 : 81) - 7 * up}%`;
     const it = this._item(e, this.el, this.t + 1.6, (el, age) => {
       const u = clamp01(age / 1.6), p = clamp01(age / 0.18);
       el.style.opacity = (Math.min(1, p * 2) * (1 - clamp01((age - 1.1) / 0.5))).toFixed(3);

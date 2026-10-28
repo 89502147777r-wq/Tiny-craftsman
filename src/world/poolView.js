@@ -255,6 +255,8 @@ export class PoolView {
     this._part(e, 'ghost', r.id == null ? geo : null, () => (r.id == null ? ghost(r) : null));
     // the walls' formwork: walers and tie rods (until the boards are off)
     this._part(e, 'form', wb && !wb.stripped ? geo + ':' + wb.id : null, () => (wb && !wb.stripped ? formwork(r) : null));
+    // (the walers and the tie rods go on once the boards are up)
+    if (e.sub.form) e.sub.form.visible = !(app?.wallView?.reveal?.id === wb?.id && app.wallView.reveal.u < 0.85);
     // the waterstop on the slab (with the walls' cage), seen until the walls are cast
     const cage2 = r.cage2 != null && O.get(r.cage2);
     this._part(e, 'cord', cage2 ? geo : null, () => (cage2 ? cord(r) : null));
@@ -667,31 +669,40 @@ export function buildDeck(r, sides = 4, base = 1) {
   };
   // the base under the boards: concrete pads on the ground every 600, joists 50 × 100 across them every 400
   if (D.base === 'joists') {
-    const pads = [], joists = [], jt = top - 25, jb = jt - 100;
-    ring.forEach(([s0, t0, s1, t1], k) => {
-      if (k >= Math.ceil(base * 4 - 1e-6)) return;
-      for (let s = s0 + 200; s <= s1 - 100; s += 400) {
-        box(joists, s - 25, t0 + 20, s + 25, t1 - 20, jb, jt);
-        for (let t = t0 + 200; t <= t1 - 100; t += 600) box(pads, s - 100, t - 100, s + 100, t + 100, gy - 50, jb);
-      }
+    const pads = [], joists = [], jt = top - 25, jb = jt - 100, list = [];
+    ring.forEach(([s0, t0, s1, t1]) => { for (let s = s0 + 200; s <= s1 - 100; s += 400) list.push([s, t0, t1]); });
+    // (base < 1: the job going on — joist after joist on its pads, the last one coming down)
+    const nJ = list.length * Math.min(1, base), full = Math.floor(nJ);
+    list.forEach(([s, t0, t1], k) => {
+      if (k > full || (k === full && nJ - full < 1e-3)) return;
+      const drop = k === full ? (1 - (nJ - full)) * 120 : 0;
+      box(joists, s - 25, t0 + 20, s + 25, t1 - 20, jb + drop, jt + drop);
+      for (let t = t0 + 200; t <= t1 - 100; t += 600) box(pads, s - 100, t - 100, s + 100, t + 100, gy - 50, jb);
     });
     if (pads.length) { const m = new THREE.Mesh(mergeGeometries(pads), new THREE.MeshStandardMaterial({ color: 0x9a9890, roughness: 0.9 })); m.castShadow = m.receiveShadow = true; g.add(m); }
     if (joists.length) { const m = new THREE.Mesh(mergeGeometries(joists), new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.8 })); m.castShadow = m.receiveShadow = true; g.add(m); }
   }
   // the covering
-  const cov = [], [TL, TW] = D.tile, joint = D.base === 'joists' ? 6 : 3, th = D.base === 'joists' ? 25 : 20, photo = 1600;
-  ring.forEach(([s0, t0, s1, t1], k) => {
-    if (k >= sides) return;
-    let row = 0;
-    for (let t = t0; t < t1 - 20; t += TW + joint, row++) {
+  const cov = [], [TL, TW] = D.tile, joint = D.base === 'joists' ? 6 : 3, th = D.base === 'joists' ? 25 : 20, photo = 1600, pieces = [];
+  ring.forEach(([s0, t0, s1, t1]) => {
+    // (laid from the pool outwards, row by row: the near rows first)
+    const rows = []; for (let t = t0; t < t1 - 20; t += TW + joint) rows.push(t);
+    const near = Math.abs(t0) < Math.abs(t1) || t0 >= 0 ? rows : rows.reverse();
+    near.forEach((t, row) => {
       const tb = Math.min(t1, t + TW), off = D.base === 'joists' ? (row * 1300) % TL : (row % 2) * TL / 2;
       for (let s = s0 - off; s < s1; s += TL + joint) {
         const a = Math.max(s0, s), b = Math.min(s1, s + TL);
         if (b - a < 30) continue;
-        const ou = rnd() * photo, ov = rnd() * photo;
-        box(cov, a, t, b, tb, top - th, top, (ss, tt, y, up) => (up ? [(ss + ou) / photo, (tt + ov) / photo] : [(ss + tt + ou) / photo, (y + ov) / photo]));
+        pieces.push([a, t, b, tb, rnd() * photo, rnd() * photo]);
       }
-    }
+    });
+  });
+  // (sides < 4: the job going on — board after board (tile after tile), the last one coming down onto its place)
+  const nP = pieces.length * Math.min(1, sides / 4), fullP = Math.floor(nP);
+  pieces.forEach(([a, t, b, tb, ou, ov], k) => {
+    if (k > fullP || (k === fullP && nP - fullP < 1e-3)) return;
+    const drop = k === fullP ? (1 - (nP - fullP)) * 90 : 0;
+    box(cov, a, t, b, tb, top - th + drop, top + drop, (ss, tt, y, up) => (up ? [(ss + ou) / photo, (tt + ov) / photo] : [(ss + tt + ou) / photo, (y + ov) / photo]));
   });
   if (cov.length) {
     const map = tex(D.tex, 'col.jpg', true), nor = D.tex.startsWith('deck/') ? tex(D.tex, 'nor.jpg', false) : null;

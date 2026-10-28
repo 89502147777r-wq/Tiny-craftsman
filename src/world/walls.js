@@ -630,7 +630,12 @@ export class WallView {
       const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
       // (a lintel's end against a block: no board across it, the side boards stop at it)
       const cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0;
-      for (const [s0, t0, s1, t1, ns, nt] of boardsOf(b)) {
+      // (formwork going up — this.reveal = { id, u }: board after board, face after face)
+      const faces = boardsOf(b), rv = this.reveal?.id === b.id ? this.reveal.u : 1;
+      const lim = rv >= 1 ? Infinity : Math.floor(rv * faces.length * Math.ceil((over + b.H) / (150.4 * S)));
+      let shown = 0;
+      for (const [s0, t0, s1, t1, ns, nt] of faces) {
+        if (shown >= lim) break;
         if (nw >= this.max.wood - 40 || nbb >= this.max.beltBoards - 4) break;
         if ((ns < 0 && cl[0]) || (ns > 0 && cl[1])) continue;
         const along = ns === 0, L = Math.hypot(s1 - s0, t1 - t0) + (along ? (2 - c0 - c1) : 2) * th;
@@ -639,6 +644,7 @@ export class WallView {
         // boards 150 mm tall from the bottom up, the top one ripped to what is left
         const bh = 150 * S, aB = this.beltBoards.geometry.attributes.aBoard;
         for (let y0 = b.top - over; y0 < b.top + b.H - 1e-5; y0 += bh + 0.4 * S) {
+          if (shown++ >= lim) break;
           const hh = Math.min(bh, b.top + b.H - y0);
           this.beltBoards.setMatrixAt(nbb, m.compose(P.set(x, y0 + hh / 2, z), Q, Sv.set(L, hh, th)));
           aB.setXYZ(nbb, rnd(), Math.floor(rnd() * 8) / 8, (L * MODEL_SCALE) / 1.87);

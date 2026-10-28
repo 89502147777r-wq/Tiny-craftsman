@@ -63,29 +63,39 @@ export class RebarView {
       if (r.type === 'bar') rod(...r.a, ...r.b, r.d, r.id);
       else if (r.type === 'mesh') { for (const b of rodsOf(r)) rod(...b, r.id); }
       else if (r.type === 'cage') {
-        for (const b of r.bars) rod(b[0], b[1], b[2], b[3], b[4], b[5], b[6], r.id);
+        // (a cage going in: its chairs first, then bar after bar, the ties last — this.reveal = { id, u })
+        const rv = this.reveal?.id === r.id ? this.reveal.u : 1, part = (a, b) => Math.max(0, Math.min(1, (rv - a) / (b - a)));
+        const nB = Math.ceil(r.bars.length * part(0.12, 0.8)), nC = Math.ceil(r.chairs.length * part(0, 0.15)), nT = Math.ceil((r.ties?.length || 0) * part(0.72, 1));
+        const nF = Math.ceil(r.frogs.length * part(0.35, 0.55)), nS = Math.ceil((r.stars?.length || 0) * part(0.3, 0.8));
+        let kb = 0;
+        for (const b of r.bars) { if (kb++ >= nB) break; rod(b[0], b[1], b[2], b[3], b[4], b[5], b[6], r.id); }
+        let kc = 0;
         for (const c of r.chairs) {
+          if (kc++ >= nC) break;
           if (nc >= this.max.chairs) break;
           p.set(c[0], c[1], c[2]); s.set(CHAIR_R, c[3], CHAIR_R); // fixed Ø50 mm base, height to the bars
           this.chairs.setMatrixAt(nc, m.compose(p, q.identity(), s));
           o.chairs[nc++] = r.id;
         }
+        let kf = 0;
         for (const f of r.frogs) {
-          if (nf >= this.max.frogs) break;
+          if (nf >= this.max.frogs || kf++ >= nF) break;
           p.set(f[0], f[1], f[2]); q.setFromEuler(e.set(0, f[3], 0)); s.set(f[4], f[4], f[4]);
           this.frogs.setMatrixAt(nf, m.compose(p, q, s));
           o.frogs[nf++] = r.id;
         }
+        let ks = 0;
         for (const st of r.stars || []) {
           // [x, y, z, yaw of the bar, radius]: the wheel stands across the bar
-          if (ns >= this.max.stars) break;
+          if (ns >= this.max.stars || ks++ >= nS) break;
           p.set(st[0], st[1], st[2]); q.setFromEuler(e.set(0, st[3] + Math.PI / 2, 0)); s.set(st[4], st[4], st[4]);
           this.stars.setMatrixAt(ns, m.compose(p, q, s));
           o.stars[ns++] = r.id;
         }
         if (r.tied) {
+          let kt = 0;
           for (const t of r.ties) {
-            if (nt >= this.max.ties) break;
+            if (nt >= this.max.ties || kt++ >= nT) break;
             p.set(t[0], t[1], t[2]); q.setFromEuler(e.set(Math.PI / 2, 0, t[4] || 0.785)); s.setScalar(t[3] || MM(7));
             this.ties.setMatrixAt(nt, m.compose(p, q, s));
             o.ties[nt++] = r.id;
