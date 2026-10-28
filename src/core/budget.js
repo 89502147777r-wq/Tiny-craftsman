@@ -266,6 +266,9 @@ export class Budget {
       if (d1.conc && !d0.conc) add(P.concrete * v, `Бетон ${v.toFixed(2)} м³`);
       if (d1.tile && !d0.tile) add(58 * A, `Керамогранит для крыльца · ${A.toFixed(1)} м²`);
       if (d1.tile && !d0.tile && a.n > 3) add(260 * 2 * (a.D + a.n * a.run) / 1000, 'Поручни из нержавейки');
+    } else if (type === 'flight' && isNew) {
+      if (a.kind === 'led') { let m = 0; for (let i = 1; i < (a.pts || []).length; i++) m += Math.hypot(a.pts[i][0] - a.pts[i - 1][0], a.pts[i][1] - a.pts[i - 1][1], a.pts[i][2] - a.pts[i - 1][2]) * M1; add(18 * m + 40, `Светодиодная лента · ${m.toFixed(1)} м с профилем и блоком питания`); }
+      else add(a.kind === 'steps' ? 40 * 8 : ({ sconce: 85, cube: 65, downlight: 35, uplight: 95 }[a.kind] || 60), 'Светильник');
     } else if (type === 'canopy' && isNew) add(320 * a.W / 1000 * a.P / 1000 + 160, 'Козырёк: стекло-триплекс, кронштейны, анкеры');
     else if (type === 'plant' && isNew) {
       const K = PLANTS[a.kind], n = spotsOf(a).length;
