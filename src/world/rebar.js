@@ -64,7 +64,7 @@ export class RebarView {
       else if (r.type === 'mesh') { for (const b of rodsOf(r)) rod(...b, r.id); }
       else if (r.type === 'cage') {
         // (a cage going in: its chairs first, then bar after bar, the ties last — this.reveal = { id, u })
-        const rv = this.reveal?.id === r.id ? this.reveal.u : 1, part = (a, b) => Math.max(0, Math.min(1, (rv - a) / (b - a)));
+        const rv = this.reveal && r.id != null && this.reveal.id === r.id ? this.reveal.u : 1, part = (a, b) => Math.max(0, Math.min(1, (rv - a) / (b - a)));
         const nB = Math.ceil(r.bars.length * part(0.12, 0.8)), nC = Math.ceil(r.chairs.length * part(0, 0.15)), nT = Math.ceil((r.ties?.length || 0) * part(0.72, 1));
         const nF = Math.ceil(r.frogs.length * part(0.35, 0.55)), nS = Math.ceil((r.stars?.length || 0) * part(0.3, 0.8));
         let kb = 0;

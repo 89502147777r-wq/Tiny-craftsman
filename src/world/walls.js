@@ -633,7 +633,7 @@ export class WallView {
       // (a lintel's end against a block: no board across it, the side boards stop at it)
       const cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0;
       // (formwork going up — this.reveal = { id, u }: board after board, face after face)
-      const faces = boardsOf(b), rv = this.reveal?.id === b.id ? this.reveal.u : 1;
+      const faces = boardsOf(b), rv = this.reveal && b.id != null && this.reveal.id === b.id ? this.reveal.u : 1;
       const lim = rv >= 1 ? Infinity : Math.floor(rv * faces.length * Math.ceil((over + b.H) / (150.4 * S)));
       let shown = 0;
       for (const [s0, t0, s1, t1, ns, nt] of faces) {
