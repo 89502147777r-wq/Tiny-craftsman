@@ -4,6 +4,7 @@ import { pitBox, DECKS, deckRing } from '../world/pool.js';
 import { lengthOf, PAVERS } from '../world/garden.js';
 import { areaOf } from '../world/lawn.js';
 import { postsOf, fenceLength, FENCE } from '../world/fence.js';
+import { PLANTS, spotsOf } from '../world/plants.js';
 
 // The budget (a mode of play): the money to build the house with, in US dollars.
 //   – the masonry units come on pallets bought beforehand (gas block, brick, cinder block): a
@@ -253,6 +254,9 @@ export class Budget {
         if (a.kind === 'mesh') add(P.fence.panel * (np - 1), `3D-панели · ${np - 1} шт`);
         else { const m = fenceLength(a) * M1 * Math.floor((a.H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)); add(P.fence.slatM * m, `Доска ДПК 140×20 · ${Math.round(m)} м`); }
       }
+    } else if (type === 'plant' && isNew) {
+      const K = PLANTS[a.kind], n = spotsOf(a).length;
+      if (K) add((K.usd + 6) * n, `${K.name} · ${n} шт с корой для мульчи`);
     } else if (type === 'bitumen') {
       const sum = (r) => (r?.d || []).reduce((s, v, i) => s + (i % 4 === 3 ? v : 0), 0);
       add(P.bitumen * Math.max(0, sum(a) - sum(b)) * 0.006, 'Битум');

@@ -1218,6 +1218,7 @@ export class WallTool {
     if (id && app.objects.get(id)?.type === 'path') { this.land.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'lawn') { this.land.removeLawn(id); return; }
     if (id && app.objects.get(id)?.type === 'fence') { this.land.removeFence(id); return; }
+    if (id && app.objects.get(id)?.type === 'plant') { this.land.removePlant(id); return; }
     if (id && app.objects.get(id)?.type === 'column') { this.col.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'stock') { app.budget.remove(id); return; }
     if (id && isPoolBelt(app.objects.get(id))) { this.pool.belt(app.objects.get(id)); return; }
