@@ -67,7 +67,7 @@ export function roomsOf(app) {
     const aL = -Math.max(MM(w.w / 2 + 300), hL ? hL.distance : MM(2000)), aR = Math.max(MM(w.w / 2 + 300), hR ? hR.distance : MM(2000));
     const sh = { L: !hL, R: !hR, B: !back, C: !up, F: !down };
     // (a room already on this wall, level with it and overlapping: the window joins it)
-    const r0 = rooms.find((r) => Math.abs(Math.atan2(Math.sin(r.yaw - w.yaw), Math.cos(r.yaw - w.yaw))) < 0.05 && Math.abs(r.floor - floor) < MM(300) && Math.abs(new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.n)) < MM(200) && (() => { const a = new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.u); return a + aL < r.a1 + MM(400) && a + aR > r.a0 - MM(400); })());
+    const r0 = rooms.find((r) => Math.abs(Math.atan2(Math.sin(r.yaw - w.yaw), Math.cos(r.yaw - w.yaw))) < 0.05 && Math.abs(r.floor - floor) < MM(300) && Math.abs(new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.n)) < MM(200) && (() => { const a = new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.u); return a + aL < r.a1 - MM(100) && a + aR > r.a0 + MM(100); })());
     if (r0) {
       const a = new THREE.Vector3(w.x, 0, w.z).sub(r0.o).dot(r0.u);
       if (a + aL < r0.a0) { r0.a0 = a + aL; r0.sh.L = sh.L; }
