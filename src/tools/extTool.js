@@ -250,6 +250,15 @@ export class ExtWork {
       tile: `Коснитесь крыльца — облицовка «${PORCH_TILES[this.tile][0]}»`,
     }[this.layer];
   }
+  // «Готово»: the house lived in — the rooms behind its windows furnished, the lamps lit at dusk; again: gone
+  ready() {
+    const app = this.app, r = app.objects.all('interior')[0];
+    if (r) { app.journal.act('interior-off', {}, app.clock, () => app.objects.remove(r.id)); this.toast('Интерьер убрали — снова стройка'); return false; }
+    if (!app.objects.all('window').length) { this.toast('Сначала поставьте окна — интерьер видно через них'); return false; }
+    app.journal.act('interior', {}, app.clock, () => app.objects.add({ type: 'interior' }));
+    this.toast('Готово! В доме живут: мебель, шторы, вечером горит свет');
+    return true;
+  }
   remove(id) {
     const app = this.app, r = app.objects.get(id); if (!r) return;
     app.journal.act(r.type + '-remove', {}, app.clock, () => app.objects.remove(id));

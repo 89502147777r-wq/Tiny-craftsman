@@ -6,6 +6,7 @@ import { frameW } from './lawn.js';
 import { fenceString, fencePosts, fenceFill, fenceUniforms, auger, fenceGates } from './fence.js';
 import { PLANTS, plantBody, rootBall, mulchDisc, mulchStrip, spotsOf } from './plants.js';
 import { buildLight, lightLevel } from './facadeLights.js';
+import { buildInterior, interiorLight } from './interior.js';
 import { porchConcrete, porchForm, porchTiles, porchUniforms, canopyMesh, blocksOf as porchBlocks } from './porch.js';
 
 // The garden drawn (garden.js): the paths — the pegs and the string of the setting-out, the
@@ -110,6 +111,9 @@ export class GardenView {
     this.live = null;          // a path being set out (no id): { pts, W }
     this.anim = {};            // id → { kerb: n, pave: n, geo, joint (mm along), roll }
     this.dirty = true;
+    // («Готово»: the rooms behind the windows, made again a moment after the house changes)
+    this.interior = null; this._intT = 0.2;
+    objects.on(() => { this._intT = 0.4; });
     objects.on((id, rec) => { if (rec?.type === 'path' || rec?.type === 'lawn' || rec?.type === 'fence' || rec?.type === 'plant' || rec?.type === 'porch' || rec?.type === 'canopy' || rec?.type === 'flight' || this.parts.has('X' + id) || this.parts.has('P' + id) || this.parts.has('R' + id) || this.parts.has('C' + id) || this.parts.has(id) || this.parts.has('L' + id) || this.parts.has('F' + id)) this.dirty = true; });
     this.liveLawn = null;   // a lawn being drawn: { poly, g }
   }
@@ -121,6 +125,7 @@ export class GardenView {
   update(dt, app) {
     this._night = app.sky?.night ?? 0; this._dt = dt;
     if (this.dirty) this._build(app);
+    this._interiorFrame(app, dt);
     for (const e of this.parts.values()) {
       if (e.lawn) { this._lawnFrame(e); continue; }
       if (e.fence) { this._fenceFrame(e); continue; }
@@ -230,6 +235,13 @@ export class GardenView {
       this._part(e, 'body', JSON.stringify([r.kind, r.p, r.n, r.temp, r.pts, pr && [pr.o, pr.H, pr.W, pr.n]]), () => buildLight(r, app, pr));
     }
     for (const [k, e] of [...this.parts]) if (!seen.has(k)) { this.group.remove(e.g); dispose(e.g); this.parts.delete(k); }
+  }
+  // the house lived in: built when «Готово» is on (a while after the last change, the walls standing by
+  // then), lit at dusk
+  _interiorFrame(app, dt) {
+    const on = this.objects.all('interior').length > 0;
+    if (this._intT > 0) { this._intT -= dt || 0.016; if (this._intT <= 0 || !on) { this._intT = 0; if (this.interior) { this.group.remove(this.interior); dispose(this.interior); this.interior = null; } if (on) { app.wallView.group.updateMatrixWorld(true); this.interior = buildInterior(app); this.group.add(this.interior); } } }
+    if (this.interior) interiorLight(this.interior, Math.max(0, Math.min(1, ((this._night || 0) - 0.05) / 0.4)));
   }
   // a light: on at dusk (the lens, the light it throws); going in: the fixture growing to its place, a
   // strip shown along as far as it is stuck
