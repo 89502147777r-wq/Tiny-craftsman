@@ -256,7 +256,7 @@ export class PoolView {
     // the walls' formwork: walers and tie rods (until the boards are off)
     this._part(e, 'form', wb && !wb.stripped ? geo + ':' + wb.id : null, () => (wb && !wb.stripped ? formwork(r) : null));
     // (the walers and the tie rods go on once the boards are up)
-    if (e.sub.form) e.sub.form.visible = !(app?.wallView?.reveal?.id === wb?.id && app.wallView.reveal.u < 0.85);
+    if (e.sub.form) { const rv = app?.wallView?.reveal; e.sub.form.visible = !(rv && wb?.id != null && rv.id === wb.id && rv.u < 0.85); }
     // the waterstop on the slab (with the walls' cage), seen until the walls are cast
     const cage2 = r.cage2 != null && O.get(r.cage2);
     this._part(e, 'cord', cage2 ? geo : null, () => (cage2 ? cord(r) : null));

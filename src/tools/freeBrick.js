@@ -40,6 +40,21 @@ export function unitBoxes(app) {
   if (!_bx || _bx.v !== v || _bx.o !== app.objects) _bx = { v, o: app.objects, all: app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf) };
   return _bx.all;
 }
+// the units near a place (a grid of 1 m cells, each unit in every cell it reaches): what is near
+// a place is looked up, not searched for among all
+export function boxesNear(app, x, z, r) {
+  const all = unitBoxes(app), C = 0.1;
+  if (!_bx.grid) {
+    const g = _bx.grid = new Map();
+    for (const b of all) {
+      const R = Math.max(b.hl, b.hw) * 1.42;
+      for (let i = Math.floor((b.x - R) / C); i <= Math.floor((b.x + R) / C); i++) for (let j = Math.floor((b.z - R) / C); j <= Math.floor((b.z + R) / C); j++) { const k = i * 100003 + j; (g.get(k) || g.set(k, []).get(k)).push(b); }
+    }
+  }
+  const out = [], st = _bx.st = (_bx.st || 0) + 1;   // (each unit once: marked with this look-up's number)
+  for (let i = Math.floor((x - r) / C); i <= Math.floor((x + r) / C); i++) for (let j = Math.floor((z - r) / C); j <= Math.floor((z + r) / C); j++) { const L = _bx.grid.get(i * 100003 + j); if (L) for (const b of L) if (b._st !== st) { b._st = st; out.push(b); } }
+  return out;
+}
 export function boxOf(u) {
   const yaw = yawOf(u.q);
   return { u, x: u.p[0], z: u.p[2], yaw, ux: Math.cos(yaw), uz: -Math.sin(yaw), hl: u.s[0] / 2, hw: u.s[2] / 2, bot: u.p[1] - u.s[1] / 2, top: u.p[1] + u.s[1] / 2, kind: u.lintel ? 'lintel' : group(u) };
@@ -97,7 +112,7 @@ function inBelt(t, c) {
 export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   const t = surface(app), D = dims(kind, opts.half), { L, H, W, J, B, B0 } = D;
   const cand = (x, z, yaw, bot, bed, how) => ({ x, z, yaw, ux: Math.cos(yaw), uz: -Math.sin(yaw), hl: L / 2, hw: W / 2, bot, top: bot + H, bed, how });
-  const boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf);
+  const boxes = unitBoxes(app), around = (c, r = 0) => boxesNear(app, c.x, c.z, Math.max(c.hl, c.hw) * 1.42 + r);
   const cands = [];
   // near the finger: on the screen (the finger is often over the ground behind a unit),
   // else in the plot
@@ -152,11 +167,14 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   // the course already there nearby, and its bed is whatever is between it and the slab
   // (0,4 … 2,5 × the usual bed). The first unit sets the level: the highest point of the
   // slab under it + the usual bed.
-  const groundCourse = boxes.filter((b) => b.kind === D.grp && b.u.free && (() => { const g = groundUnder(t, b.x, b.z, b); return g > -Infinity && b.bot - g < Math.max(B0 * 2.6, BEDMAX + 1e-6) && !boxes.some((o) => o !== b && o.top <= b.bot + 1e-5 && o.top > g + 1e-4 && overlap2(o, b)); })());
+  // (the units of the first course: found once for each state of the plot and the ground)
+  const gk = D.grp + '|' + (app.terrain.version || 0);
+  if (!_bx.gc || _bx.gc.k !== gk) _bx.gc = { k: gk, list: boxes.filter((b) => b.kind === D.grp && b.u.free && (() => { const g = groundUnder(t, b.x, b.z, b); return g > -Infinity && b.bot - g < Math.max(B0 * 2.6, BEDMAX + 1e-6) && !around(b).some((o) => o !== b && o.top <= b.bot + 1e-5 && o.top > g + 1e-4 && overlap2(o, b)); })()) };
+  const groundCourse = _bx.gc.list;
   for (const c of cands) {
     if (c.how === 'top' || c.gone) continue;
     const g = groundUnder(t, c.x, c.z, c);
-    if (g === -Infinity || boxes.some((o) => o.top <= c.bot + 1e-5 && o.top > g + 1e-4 && overlap2(o, c))) continue;   // (not on the ground)
+    if (g === -Infinity || around(c).some((o) => o.top <= c.bot + 1e-5 && o.top > g + 1e-4 && overlap2(o, c))) continue;   // (not on the ground)
     if (c.how === 'ground' && !c.snap) {
       let lv = null, dl = 0.2;
       for (const b of groundCourse) { const d = Math.hypot(b.x - c.x, b.z - c.z); if (d < dl && Math.abs(b.bot - c.bot) < Math.max(0.35 * H, BEDMAX)) { dl = d; lv = b.bot; } }
@@ -175,7 +193,7 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   for (const c of cands) {
     if (c.how === 'beside') continue;
     let best = null;
-    for (const n of boxes) {
+    for (const n of around(c, L)) {
       // (auto-alignment: a neighbour a little higher or lower — an uneven slab, a course
       // laid a little off — still sets the line; within a third of a course)
       if ((n.kind !== D.grp && n.kind !== 'lintel') || Math.abs(n.bot - c.bot) > Math.max(0.35 * H, c.how === 'ground' ? BEDMAX : 0)) continue;
@@ -239,13 +257,13 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     if (c.late) d += finger ? 50 : 100;
     if (c.leaf && !inside(c, p.x, p.z)) d += finger ? 25 : 60;   // the next leaf: only where the finger really is
     if (c.snap) d -= c.snap === 2 ? (finger ? 45 : 60) : (finger ? 6 : 10);   // set true against a neighbour (into a corner flush wins)
-    const ok = !boxes.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b)) && !inBelt(t, c) && supported(t, boxes, c, c.snap === 2);
+    const nb = around(c), ok = !nb.some((b) => c.bot < b.top - 1e-5 && c.top > b.bot + 1e-5 && overlap2(c, b)) && !inBelt(t, c) && supported(t, nb, c, c.snap === 2);
     if (ok && d < bd) { bd = d; best = c; }
     if (!ok && d < bb) { bb = d; bestBad = c; }
   }
   const c = best || bestBad;
   if (!c) return null;
-  if (best && !c.snap) alignToBelow(t, boxes, c, D);
+  if (best && !c.snap) alignToBelow(t, around(c, 0.1), c, D);
   const q = new THREE.Quaternion().setFromAxisAngle(_Y, c.yaw);
   return { ok: !!best, how: c.how, kind: D.kind, half: !!opts.half, bedMm: Math.round((c.bed ?? B) / S), p: new THREE.Vector3(c.x, c.bot + H / 2, c.z), q, s: new THREE.Vector3(L, H, W), bedY: c.bot - (c.bed ?? B) / 2, bedT: c.bed ?? B };
 }

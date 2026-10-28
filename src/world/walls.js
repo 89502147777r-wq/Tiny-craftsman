@@ -616,7 +616,9 @@ export class WallView {
     }
     // free masonry: the units, the bed under each and a head joint only between neighbours
     for (const u of O.all('unit')) if (u.free) put(u, u.id);
-    for (const j of mortarOf(O.all('unit'))) {
+    // (the joints worked out once for each state of the plot — not for each move of a unit in the hand)
+    if (!this._mort || this._mort.v !== O.ver) this._mort = { v: O.ver, list: mortarOf(O.all('unit')) };
+    for (const j of this._mort.list) {
       if (nm >= this.max.mortar) break;
       P.set(j.x, j.y, j.z); Q.setFromAxisAngle(_Y, j.yaw); Sv.set(j.l, j.h, j.w);
       this.mortar.setMatrixAt(nm++, m.compose(P, Q, Sv));
@@ -631,7 +633,7 @@ export class WallView {
       // (a lintel's end against a block: no board across it, the side boards stop at it)
       const cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0;
       // (formwork going up — this.reveal = { id, u }: board after board, face after face)
-      const faces = boardsOf(b), rv = this.reveal?.id === b.id ? this.reveal.u : 1;
+      const faces = boardsOf(b), rv = this.reveal && b.id != null && this.reveal.id === b.id ? this.reveal.u : 1;
       const lim = rv >= 1 ? Infinity : Math.floor(rv * faces.length * Math.ceil((over + b.H) / (150.4 * S)));
       let shown = 0;
       for (const [s0, t0, s1, t1, ns, nt] of faces) {

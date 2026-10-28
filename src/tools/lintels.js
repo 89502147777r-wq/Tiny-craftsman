@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
 import { KINDS } from '../world/walls.js';
-import { boxOf, unitBoxes } from './freeBrick.js';
+import { boxOf, unitBoxes, boxesNear } from './freeBrick.js';
 import { rle } from './belt.js';
 
 // Openings in free masonry and what spans them:
@@ -43,7 +43,13 @@ export function findOpening(app, p, screen, finger) {
       if (gap < 300 || gap > MAX_GAP) continue;
       // nothing of that course in between
       const sg = Math.sign(along), e0 = a.hl, e1 = Math.abs(along) - b.hl;
-      if (NB.some((k) => k !== i && k !== j && Math.abs(boxes[k].top - a.top) < ty && (() => { const u = boxes[k], ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux; return Math.abs(sd - side / 2) < a.hw && s + u.hl > e0 + 0.0001 && s - u.hl < e1 - 0.0001; })())) continue;
+      // (any unit of that course: turned ones too — the corner of a cross wall is no opening)
+      const gx = a.x + a.ux * sg * (e0 + e1) / 2, gz = a.z + a.uz * sg * (e0 + e1) / 2;
+      if (boxesNear(app, gx, gz, (e1 - e0) / 2 + 0.01).some((u) => u !== a && u !== b && u.u.kind !== 'prop' && Math.abs(u.top - a.top) < ty && (() => {
+        const ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux;
+        const ha = Math.abs(u.hl * (u.ux * a.ux + u.uz * a.uz)) + Math.abs(u.hw * (-u.uz * a.ux + u.ux * a.uz)), hd = Math.abs(u.hl * (-u.uz * a.ux + u.ux * a.uz)) + Math.abs(u.hw * (u.ux * a.ux + u.uz * a.uz));
+        return Math.abs(sd - side / 2) < a.hw + hd && s + ha > e0 + 0.0001 && s - ha < e1 - 0.0001;
+      })())) continue;
       const ux = a.ux * sg, uz = a.uz * sg, top = Math.max(a.top, b.top);
       // the line: halfway between the two sides
       const ox = a.x - a.uz * side / 2, oz = a.z + a.ux * side / 2;
@@ -64,6 +70,8 @@ function fullWidth(op, boxes) {
   let lo = Infinity, hi = -Infinity;
   for (const b of boxes) {
     if (Math.abs(b.top - op.top) > op.ty || Math.abs(Math.sin(b.yaw - op.yaw) * Math.cos(b.yaw - op.yaw)) > 0.05) continue;
+    // (a turned unit is a header only in brickwork; by a block or cinder wall it is a cross wall)
+    if (Math.abs(Math.sin(b.yaw - op.yaw)) > 0.5 && (op.kind !== 'brick' || b.kind !== 'brick')) continue;
     const dx = b.x - op.o[0], dz = b.z - op.o[1], s = dx * op.ux + dz * op.uz, sd = -dx * op.uz + dz * op.ux;
     const ha = Math.abs(b.hl * (b.ux * op.ux + b.uz * op.uz)) + Math.abs(b.hw * (-b.uz * op.ux + b.ux * op.uz)), hd = Math.abs(b.hl * (-b.uz * op.ux + b.ux * op.uz)) + Math.abs(b.hw * (b.ux * op.ux + b.uz * op.uz));
     // (beside the opening, within 600 mm of its sides, across the line up to 700 mm)
@@ -80,8 +88,8 @@ const kindOf = (op) => KINDS[op.kind === 'block' || op.kind === 'ublock' ? 'bloc
 // the course beside the opening carries it for `len` (model) from the gap end, each side:
 // the top it rests on (the highest unit under its ends — hand-laid courses differ by a few
 // mm; the mortar under it makes up the rest), or null when the course is short of it
-function bears(app, op, len) {
-  const boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q && !u.lintel && u.kind !== 'prop').map(boxOf);
+function bears(app, op, len, side) {
+  const boxes = unitBoxes(app).filter((b) => b.kind !== 'lintel' && b.u.kind !== 'prop');
   const covered = (s0, s1) => {
     const iv = [];
     for (const b of boxes) {
@@ -95,21 +103,54 @@ function bears(app, op, len) {
     for (const [a, b, t] of iv) { if (a > e + 1e-5) break; if (b > s0 && a < s1) top = Math.max(top, t); e = Math.max(e, b); }
     return e >= s1 - 1e-5 ? top : null;
   };
+  if (side === 'L') return covered(op.c0 - len, op.c0);
+  if (side === 'R') return covered(op.c1, op.c1 + len);
   const t0 = covered(op.c0 - len, op.c0), t1 = covered(op.c1, op.c1 + len);
   return t0 != null && t1 != null ? Math.max(t0, t1) : null;
 }
 
-// a precast lintel over the opening under the finger
+function bearsAt(app, op, a0, a1) {
+  const lenL = op.c0 - a0, lenR = a1 - op.c1;
+  if (lenL <= 0 || lenR <= 0) return null;
+  const t0 = bears(app, op, lenL, 'L'), t1 = bears(app, op, lenR, 'R');
+  return t0 != null && t1 != null ? Math.max(t0, t1) : null;
+}
+// a precast lintel over the opening under the finger: the standard length that bears ≥ 250 mm each
+// side; when the course at its level is already laid with pockets for it, it goes into them — moved
+// along off the middle, or one size shorter (≥ 200 mm of bearing each side), as a mason fits it
 export function placeLintel(app, p, screen, finger) {
   const op = findOpening(app, p, screen, finger);
   if (!op) return null;
   const k = kindOf(op);
-  const len = LINTEL_LENGTHS.find((l) => l >= op.gap + 2 * BEAR);
-  const H = (op.kind === 'brick' ? 2 * k.H + k.bed : k.H) * S, bed = k.bed * S;
-  const mid = (op.c0 + op.c1) / 2;
-  const x = op.o[0] + op.ux * mid, z = op.o[1] + op.uz * mid;
+  const H = (op.kind === 'brick' ? 2 * k.H + k.bed : k.H) * S, bed = k.bed * S, MINB = 200;
+  let len = LINTEL_LENGTHS.find((l) => l >= op.gap + 2 * BEAR), mid = (op.c0 + op.c1) / 2;
+  const sup0 = len ? bears(app, op, ((len - op.gap) / 2) * S - 0.0001) : null;
+  const lvl = (sup0 ?? op.top) + bed;
+  // (the pocket: what already stands in the course at its level, either side of the opening)
+  const along = (b) => { const s = (b.x - op.o[0]) * op.ux + (b.z - op.o[1]) * op.uz, sd = -(b.x - op.o[0]) * op.uz + (b.z - op.o[1]) * op.ux, ha = Math.abs(b.hl * (b.ux * op.ux + b.uz * op.uz)) + Math.abs(b.hw * (-b.uz * op.ux + b.ux * op.uz)), hd = Math.abs(b.hl * (-b.uz * op.ux + b.ux * op.uz)) + Math.abs(b.hw * (b.ux * op.ux + b.uz * op.uz)); return { s, sd, ha, hd }; };
+  let pl = -Infinity, pr = Infinity, inGap = false;
+  for (const b of boxesNear(app, op.o[0] + op.ux * mid, op.o[1] + op.uz * mid, (op.c1 - op.c0) / 2 + 4000 * S)) {
+    if (b.kind === 'lintel' || b.u.kind === 'prop' || !(b.bot < lvl + H - 0.0005 && b.top > lvl + 0.0005)) continue;
+    const { s, sd, ha, hd } = along(b);
+    if (Math.abs(sd) >= op.width / 2 + hd - 0.0005) continue;   // (beside the wall, not in it: a cross wall's end butting into it counts)
+    if (s + ha <= op.c0 + 0.0005) pl = Math.max(pl, s + ha);
+    else if (s - ha >= op.c1 - 0.0005) pr = Math.min(pr, s - ha);
+    else inGap = true;
+  }
+  if (len && !inGap && (pr - pl) / S < len + 2) {
+    // the pocket shorter than the lintel: one that fits it (with its bearing), the longest such
+    const fit = [...LINTEL_LENGTHS].reverse().find((l) => l <= (pr - pl) / S + 2 && l >= op.gap + 2 * MINB);
+    if (fit) len = fit;
+  }
   const L = (len || 3000) * S;
-  const sup = len ? bears(app, op, ((len - op.gap) / 2) * S - 0.0001) : null, bear = sup != null;
+  if (len && !inGap && Number.isFinite(pl) && Number.isFinite(pr) && pr - pl >= L - 0.0002) {
+    // set into the pocket: as near the middle as it goes, ≥ 200 mm on each jamb
+    const lo = Math.max(pl + L / 2, op.c1 + MINB * S - L / 2), hi = Math.min(pr - L / 2, op.c0 - MINB * S + L / 2);
+    if (lo <= hi + 1e-6) mid = Math.min(hi, Math.max(lo, mid));
+  }
+  const a0 = mid - L / 2, a1 = mid + L / 2;
+  const sup = len ? bearsAt(app, op, a0 + 0.0001, a1 - 0.0001) : null, bear = sup != null;
+  const x = op.o[0] + op.ux * mid, z = op.o[1] + op.uz * mid;
   const bot = (bear ? sup : op.top) + bed, q = new THREE.Quaternion().setFromAxisAngle(_Y, op.yaw);
   // nothing in its way above the course
   const me = { x, z, yaw: op.yaw, ux: op.ux, uz: op.uz, hl: L / 2, hw: op.width / 2, bot, top: bot + H };
