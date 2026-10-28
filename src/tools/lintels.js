@@ -12,7 +12,7 @@ import { rle } from './belt.js';
 //   U-blocks are laid like blocks (freeBrick.js), on the prop and the masonry; the cage —
 //            four Ø12 bars — goes into their channel; the hose fills the channel with
 //            concrete (HoseTool), which sets; then the prop may come out.
-const S = 1 / 1000 / MODEL_SCALE, _Y = new THREE.Vector3(0, 1, 0);
+const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S, _Y = new THREE.Vector3(0, 1, 0);
 export const LINTEL_LENGTHS = [1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3600, 3900];   // (3ПБ 36, 3ПБ 39 for the wide ones)
 export const MAX_GAP = 6000;   // (over 3,4 m no precast lintel — a cast one in its formwork, or a prop and U-blocks; 6 m: the widest garage door)
 const BEAR = 250;
@@ -50,6 +50,18 @@ export function findOpening(app, p, screen, finger) {
         const ha = Math.abs(u.hl * (u.ux * a.ux + u.uz * a.uz)) + Math.abs(u.hw * (-u.uz * a.ux + u.ux * a.uz)), hd = Math.abs(u.hl * (-u.uz * a.ux + u.ux * a.uz)) + Math.abs(u.hw * (u.ux * a.ux + u.uz * a.uz));
         return Math.abs(sd - side / 2) < a.hw + hd && s + ha > e0 + 0.0001 && s - ha < e1 - 0.0001;
       })())) continue;
+      // (masonry under both ends of the gap, in the course below, an opening left between them: a
+      // pocket for a lintel over that narrower opening — not an opening itself)
+      { const bed0 = Math.min(a.bot, b.bot); let L0 = false, L1 = false;
+        for (const u of boxesNear(app, gx, gz, (e1 - e0) / 2 + 0.01)) {
+          if (u === a || u === b || u.kind === 'lintel' || u.u.kind === 'prop' || Math.abs(u.top - bed0) > ty) continue;
+          const ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux;
+          const ha = Math.abs(u.hl * (u.ux * a.ux + u.uz * a.uz)) + Math.abs(u.hw * (-u.uz * a.ux + u.ux * a.uz)), hd = Math.abs(u.hl * (-u.uz * a.ux + u.ux * a.uz)) + Math.abs(u.hw * (u.ux * a.ux + u.uz * a.uz));
+          if (Math.abs(sd - side / 2) >= a.hw + hd) continue;
+          if (s - ha < e0 + MM(20) && s + ha > e0 + MM(150)) L0 = true;
+          if (s + ha > e1 - MM(20) && s - ha < e1 - MM(150)) L1 = true;
+        }
+        if (L0 && L1) continue; }
       const ux = a.ux * sg, uz = a.uz * sg, top = Math.max(a.top, b.top);
       // the line: halfway between the two sides
       const ox = a.x - a.uz * side / 2, oz = a.z + a.ux * side / 2;
