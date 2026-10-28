@@ -90,7 +90,7 @@ export class Director {
   // looking at the ats, both on smooth curves, in dur seconds (o.ease: start and stop gently)
   fly(keys, dur, o = {}) {
     const eyes = new THREE.CatmullRomCurve3(keys.map((k) => k[0].clone())), ats = new THREE.CatmullRomCurve3(keys.map((k) => k[1].clone()));
-    this._shot({ eyes, ats, t0: this.t, dur, k: 1, drift: 0, push: 0, ease: o.ease ?? 'inout' });
+    this._shot({ eyes, ats, t0: this.t, dur, k: 1, drift: 0, push: 0, ease: o.ease ?? 'start' });
     if (o.fx) this.trans(o.fx);
   }
   // follow f() (a point in the plot) from a view's yaw / pitch / dist; lag: how slowly it keeps up
@@ -110,8 +110,16 @@ export class Director {
   _shot(s) { s.n = (this.shotN = (this.shotN || 0) + 1); this.shot = s; }
   _eval(s) {
     if (s.eyes) {
-      const u0 = clamp01((this.t - s.t0) / s.dur), u = s.ease === 'inout' ? ease(u0) : s.ease === 'out' ? easeOut(u0) : u0;
-      const v = look(s.eyes.getPointAt(u), s.ats.getPointAt(u));
+      // (a flight starts gently but never stops: at its end it goes on along its way, slowing over
+      // a second or so — a camera that halts before a cut reads as the picture hanging)
+      const age = this.t - s.t0, u0 = clamp01(age / s.dur), u = s.ease === 'linear' ? u0 : u0 * u0 * (2 - u0);
+      const eye = s.eyes.getPointAt(u), at = s.ats.getPointAt(u);
+      if (age > s.dur) {
+        const tau = 1.1, k = tau * (1 - Math.exp(-(age - s.dur) / tau)) / s.dur;
+        eye.addScaledVector(s.eyes.getTangentAt(1), s.eyes.getLength() * k);
+        at.addScaledVector(s.ats.getTangentAt(1), s.ats.getLength() * k);
+      }
+      const v = look(eye, at);
       v.dist *= s.k;
       return v;
     }

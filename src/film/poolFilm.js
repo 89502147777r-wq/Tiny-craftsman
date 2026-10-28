@@ -72,8 +72,12 @@ export function* poolFilm(d, app) {
   d.shake(0.008, 0.4);
   yield d.sec(1.7);
   d.fly([[gy(8800, -1800, 1400), gy(5200, W2, pitY + 200)], [gy(8600, 4800, 1500), gy(3200, W2, pitY + 200)]], 2.2, { fx: 'whip', ease: 'linear' });
-  d.pin('+ 100 mm lean concrete', fl(POOL.L * 0.7, POOL.W * 0.3, -280), 1.4, -1);
-  yield d.held(1.3);
+  // (the lean concrete: slower, on its own shot — the grey front going over the stone)
+  yield d.until(() => app.concreteGear.show === 'hose' || !app.busy());
+  d.speed = 1.3;
+  d.fly([[gy(-1600, -1500, 1300), gy(1800, W2, pitY + 150)], [gy(1500, -1700, 1200), gy(5200, W2, pitY + 150)]], 2.4, { fx: 'flash', ease: 'linear' });
+  d.title('LEAN CONCRETE', '100 mm over the stone — a clean, level base', 3);
+  yield d.held(1.6);
 
   // 4 · the floor's bars: the flight — low over the mesh, the ties going by under the lens
   // (the edge boards of the slab going on, board by board, seen wide)
@@ -89,7 +93,7 @@ export function* poolFilm(d, app) {
     [fl(-500, W2 - 500, ty + 260), fl(900, W2, ty)],
     [fl(2200, W2 - 200, ty + 160), fl(3800, W2 + 100, ty - 30)],
     [fl(5200, W2 + 300, ty + 220), fl(6800, W2 + 200, ty - 40)],
-  ], 3.0, { fx: 'flash', ease: 'out' });
+  ], 3.0, { fx: 'flash' });
   yield d.held(3.0);
   d.speed = 1;
 

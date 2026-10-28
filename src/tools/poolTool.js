@@ -294,7 +294,7 @@ export class PoolWork {
     { const lean = MM(POOL.lean), ix0 = Math.max(0, Math.floor(t.toCellX(box[0]))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(box[2]))), iz0 = Math.max(0, Math.floor(t.toCellZ(box[1]))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(box[3])));
       const list = []; cells((i, x, z) => { const [ss, tt] = PF(r, x, z); list.push([i, ss, tt]); });
       steps.push([0, () => app.concreteGear.set('hose', new THREE.Vector3(...(() => { const [x, z] = PW(r, s0, (t0 + t1) / 2); return [x, y0 + MM(POOL.gravel), z]; })()), 0, true)]);
-      steps.push([1.6, (u) => {
+      steps.push([2.4, (u) => {
         const front = s0 - 600 + (s1 - s0 + 1200) * u;
         for (const [i, ss, tt] of list) {
           // (thickest behind the front, a tongue running out ahead of it; never more than 100)
