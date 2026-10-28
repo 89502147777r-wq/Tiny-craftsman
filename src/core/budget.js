@@ -3,8 +3,9 @@ import { MODEL_SCALE, M_SAND, M_G5, M_G20 } from '../config.js';
 import { pitBox, DECKS, deckRing } from '../world/pool.js';
 import { lengthOf, PAVERS } from '../world/garden.js';
 import { areaOf } from '../world/lawn.js';
-import { postsOf, fenceLength, FENCE } from '../world/fence.js';
+import { postsOf, fenceLength, FENCE, GATES, kindOf } from '../world/fence.js';
 import { PLANTS, spotsOf } from '../world/plants.js';
+import { blocksOf as porchBlocks } from '../world/porch.js';
 
 // The budget (a mode of play): the money to build the house with, in US dollars.
 //   – the masonry units come on pallets bought beforehand (gas block, brick, cinder block): a
@@ -251,10 +252,22 @@ export class Budget {
       const d0 = b?.done || {}, d1 = a.done || {}, np = postsOf(a).length;
       if (d1.posts && !d0.posts) add(P.fence.post * np, `Столбы 60×60 с бетоном · ${np} шт`);
       if (d1.fill && !d0.fill) {
-        if (a.kind === 'mesh') add(P.fence.panel * (np - 1), `3D-панели · ${np - 1} шт`);
-        else { const m = fenceLength(a) * M1 * Math.floor((a.H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)); add(P.fence.slatM * m, `Доска ДПК 140×20 · ${Math.round(m)} м`); }
+        const k = kindOf(a), Lm = fenceLength(a) * M1, A = Lm * a.H / 1000;
+        if (k === 'mesh') add(P.fence.panel * Math.ceil(Lm / 2.5), `3D-панели · ${Math.ceil(Lm / 2.5)} шт`);
+        else if (k === 'slat') { const m = Lm * Math.floor((a.H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)); add(P.fence.slatM * m, `Доска ДПК 140×20 · ${Math.round(m)} м`); }
+        else add({ picket: 28, louvre: 46, chain: 6 }[k] * A, `${{ picket: 'Евроштакетник', louvre: 'Жалюзи', chain: 'Сетка-рабица' }[k]} · ${A.toFixed(1)} м²`);
       }
-    } else if (type === 'plant' && isNew) {
+      // the gates: priced when they are put on the fence
+      const nb = (b?.gates || []).length, na = (a.gates || []).length;
+      for (let i = nb; i < na; i++) { const T = GATES[a.gates[i].type]; if (T) add({ swing: 1400, swingArch: 1650, slide: 2600, wicket: 450, wicketArch: 540, wicketIntercom: 980 }[a.gates[i].type] || 800, T.name); }
+    } else if (type === 'porch' && a) {
+      const d0 = b?.done || {}, d1 = a.done || {}, B = porchBlocks(a), v = B.reduce((s, [a0, a1, x0, x1, top]) => s + (a1 - a0) * (x1 - x0) * (top + 150) / 1e9, 0), A = B.reduce((s, [a0, a1, x0, x1, top], k) => s + (a1 - a0) * ((x1 - x0) + (top - (k < B.length - 1 ? B[k + 1][4] : 0))) / 1e6, 0);
+      if (d1.form && !d0.form) add(P.board * A * 0.8, 'Доски опалубки крыльца');
+      if (d1.conc && !d0.conc) add(P.concrete * v, `Бетон ${v.toFixed(2)} м³`);
+      if (d1.tile && !d0.tile) add(58 * A, `Керамогранит для крыльца · ${A.toFixed(1)} м²`);
+      if (d1.tile && !d0.tile && a.n > 3) add(260 * 2 * (a.D + a.n * a.run) / 1000, 'Поручни из нержавейки');
+    } else if (type === 'canopy' && isNew) add(320 * a.W / 1000 * a.P / 1000 + 160, 'Козырёк: стекло-триплекс, кронштейны, анкеры');
+    else if (type === 'plant' && isNew) {
       const K = PLANTS[a.kind], n = spotsOf(a).length;
       if (K) add((K.usd + 6) * n, `${K.name} · ${n} шт с корой для мульчи`);
     } else if (type === 'bitumen') {

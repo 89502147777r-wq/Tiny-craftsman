@@ -5,7 +5,7 @@ import {
   PATH, PATH_LAYERS, PATH_WIDTHS, PAVERS, PAVE_COLS, TOPS, lineOf, lineWhy, legsOf, legW, lengthOf, half, paveQuads, digQuads, kerbOuter, inQuads, boxOf, chainOf, kerbsOf, paversOf,
 } from '../world/garden.js';
 import { pointAt } from '../world/gardenView.js';
-import { FENCE, FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, fenceLine, postsOf, fenceLength } from '../world/fence.js';
+import { FENCE, FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES, fenceLine, postsOf, fenceLength, fillCount, sOf, gateFit, kindOf } from '../world/fence.js';
 import { PLANTS, hedgePlants } from '../world/plants.js';
 import { LAWN, LAWN_LAYERS, LAWN_HOW, polyOf, areaOf, inside as inPolyL, mainDir, cellsOf as lawnCells, frameW } from '../world/lawn.js';
 
@@ -66,7 +66,8 @@ export class LandWork {
   get fenceLayer() { return FNAME[this.app.settings.fenceLayer] ? this.app.settings.fenceLayer : 'line'; }
   get fenceKind() { return FENCE_KINDS[this.app.settings.fenceKind] ? this.app.settings.fenceKind : 'slat'; }
   get fenceH() { return FENCE_HEIGHTS.includes(this.app.settings.fenceH) ? this.app.settings.fenceH : 1800; }
-  get fenceCol() { const c = this.app.settings.fenceCol; return FENCE_COLS[c] && (this.fenceKind === 'mesh') === !FENCE_COLS[c][1] ? c : this.fenceKind === 'mesh' ? 'anth' : 'graphite'; }
+  get fenceCol() { const c = this.app.settings.fenceCol, K = FENCE_KINDS[this.fenceKind]; return K.cols.includes(c) ? c : K.cols[0]; }
+  get gateType() { return GATES[this.app.settings.gateType] ? this.app.settings.gateType : 'swing'; }
   get fence() { const all = this.app.objects.all('fence'); return all.find((r) => r.id === this.fsel) || all.at(-1) || null; }
   get lawnLayer() { return LNAME[this.app.settings.lawnLayer] ? this.app.settings.lawnLayer : 'area'; }
   get how() { return LAWN_HOW[this.app.settings.lawnHow] ? this.app.settings.lawnHow : 'turf'; }
@@ -588,9 +589,10 @@ export class LandWork {
     const r = this._fencePick(p);
     if (!r) { this.toast('Сначала «1 · Разметка»: проведите пальцем линию забора'); return true; }
     if (this.app.physJob) return true;
+    if (L === 'gate') { this._gate(r, p); return true; }
     const i = FORDER.indexOf(L), d = r.done || {};
     if (d[L]) { const [nk, nw] = this.fenceNext(r); this.toast(nk ? `${FNAME[L]} — уже сделано. Дальше «${FORDER.indexOf(nk) + 1} · ${nw}»` : 'Забор готов'); return true; }
-    for (let k = 1; k < i; k++) if (!d[FORDER[k]]) { this.toast(`Сначала «${k + 1} · ${FNAME[FORDER[k]]}»`); return true; }
+    for (let k = 1; k < Math.min(i, 4); k++) if (!d[FORDER[k]]) { this.toast(`Сначала «${k + 1} · ${FNAME[FORDER[k]]}»`); return true; }
     ({ holes: () => this._fHoles(r), posts: () => this._fPosts(r), fill: () => this._fFill(r) })[L]?.();
     return true;
   }
@@ -663,23 +665,58 @@ export class LandWork {
     const app = this.app, kind = this.fenceKind, col = this.fenceCol;
     app.journal.begin('fence-fill', {}, app.clock);
     if (r.kind !== kind || r.col !== col) app.objects.update(r.id, { kind, col });
-    const rr = app.objects.get(r.id), B = postsOf(rr).length - 1, rows = Math.floor((rr.H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)), n = kind === 'mesh' ? B : B * rows;
-    const steps = [[Math.max(2.5, Math.min(14, n * (kind === 'mesh' ? 0.45 : 0.06))), (u, job) => {
+    const rr = app.objects.get(r.id), n = fillCount(rr), ng = (rr.gates || []).length, Kn = FENCE_KINDS[kind].name;
+    const steps = [[Math.max(2.5, Math.min(14, n * (kind === 'mesh' || kind === 'chain' ? 0.45 : 0.06))), (u, job) => {
       const k = u * (n + 1);
       this.view.setAnim('F' + r.id, { fill: u >= 1 ? 1e9 : k });
       if (Math.floor(k) !== job._k) { job._k = Math.floor(k); app.sfx?.stab?.(); }
     }]];
+    // (the gates' leaves hung after it, each lowered onto its hinges and tried once)
+    (rr.gates || []).forEach((q, gi) => { if (!q.hung) steps.push(...this._hang(r, gi)); });
     new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); this.view.setAnim('F' + r.id, null); }, commit: () => {
-      app.objects.update(r.id, { done: { ...(app.objects.get(r.id).done || {}), fill: 1 } });
+      const cur = app.objects.get(r.id);
+      app.objects.update(r.id, { done: { ...(cur.done || {}), fill: 1 }, gates: (cur.gates || []).map((q) => ({ ...q, hung: 1 })) });
       app.journal.commit(app.clock);
       this.view.setAnim('F' + r.id, null);
-      this.toast(kind === 'mesh' ? `3D-панели: ${B} шт на кронштейнах — забор готов` : `Доски 140 × 20: ${n} шт, зазор 10 мм, на саморезах к столбам — забор готов`);
+      this.toast(`${Kn}: ${n} элементов${ng ? `, ворот и калиток: ${ng}` : ''} — забор готов`);
+    } });
+  }
+  // a gate's leaves going on: lowered onto the hinges (or the rollers), then opened and closed once
+  _hang(r, gi) {
+    const app = this.app, key = 'F' + r.id;
+    return [[1.0, (u, job) => { this.view.setAnim(key, { gate: gi, gu: u, gopen: 0 }); if (u > 0.9 && !job['_g' + gi]) { job['_g' + gi] = 1; app.sfx?.stab?.(); } }],
+      [1.6, (u) => this.view.setAnim(key, { gate: gi, gu: 1, gopen: Math.sin(Math.PI * u) })],
+      [0, () => this.view.setAnim(key, { gate: null })]];
+  }
+  // «Ворота и калитки»: a touch on the fence puts the chosen one there (the posts each side 100 × 100);
+  // a touch on a gate already there opens or closes it
+  _gate(r, p) {
+    const app = this.app, [s, off] = sOf(r, p.x, p.z), gates = r.gates || [];
+    const hit = gates.findIndex((q) => Math.abs(q.s - s) < q.w / 2 + 100);
+    if (hit >= 0) {
+      if (!gates[hit].hung && !(r.done || {}).fill) { this.toast('Створки повесят с заполнением забора («4 · Заполнение»)'); return; }
+      const open = !gates[hit].open;
+      this._save('gate-open', () => app.objects.update(r.id, { gates: gates.map((q, i) => (i === hit ? { ...q, open } : q)) }));
+      this.toast(open ? `${GATES[gates[hit].type].name}: открыто` : `${GATES[gates[hit].type].name}: закрыто`);
+      return;
+    }
+    if (off > MM(1500)) { this.toast('Коснитесь линии забора — там, где будут ворота или калитка'); return; }
+    const T = GATES[this.gateType], c = gateFit(r, s, T.w);
+    if (c == null) { this.toast(`Здесь не помещается: ${T.name.toLowerCase()} — ${T.w / 1000} м по прямой, от угла и других ворот`.replace(/(\d)\.(\d)/g, '$1,$2')); return; }
+    const d = r.done || {}, gi = gates.length, rec = { s: c, w: T.w, type: this.gateType, open: false, hung: d.fill ? 1 : 0 };
+    app.journal.begin('gate', {}, app.clock);
+    app.objects.update(r.id, { gates: [...gates, rec] });
+    // (the fence is up: the two gate posts set (the posts re-spaced round them), the leaves hung and tried)
+    const steps = d.fill ? this._hang(r, gi) : [[0.3, () => {}]];
+    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); this.view.setAnim('F' + r.id, null); }, commit: () => {
+      app.journal.commit(app.clock); this.view.setAnim('F' + r.id, null);
+      this.toast(d.fill ? `${T.name} ${T.w / 1000} м: столбы 100 × 100 забетонированы, створки навешены и опробованы. Коснитесь ворот — открыть или закрыть` : d.posts ? `${T.name} ${T.w / 1000} м размечены: столбы 100 × 100 по краям; створки повесят с заполнением` : `${T.name} ${T.w / 1000} м размечены — по краям встанут столбы 100 × 100`);
     } });
   }
   fenceNext(r = this.fence) {
     if (!r) return ['line', 'Проведите линию забора'];
     const d = r.done || {};
-    for (const k of FORDER.slice(1)) if (!d[k]) return [k, FNAME[k]];
+    for (const k of FORDER.slice(1, 4)) if (!d[k]) return [k, FNAME[k]];
     return [null, 'Забор готов'];
   }
   fenceStatus() {
@@ -687,7 +724,8 @@ export class LandWork {
       line: `Ведите пальцем, где встанет забор высотой ${f1(this.fenceH / 1000)} м — углы по ходу пальца`,
       holes: 'Коснитесь забора — мотобур пробурит ямы под столбы',
       posts: 'Коснитесь забора — столбы встанут по шнуру и забетонируются',
-      fill: this.fenceKind === 'mesh' ? 'Коснитесь забора — 3D-панели встанут на кронштейны' : 'Коснитесь забора — доски лягут снизу вверх, пролёт за пролётом',
+      fill: `Коснитесь забора — заполнение «${FENCE_KINDS[this.fenceKind].name}», пролёт за пролётом; ворота и калитки — навешены`,
+      gate: `Коснитесь линии забора — встанут «${GATES[this.gateType].name}»; коснитесь готовых ворот — открыть или закрыть`,
     }[this.fenceLayer];
   }
   removeFence(id) {
