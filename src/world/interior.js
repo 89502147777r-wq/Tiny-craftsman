@@ -38,6 +38,9 @@ function cast(objs, from, dir, far) {
 export function roomsOf(app) {
   const wins = app.objects.all('window').filter((w) => !w.corner && !(isDoor(w.key)));
   const objs = solids(app), t = app.terrain, rooms = [];
+  // (the big glazing first: its room is the one the others may open into)
+  wins.sort((p, q) => !!(WINDOWS[p.key] || {}).sill - !!(WINDOWS[q.key] || {}).sill);
+  const inRoom = (r, p) => { const v = p.clone().sub(r.o), a = v.dot(r.u), d = -v.dot(r.n); return a > r.a0 && a < r.a1 && d > 0 && d < r.D; };
   for (const w of wins) {
     const out = new THREE.Vector3(Math.sin(w.yaw), 0, Math.cos(w.yaw)), along = new THREE.Vector3(out.z, 0, -out.x), half = MM((w.t || 300) / 2);
     const inner = new THREE.Vector3(w.x, 0, w.z).addScaledVector(out, -half);
@@ -47,15 +50,45 @@ export function roomsOf(app) {
     const down = cast(objs, probe, new THREE.Vector3(0, -1, 0), MM(1500));
     let floor = down ? down.point.y : (t.inside(probe.x, probe.z) ? t.heightAt(probe.x, probe.z) : w.y - sill);
     if (floor > w.y + MM(50) || floor < w.y - MM(1300)) floor = w.y - sill;
+    // (a room already there — the window on its side wall: the corner room with windows on two walls)
+    const r1 = rooms.find((r) => Math.abs(r.floor - floor) < MM(300) && inRoom(r, probe.clone().setY(0)));
+    if (r1) { r1.wins.push(w); continue; }
     const mid = inner.clone().addScaledVector(out, -MM(200)); mid.y = floor + MM(1200);
+    // (the house's own walls, slab and ceiling where the rays find them; where not, the room's shell)
     const up = cast(objs, mid.clone(), new THREE.Vector3(0, 1, 0), MM(4000)), ceil = up ? Math.max(floor + MM(2300), up.point.y) : floor + MM(2800);
-    const back = cast(objs, mid.clone(), out.clone().negate(), MM(7000)), D = Math.max(MM(2400), Math.min(MM(6000), back ? back.distance : MM(4200)));
-    const side = (s) => { const h = cast(objs, mid.clone().addScaledVector(out, -MM(400)), along.clone().multiplyScalar(s), MM(4500)); return h ? h.distance : MM(2000); };
-    const aL = -Math.max(MM(w.w / 2 + 300), Math.min(MM(4500), side(-1))), aR = Math.max(MM(w.w / 2 + 300), Math.min(MM(4500), side(1)));
+    const back = cast(objs, mid.clone(), out.clone().negate(), MM(7500)), D = back ? Math.max(MM(1500), back.distance) : MM(4200);
+    const side = (s) => cast(objs, mid.clone().addScaledVector(out, -MM(400)), along.clone().multiplyScalar(s), MM(7500));
+    const hL = side(-1), hR = side(1);
+    const aL = -Math.max(MM(w.w / 2 + 300), hL ? hL.distance : MM(2000)), aR = Math.max(MM(w.w / 2 + 300), hR ? hR.distance : MM(2000));
+    const sh = { L: !hL, R: !hR, B: !back, C: !up, F: !down };
     // (a room already on this wall, level with it and overlapping: the window joins it)
     const r0 = rooms.find((r) => Math.abs(Math.atan2(Math.sin(r.yaw - w.yaw), Math.cos(r.yaw - w.yaw))) < 0.05 && Math.abs(r.floor - floor) < MM(300) && Math.abs(new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.n)) < MM(200) && (() => { const a = new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.u); return a + aL < r.a1 + MM(400) && a + aR > r.a0 - MM(400); })());
-    if (r0) { const a = new THREE.Vector3(w.x, 0, w.z).sub(r0.o).dot(r0.u); r0.a0 = Math.min(r0.a0, a + aL); r0.a1 = Math.max(r0.a1, a + aR); r0.wins.push(w); r0.D = Math.max(r0.D, D); continue; }
-    rooms.push({ wins: [w], yaw: w.yaw, floor, ceil, D, o: inner.clone(), u: along, n: out, a0: aL, a1: aR, big: !K.sill });
+    if (r0) {
+      const a = new THREE.Vector3(w.x, 0, w.z).sub(r0.o).dot(r0.u);
+      if (a + aL < r0.a0) { r0.a0 = a + aL; r0.sh.L = sh.L; }
+      if (a + aR > r0.a1) { r0.a1 = a + aR; r0.sh.R = sh.R; }
+      r0.wins.push(w); if (D > r0.D) { r0.D = D; r0.sh.B = sh.B; } continue;
+    }
+    rooms.push({ wins: [w], yaw: w.yaw, floor, ceil, D, o: inner.clone(), u: along, n: out, a0: aL, a1: aR, big: !K.sill, sh });
+  }
+  // (rooms do not run into each other: the big glazing's room first, the next one stops at its wall —
+  // short of it, or narrower beside it, whichever leaves more of the room)
+  rooms.sort((p, q) => q.big - p.big);
+  for (let i = 1; i < rooms.length; i++) {
+    const r = rooms[i];
+    for (const q of rooms.slice(0, i)) {
+      if (Math.abs(q.floor - r.floor) > MM(1500)) continue;
+      const pts = [[q.a0, 0], [q.a1, 0], [q.a0, q.D], [q.a1, q.D]].map(([a, d]) => q.o.clone().addScaledVector(q.u, a).addScaledVector(q.n, -d).sub(r.o)), A = pts.map((p) => p.dot(r.u)), Dd = pts.map((p) => -p.dot(r.n));
+      const qa0 = Math.min(...A), qa1 = Math.max(...A), qd0 = Math.min(...Dd), qd1 = Math.max(...Dd), m = MM(150);
+      if (qa1 <= r.a0 + m || qa0 >= r.a1 - m || qd1 <= m || qd0 >= r.D - m) continue;
+      const wa = r.wins.map((w) => new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.u)), wl = Math.min(...r.wins.map((w, k) => wa[k] - MM(w.w / 2))), wr = Math.max(...r.wins.map((w, k) => wa[k] + MM(w.w / 2)));
+      const opts = [];
+      if (qd0 - MM(100) > MM(1800)) opts.push(() => { r.D = qd0 - MM(100); r.sh.B = true; }, (r.a1 - r.a0) * (qd0 - MM(100)));
+      if (qa0 - MM(100) > wr + MM(200)) opts.push(() => { r.a1 = qa0 - MM(100); r.sh.R = true; }, (qa0 - MM(100) - r.a0) * r.D);
+      if (qa1 + MM(100) < wl - MM(200)) opts.push(() => { r.a0 = qa1 + MM(100); r.sh.L = true; }, (r.a1 - qa1 - MM(100)) * r.D);
+      let best = -1; for (let k = 0; k < opts.length; k += 2) if (best < 0 || opts[k + 1] > opts[best + 1]) best = k;
+      if (best >= 0) opts[best](); else { r.D = Math.max(MM(1200), Math.min(r.D, qd0 - MM(100))); r.sh.B = true; }
+    }
   }
   // (what each is: by the floor it is on and its windows)
   const ground = Math.min(...rooms.map((r) => r.floor));
@@ -86,7 +119,7 @@ function mats() {
   M.art = std({ color: 0x9c6b4e, roughness: 0.7 }); M.pot = std({ color: 0xd9d4ca, roughness: 0.6 });
   // (indoors the sun does not reach — the light off the walls stands for it; at night the lamps' light
   // on everything: each thing glows a little of its own colour, warm)
-  for (const m of Object.values(M)) if (m !== M.lamp && m !== M.tv) { if (!m.emissiveIntensity && m.emissive.getHex() === 0) m.emissive.setHex(0xffe2c0); m.userData.glow = { wall: 0.6, ceil: 0.75, floor: 0.45, linen: 0.85, blind: 0.8 }[Object.keys(M).find((k) => M[k] === m)] ?? 0.3; if (m.map) m.emissiveMap = m.map; }
+  for (const m of Object.values(M)) if (m !== M.lamp && m !== M.tv) { if (!m.emissiveIntensity && m.emissive.getHex() === 0) m.emissive.setHex(0xffe2c0); m.userData.glow = { wall: 1.1, ceil: 1.3, floor: 0.8, linen: 1.5, blind: 1.4 }[Object.keys(M).find((k) => M[k] === m)] ?? 0.55; if (m.map) m.emissiveMap = m.map; }
   return M;
 }
 // a box in the room's frame: a along the wall from its o (mm), d into the room from the wall's inner face, y up from the floor
@@ -111,12 +144,17 @@ export function buildRoom(r) {
   const m = mats(), G = new THREE.Group(), A0 = r.a0 / S, A1 = r.a1 / S, D = r.D / S, H = (r.ceil - r.floor) / S;
   G.position.set(r.o.x, r.floor, r.o.z); G.rotation.y = r.yaw;
   // (the frame: x along the wall (u), y up, -z into the room)
-  piece(G, m.floor, A0, A1, 0, D, -20, 0); piece(G, m.ceil, A0, A1, 0, D, H, H + 20);
-  piece(G, m.wall, A0, A1, D, D + 20, 0, H); piece(G, m.wall, A0 - 20, A0, 0, D, 0, H); piece(G, m.wall, A1, A1 + 20, 0, D, 0, H);
+  // (the floor finished over the slab; the walls and the ceiling the house's where it has them)
+  const sh = r.sh || { L: 1, R: 1, B: 1, C: 1 };
+  piece(G, m.floor, A0, A1, 0, D, 0, 12); if (sh.C) piece(G, m.ceil, A0, A1, 0, D, H, H + 20);
+  if (sh.B) piece(G, m.wall, A0, A1, D, D + 20, 0, H); if (sh.L) piece(G, m.wall, A0 - 20, A0, 0, D, 0, H); if (sh.R) piece(G, m.wall, A1, A1 + 20, 0, D, 0, H);
   // (the skirting)
   piece(G, m.white, A0, A1, D - 15, D, 0, 80);
   const cA = (A0 + A1) / 2, lamps = [];
-  if (r.kind === 'living') {
+  // (the living room and the kitchen with its dining table: one each, or both in one open-plan room
+  // when it is wide enough — the sofa by the big glazing, the kitchen beyond)
+  const living = (A0, A1) => {
+    const cA = (A0 + A1) / 2;
     piece(G, m.rug, cA - 1500, cA + 1500, D * 0.3, D * 0.3 + 2000, 0, 8);
     sofa(G, cA, Math.min(D - 1000, D * 0.3 + 1300), Math.min(2800, (A1 - A0) * 0.55));
     table(G, cA, D * 0.3 + 400, 1100, 600, 380, m.oak, m.black);
@@ -125,17 +163,25 @@ export function buildRoom(r) {
     piece(G, m.art, cA - 600, cA + 600, D - 40, D - 20, 1300, 2000);
     floorLamp(G, A1 - 450, D - 500); plant(G, A0 + 450, D - 450);
     lamps.push(pendant(G, cA, D * 0.5, H, 600));
-  } else if (r.kind === 'kitchen') {
+  };
+  const kitchen = (A0, A1) => {
+    const cA = (A0 + A1) / 2;
     // the run along the back wall: base units with the worktop, wall units over it, a tall fridge column
-    const k0 = A0 + 200, k1 = Math.min(A1 - 200, k0 + 3600);
+    const k1 = A1 - 200, k0 = Math.max(A0 + 200, k1 - 3600);
     piece(G, m.white, k0, k1, D - 600, D, 100, 870); piece(G, m.oak, k0, k1, D - 620, D, 870, 910); piece(G, m.black, k0, k1, D - 590, D, 0, 100);
-    piece(G, m.white, k0, k1 - 650, D - 350, D, 1450, 2150); piece(G, m.white, k1 - 600, k1, D - 620, D, 0, 2150);
+    piece(G, m.white, k0 + 650, k1, D - 350, D, 1450, 2150); piece(G, m.white, k0, k0 + 600, D - 620, D, 0, 2150);
     piece(G, m.steel, (k0 + k1) / 2 - 300, (k0 + k1) / 2 + 300, D - 560, D - 540, 920, 960);
     // the dining table with chairs, two pendants over it
-    const tA = Math.max(A0 + 1100, Math.min(A1 - 1100, cA)), tD = Math.min(D - 1800, D * 0.35 + 300);
+    const tA = Math.max(A0 + 1100, Math.min(A1 - 1100, cA)), tD = Math.max(400, Math.min(D - 2000, D * 0.35 + 300));
     table(G, tA, tD, 1800, 900, 750, m.oak, m.black);
     for (const s of [-1, 1]) for (const k of [-1, 1]) chair(G, tA + k * 450, tD + 450 + s * 650, -s);
     lamps.push(pendant(G, tA - 450, tD + 450, H), pendant(G, tA + 450, tD + 450, H));
+  };
+  if (r.kind === 'living') {
+    const W = A1 - A0;
+    if (W > 6500) { const L1 = A0 + Math.min(5000, W * 0.55); living(A0, L1); kitchen(L1, A1); } else living(A0, A1);
+  } else if (r.kind === 'kitchen') {
+    kitchen(A0, A1);
   } else if (r.kind === 'bed') {
     bed(G, cA, Math.max(D - 2200, 400) + 0);
     piece(G, m.rug, cA - 1300, cA + 1300, Math.max(D - 2600, 300), Math.max(D - 2600, 300) + 1200, 0, 8);
@@ -148,15 +194,19 @@ export function buildRoom(r) {
     lamps.push(pendant(G, cA, D * 0.5, H, 300));
   }
   // the windows: sheer curtains drawn to the sides, or a blind half down
+  // (each in its own window's frame: a corner room has windows on two walls)
+  G.updateMatrixWorld(true);
   for (const w of r.wins) {
-    const a = new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.u) / S, half = w.w / 2, y0 = (w.y - r.floor) / S, y1 = y0 + w.h;
-    if (r.kind === 'kitchen') piece(G, m.blind, a - half, a + half, 60, 80, y1 - (y1 - y0) * (0.25 + 0.3 * rnd()), y1 + 80);
+    const half = w.w / 2, y0 = (w.y - r.floor) / S, y1 = y0 + w.h, out = new THREE.Vector3(Math.sin(w.yaw), 0, Math.cos(w.yaw));
+    const W = new THREE.Group(); W.position.set(w.x, r.floor, w.z).addScaledVector(out, -MM((w.t || 300) / 2)); W.rotation.y = w.yaw;
+    if (r.kind === 'kitchen') piece(W, m.blind, -half, half, 60, 80, y1 - (y1 - y0) * (0.25 + 0.3 * rnd()), y1 + 80);
     else for (const s of [-1, 1]) {
       const cw = Math.min(700, half * 0.6), g = new THREE.PlaneGeometry(MM(cw), MM(H - 40), 12, 1), p = g.attributes.position;
       for (let i = 0; i < p.count; i++) p.setZ(i, MM(35) * Math.sin(p.getX(i) / MM(cw) * Math.PI * 6));
       g.computeVertexNormals();
-      const c = new THREE.Mesh(g, m.linen); c.position.set(MM(a + s * (half + cw / 2 - 120)), MM((H - 40) / 2), -MM(120)); c.castShadow = true; G.add(c);
+      const c = new THREE.Mesh(g, m.linen); c.position.set(MM(s * (half + cw / 2 - 120)), MM((H - 40) / 2), -MM(120)); c.castShadow = true; W.add(c);
     }
+    G.attach(W);
   }
   G.traverse((o) => { if (o.isMesh) o.userData.room = 1; });
   G.userData.lamps = lamps;
@@ -185,7 +235,7 @@ export function buildInterior(app) {
 // at night the rooms lit: the walls and the ceiling warm, the lamps bright, the light out of the windows
 export function interiorLight(G, k) {
   const m = mats();
-  for (const q of Object.values(m)) if (q.userData.glow) q.emissiveIntensity = q.userData.glow * (0.12 + 0.88 * k);
+  for (const q of Object.values(m)) if (q.userData.glow) q.emissiveIntensity = q.userData.glow * (0.07 + 0.93 * k);
   m.lamp.emissiveIntensity = 0.3 + 2.6 * k; m.tv.emissiveIntensity = 0.6 * k;
   G.traverse((o) => { if (o.userData.spill) o.material.opacity = 0.55 * k; });
 }
