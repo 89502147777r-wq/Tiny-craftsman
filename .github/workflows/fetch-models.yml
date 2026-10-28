@@ -1,0 +1,37 @@
+# One-off (removed after use): downloads the chosen CC BY / CC0 interior models from Sketchfab with
+# the repository secret SKETCHFAB_TOKEN and commits them to this branch, in incoming/.
+name: Fetch Sketchfab models
+on:
+  push:
+    branches: [fetch-interior]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download
+        env:
+          TOKEN: ${{ secrets.SKETCHFAB_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "SKETCHFAB_TOKEN is not set"; exit 1; fi
+          mkdir -p incoming
+          for pair in bed_hotel:d4f3bf907138447cbdcee83f838228d5 bed_modern:27425c1e783c4210aec2be5ee61a73ad bed_double:eeafb24592f249f08f9576c2511272d8 pack_interior:b1b328f26ff440288cdbeabb26504590 bunk_wood:9fb7c54715dd41b98b3dc67b367cf81d bunk_modern:a75d91ed1a1f442587f2485a34aa1b28 bunk_white:f342f50a8eda4e6fafcdb4f057be5792 crib:29451febdc894682a36a5112fd13f054 crib_wood:c05d9d2c510d4ddfa98bd25f08358211 stand_modern:65bf302726be4dbdb31fc9394cd83746 stand_scandi:35d7363651664ba3a204bc062b2575d5 stand_wood:4563c14f3185484f81b2f2eb7829447a side_white:743b0f02ba6c4bfab93607875d88b6db sofa_modern:ac92f6e97eaa43c4ad6cb8f7c65ac43f sofa_lowpoly:4e112795595d40fcbfb5d369bb3b2105 sofa_midcentury:1f9f52ae17d642b582d0c5ccf9dd64b3 kid_chair_bear:3a3637e650ba4b14b61c64395f912cfc kid_chair_koala:c9c5648e16fa4ce18b80499ad8f4d277 sofa_paloma:138f793adde045a5a5247edf48f61eb1 sofa_corner_blue:9cef8fd19dd84684b91830f35cc54d4f sofa_corner:f22ab377c8eb434dbe99a1206a49129d sofa_blush:ef3832963ab24d129ec88fd4cac4818f sofa_green:d3a6728fe4ad466da84008955a3e5c80 chair_cocoon:8f0c05b4cb1d4aec992e94ab4736e093 chair_minimal:24b25c38a5274d949645f2ebff423833 sofa_velvet_blue:a0f769364b454c25b59b5228435f7fb6 armchair_cushion:00cc50baac2b4a639c6c080877e3d04a office_chair:675f34f7304e4d92812a41e9750539aa wardrobe_wood:aff452c30e724283ae2c4f17297e0ef7 wardrobe_white:b1c75cea276f4239b65d08d34c5eabe5 tv_bench:b03d3365cd604e758b49c41aa652068d tv_stand:1fd5aaf7ede3441986d193403aa36893 bookcase_tall:eac9c98de25c429a9f5df719ac2fb261 sideboard:4bc3e9f3bd8d404ba130aa58323ba9bb bookcase_open:368eb8336aa74795805178f3b0062357 shelf_cube:650d03e7e33c4de09c577f573c8cca86 desk_computer:d71521813a4541188cf2d2aab3917269 dining_set:3ea632120d76443f830912cb84976b1e dresser_light:25134a84c07e420b93cae181731fd7a0 dresser:e35142f86fee4f7d8920f700fd85c73f cabinet_shoe:d4205cbd80f4459c80a0257b97ab95a2 teddy:e84b12b4ac20402aaf4d40f2219cd0e2 dino:d69e9bb7bfc6451993bf84f3e763a28a rocking_horse:a528a0b436ea4856a59395d72424bfed rocking_unicorn:e3286e8dd2e34560ae1d4966787e1b67 kids_table:ac955b243ee444d2b5a911b68c14f633 lamp_tripod:15b2782b523b486ea169d6e16e72123f lamp_floor:0143e8771329468aa3a37746bbe7d62a lamp_floor2:3e2a60cb3d2c42e5bdfab33d396f85e2 pend_linear:4b3ae3b8744d429a8a4aa1b5b5cb4f7c pend_bar:83a6c210d5bc4efda2bf410fa5241a5b pend_loft:a6cfbc66f2c445b19ee42e9cfe643cd5 pend_globo:bdee0f1e067647c09cc05520e2efd566 monstera:1ab9bf841df04c07b1819be596327629 rug_yellow:5f5de1ba643746fc9da76d2cac94fbb3 rug_grey:3e861135a1b742779f14e2f1bfa43072 rugs_round:cd6e23fa475f476c92bc2351553e9fa0 rugs_neutral:ffa7b81303c6427b8c1a5a3b5b7161b8 rugs_pattern:b2a3310844f94605abbad9f754c038f2 mirror:dc096d3f8d58405c9d2c4512163e972d fridge:2071bda681b642218b6829b82e4fd93b fridge_steel:366f7dfa18744ccf8cee119f26446022 barstool_yellow:2be0e4efd95d4b9b9740eeeaae318af6 barstool:e319d61521a64d1c91d77552ce5f5047 chair_midcentury:afc4b601ed2d434982959be87526909f chair_dining:3503f197fe8f4e2cb64d10bf44134930 stools:9fc06f83f2e04b3298bb6c9335d49e45 chair_white:4a23f8a59ca143cd9d95b631b47e4d80 chair_modern:cf43cd4a84e044fd9830d3a5969fb19f table_oak:f46aef15d75f4ae2886dd688d6c15c68 table_teak:f69be2ddeac645faaf49977ef569a606 guitar:c2a45813dedf4cb0bf2fa083e9e78668 guitar_lp:757b3b5aaf6d4052933edc329c4f5aa5; do
+            name=${pair%%:*}; uid=${pair##*:}
+            curl -sS -H "Authorization: Token $TOKEN" "https://api.sketchfab.com/v3/models/$uid/download" -o dl.json
+            url=$(python3 -c "import json;d=json.load(open('dl.json'));print((d.get('glb') or d.get('gltf') or {}).get('url','') if isinstance(d,dict) else '')")
+            kind=$(python3 -c "import json;d=json.load(open('dl.json'));print('glb' if isinstance(d,dict) and d.get('glb') else 'zip')")
+            if [ -z "$url" ]; then echo "no download for $name: $(head -c 200 dl.json)"; continue; fi
+            curl -sSL "$url" -o "incoming/$name.$kind"
+            sz=$(stat -c %s "incoming/$name.$kind"); echo "$name $sz"
+            if [ "$sz" -gt 95000000 ]; then echo "too big: $name"; rm "incoming/$name.$kind"; fi
+          done
+          rm -f dl.json
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add incoming
+          git commit -m "Downloaded Sketchfab interior models (CC BY / CC0)" || echo "nothing downloaded"
+          git push
