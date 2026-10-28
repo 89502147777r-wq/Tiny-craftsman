@@ -7,6 +7,7 @@ import { fenceString, fencePosts, fenceFill, fenceUniforms, auger, fenceGates } 
 import { PLANTS, plantBody, rootBall, mulchDisc, mulchStrip, spotsOf } from './plants.js';
 import { buildLight, lightLevel } from './facadeLights.js';
 import { buildInterior, interiorLight } from './interior.js';
+import { mats as winMats } from './windows.js';
 import { porchConcrete, porchForm, porchTiles, porchUniforms, canopyMesh, blocksOf as porchBlocks } from './porch.js';
 
 // The garden drawn (garden.js): the paths — the pegs and the string of the setting-out, the
@@ -241,6 +242,10 @@ export class GardenView {
   _interiorFrame(app, dt) {
     const rec = this.objects.all('interior')[0], on = !!rec;
     if (this._intT > 0) { this._intT -= dt || 0.016; if (this._intT <= 0 || !on) { this._intT = 0; if (this.interior) { this.group.remove(this.interior); dispose(this.interior); this.interior = null; } if (on) { app.wallView.group.updateMatrixWorld(true); this.interior = buildInterior(app, rec.seed || 0); this.group.add(this.interior); } } }
+    // (a lived-in house's glass: clear double glazing, the rooms seen through it; a house being built: the
+    // solar-control glass that mirrors the site)
+    const gl = winMats().glass, lived = !!this.interior;
+    if (gl.userData.lived !== lived) { gl.userData.lived = lived; Object.assign(gl, lived ? { metalness: 0.15, envMapIntensity: 0.55, opacity: 0.22, color: gl.color.setHex(0x8fa0a6) } : { metalness: 0.6, envMapIntensity: 1.6, opacity: 0.36, color: gl.color.setHex(0x6f838d) }); gl.needsUpdate = true; }
     if (this.interior) interiorLight(this.interior, Math.max(0, Math.min(1, ((this._night || 0) - 0.05) / 0.4)), (this._t = (this._t || 0) + (dt || 0.016)));
   }
   // a light: on at dusk (the lens, the light it throws); going in: the fixture growing to its place, a
