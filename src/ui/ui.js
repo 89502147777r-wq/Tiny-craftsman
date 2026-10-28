@@ -6,6 +6,9 @@ import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
 import { POOL_LAYERS, MOSAICS, COPES, DECKS, DECK_WIDTHS } from '../world/pool.js';
+import { PATH_LAYERS, PATH_WIDTHS, PAVERS, PAVE_COLS } from '../world/garden.js';
+import { LAWN_LAYERS, LAWN_HOW } from '../world/lawn.js';
+import { FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS } from '../world/fence.js';
 import { COL_SECS, COURSES, COL_STAGES, TILTS, courseH } from '../world/columns.js';
 import { PALLETS } from '../core/budget.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
@@ -34,6 +37,7 @@ const GROUPS = [
   { id: 'facadeG', label: 'Фасад', svg: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M4 9h16M4 14h16M9 4v5M15 9v5M9 14v6"/><path d="M2 20h20"/></svg>', virt: { kinds: ['facade'], path: ['facade'] } },
   { id: 'blindG', label: 'Отмостка', svg: '<svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="13"/><path d="M2 16h20l-2 4H4z"/><path d="M7 18h.01M12 18h.01M17 18h.01"/></svg>', virt: { kinds: ['blind'], path: ['blind'] } },
   { id: 'poolG', label: 'Бассейн', svg: '<svg viewBox="0 0 24 24"><path d="M3 7h18v10H3z"/><path d="M5 12c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 3-1.2 4.5 0"/><path d="M7 4v6M11 4v6M7 6h4"/></svg>', virt: { kinds: ['pool'], path: ['pool'] } },
+  { id: 'landG', label: 'Благоустройство', svg: '<svg viewBox="0 0 24 24"><path d="M9 21l2-9h2l2 9"/><path d="M10.4 15h3.2M9.6 18.5h4.8"/><circle cx="18" cy="7" r="3"/><path d="M18 10v5"/><path d="M3 9c1.5-3 4.5-3 6 0-1.5 1.5-4.5 1.5-6 0zM6 10v5"/><path d="M2 21h20"/></svg>', virt: { kinds: ['land'], path: ['land'] } },
   { id: 'machines', label: 'Техника', icon: 'machine' },
 ];
 const m3 = (v) => `${String(v).replace('.', ',')} м³`;
@@ -551,6 +555,25 @@ export class UI {
         if (k === 'water') return G('pwater', c.label, [C('Наполнить', s.poolWater !== 'drain', () => plset({ poolLayer: 'water', poolWater: 'fill' })), C('Слить', s.poolWater === 'drain', () => plset({ poolLayer: 'water', poolWater: 'drain' }))], null, c);
         return c;
       });
+      // the garden: the path's stages (the width when it is set out; the pavers and their colour)
+      const LS = wt.land.layer, lw = wt.land, isLawn = lw.what === 'lawn', isFence = lw.what === 'fence', fset = (o) => lay({ wallKind: 'land', landWhat: 'fence', ...o }), lset = (o) => lay({ wallKind: 'land', landWhat: 'path', ...o }), gset = (o) => lay({ wallKind: 'land', landWhat: 'lawn', ...o });
+      const paths = PATH_LAYERS.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('land') && lw.what === 'path' && LS === k, () => lset({ pathLayer: k }));
+        if (k === 'set') return G('lset', c.label, PATH_WIDTHS.map((w) => C(`Ширина ${String(w / 1000).replace('.', ',')} м`, lw.W === w, () => lset({ pathLayer: 'set', pathW: w }))), null, c);
+        if (k === 'pave') return G('lpave', c.label, [...Object.entries(PAVERS).map(([q, P]) => C('▦ ' + P.name, lw.paver === q, () => lset({ pathLayer: 'pave', pathPaver: q }))), ...Object.entries(PAVE_COLS).map(([q, [n]]) => C('◼ ' + n, lw.col === q, () => lset({ pathLayer: 'pave', pathCol: q })))], null, c);
+        return c;
+      });
+      const lawn = LAWN_LAYERS.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('land') && isLawn && lw.lawnLayer === k, () => gset({ lawnLayer: k }));
+        if (k === 'grass') return G('lgrass', c.label, Object.entries(LAWN_HOW).map(([q, n]) => C(n, lw.how === q, () => gset({ lawnLayer: 'grass', lawnHow: q }))), null, c);
+        return c;
+      });
+      const fence = FENCE_LAYERS.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('land') && isFence && lw.fenceLayer === k, () => fset({ fenceLayer: k }));
+        if (k === 'line') return G('fline', c.label, [...FENCE_HEIGHTS.map((h) => C(`Высота ${String(h / 1000).replace('.', ',')} м`, lw.fenceH === h, () => fset({ fenceLayer: 'line', fenceH: h }))), ...Object.entries(FENCE_KINDS).map(([q, n]) => C(n, lw.fenceKind === q, () => fset({ fenceLayer: 'line', fenceKind: q })))], null, c);
+        if (k === 'fill') return G('ffill', c.label, [...Object.entries(FENCE_KINDS).map(([q, n]) => C(n, lw.fenceKind === q, () => fset({ fenceLayer: 'fill', fenceKind: q }))), ...Object.entries(FENCE_COLS).filter(([, v]) => (lw.fenceKind === 'mesh') === !v[1]).map(([q, [n]]) => C('◼ ' + n, lw.fenceCol === q, () => fset({ fenceLayer: 'fill', fenceCol: q })))], null, c);
+        return c;
+      });
       // the windows in the roof (a slope or a flat roof): the size, the colour of the frame
       const rwin = [
         ...Object.entries(RWIN_TYPES).map(([k, [l]]) => C(l, has('rwin') && (s.rwinType || 'pivot') === k, () => lay({ wallKind: 'rwin', rwinType: k }))),
@@ -578,6 +601,7 @@ export class UI {
         ], null, C('', has('proof', 'roof', 'rwin')))),
         hid(G('blind', 'Отмостка', [...blind, del()], null, C('', has('blind'), () => lay({ wallKind: 'blind' })))),
         hid(G('pool', 'Бассейн', [(() => { const [nk, nw] = wt.pool.next(); return C(`➜ ${nw}`, false, () => { if (nk === 'concrete') { app.setTool?.('hose'); app.ui.toast(nw); } else if (nk) plset({ poolLayer: nk }); else app.ui.toast(nw); }, 'next'); })(), ...pool, del()], null, C('', has('pool'), () => lay({ wallKind: 'pool' })))),
+        hid(G('land', 'Благоустройство', [(() => { const [nk, nw] = lw.next(); return C(`➜ ${nw}`, false, () => { if (!nk) app.ui.toast(nw); else if (isLawn) gset({ lawnLayer: nk }); else if (isFence) fset({ fenceLayer: nk }); else lset({ pathLayer: nk }); }, 'next'); })(), G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('fence', 'Забор', fence, null, C('', has('land') && isFence, () => fset({}))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие')), G('cols', 'Колонны и сваи', cols, null, C('', has('column'), () => lay({ wallKind: 'column' })))], null, C('', has('belt', 'studs', 'slab', 'column'))),
