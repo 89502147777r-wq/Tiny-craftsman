@@ -705,8 +705,12 @@ export class WallView {
       const g = this.terrainY ? this.terrainY(s.x, s.z) : 0, pq = new THREE.Quaternion().setFromAxisAngle(_Y, s.yaw || 0), ex = new THREE.Vector3(1, 0, 0).applyQuaternion(pq), ez = new THREE.Vector3(0, 0, 1).applyQuaternion(pq);
       const pl = (a, y, c, sx, sy, sz) => { P3.set(s.x + ex.x * a * S + ez.x * c * S, g + y * S, s.z + ex.z * a * S + ez.z * c * S); Sv.set(sx * S, sy * S, sz * S); return m.compose(P3, pq, Sv); };
       const pw = P.na * (P.L + 4) + 40, pd = P.nc * (P.T + 4) + 40;
-      for (const c of [-pd / 2 + 50, 0, pd / 2 - 50]) if (nw < this.max.wood) { this.wood.setMatrixAt(nw, pl(0, 50, c, pw, 100, 100)); this.owner.wood[nw++] = s.id; }
-      for (let a = -pw / 2 + 50; a <= pw / 2 - 49; a += (pw - 100) / 7) if (nw < this.max.wood) { this.wood.setMatrixAt(nw, pl(a, 111, 0, 100, 22, pd)); this.owner.wood[nw++] = s.id; }
+      // (empty ones may be stacked: e pallets one on another, each a little askew)
+      for (let lv = 0; lv < (s.e || 1); lv++) {
+        const y0 = lv * 122, sk = lv ? (Math.floor(hash(s.id * 31 + lv) * 7) - 3) * 4 : 0;
+        for (const c of [-pd / 2 + 50, 0, pd / 2 - 50]) if (nw < this.max.wood) { this.wood.setMatrixAt(nw, pl(sk, y0 + 50, c + sk / 2, pw, 100, 100)); this.owner.wood[nw++] = s.id; }
+        for (let a = -pw / 2 + 50; a <= pw / 2 - 49; a += (pw - 100) / 7) if (nw < this.max.wood) { this.wood.setMatrixAt(nw, pl(a + sk, y0 + 111, sk / 2, 100, 22, pd)); this.owner.wood[nw++] = s.id; }
+      }
       const per = P.na * P.nc;
       for (let i = 0; i < s.n; i++) {
         const lay = Math.floor(i / per), j = i % per, ia = j % P.na, ic = Math.floor(j / P.na);

@@ -119,7 +119,7 @@ export class WallTool {
     if (m === 'lay') {
       loadPhysics().catch(() => {});
       // walls laid out before the pallets existed get theirs now
-      const bare = this.app.objects.all('wall').filter((w) => !w.pallet);
+      const bare = this.app.objects.all('wall').filter((w) => !w.pallet && !w.palletOff);
       if (bare.length) this.app.journal.act('pallets', {}, this.app.clock, () => { for (const w of bare) this.app.objects.update(w.id, { pallet: this._palletSpot(w) }); });
     }
     this.app.ui.refresh();
@@ -183,6 +183,11 @@ export class WallTool {
       this.lastWall = n.w.id;
       return true;
     }
+    // an empty pallet under the finger (the masonry tool): picked up, to be carried away and stacked
+    if (this.mode === 'lay' && !['roof', 'facade', 'blind', 'pool', 'land', 'ext', 'column', 'proof', 'window', 'door'].includes(this.kind)) {
+      const em = this._emptyPalletAt(e, p);
+      if (em) { this._palletPick(em, p); return true; }
+    }
     if (this.mode === 'lay' && this.rowMode && (this.kind === 'block' || this.kind === 'brick' || this.kind === 'cinder')) {
       if (this.rowJob) { this._rowStop('Ряд остановлен'); return true; }
       this._rowDown(p, e); return true;
@@ -225,6 +230,7 @@ export class WallTool {
     const app = this.app;
     p = this._pt(p, e);
     if (this.carry) { this._carryMove(p, e); return; }
+    if (this.palletDrag) { this._palletMove(p); return; }
     if (this.rowDrag) { this._rowMove(p, e); return; }
     if (this.roof.drag) { this.roof.move(p, e); return; }
     if (this.facade.drag) { this.facade.move(p, e); return; }
@@ -270,6 +276,7 @@ export class WallTool {
   up() {
     const app = this.app, d = this.drag;
     if (this.carry) { this._carryDrop(); return; }
+    if (this.palletDrag) { this._palletDrop(); return; }
     if (this.rowDrag) { const d = this.rowDrag; this.rowDrag = null; this._rowStart(d); return; }
     if (this.roof.drag) { this.roof.up(); return; }
     if (this.facade.drag) { this.facade.up(); return; }
@@ -610,6 +617,68 @@ export class WallTool {
       if (d < bd) { bd = d; best = w; }
     }
     return best;
+  }
+
+  // ---- the empty pallets: carried away, stacked ------------------------------------------
+  // an empty pallet under the finger: a bought one with nothing left on it (or a stack of them), or the
+  // pallet of a wall finished
+  _emptyPalletAt(e, p) {
+    const app = this.app, t = app.terrain; let best = null, bd = Infinity;
+    const test = (x, z, h, ref) => {
+      const c = new THREE.Vector3(x, t.heightAt(x, z) + h, z); let d;
+      if (e && (e.clientX || e.clientY)) { const sp = this._screen(c); d = Math.hypot(sp.x - e.clientX, sp.y - e.clientY); if (d > 70) return; }
+      else { d = Math.hypot(p.x - x, p.z - z) * 1000; if (d > 90) return; }
+      if (d < bd) { bd = d; best = ref; }
+    };
+    for (const s of app.objects.all('stock')) if (!s.n) test(s.x, s.z, (s.e || 1) * 122 * S, { stock: s });
+    for (const w of app.objects.all('wall')) if (w.pallet && KINDS[w.kind] && palletStock(w, wallState(w, app.objects)).on === 0) test(w.pallet[0], w.pallet[1], 122 * S, { wall: w });
+    return best;
+  }
+  // picked up: the top one of a stack, a whole pallet; the finished wall's pallet becomes one of the
+  // plot's (the wall keeps none)
+  _palletPick(em, p) {
+    const app = this.app, O = app.objects;
+    app.journal.begin('pallet-move', {}, app.clock);
+    let id;
+    if (em.wall) {
+      const w = em.wall, [x, z, yaw] = w.pallet;
+      O.update(w.id, { pallet: null, palletOff: true });
+      id = O.add({ type: 'stock', kind: w.kind === 'cinder' ? 'cinder' : w.kind === 'block' ? 'block' : 'brick', x, z, yaw, n: 0, e: 1 }).id;
+    } else if ((em.stock.e || 1) > 1) {
+      const s = em.stock; O.update(s.id, { e: s.e - 1 });
+      id = O.add({ type: 'stock', kind: s.kind, x: s.x, z: s.z, yaw: s.yaw, n: 0, e: 1 }).id;
+    } else id = em.stock.id;
+    const r = O.get(id);
+    this.palletDrag = { id, dx: r.x - p.x, dz: r.z - p.z, x0: r.x, z0: r.z };
+    app.sfx?.stab?.();
+    app.ui.toast('Пустой поддон — несите его и отпустите: на землю или на другой пустой поддон, в стопку');
+  }
+  _palletMove(p) {
+    const d = this.palletDrag, t = this.app.terrain, x = p.x + d.dx, z = p.z + d.dz;
+    if (!t.inside(x, z)) return;
+    this.app.objects.update(d.id, { x: +x.toFixed(6), z: +z.toFixed(6) });
+  }
+  _palletDrop() {
+    const app = this.app, O = app.objects, d = this.palletDrag; this.palletDrag = null;
+    const r = O.get(d.id); if (!r) { app.journal.cancel(); return; }
+    // onto another empty pallet (or stack): the pallets one on another, squared up
+    const on = O.all('stock').filter((s) => s.id !== r.id && !s.n && Math.hypot(s.x - r.x, s.z - r.z) < MM(800)).sort((a, b) => Math.hypot(a.x - r.x, a.z - r.z) - Math.hypot(b.x - r.x, b.z - r.z))[0];
+    if (on) {
+      const n = (on.e || 1) + (r.e || 1);
+      if (n > 12) { O.update(r.id, { x: d.x0, z: d.z0 }); app.journal.commit(app.clock); app.ui.toast('Стопка уже 12 поддонов — выше не складывают, начните новую'); return; }
+      O.update(on.id, { e: n }); O.remove(r.id);
+      app.journal.commit(app.clock); app.sfx?.thud?.() || app.sfx?.stab?.();
+      app.ui.toast(`Поддон в стопку — в ней ${n}`);
+      return;
+    }
+    // on the ground: not into a pit, onto the concrete, onto a wall
+    const t = app.terrain, i = t.index(r.x, r.z);
+    if (t.conc[i] > 1e-6 || Math.abs(t.heightAt(r.x, r.z) - t.heightAt(d.x0, d.z0)) > MM(400) || O.all('unit').some((u) => u.p && Math.hypot(u.p[0] - r.x, u.p[2] - r.z) < MM(700))) {
+      O.update(r.id, { x: d.x0, z: d.z0 }); app.journal.commit(app.clock);
+      app.ui.toast('Сюда поддон не поставить — на землю рядом, не на бетон, не в яму, не к стене'); return;
+    }
+    app.journal.commit(app.clock);
+    app.ui.toast('Поддон перенесли');
   }
 
   // the free place of a course being laid nearest the finger on the screen (≤ 90 px)
