@@ -419,7 +419,13 @@ export function mortarOf(units) {
         const g = Math.max(gap, 0.5 * S), n0 = pb + Math.sign(po - pb) * (rb + g / 2), mm = (m0 + m1) / 2;
         // (a box: l along its yaw = the length shared, w across = the joint)
         const yb = Math.max(b.bot - bed, o.bot - bedOf(o.u, dims(o.kind))), yt = y1 - 1 * S;
-        out.push({ x: nx * n0 + mx * mm, y: (yb + yt) / 2, z: nz * n0 + mz * mm, yaw: Math.atan2(-mz, mx), l: m1 - m0, h: yt - yb, w: g });   // (down through the bed: no hole under it)
+        const J = (l0, l1, y0, y1) => { const c = (l0 + l1) / 2; out.push({ x: nx * n0 + mx * c, y: (y0 + y1) / 2, z: nz * n0 + mz * c, yaw: Math.atan2(-mz, mx), l: l1 - l0, h: y1 - y0, w: g }); };
+        // (two U-blocks end to end: the glue only on the U — the base and the two side walls; the
+        // channel stays open for the cage and the concrete)
+        if (b.u.kind === 'ublock' && o.u.kind === 'ublock' && Math.abs(nx * b.ux + nz * b.uz) > 0.9) {
+          const W = m1 - m0, yBase = Math.min(b.bot, o.bot) + 0.24 * (b.top - b.bot);
+          J(m0, m1, yb, yBase); J(m0, m0 + 0.25 * W, yBase, yt); J(m1 - 0.25 * W, m1, yBase, yt);
+        } else J(m0, m1, yb, yt);   // (down through the bed: no hole under it)
         break;
       }
     }
