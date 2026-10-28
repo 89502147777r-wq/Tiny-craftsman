@@ -17,6 +17,7 @@ import { FacadeWork } from './facadeTool.js';
 import { BlindWork } from './blindTool.js';
 import { PoolWork, isPoolBelt } from './poolTool.js';
 import { LandWork } from './landTool.js';
+import { ExtWork } from './extTool.js';
 import { ColumnWork } from './columnTool.js';
 import { PitchedWork, RoofWindowWork } from './pitchedTool.js';
 const winName = (k) => (WINDOWS[k] || DOORS[k]).name;
@@ -65,6 +66,7 @@ export class WallTool {
     this.blind = new BlindWork(app);
     this.pool = new PoolWork(app);
     this.land = new LandWork(app);
+    this.ext = new ExtWork(app);
     this.col = new ColumnWork(app);
     this.proof = new PitchedWork(app);
     this.rwin = new RoofWindowWork(app);
@@ -91,6 +93,7 @@ export class WallTool {
         if (this.kind === 'blind' && !this.blind.isCarry) { app.ui.toast(this.blind.status(false)); return; }
         if (this.kind === 'pool') { app.ui.toast(this.pool.status(false)); return; }
         if (this.kind === 'land') { app.ui.toast(this.land.status()); return; }
+        if (this.kind === 'ext') { app.ui.toast(this.ext.status()); return; }
         if (this.kind === 'column') { app.ui.toast(this.col.status(false)); return; }
         if (this.kind === 'proof' && !this.proof.isCarry) { app.ui.toast(this.proof.status(false)); return; }
         if (!app.budget.has(this.kind)) { app.budget.noStock(this.kind); return; }   // (the budget: off the pallets on the plot)
@@ -199,6 +202,7 @@ export class WallTool {
     if (this.mode === 'lay' && this.kind === 'blind') return this.blind.down(p, e);
     if (this.mode === 'lay' && this.kind === 'pool') return this.pool.down(p, e);
     if (this.mode === 'lay' && this.kind === 'land') return this.land.down(p, e);
+    if (this.mode === 'lay' && this.kind === 'ext') return this.ext.down(p, e);
     if (this.mode === 'lay' && this.kind === 'column') return this.col.down(p, e);
     if (this.mode === 'lay' && this.kind === 'proof') return this.proof.down(p, e);
     if (this.mode === 'lay') {
@@ -953,7 +957,7 @@ export class WallTool {
     if (!this.tray) return;
     const on = this.app.tool === 'wall' && this.mode === 'lay';
     if (this.delBtn) { this.delBtn.hidden = !(this.app.tool === 'wall' && (this.mode === 'lay' || this.mode === 'delete')); this.delBtn.classList.toggle('active', this.mode === 'delete'); }
-    this.tray.hidden = !on || this.kind === 'pool' || this.kind === 'land' || this.kind === 'column';
+    this.tray.hidden = !on || this.kind === 'pool' || this.kind === 'land' || this.kind === 'ext' || this.kind === 'column';
     if (this.rowBtn) { this.rowBtn.hidden = !(on && (this.kind === 'block' || this.kind === 'brick' || this.kind === 'cinder')); this.rowBtn.classList.toggle('active', !!this.rowMode); }
     if (!on) return;
     const kind = this.kind;
@@ -1157,9 +1161,10 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : c.kind === 'cinder' ? 'Шлакоблок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform', 'studs', 'rail', 'pool', 'land', 'column'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform', 'studs', 'rail', 'pool', 'land', 'ext', 'column'].includes(this.kind)) return {
       pool: this.pool.status(false),
       land: this.land.status(),
+      ext: this.ext.status(),
       column: this.col.status(false),
       rail: 'Стеклянное ограждение: тяните из лотка к краю залитого перекрытия (консоль, балкон, проём лестницы или второго света) — встанет вдоль свободного края, высота 1,1 м',
       studs: 'Шпильки под мауэрлат: тяните из лотка к опалубке армопояса — до заливки (или в свежий бетон) встанут шпильки М12 по оси стен через ≤ 1 м; на них потом ляжет мауэрлат на шайбах и гайках',
@@ -1219,6 +1224,7 @@ export class WallTool {
     if (id && app.objects.get(id)?.type === 'lawn') { this.land.removeLawn(id); return; }
     if (id && app.objects.get(id)?.type === 'fence') { this.land.removeFence(id); return; }
     if (id && app.objects.get(id)?.type === 'plant') { this.land.removePlant(id); return; }
+    if (id && ['porch', 'canopy'].includes(app.objects.get(id)?.type)) { this.ext.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'column') { this.col.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'stock') { app.budget.remove(id); return; }
     if (id && isPoolBelt(app.objects.get(id))) { this.pool.belt(app.objects.get(id)); return; }

@@ -393,10 +393,20 @@ console.log('—', sec());
     for (const [k, x] of [['tree', 0.3], ['ball', 0.35], ['thuja', 0.4], ['bollard', 0.45]]) { tc.settings.plantKind = k; tap(new V(x, 0.1, -0.3)); }
     tc.settings.plantKind = 'hedge'; const Hg = []; for (let i = 0; i <= 10; i++) Hg.push(new V(0.3 + 0.2 * i / 10, 0.1, -0.4)); drag(Hg); for (let i = 0; i < 4000 && tc.physJob; i++) tc.simulate(1 / 30);
     out.plants = tc.objects.all('plant').map((q) => q.kind).join();
+    // a porch to a door with its sill 700 over the ground, and a canopy over it
+    const S = 1 / 1000 / (9000 / 860);
+    tc.journal.act('door', {}, tc.clock, () => tc.objects.add({ type: 'window', key: 'door1', w: 1000, h: 2100, t: 300, x: -0.9, y: 0.1 + 700 * S, z: -0.6, yaw: 0 }));
+    Object.assign(tc.settings, { wallKind: 'ext', extWhat: 'porch' });
+    const D = new V(-0.9, 0.1, -0.5);
+    for (const k of ['dig', 'grav', 'form', 'conc', 'strip', 'tile']) { tc.settings.porchLayer = k; tap(D); }
+    tc.settings.extWhat = 'canopy'; tap(D);
+    const po = tc.objects.all('porch')[0];
+    out.porch = { steps: po?.n, rise: po?.rise, done: Object.keys(po?.done || {}).join(), canopy: tc.objects.all('canopy').length };
     return out;
   });
   check('garden: a path set out, dug, kerbed, stoned, sanded, paved, jointed; undo / redo', land.path.legs === 3 && land.path.done === 'dig,kerb,geo,grav,sand,pave,joint' && land.path.dug && land.undo && land.redo, JSON.stringify(land.path) + ` undo ${land.undo} redo ${land.redo}`);
   check('garden: a lawn round it (topsoil, rake, roller, turf, water), a fence (holes, posts, slats), plants and a light', land.lawn.done === 'soil,rake,roll,grass,water' && land.lawn.cells >= 2 && land.fence.done === 'holes,posts,fill' && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
+  check('exterior: a porch cast to a door (pit, stone, forms, concrete, stripped, tiled) and a canopy over it', land.porch.steps === 3 && land.porch.done === 'dig,grav,form,conc,strip,tile' && land.porch.canopy === 1, JSON.stringify(land.porch));
   check('garden: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
