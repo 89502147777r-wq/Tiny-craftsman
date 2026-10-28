@@ -699,6 +699,30 @@ export class WallView {
       // the clamps round the boards every 500 mm
       for (let s = 150 * S; s < b.ni * b.c - 100 * S; s += 500 * S) at(s, Wc / 2, b.top + b.H * 0.6, 40 * S, 40 * S, Wc + 2 * th + 80 * S);
     }
+    // a ring beam's spans (a beam between pillars / a pillar and a wall, over an opening): under each
+    // the deck of plywood at the beam's bottom, the side boards down to it, beams across every 600 mm
+    // and props down to what is under it (the slab, a sill) — until the formwork comes off
+    for (const b of [...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])]) {
+      if (!b.spans || b.stripped || b.lform) continue;
+      const yaw = Math.atan2(-b.u[1], b.u[0]), th = BELT.board * S, dk = 21 * S, c = b.c;
+      const at = (s, t, y, sx, sy, sz) => { if (nw >= this.max.wood) return; const [x, z] = toWorld(b, s, t); Q.setFromAxisAngle(_Y, yaw); this.wood.setMatrixAt(nw, m.compose(P.set(x, y, z), Q, Sv.set(sx, sy, sz))); this.owner.wood[nw++] = b.id ?? null; };
+      for (const [i0, j0, i1, j1, drop, floor] of b.spans) {
+        const sA = i0 * c, sB = i1 * c, tA = j0 * c, tB = j1 * c, par = sB - sA >= tB - tA, bot = b.top - drop * S, over = BELT.over * S;
+        const L = par ? sB - sA : tB - tA, W = par ? tB - tA : sB - sA;
+        // (in the beam's own terms: al along the span, ac across)
+        const pt = (al, ac) => (par ? [sA + al, (tA + tB) / 2 + ac] : [(sA + sB) / 2 + ac, tA + al]);
+        const box = (al, ac, y, l, h, w) => { const [s2, t2] = pt(al, ac); at(s2, t2, y, par ? l : w, h, par ? w : l); };
+        box(L / 2, 0, bot - dk / 2, L, dk, W + 2 * th);   // the deck
+        if (drop > 0) for (const sg of [-1, 1]) box(L / 2, sg * (W / 2 + th / 2), (bot - dk + b.top - over) / 2, L, b.top - over - bot + dk, th);   // the side boards down to it
+        const n = Math.max(2, Math.ceil(L / (600 * S)) + 1), by = bot - dk - 50 * S;
+        for (let k = 0; k < n; k++) {
+          const al = 80 * S + (L - 160 * S) * k / (n - 1);
+          box(al, 0, by, 50 * S, 100 * S, W + 2 * th + 160 * S);   // a beam across
+          const ph = by - 50 * S - floor;
+          if (ph > 0.002 && (k % 2 === 0 || k === n - 1)) box(al, 0, floor + ph / 2, 80 * S, ph, 80 * S);   // a prop under every other one (≈ 1,2 m)
+        }
+      }
+    }
     // the pallets bought (the budget): the wooden pallet, what is left on it stacked as it came
     this._stockIds = new Set(); const P3 = new THREE.Vector3();
     for (const s of O.all('stock')) {
@@ -834,18 +858,21 @@ export class WallView {
         return key;
       };
       const vert = (i, j, hmm) => { const key = corner(i, j), [x, z] = toWorld(b, ...snapS(b, i * c, j * c)); pos.push(x, b.top + (hmm ?? vh.get(key)) * S, z); col.push(1, 1, 1); pt.push(tp); ws.push(vs.get(key)); return pos.length / 3 - 1; };
+      // (a span's cells: the beam's bottom lower by its drop)
+      const dropAt = (i, j) => { for (const [i0, j0, i1, j1, dr] of b.spans || []) if (i >= i0 && i < i1 && j >= j0 && j < j1) return dr; return 0; };
       P.cells.forEach(([i, j], k) => {
         if (lv[k] <= 0.3) return;
-        const a = vert(i, j), b2 = vert(i + 1, j), c2 = vert(i + 1, j + 1), d = vert(i, j + 1);
+        const a = vert(i, j), b2 = vert(i + 1, j), c2 = vert(i + 1, j + 1), d = vert(i, j + 1), dr = -dropAt(i, j);
         idx.push(a, d, b2, b2, d, c2); own.push(b.id, b.id);
         // its underside (seen over an opening it spans)
-        { const a0 = vert(i, j, 0), b0 = vert(i + 1, j, 0), c0 = vert(i + 1, j + 1, 0), d0 = vert(i, j + 1, 0); idx.push(a0, b0, d0, b0, c0, d0); own.push(b.id, b.id); }
-        // the sides where the ring ends
-        for (const [q, e0, e1] of [[P.nb[k][0], [i + 1, j], [i + 1, j + 1]], [P.nb[k][1], [i, j + 1], [i, j]], [P.nb[k][2], [i + 1, j + 1], [i, j + 1]], [P.nb[k][3], [i, j], [i + 1, j]]]) {
-          if (q >= 0) continue;
-          const t0 = vert(...e0), t1 = vert(...e1), b0 = vert(...e0, 0), b1 = vert(...e1, 0);
-          idx.push(t0, b0, t1, t1, b0, b1); own.push(b.id, b.id);
-        }
+        { const a0 = vert(i, j, dr), b0 = vert(i + 1, j, dr), c0 = vert(i + 1, j + 1, dr), d0 = vert(i, j + 1, dr); idx.push(a0, b0, d0, b0, c0, d0); own.push(b.id, b.id); }
+        // the sides where the ring ends — and where a span's deeper beam meets its support
+        const nbIJ = [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]];
+        [[P.nb[k][0], [i + 1, j], [i + 1, j + 1]], [P.nb[k][1], [i, j + 1], [i, j]], [P.nb[k][2], [i + 1, j + 1], [i, j + 1]], [P.nb[k][3], [i, j], [i + 1, j]]].forEach(([q, e0, e1], n) => {
+          if (q < 0) { const t0 = vert(...e0), t1 = vert(...e1), b0 = vert(...e0, dr), b1 = vert(...e1, dr); idx.push(t0, b0, t1, t1, b0, b1); own.push(b.id, b.id); return; }
+          const dn = -dropAt(...nbIJ[n]);
+          if (dn > dr + 1) { const t0 = vert(...e0, dn), t1 = vert(...e1, dn), b0 = vert(...e0, dr), b1 = vert(...e1, dr); idx.push(t0, b0, t1, t1, b0, b1); own.push(b.id, b.id); }
+        });
       });
     }
     // the blind area's concrete: over the gravel, its surface at the levels of the cells, its

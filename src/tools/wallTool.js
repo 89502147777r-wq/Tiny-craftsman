@@ -891,6 +891,7 @@ export class WallTool {
       { const sig = B ? JSON.stringify([B.exists, B.rec.o, B.rec.top, B.rec.ni, B.rec.nj]) : ''; if (sig === c.beltSig && !v.live && !v.liveBed) return; c.beltSig = sig; }
       v.live = null; v.hl = null; v.liveBed = null;
       v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
+      if (B?.long) app.ui.showMeasure(`Пролёт ${(B.long / 1000).toFixed(1).replace('.', ',')} м — монолитный ригель перекрывает до 6 м: поставьте промежуточный столб (шаг ≤ 6 м)`); else app.ui.hideMeasure();
       app.ui.refresh();
       return;
     } else if (c.kind === 'studs') {
@@ -1164,7 +1165,9 @@ export class WallTool {
       if (!belt) { app.ui.toast('Опалубку пояса — на верх стены: коснитесь верхнего ряда кладки'); return; }
       if (belt.exists) { app.ui.toast('На этих стенах опалубка пояса уже стоит'); return; }
       app.journal.act('belt-form', {}, app.clock, () => app.objects.add(belt.rec));
-      app.ui.toast(`Опалубка пояса: доски по обе стороны стен, ${belt.lenM.toFixed(1).replace('.', ',')} м стен, высота пояса 250 мм — теперь каркас («Каркас»), потом бетон`);
+      app.ui.hideMeasure();
+      const sp = belt.rec.spans || [], deep = sp.filter((q) => q[4] > 0);
+      app.ui.toast(`Опалубка пояса: доски по обе стороны стен, ${belt.lenM.toFixed(1).replace('.', ',')} м стен, высота пояса 250 мм${sp.length ? `; над пролётами (${sp.length}) — днище на стойках до плиты${deep.length ? `, ригель до ${Math.max(...deep.map((q) => q[4])) + 250} мм высотой` : ''}` : ''} — теперь каркас («Каркас»), потом бетон${belt.long ? `. Пролёт ${(belt.long / 1000).toFixed(1).replace('.', ',')} м не перекрыт — нужен промежуточный столб` : ''}`);
       return;
     }
     if (ck === 'rail') {
