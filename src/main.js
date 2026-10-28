@@ -84,6 +84,9 @@ async function main() {
   // read from the saved project or written over it; ?offline=1: drawn frame by frame by a script
   app.filmMode = params.get('film') || null;
   app.filmOffline = !!app.filmMode && params.get('offline') === '1';
+  // (and the dice seeded: a film drawn frame by frame is the same every run — it can be drawn in
+  // parts, by several workers, and taken up again where it stopped)
+  if (app.filmOffline) { let x = 0x2f6b9a31; Math.random = () => { x |= 0; x = (x + 0x6d2b79f5) | 0; let t = Math.imul(x ^ (x >>> 15), 1 | x); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   app.dprOverride = params.get('dpr') ? Number(params.get('dpr')) : 0;
   const scene = (app.scene = new THREE.Scene());
   const camera = (app.camera = new THREE.PerspectiveCamera(45, 1, 0.008, 40));
@@ -277,7 +280,8 @@ function step(dt, time, render = true) {
   // soil physics gets a time budget per frame (small piles settle in a blink)
   const budget = app.settings.quality === 'low' ? 2.5 : 4;
   const t0 = performance.now();
-  for (let i = 0; i < 80 && terrain.active && performance.now() - t0 < budget; i++) terrain.relax(1);
+  // (a film drawn frame by frame: by count, not by the clock — the same every run)
+  for (let i = 0; i < 80 && terrain.active && (app.filmOffline || performance.now() - t0 < budget); i++) terrain.relax(1);
   app.machineTool.afterRelax?.();   // (what slumped back into a pushing bucket goes out ahead again)
   // fresh concrete creeps: a few passes per frame
   terrain.clock = app.clock;
@@ -338,6 +342,7 @@ async function startFilm(name) {
 }
 app.filmStep = (dt, time = performance.now() / 1000, draw = true) => {
   const f = app.film; if (!f) return;
+  if (app.filmOffline) time = f.t;   // (the water's waves, the grass: on the film's clock)
   f.update(dt);
   // (on the phone at most 5 steps a frame — it stays smooth; frame by frame, a 30th each)
   const sim = dt * f.speed, n = Math.max(1, Math.min(app.filmOffline ? 1e3 : 5, Math.ceil(sim / (1 / 30))));
