@@ -602,7 +602,11 @@ export class WallTool {
   }
 
   _screen(v) {
-    const r = this.app.renderer.domElement.getBoundingClientRect(), q = v.clone().project(this.app.camera);
+    // (the canvas's place on the page asked once a frame, not for each of hundreds of points — asking
+    // makes the browser lay the page out again)
+    const now = performance.now();
+    if (!this._rc || now - this._rc.t > 50) this._rc = { t: now, r: this.app.renderer.domElement.getBoundingClientRect() };
+    const r = this._rc.r, q = (this._sv || (this._sv = new THREE.Vector3())).copy(v).project(this.app.camera);
     return { x: r.left + (q.x + 1) / 2 * r.width, y: r.top + (1 - q.y) / 2 * r.height, front: q.z < 1 };
   }
 
