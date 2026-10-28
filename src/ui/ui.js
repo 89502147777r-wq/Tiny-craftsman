@@ -8,8 +8,9 @@ import { WIN_COLOURS } from '../world/windows.js';
 import { POOL_LAYERS, MOSAICS, COPES, DECKS, DECK_WIDTHS } from '../world/pool.js';
 import { PATH_LAYERS, PATH_WIDTHS, PAVERS, PAVE_COLS } from '../world/garden.js';
 import { LAWN_LAYERS, LAWN_HOW } from '../world/lawn.js';
-import { FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS } from '../world/fence.js';
+import { FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES } from '../world/fence.js';
 import { PLANTS } from '../world/plants.js';
+import { PORCH_LAYERS, PORCH_TILES } from '../world/porch.js';
 import { COL_SECS, COURSES, COL_STAGES, TILTS, courseH } from '../world/columns.js';
 import { PALLETS } from '../core/budget.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
@@ -38,6 +39,7 @@ const GROUPS = [
   { id: 'facadeG', label: 'Фасад', svg: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M4 9h16M4 14h16M9 4v5M15 9v5M9 14v6"/><path d="M2 20h20"/></svg>', virt: { kinds: ['facade'], path: ['facade'] } },
   { id: 'blindG', label: 'Отмостка', svg: '<svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="13"/><path d="M2 16h20l-2 4H4z"/><path d="M7 18h.01M12 18h.01M17 18h.01"/></svg>', virt: { kinds: ['blind'], path: ['blind'] } },
   { id: 'poolG', label: 'Бассейн', svg: '<svg viewBox="0 0 24 24"><path d="M3 7h18v10H3z"/><path d="M5 12c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 3-1.2 4.5 0"/><path d="M7 4v6M11 4v6M7 6h4"/></svg>', virt: { kinds: ['pool'], path: ['pool'] } },
+  { id: 'extG', label: 'Экстерьер', svg: '<svg viewBox="0 0 24 24"><path d="M4 21V9l8-5 8 5v12"/><rect x="9.5" y="13" width="5" height="8"/><path d="M7 12h10"/><path d="M6 21h12M5 19h14"/></svg>', virt: { kinds: ['ext'], path: ['ext'] } },
   { id: 'landG', label: 'Благоустройство', svg: '<svg viewBox="0 0 24 24"><path d="M9 21l2-9h2l2 9"/><path d="M10.4 15h3.2M9.6 18.5h4.8"/><circle cx="18" cy="7" r="3"/><path d="M18 10v5"/><path d="M3 9c1.5-3 4.5-3 6 0-1.5 1.5-4.5 1.5-6 0zM6 10v5"/><path d="M2 21h20"/></svg>', virt: { kinds: ['land'], path: ['land'] } },
   { id: 'machines', label: 'Техника', icon: 'machine' },
 ];
@@ -571,8 +573,15 @@ export class UI {
       });
       const fence = FENCE_LAYERS.map(([k, l], i) => {
         const c = C(`${i + 1} · ${l}`, has('land') && isFence && lw.fenceLayer === k, () => fset({ fenceLayer: k }));
-        if (k === 'line') return G('fline', c.label, [...FENCE_HEIGHTS.map((h) => C(`Высота ${String(h / 1000).replace('.', ',')} м`, lw.fenceH === h, () => fset({ fenceLayer: 'line', fenceH: h }))), ...Object.entries(FENCE_KINDS).map(([q, n]) => C(n, lw.fenceKind === q, () => fset({ fenceLayer: 'line', fenceKind: q })))], null, c);
-        if (k === 'fill') return G('ffill', c.label, [...Object.entries(FENCE_KINDS).map(([q, n]) => C(n, lw.fenceKind === q, () => fset({ fenceLayer: 'fill', fenceKind: q }))), ...Object.entries(FENCE_COLS).filter(([, v]) => (lw.fenceKind === 'mesh') === !v[1]).map(([q, [n]]) => C('◼ ' + n, lw.fenceCol === q, () => fset({ fenceLayer: 'fill', fenceCol: q })))], null, c);
+        if (k === 'line') return G('fline', c.label, [...FENCE_HEIGHTS.map((h) => C(`Высота ${String(h / 1000).replace('.', ',')} м`, lw.fenceH === h, () => fset({ fenceLayer: 'line', fenceH: h }))), ...Object.entries(FENCE_KINDS).map(([q, K]) => C(K.name, lw.fenceKind === q, () => fset({ fenceLayer: 'line', fenceKind: q })))], null, c);
+        if (k === 'fill') return G('ffill', c.label, [...Object.entries(FENCE_KINDS).map(([q, K]) => C(K.name, lw.fenceKind === q, () => fset({ fenceLayer: 'fill', fenceKind: q }))), ...FENCE_KINDS[lw.fenceKind].cols.map((q) => C('◼ ' + FENCE_COLS[q][0], lw.fenceCol === q, () => fset({ fenceLayer: 'fill', fenceCol: q })))], null, c);
+        if (k === 'gate') return G('fgate', c.label, [G('fgates', 'Ворота', Object.entries(GATES).filter(([, T]) => T.gate).map(([q, T]) => C(T.name, lw.fenceLayer === 'gate' && lw.gateType === q, () => fset({ fenceLayer: 'gate', gateType: q })))), G('fwick', 'Калитки', Object.entries(GATES).filter(([, T]) => !T.gate).map(([q, T]) => C(T.name, lw.fenceLayer === 'gate' && lw.gateType === q, () => fset({ fenceLayer: 'gate', gateType: q }))))], null, c);
+        return c;
+      });
+      const ew = wt.ext, eset = (o) => lay({ wallKind: 'ext', ...o });
+      const porch = PORCH_LAYERS.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('ext') && ew.what === 'porch' && ew.layer === k, () => eset({ extWhat: 'porch', porchLayer: k }));
+        if (k === 'tile') return G('ptile2', c.label, Object.entries(PORCH_TILES).map(([q, [n]]) => C('◼ ' + n, ew.tile === q, () => eset({ extWhat: 'porch', porchLayer: 'tile', porchTile: q }))), null, c);
         return c;
       });
       // the windows in the roof (a slope or a flat roof): the size, the colour of the frame
@@ -602,6 +611,7 @@ export class UI {
         ], null, C('', has('proof', 'roof', 'rwin')))),
         hid(G('blind', 'Отмостка', [...blind, del()], null, C('', has('blind'), () => lay({ wallKind: 'blind' })))),
         hid(G('pool', 'Бассейн', [(() => { const [nk, nw] = wt.pool.next(); return C(`➜ ${nw}`, false, () => { if (nk === 'concrete') { app.setTool?.('hose'); app.ui.toast(nw); } else if (nk) plset({ poolLayer: nk }); else app.ui.toast(nw); }, 'next'); })(), ...pool, del()], null, C('', has('pool'), () => lay({ wallKind: 'pool' })))),
+        hid(G('ext', 'Экстерьер', [(() => { const [nk, nw] = ew.next(); return C(`➜ ${nw}`, false, () => { if (nk) eset({ extWhat: 'porch', porchLayer: nk }); else app.ui.toast(nw); }, 'next'); })(), G('porch', 'Крыльцо', porch, null, C('', has('ext') && ew.what === 'porch', () => eset({ extWhat: 'porch' }))), C('Козырёк над входом', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' })), del()], null, C('', has('ext'), () => lay({ wallKind: 'ext' })))),
         hid(G('land', 'Благоустройство', [(() => { const [nk, nw] = lw.next(); return C(`➜ ${nw}`, false, () => { if (!nk) app.ui.toast(nw); else if (isLawn) gset({ lawnLayer: nk }); else if (isFence) fset({ fenceLayer: nk }); else lset({ pathLayer: nk }); }, 'next'); })(), G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('fence', 'Забор', fence, null, C('', has('land') && isFence, () => fset({}))), G('plants', 'Растения', Object.entries(PLANTS).filter(([, P]) => !P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }))), G('lights', 'Освещение', Object.entries(PLANTS).filter(([, P]) => P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !!PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'bollard' }))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
