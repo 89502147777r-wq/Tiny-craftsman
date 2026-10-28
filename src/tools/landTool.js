@@ -6,6 +6,7 @@ import {
 } from '../world/garden.js';
 import { pointAt } from '../world/gardenView.js';
 import { FENCE, FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, fenceLine, postsOf, fenceLength } from '../world/fence.js';
+import { PLANTS, hedgePlants } from '../world/plants.js';
 import { LAWN, LAWN_LAYERS, LAWN_HOW, polyOf, areaOf, inside as inPolyL, mainDir, cellsOf as lawnCells, frameW } from '../world/lawn.js';
 
 // The garden done by the finger (garden.js): «Благоустройство» → «Дорожка» → its stages one after
@@ -60,7 +61,8 @@ export class LandWork {
     return null;
   }
 
-  get what() { const w = this.app.settings.landWhat; return w === 'lawn' || w === 'fence' ? w : 'path'; }
+  get what() { const w = this.app.settings.landWhat; return w === 'lawn' || w === 'fence' || w === 'plant' ? w : 'path'; }
+  get plantKind() { return PLANTS[this.app.settings.plantKind] ? this.app.settings.plantKind : 'tree'; }
   get fenceLayer() { return FNAME[this.app.settings.fenceLayer] ? this.app.settings.fenceLayer : 'line'; }
   get fenceKind() { return FENCE_KINDS[this.app.settings.fenceKind] ? this.app.settings.fenceKind : 'slat'; }
   get fenceH() { return FENCE_HEIGHTS.includes(this.app.settings.fenceH) ? this.app.settings.fenceH : 1800; }
@@ -73,6 +75,7 @@ export class LandWork {
   down(p, e) {
     if (this.what === 'lawn') return this._lawnDown(p, e);
     if (this.what === 'fence') return this._fenceDown(p, e);
+    if (this.what === 'plant') return this._plantDown(p, e);
     const L = this.layer;
     if (L === 'set') {
       const app = this.app;
@@ -93,6 +96,7 @@ export class LandWork {
     const d = this.drag; if (!d) return;
     if (d.L === 'area') { this._lawnMove(p); return; }
     if (d.L === 'fline') { this._fenceMove(p); return; }
+    if (d.L === 'hedge') { const last = d.trail.at(-1); if (Math.hypot(p.x - last[0], p.z - last[1]) > MM(80)) { d.trail.push([p.x, p.z]); const pts = fenceLine(d.trail); this.view.setLiveFence(pts ? { pts, H: 1300, kind: 'slat', col: 'graphite', g: this._groundOf(pts) } : null); if (pts) this.app.ui?.showMeasure?.(`Живая изгородь ${f1(fenceLength({ pts, kind: 'slat' }) / S / 1000)} м, ${hedgePlants({ pts }).length} растений — отпустите`); } return; }
     const last = d.trail.at(-1);
     if (Math.hypot(p.x - last[0], p.z - last[1]) < MM(80)) return;
     d.trail.push([p.x, p.z]);
@@ -107,6 +111,7 @@ export class LandWork {
     const app = this.app, d = this.drag;
     if (d?.L === 'area') { this._lawnUp(); return; }
     if (d?.L === 'fline') { this._fenceUp(); return; }
+    if (d?.L === 'hedge') { this.drag = null; this.view.setLiveFence(null); this.app.ui?.hideMeasure?.(); const pts = fenceLine(d.trail); if (!pts) { this.toast('Изгородь короче метра — ведите пальцем длиннее'); return; } this._plant({ kind: 'hedge', pts, g: this._groundOf(pts) }); return; }
     this.drag = null;
     if (!d) return;
     this.view.setLive(null);
@@ -325,6 +330,7 @@ export class LandWork {
   next(r = this.rec) {
     if (this.what === 'lawn') return this.lawnNext();
     if (this.what === 'fence') return this.fenceNext();
+    if (this.what === 'plant') return [null, this.plantStatus()];
     if (!r) return ['set', 'Разметьте дорожку: проведите пальцем по участку'];
     const d = r.done || {};
     for (const k of ORDER.slice(1)) if (!d[k]) return [k, NAME[k]];
@@ -333,6 +339,7 @@ export class LandWork {
   status() {
     if (this.what === 'lawn') return this.lawnStatus();
     if (this.what === 'fence') return this.fenceStatus();
+    if (this.what === 'plant') return this.plantStatus();
     return {
       set: `Проведите пальцем по участку, где пройдёт дорожка шириной ${f1(this.W / 1000)} м — повороты по ходу пальца`,
       dig: 'Коснитесь дорожки — выкопается корыто 300 мм с запасом под бордюры',
@@ -498,6 +505,69 @@ export class LandWork {
     if (!this.app.objects.get(id)) return;
     this._save('lawn-remove', () => this.app.objects.remove(id));
     this.toast('Газон убрали');
+  }
+
+  // ==== the plants ============================================================================
+  _plantDown(p) {
+    if (this.app.physJob) return true;
+    const kind = this.plantKind, t = this.app.terrain;
+    if (kind === 'hedge') { this.drag = { L: 'hedge', trail: [[p.x, p.z]] }; this.app.ui?.showMeasure?.('Ведите пальцем, где пройдёт живая изгородь'); return true; }
+    if (!t.inside(p.x, p.z)) return true;
+    const i = t.index(p.x, p.z);
+    if (t.conc[i] > 1e-6 || this.app.objects.all('path').some((q) => inQuads(kerbOuter(q), p.x, p.z))) { this.toast('Сюда не посадить — бетон или дорожка. Выберите землю или газон'); return true; }
+    this._plant({ kind, x: +p.x.toFixed(5), z: +p.z.toFixed(5), g: +t.heightAt(p.x, p.z).toFixed(6), s: +(0.85 + Math.random() * 0.3).toFixed(2), rot: +(Math.random() * 6.28).toFixed(2) });
+    return true;
+  }
+  // each plant: the hole dug (the soil heaped beside it), the plant lowered in, the soil back round
+  // it, then watered in and mulched
+  _plant(rec) {
+    const app = this.app, t = app.terrain, P = PLANTS[rec.kind], v = this.view, hedge = rec.kind === 'hedge';
+    const spots = hedge ? hedgePlants(rec) : [[rec.x, rec.z]], R = MM(P.hole[0] / 2), D = MM(P.hole[1]);
+    app.journal.begin('plant', {}, app.clock);
+    const r = app.objects.add({ type: 'plant', ...rec }), key = 'P' + r.id;
+    v.setAnim(key, { n: 0, drop: 600, mulch: 0 });
+    const heaps = [], per = hedge ? 0.55 : 2.2, steps = [];
+    spots.forEach(([x, z], k) => {
+      const hx = x + R * 1.6, hz = z + R * 0.4, vol = Math.PI * R * R * D * 0.6;
+      // (dug)
+      steps.push([per * 0.35, (u) => {
+        if (!heaps[k]) heaps[k] = t.heapStart(hx, hz, vol, Math.tan(37 * Math.PI / 180));
+        t.scoop(x, z, R, rec.g - D * u, rec.g, () => true, k);
+        t.heapTo(heaps[k], vol * u, M_SOIL);
+        if (Math.random() < 0.4) app.particles?.emit(new THREE.Vector3(x, rec.g, z), new THREE.Vector3((Math.random() - 0.5) * 0.08, 0.15, (Math.random() - 0.5) * 0.08), 0, MM(25), 0, 0, 0);
+        if (Math.random() < 0.15) app.sfx?.stab?.();
+      }]);
+      // (lowered in)
+      steps.push([per * 0.3, (u) => { const e = u * u * (3 - 2 * u); v.setAnim(key, { n: k + 1, drop: 600 * (1 - e) }); }]);
+      // (the soil back from the heap into the hole, firmed by the boot)
+      steps.push([per * 0.35, (u) => {
+        const H = heaps[k];
+        for (let j = 0; j < H.n; j++) { const want = H.cur[j] * (1 - u), d = (H.curNow?.[j] ?? H.cur[j]) - want; if (d > 1e-9) { t._pop(H.idx[j], d); (H.curNow || (H.curNow = Float64Array.from(H.cur)))[j] = want; } }
+        const yb = rec.g - D * (1 - u) * 0.999, b = [x - R, z - R, x + R, z + R];
+        const ix0 = Math.max(0, Math.floor(t.toCellX(b[0]))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(b[2]))), iz0 = Math.max(0, Math.floor(t.toCellZ(b[1]))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(b[3])));
+        for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { if (Math.hypot(t.toWorldX(ix) - x, t.toWorldZ(iz) - z) > R * 1.05) continue; const i = iz * t.nx + ix, h = t.hAt(i); if (h < yb) t._push(i, yb - h, M_SOIL); }
+        t._touch(ix0, iz0, ix1, iz1); t._touch(...H.box);
+        if (u >= 1) { t.levelTo((wx, wz) => Math.hypot(wx - x, wz - z) < R * 1.05, rec.g, b); v.setAnim(key, { n: k + 1, drop: 0 }); }
+      }]);
+    });
+    // watered in, then the bark round it
+    const [cx, cz] = spots[Math.floor(spots.length / 2)];
+    if (!P.light) steps.push([1, (u) => { for (let i = 0; i < 3; i++) { const [x, z] = spots[Math.floor(Math.random() * spots.length)]; app.particles?.emit(new THREE.Vector3(x + (Math.random() - 0.5) * R, rec.g + MM(500), z + (Math.random() - 0.5) * R), new THREE.Vector3(0, -0.3, 0), 0, MM(6), 0, 0, 1); } if (u < 1 && Math.random() < 0.2) app.sfx?.pour?.(0.2); }]);
+    steps.push([P.light ? 0.1 : 0.6, (u) => v.setAnim(key, { n: 1e9, drop: 0, mulch: u })]);
+    void cx; void cz;
+    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); v.setAnim(key, null); }, commit: () => {
+      app.journal.commit(app.clock);
+      v.setAnim(key, null);
+      this.toast(P.light ? `${P.name}: установлен, кабель 12 В проложен в траншее — включится в сумерках` : hedge ? `Живая изгородь: ${spots.length} туй через 500 мм, полита, замульчирована корой` : `${P.name}: посажено с комом в яму ${P.hole[0]} × ${P.hole[1]} мм, полито, приствольный круг замульчирован корой${rec.kind === 'tree' ? ', две опоры с подвязкой' : ''}`);
+    } });
+  }
+  plantStatus() {
+    return { bollard: 'Коснитесь у дорожки — встанет светильник-столбик (кабель 12 В в траншее); ночью светит', spot: 'Коснитесь у дерева — грунтовый прожектор подсветит его снизу', tree: 'Коснитесь земли — посадится дерево с опорами', ball: 'Коснитесь земли — посадится самшит, стриженный шаром', thuja: 'Коснитесь земли — посадится туя «Смарагд»', hedge: 'Ведите пальцем — вдоль линии посадится живая изгородь из туй' }[this.plantKind];
+  }
+  removePlant(id) {
+    if (!this.app.objects.get(id)) return;
+    this._save('plant-remove', () => this.app.objects.remove(id));
+    this.toast('Растение убрали');
   }
 
   // ==== the fence ==============================================================================

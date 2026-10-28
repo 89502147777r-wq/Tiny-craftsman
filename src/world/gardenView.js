@@ -4,6 +4,7 @@ import { PATH, TOPS, paversOf, kerbsOf, paveQuads, kerbOuter, bandQuads, legsOf,
 import { lawnUniforms, buildLawn, lawnLine, lawnGhost, turfRoll, roller, sprinkler } from './lawnView.js';
 import { frameW } from './lawn.js';
 import { fenceString, fencePosts, fenceFill, fenceUniforms, auger } from './fence.js';
+import { PLANTS, plantBody, rootBall, mulchDisc, mulchStrip, spotsOf } from './plants.js';
 
 // The garden drawn (garden.js): the paths — the pegs and the string of the setting-out, the
 // geotextile, the kerbs on their concrete, the pavers, the sand in the joints. The ground's layers
@@ -107,7 +108,7 @@ export class GardenView {
     this.live = null;          // a path being set out (no id): { pts, W }
     this.anim = {};            // id → { kerb: n, pave: n, geo, joint (mm along), roll }
     this.dirty = true;
-    objects.on((id, rec) => { if (rec?.type === 'path' || rec?.type === 'lawn' || rec?.type === 'fence' || this.parts.has(id) || this.parts.has('L' + id) || this.parts.has('F' + id)) this.dirty = true; });
+    objects.on((id, rec) => { if (rec?.type === 'path' || rec?.type === 'lawn' || rec?.type === 'fence' || rec?.type === 'plant' || this.parts.has('P' + id) || this.parts.has(id) || this.parts.has('L' + id) || this.parts.has('F' + id)) this.dirty = true; });
     this.liveLawn = null;   // a lawn being drawn: { poly, g }
   }
   setLive(l) { this.live = l; this.dirty = true; }
@@ -116,10 +117,12 @@ export class GardenView {
   setAnim(id, a) { if (a) this.anim[id] = { ...(this.anim[id] || {}), ...a }; else delete this.anim[id]; this.dirty = true; }
 
   update(dt, app) {
+    this._night = app.sky?.night ?? 0;
     if (this.dirty) this._build(app);
     for (const e of this.parts.values()) {
       if (e.lawn) { this._lawnFrame(e); continue; }
       if (e.fence) { this._fenceFrame(e); continue; }
+      if (e.plant) { this._plantFrame(e); continue; }
       const r = e.rec, d = r.done || {}, a = this.anim[r.id] || {}, U = e.U;
       U.kerb.n.value = a.kerb ?? (d.kerb ? 1e9 : -1);
       U.bed.f.value = a.kerbS ?? (d.kerb ? 1e9 : -1e9);
@@ -175,7 +178,41 @@ export class GardenView {
       this._part(e, 'fill', d.fill || a.fill != null ? geo + '|' + r.col : null, () => fenceFill(r, e.U));
       if (!e.auger) { e.auger = auger(); e.auger.visible = false; e.g.add(e.auger); }
     }
+    for (const r of this.objects.all('plant')) {
+      const key = 'P' + r.id;
+      seen.add(key);
+      let e = this.parts.get(key);
+      if (!e) { e = { g: new THREE.Group(), keys: {}, sub: {}, plant: true }; this.group.add(e.g); this.parts.set(key, e); }
+      e.rec = r;
+      const geo = [r.kind, r.x, r.z, (r.pts || []).flat().join(), r.g, r.s].join('|'), P = PLANTS[r.kind];
+      // each plant (a hedge: each of its plants) with its root ball under it while it goes in
+      this._part(e, 'body', geo, () => {
+        const G = new THREE.Group();
+        spotsOf(r).forEach(([x, z], i) => { const o = new THREE.Group(); o.position.set(x, r.g, z); o.rotation.y = (r.rot || 0) + i * 2.4; o.add(plantBody(r.kind, r.s || 1)); const b = rootBall(P.ball); b.visible = false; o.add(b); o.userData.ball = b; G.add(o); });
+        return G;
+      });
+      this._part(e, 'mulch', P.mulch ? geo : null, () => {
+        if (r.kind === 'hedge') { const m = mulchStrip(r.pts, P.mulch); m.position.y = r.g; return m; }
+        const m = mulchDisc(P.mulch); m.position.x = r.x; m.position.z = r.z; m.position.y += r.g; return m;
+      });
+    }
     for (const [k, e] of [...this.parts]) if (!seen.has(k)) { this.group.remove(e.g); dispose(e.g); this.parts.delete(k); }
+  }
+  // a plant going in: each one dropping into its hole in turn (a: { n (how many in), drop (mm, the
+  // one going in), ball, mulch (0…1) }); once planted, all of them in place
+  _plantFrame(e) {
+    // (a light: its lens and the ground round it glow at night)
+    if (PLANTS[e.rec.kind]?.light && e.sub.body) { const night = this._night || 0; e.sub.body.traverse((o) => { if (o.userData.lens) o.userData.lens.material.emissiveIntensity = 0.2 + 3 * night; if (o.userData.glow) o.userData.glow.material.opacity = 0.85 * night; }); }
+    const r = e.rec, a = this.anim['P' + r.id], body = e.sub.body, P = PLANTS[r.kind], dep = MM(P.hole[1] - P.ball * 0.5);
+    if (!body) return;
+    body.children.forEach((o, i) => {
+      const n = a ? a.n ?? 1e9 : 1e9, on = i < Math.ceil(n), cur = i === Math.ceil(n) - 1 && a && a.n != null;
+      o.visible = on;
+      // (in its hole the ball's top is at the ground's level; the plant comes down onto it)
+      o.position.y = r.g + (cur ? MM(a.drop || 0) : 0);
+      o.userData.ball.visible = !!(a && on && !a.settled);
+    });
+    if (e.sub.mulch) { const k = a ? a.mulch ?? 0 : 1; e.sub.mulch.visible = k > (r.kind === 'hedge' ? 0.5 : 0.01); if (r.kind !== 'hedge') e.sub.mulch.scale.set(Math.max(0.01, k), 1, Math.max(0.01, k)); }
   }
   _fenceFrame(e) {
     const r = e.rec, d = r.done || {}, a = this.anim['F' + r.id] || {};

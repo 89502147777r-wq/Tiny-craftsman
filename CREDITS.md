@@ -55,6 +55,14 @@
 | `assets/textures/facade/cas_corten/` — металлокассеты «кортен» | Rust 009 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Rust009 |
 | `assets/textures/facade/fc_fibre/` — фактура фиброцемента (тонируется) | Concrete 048 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Concrete048 |
 
+## Модели растений (Poly Haven, CC0 1.0)
+
+Упрощены для телефона (glTF-Transform: часть листьев оставлена и увеличена, ветви упрощены, текстуры 512 px, meshopt). Самшит, туя и изгородь — процедурные (листья нарисованы в коде).
+
+| Файл в проекте | Ассет | Автор | Лицензия | Источник |
+|---|---|---|---|---|
+| `assets/models/plants/tree.glb` — дерево | Tree Small 02 | Rico Cilliers | CC0 | https://polyhaven.com/a/tree_small_02 |
+
 ## Модели инструментов (Poly Haven, CC0 1.0)
 
 glTF 1k, текстуры ужаты до 512 px. Дрель — в руке шуруповёрта и при сверлении (сверло и бита дорисованы), молоток — при забивании дюбелей и гвоздей.
