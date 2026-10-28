@@ -58,4 +58,4 @@ if (marks.hook != null && marks.hookEnd != null) {
   src = path.join(cut, 'c%05d.jpg');
 }
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(fr), '-i', src, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'medium', '-movflags', '+faststart', path.join(out, `${film}.mp4`)]);
-console.log('done', path.join(out, `${film}.mp4`), n, 'frames');
+console.log('done', path.join(out, `${film}.mp4`));
