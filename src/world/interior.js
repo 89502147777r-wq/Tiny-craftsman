@@ -224,7 +224,7 @@ export function buildRoom(r) {
   const dims = (key, rot = 0) => { const [w, h, d] = FURN[key].s.map((v) => v * 1000), q = Math.abs(Math.sin(rot)) > 0.5; return { w: q ? d : w, dep: q ? w : d, h, W: w, Dp: d }; };
   const put = (key, a, d, rot = 0, y = 0) => {
     if (!key || !FURN[key]) return null;
-    const holder = new THREE.Group(); holder.position.set(MM(a), MM(y + 12), -MM(d)); holder.rotation.y = rot; G.add(holder);
+    const holder = new THREE.Group(); holder.name = 'F:' + key; holder.position.set(MM(a), MM(y + 12), -MM(d)); holder.rotation.y = rot; G.add(holder);
     loadModel('interior/' + key).then(({ scene }) => {
       scene.scale.setScalar(MM(1000));
       const cache = new Map();
@@ -294,7 +294,7 @@ export function buildRoom(r) {
         pendant(A(ax - sf.w / 2 - 650), D * 0.55);
       }
       accent(a0, a1);
-      const bk = back(pick(['bookcase', 'shelf', 'sideboard']), Math.min(a1 - 900, ax + 1000)); if (bk) { const v = choose('vase'); if (v && bk.h < 1000) put(v, A(Math.min(a1 - 900, ax + 1000) - 200), D - bk.dep / 2 - 30, 0, bk.h); }
+      const bk = back(pick(['bookcase', 'shelf', 'sideboard']), Math.min(a1 - 900, ax + 1000)); if (bk && bk.h < 1000) { const bx = Math.min(a1 - 900, ax + 1000), v = choose('vase'); if (v) put(v, A(bx - 250), D - bk.dep / 2 - 30, 0, bk.h); if (rnd() < 0.5) { const mr = choose('mirror'); if (mr) put(mr, A(bx), D - 40, 0, bk.h + 250); } else art(bx, bk.h + 300, false); }
       art(Math.max(a0 + 800, ax - 1200), 1300, false);
       const pl = choose('plant'); if (pl) put(pl, A(a0 + 400), 500);
       const fl = choose('floorlamp'); if (fl) put(fl, A(a1 - 350), 450);
