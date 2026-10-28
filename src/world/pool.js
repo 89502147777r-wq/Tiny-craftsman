@@ -105,12 +105,22 @@ export const outerBox = (r) => worldBox(r, outer(r));
 export function inBowl(r, x, z, pad = 0) { const [s, t] = PF(r, x, z), [a, b, c, d] = outer(r); return s >= a - pad && s <= c + pad && t >= b - pad && t <= d + pad; }
 
 // ---- a new pool where the finger is (snapped onto the project's pool when near it) ---------
-export function newPool(app, p, turn = false) {
-  const L = POOL.L, W = POOL.W, u = turn ? [0, 1] : [1, 0];
-  // the project's pool (projectView: house mm → world)
+// a — the corner where the finger went down: drawn out from it to p, the water's own size (the
+// longer side its length; 100 mm steps, POOL_SIZE's limits); else the standard pool
+export const POOL_SIZE = { L: [3000, 12000], W: [2000, 6000] };
+export function newPool(app, p, turn = false, a = null) {
+  let L = POOL.L, W = POOL.W, u = turn ? [0, 1] : [1, 0];
   const pv = app.projectView, pl = VILLA.site.pool;
   let cx = p.x, cz = p.z, snapped = false;
-  if (pv && pl) {
+  if (a && Math.hypot(p.x - a.x, p.z - a.z) > MM(800)) {
+    const dx = Math.abs(p.x - a.x) / S, dz = Math.abs(p.z - a.z) / S, snap = (v, [lo, hi]) => Math.max(lo, Math.min(hi, Math.round(v / 100) * 100));
+    u = dx >= dz ? [1, 0] : [0, 1];
+    L = snap(Math.max(dx, dz), POOL_SIZE.L); W = snap(Math.min(dx, dz), POOL_SIZE.W);
+    if (W > L) W = L;
+    // (the rect from the corner the finger started at, its far corner where it is now)
+    cx = a.x + Math.sign(p.x - a.x || 1) * (u[0] ? L : W) / 2 * S; cz = a.z + Math.sign(p.z - a.z || 1) * (u[0] ? W : L) / 2 * S;
+  } else if (pv && pl) {
+    // the project's pool (projectView: house mm → world)
     const px = pv.X((pl.x0 + pl.x1) / 2), pz = pv.Z((pl.z0 + pl.z1) / 2);
     if (Math.hypot(p.x - px, p.z - pz) < MM(2500)) { cx = px; cz = pz; snapped = !turn; }
   }

@@ -12,6 +12,7 @@ import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/bl
 import { LAYERS as FAC_LAYERS, VLAYERS as FAC_VLAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES, VENT } from '../world/facade.js';
 import { RWIN_TYPES } from '../world/roofWindows.js';
 import { ROOF_TYPES, PITCHES, PITCH_RANGE, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
+import { LANG } from '../i18n/i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
@@ -208,6 +209,9 @@ export class UI {
     bind('set-dof', 'dof', (v) => (v < 0.02 ? 'выкл' : `${Math.round(v * 100)}%`));
     bind('set-shovel', 'shovel', () => '', String);
     bind('set-quality', 'quality', () => '', String);
+    // the language: the whole page is drawn again in it
+    $('set-lang').value = LANG;
+    $('set-lang').addEventListener('change', (e) => { s.lang = e.target.value; app.applySettings(); location.reload(); });
     bind('set-backdrop', 'backdrop', () => '', String);
     bind('set-slab', 'slab', (v) => `${v} мм`);
     bind('set-rebarD', 'rebarD', () => '');
