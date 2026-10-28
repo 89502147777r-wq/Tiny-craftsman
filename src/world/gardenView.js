@@ -303,7 +303,7 @@ function rollMesh(r) {
 }
 // the pavers: concrete (the photo of a concrete face), each its own shade; the edges chamfered 4 mm
 function paveMesh(r, U) {
-  const g = r.g, P = paversOf(r).map((p, i) => ({ p: p.p, yT: g + MM(TOPS.pave), yB: g - MM(PATH.paver), ord: i, rgb: p.rgb.map((v) => Math.min(1, v * 1.55)), s: p.ord }));
+  const g = r.g, P = paversOf(r).map((p, i) => ({ p: p.p, yT: g + MM(TOPS.pave), yB: g - MM(PATH.paver), ord: i, rgb: p.rgb.map((v) => Math.min(1, v * 0.95)), s: p.ord }));
   const m = byCount(new THREE.MeshStandardMaterial({ map: tex('pool_coat', 'col.jpg', true), normalMap: tex('pool_coat', 'nor.jpg', false), vertexColors: true, roughness: 0.88 }), U.pave);
   const o = new THREE.Mesh(prisms(P, MM(4), MM(500)), m); o.receiveShadow = true;
   return o;
