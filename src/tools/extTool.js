@@ -255,8 +255,16 @@ export class ExtWork {
     const app = this.app, r = app.objects.all('interior')[0];
     if (r) { app.journal.act('interior-off', {}, app.clock, () => app.objects.remove(r.id)); this.toast('Интерьер убрали — снова стройка'); return false; }
     if (!app.objects.all('window').length) { this.toast('Сначала поставьте окна — интерьер видно через них'); return false; }
-    app.journal.act('interior', {}, app.clock, () => app.objects.add({ type: 'interior' }));
+    app.journal.act('interior', {}, app.clock, () => app.objects.add({ type: 'interior', seed: 1 + Math.floor(Math.random() * 1e6) }));
     this.toast('Готово! В доме живут: мебель, шторы, вечером горит свет');
+    return true;
+  }
+  // another set of dice for the rooms: other styles, layouts, pieces, colours
+  reroll() {
+    const app = this.app, r = app.objects.all('interior')[0];
+    if (!r) return this.ready();
+    app.journal.act('interior-reroll', {}, app.clock, () => app.objects.update(r.id, { seed: 1 + Math.floor(Math.random() * 1e6) }));
+    this.toast('Новый интерьер: другие стили, мебель и цвета');
     return true;
   }
   remove(id) {

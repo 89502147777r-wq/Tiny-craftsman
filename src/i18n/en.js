@@ -1,5 +1,7 @@
 // English for every Russian line of the game (the key: the Russian, {n} — what a template puts in)
 export default {
+"🎲 Другой интерьер": "🎲 Another interior",
+"Новый интерьер: другие стили, мебель и цвета": "New interior: other styles, furniture and colours",
 "✨ Готово": "✨ Done",
 "Интерьер убрали — снова стройка": "Interior removed — back to the build site",
 "Сначала поставьте окна — интерьер видно через них": "Put the windows in first — the interior is seen through them",

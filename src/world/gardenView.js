@@ -239,9 +239,9 @@ export class GardenView {
   // the house lived in: built when «Готово» is on (a while after the last change, the walls standing by
   // then), lit at dusk
   _interiorFrame(app, dt) {
-    const on = this.objects.all('interior').length > 0;
-    if (this._intT > 0) { this._intT -= dt || 0.016; if (this._intT <= 0 || !on) { this._intT = 0; if (this.interior) { this.group.remove(this.interior); dispose(this.interior); this.interior = null; } if (on) { app.wallView.group.updateMatrixWorld(true); this.interior = buildInterior(app); this.group.add(this.interior); } } }
-    if (this.interior) interiorLight(this.interior, Math.max(0, Math.min(1, ((this._night || 0) - 0.05) / 0.4)));
+    const rec = this.objects.all('interior')[0], on = !!rec;
+    if (this._intT > 0) { this._intT -= dt || 0.016; if (this._intT <= 0 || !on) { this._intT = 0; if (this.interior) { this.group.remove(this.interior); dispose(this.interior); this.interior = null; } if (on) { app.wallView.group.updateMatrixWorld(true); this.interior = buildInterior(app, rec.seed || 0); this.group.add(this.interior); } } }
+    if (this.interior) interiorLight(this.interior, Math.max(0, Math.min(1, ((this._night || 0) - 0.05) / 0.4)), (this._t = (this._t || 0) + (dt || 0.016)));
   }
   // a light: on at dusk (the lens, the light it throws); going in: the fixture growing to its place, a
   // strip shown along as far as it is stuck
