@@ -71,8 +71,8 @@ export class PoolWork {
       const ray = this._rayOf(e), q = (ray && hitGround(ray, TRAY.soil)) || p;
       const near = app.objects.all('pool').find((r) => { const [x0, z0, x1, z1] = pitBox(r); return q.x > x0 && q.x < x1 && q.z > z0 && q.z < z1; });
       if (near) { this.sel = near.id; this.toast(this.status(false)); return true; }
-      this.drag = { L, q };
-      this._ghost(q);
+      this.drag = { L, q, a: q.clone() };
+      this._ghost(q, q);
       return true;
     }
     const r = this.pick(p);
@@ -113,7 +113,7 @@ export class PoolWork {
 
   move(p, e) {
     const d = this.drag; if (!d) return;
-    if (d.L === 'pit') { const ray = this._rayOf(e), q = (ray && hitGround(ray, TRAY.soil)) || p; d.q = q; this._ghost(q); return; }
+    if (d.L === 'pit') { const ray = this._rayOf(e), q = (ray && hitGround(ray, TRAY.soil)) || p; d.q = q; this._ghost(q, d.a); return; }
     if (d.L === 'proof') this._paint(e);
     else if (d.L === 'tile') { d.moved = true; this._tile(e); }
     else if (d.L === 'cope') this._cope(e);
@@ -135,11 +135,11 @@ export class PoolWork {
     if (d.L === 'pit') {
       this._live(null);
       app.ui?.hideMeasure?.();
-      const { rec, snapped } = newPool(app, d.q, !!app.settings.poolTurn);
+      const { rec, snapped } = newPool(app, d.q, !!app.settings.poolTurn, d.a);
       const why = poolFits(app, rec);
       if (why) { this.toast(why); return; }
       this._save('pool-set-out', () => { const out = app.objects.add(pitOutline(rec)); const pr = app.objects.add({ ...rec, pit: out.id }); this.sel = pr.id; app.objects.update(out.id, { poolId: pr.id }); });
-      this.toast(`Бассейн ${POOL.L / 1000} × ${POOL.W / 1000} м${snapped ? ' — по проекту' : ''}: размечен котлован ${((POOL.L + 1700) / 1000).toFixed(1)} × ${((POOL.W + 1700) / 1000).toFixed(1)} м глубиной 1,85 м. Дальше «2 · Котлован» — выкопается по разметке (или копайте сами: «Земля», погрузчик), потом «3 · Щебень и подбетонка»`.replace(/(\d)\.(\d)/g, '$1,$2'));
+      this.toast(`Бассейн ${rec.L / 1000} × ${rec.W / 1000} м${snapped ? ' — по проекту' : ''}: размечен котлован ${((rec.L + 1700) / 1000).toFixed(1)} × ${((rec.W + 1700) / 1000).toFixed(1)} м глубиной 1,85 м. Дальше «2 · Котлован» — выкопается по разметке (или копайте сами: «Земля», погрузчик), потом «3 · Щебень и подбетонка»`.replace(/(\d)\.(\d)/g, '$1,$2'));
       return;
     }
     const r = d.live, id = r.id;
@@ -168,11 +168,11 @@ export class PoolWork {
   interrupt() { if (!this.drag) return; if (this.drag.L === 'water') this.app.poolView.fillAt = null; if (this.drag.L === 'pit') this.app.ui?.hideMeasure?.(); this.drag = null; this._live(null); }
 
   // ---- setting out ----------------------------------------------------------------------------
-  _ghost(q) {
-    const app = this.app, { rec, snapped } = newPool(app, q, !!app.settings.poolTurn);
+  _ghost(q, a = null) {
+    const app = this.app, { rec, snapped } = newPool(app, q, !!app.settings.poolTurn, a);
     this._live(rec);
     const why = poolFits(app, rec);
-    app.ui?.showMeasure?.(why || `Бассейн ${POOL.L / 1000} × ${POOL.W / 1000} м${snapped ? ' · по проекту' : ''}`.replace('.', ','));
+    app.ui?.showMeasure?.(why || `Бассейн ${rec.L / 1000} × ${rec.W / 1000} м${snapped ? ' · по проекту' : ''} — тяните пальцем, чтобы задать размер`.replace(/(\d)\.(\d)/g, '$1,$2'));
   }
 
   // ---- the bowl ---------------------------------------------------------------------------------
@@ -655,7 +655,7 @@ export class PoolWork {
     void carry;
     const r = this.rec, L = this.layer;
     const H = {
-      pit: 'Коснитесь участка — разметится бассейн 8 × 3,5 м и котлован под него (рядом с проектом — встанет по проекту)',
+      pit: 'Коснитесь участка — разметится бассейн 8 × 3,5 м и котлован под него (тяните пальцем — свой размер; рядом с проектом — встанет по проекту)',
       dig: 'Коснитесь разметки — котлован выкопается по размерам (или копайте лопатой и погрузчиком; касание зачистит борта и дно по разметке)',
       bed: 'Коснитесь котлована — щебень 200 мм с трамбовкой и подбетонка 100 мм',
       form1: 'Коснитесь котлована — доски опалубки днища встанут на подбетонку',

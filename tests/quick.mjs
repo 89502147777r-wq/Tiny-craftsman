@@ -39,9 +39,9 @@ const results = [];
 const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${info}`); };
 const sec = () => `${((Date.now() - t0) / 1000).toFixed(0)} s`;
 
-async function open(browserType, query, opts = {}) {
+async function open(browserType, query, opts = {}, locale = 'ru-RU') {
   const browser = await browserType.launch(opts);
-  const page = await (await browser.newContext({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 1 })).newPage();
+  const page = await (await browser.newContext({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 1, locale })).newPage();
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message));
@@ -351,6 +351,24 @@ console.log('—', sec());
   await browser.close();
 }
 console.log('—', sec());
+
+// ---- 2b. English: a device in English gets the whole game in English ------------------------------
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }, 'en-US');
+  const en = await page.evaluate(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const ui = window.__tc.ui, left = new Set();
+    const scan = () => { const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) if (/[А-яЁё]/.test(n.nodeValue) && !n.parentElement.closest('[data-notr]')) left.add(n.nodeValue.trim()); };
+    for (const g of ui.groups) { ui.openGroup(g.id); await sleep(40); scan(); for (const b of ui.groupTools(g.id)) { ui.openGroup(g.id); b.click(); await sleep(40); scan(); } }
+    ui.toast('Ряд ${3} готов — дальше ряд ${4}'.replace('${3}', 2).replace('${4}', 3)); await sleep(20);
+    const toast = document.getElementById('toast').textContent;
+    ui.openMenu(true); await sleep(60); scan();
+    return { lang: document.documentElement.lang, left: [...left].slice(0, 5), toast, menu: document.querySelector('#menu h4').textContent };
+  });
+  check('English: the page, the tools and the toasts are in English', en.lang === 'en' && !en.left.length && en.toast === 'Course 2 done — next course 3' && en.menu === 'Tool', JSON.stringify(en));
+  check('English: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
 
 // ---- 3. WebKit (Safari's engine), if installed ------------------------------------------------------
 if (process.env.WEBKIT) {
