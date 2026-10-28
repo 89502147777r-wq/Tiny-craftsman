@@ -38,6 +38,32 @@ export class PoolWork {
   _live(l) { this.app.poolView?.setLive(l); }
   _belts(r) { const O = this.app.objects; return { fb: r.floor != null ? O.get(r.floor) : null, wb: r.wall != null ? O.get(r.wall) : null }; }
   toast(m) { this.app.ui?.toast(m); }
+  // a piece put in (its record already in) shown going in bit by bit: the cage bar by bar, the
+  // formwork board by board (view.reveal = { id, u }); then done()
+  _grow(view, id, dur, done = null) {
+    const app = this.app, mark = () => { view.dirty = true; app.poolView.dirty = true; };
+    new FitJob(app, { steps: [[dur, (u) => { view.reveal = { id, u }; mark(); if (u < 1 && Math.random() < 0.12) app.sfx?.stab?.(); }]], parts: [], cleanup: () => { view.reveal = null; mark(); }, commit: done });
+  }
+  // a smooth way round: points [s, t] (mm, the pool's frame), the way's length; at(d) → { s, t, yaw }
+  // (yaw: the heading in the world, as the plate takes it)
+  _path(r, pts) {
+    const seg = [], L = [0];
+    for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); L.push(L[i - 1] + d); }
+    const total = L.at(-1);
+    const at = (d) => {
+      d = Math.max(0, Math.min(total - 1e-6, d));
+      let i = 0; while (i < seg.length - 1 && L[i + 1] < d) i++;
+      const u = (d - L[i]) / (seg[i] || 1), [a0, b0] = pts[i], [a1, b1] = pts[i + 1], ds = a1 - a0, dt = b1 - b0;
+      // (the heading turns over the last and first 250 mm of a leg: no snap at the corners)
+      const h = (k) => { const [p0, q0] = pts[k], [p1, q1] = pts[k + 1]; return [p1 - p0, q1 - q0]; };
+      let [hs, ht] = [ds, dt];
+      if (i < seg.length - 1 && L[i + 1] - d < 250) { const w = 0.5 - (L[i + 1] - d) / 500, [n0, n1] = h(i + 1); hs = hs / seg[i] * (1 - w) + n0 / seg[i + 1] * w; ht = ht / seg[i] * (1 - w) + n1 / seg[i + 1] * w; }
+      else if (i > 0 && d - L[i] < 250) { const w = 0.5 - (d - L[i]) / 500, [p0, p1] = h(i - 1); hs = hs / seg[i] * (1 - w) + p0 / seg[i - 1] * w; ht = ht / seg[i] * (1 - w) + p1 / seg[i - 1] * w; }
+      const wx = r.u[0] * hs - r.u[1] * ht, wz = r.u[1] * hs + r.u[0] * ht;
+      return { s: a0 + ds * u, t: b0 + dt * u, yaw: Math.atan2(wx, wz) };
+    };
+    return { at, total };
+  }
 
   down(p, e) {
     const app = this.app, L = this.layer;
@@ -164,29 +190,33 @@ export class PoolWork {
     // bites overlapping, back and forth over the pit; the walls cut straight and the floor trimmed
     // level only at the end. Each bite the spade goes in, the soil flies up out of the pit)
     const sh = app.shovel, vis = sh.root.visible, R = 1250, SP = 1350, rr = Math.random;
-    sh.root.visible = true;
-    const ns = Math.ceil((s1 - s0) / SP), nt = Math.ceil((t1 - t0) / SP);
-    let k0 = 0;
+    // (the bites one after the other, each going down over its own short time, several at once:
+    // the hole deepens smoothly, never a jump; the spade is not shown — at this pace it would only flicker)
+    const ns = Math.ceil((s1 - s0) / SP), nt = Math.ceil((t1 - t0) / SP), bites = [];
     for (let L = 0; L < layers; L++) {
       const yT = r.g - MM(POOL.pitDepth) * L / layers, yL = r.g - MM(POOL.pitDepth) * (L + 1) / layers - MM(L === layers - 1 ? 0 : 60);
       for (let j = 0; j <= nt; j++) for (let i0 = 0; i0 <= ns; i0++) {
         const i = (j + L) % 2 ? ns - i0 : i0;
-        const bs = s0 + (s1 - s0) * i / ns + (rr() - 0.5) * SP * 0.8, bt = t0 + (t1 - t0) * j / nt + (rr() - 0.5) * SP * 0.8, br = R * (0.8 + rr() * 0.45);
-        const [x, z] = PW(r, Math.max(s0, Math.min(s1, bs)), Math.max(t0, Math.min(t1, bt))), seed = rr() * 6.28, kk = k0++;
-        const deep = yL - MM(rr() * 80);
-        steps.push([0.05, (u) => {
-          // (the spade in: down into the bite; out: lifted, the soil thrown)
-          const p = new THREE.Vector3(x, 0, z);
-          if (u < 0.5) sh.poseDig(p, dir, deep + MM(300) * (1 - u * 2), u < 0.1);
-          else sh.poseAim(p, dir, r.g + MM(200));
-          if (u < 1) return;
-          t.scoop(x, z, MM(br), deep, yT, inPit, seed);
-          const out = new THREE.Vector3(-r.u[1], 0, r.u[0]).multiplyScalar(rr() < 0.5 ? 1 : -1);
-          for (let q = 0; q < 6; q++) app.particles?.emit(new THREE.Vector3(x + (rr() - 0.5) * MM(800), deep + MM(250), z + (rr() - 0.5) * MM(800)), new THREE.Vector3(out.x * (0.08 + rr() * 0.06) + (rr() - 0.5) * 0.03, 0.22 + rr() * 0.16, out.z * (0.08 + rr() * 0.06) + (rr() - 0.5) * 0.03), 0, MM(30 + rr() * 50), 0, 0, 0);
-          if (kk % 3 === 0) app.sfx?.stab?.();
-        }]);
+        const bs = s0 + (s1 - s0) * i / ns + (rr() - 0.5) * SP * 0.8, bt = t0 + (t1 - t0) * j / nt + (rr() - 0.5) * SP * 0.8;
+        const [x, z] = PW(r, Math.max(s0, Math.min(s1, bs)), Math.max(t0, Math.min(t1, bt)));
+        bites.push({ x, z, R: MM(R * (0.8 + rr() * 0.45)), deep: yL - MM(rr() * 80), yT, seed: rr() * 6.28, p: 0 });
       }
     }
+    const step = 0.045, life = 0.3, T = bites.length * step + life;
+    steps.push([0, () => { sh.root.visible = false; }]);
+    steps.push([T, (u) => {
+      const now = u * T;
+      for (let k = 0; k < bites.length; k++) {
+        const b = bites[k], p = Math.max(0, Math.min(1, (now - k * step) / life));
+        if (p <= b.p) continue;
+        b.p = p;
+        const e = p * p * (3 - 2 * p);
+        t.scoop(b.x, b.z, b.R, b.yT + (b.deep - b.yT) * e, b.yT, inPit, b.seed);
+        // (the soil thrown out of it as it goes down)
+        if (p < 1 && rr() < 0.5) { const out = new THREE.Vector3(-r.u[1], 0, r.u[0]).multiplyScalar(rr() < 0.5 ? 1 : -1); app.particles?.emit(new THREE.Vector3(b.x + (rr() - 0.5) * b.R, b.yT, b.z + (rr() - 0.5) * b.R), new THREE.Vector3(out.x * (0.08 + rr() * 0.06), 0.2 + rr() * 0.15, out.z * (0.08 + rr() * 0.06)), 0, MM(30 + rr() * 50), 0, 0, 0); }
+      }
+      if (rr() < 0.15) app.sfx?.stab?.();
+    }]);
     steps.push([0, () => { sh.root.visible = vis; }]);
     // (the loose topsoil round the edge taken off with it: it would slide in off the walls)
     steps.push([0.1, (u) => {
@@ -245,14 +275,39 @@ export class PoolWork {
       cells((i, cx, cz) => { const [s2, t2] = PF(r, cx, cz); if (s2 >= a && s2 <= b && t2 >= lo && t2 <= hi) { const want = MM(POOL.gravel); if (Math.abs(t.loose[i] - want) > 1e-7) { if (t.loose[i] > want) t._pop(i, t.loose[i] - want); else t._push(i, want - t.loose[i], M_G20); } } });
     }]);
     steps.push([0, () => { rk.setPose({ pos: rpos, dir: rdir, lift: rlift }, true); rk.root.visible = rvis; }]);
-    // the plate over it, lane by lane
-    for (let k = 0; k < 6; k++) steps.push([0.25, (u) => {
-      const tt = t0 + (t1 - t0) * (k + 0.5) / 6, s = s0 + (s1 - s0) * (k % 2 ? 1 - u : u), [x, z] = PW(r, s, tt);
-      app.concreteGear.plateOn = true; app.concreteGear.set('plate', new THREE.Vector3(x, y0 + MM(POOL.gravel), z), Math.atan2(-r.u[1], r.u[0]) + (k % 2 ? Math.PI : 0));
-      if (u >= 1 && k === 5) { cells((i) => { t.comp[i] = 1; }); app.concreteGear.plateOn = false; app.concreteGear.set(null); }
-    }]);
-    // the lean concrete: 100 over the stone (fresh grey, it sets)
-    steps.push([0.6, (u) => { if (u >= 1) cells((i) => { t.conc[i] = MM(POOL.lean); t.cTime[i] = app.clock; t.cSm[i] = 0.6; t.cBase[i] = 0; }); }]);
+    // the plate over it: lane after lane on a serpentine (it heads where it goes, turns at the ends);
+    // the stone rammed where it has passed
+    { const lanes = 6, pts = [], m = 250;
+      for (let k = 0; k < lanes; k++) { const tt = t0 + (t1 - t0) * (k + 0.5) / lanes; if (k % 2) pts.push([s1 - m, tt], [s0 + m, tt]); else pts.push([s0 + m, tt], [s1 - m, tt]); }
+      const path = this._path(r, pts), yP = y0 + MM(POOL.gravel), wide = MM(450);
+      steps.push([path.total / 1000 * 0.11, (u) => {
+        const q = path.at(u * path.total), [x, z] = PW(r, q.s, q.t);
+        app.concreteGear.plateOn = true; app.concreteGear.set('plate', new THREE.Vector3(x, yP, z), q.yaw, u === 0);
+        const ix0 = Math.max(0, Math.floor(t.toCellX(x - wide))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(x + wide))), iz0 = Math.max(0, Math.floor(t.toCellZ(z - wide))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(z + wide)));
+        for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) if (Math.hypot(t.toWorldX(ix) - x, t.toWorldZ(iz) - z) < wide && inPit(t.toWorldX(ix), t.toWorldZ(iz))) t.comp[iz * t.nx + ix] = 1;
+        t._touch(ix0, iz0, ix1, iz1);
+        if (u >= 1) { cells((i) => { t.comp[i] = 1; }); app.concreteGear.plateOn = false; app.concreteGear.set(null); }
+      }]);
+    }
+    // the lean concrete: 100 over the stone, poured from one end to the other — the hose at the
+    // front, the grey running out ahead of it and levelling behind
+    { const lean = MM(POOL.lean), ix0 = Math.max(0, Math.floor(t.toCellX(box[0]))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(box[2]))), iz0 = Math.max(0, Math.floor(t.toCellZ(box[1]))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(box[3])));
+      const list = []; cells((i, x, z) => { const [ss, tt] = PF(r, x, z); list.push([i, ss, tt]); });
+      steps.push([0, () => app.concreteGear.set('hose', new THREE.Vector3(...(() => { const [x, z] = PW(r, s0, (t0 + t1) / 2); return [x, y0 + MM(POOL.gravel), z]; })()), 0, true)]);
+      steps.push([2.4, (u) => {
+        const front = s0 - 600 + (s1 - s0 + 1200) * u;
+        for (const [i, ss, tt] of list) {
+          // (thickest behind the front, a tongue running out ahead of it; never more than 100)
+          const k = Math.max(0, Math.min(1, (front - ss) / 900 + 0.12 * Math.sin(tt * 0.004 + ss * 0.002)));
+          const want = lean * k; if (want > t.conc[i]) { t.conc[i] = want; t.cTime[i] = app.clock; t.cSm[i] = 0.6; t.cBase[i] = 0; }
+        }
+        t._touch(ix0, iz0, ix1, iz1);
+        const sw = Math.sin(u * Math.PI * 7) * (t1 - t0) * 0.38, [x, z] = PW(r, Math.max(s0, Math.min(s1, front - 300)), (t0 + t1) / 2 + sw);
+        app.concreteGear.set('hose', new THREE.Vector3(x, y0 + MM(POOL.gravel) + lean, z));
+        if (u >= 1) { for (const [i] of list) { t.conc[i] = lean; t.cTime[i] = app.clock; t.cSm[i] = 0.6; t.cBase[i] = 0; } t._touch(ix0, iz0, ix1, iz1); app.concreteGear.set(null); }
+        if (Math.random() < 0.2) app.sfx?.pour?.(0.4);
+      }]);
+    }
     new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); app.concreteGear.set(null); rk.setPose({ pos: rpos, dir: rdir, lift: rlift }, true); rk.root.visible = rvis; }, commit: () => {
       app.journal.commit(app.clock);
       this.toast('Щебень 20–40 слоем 200 мм утрамбован виброплитой, сверху подбетонка 100 мм — ровное чистое основание на отметке −1,55 м. Дальше «4 · Опалубка днища»');
@@ -269,21 +324,27 @@ export class PoolWork {
     const bed = hs[Math.floor(hs.length / 2)], design = wallTopY(r) - MM(POOL.wallH + POOL.F), dmm = Math.round((bed - design) / S);
     if (dmm > 120) { this.toast(`Котлован не готов: дно на ${dmm} мм выше отметки. Копайте до −1,85 м, щебень 200 мм с виброплитой, подбетонка 100 мм — днище чаши ложится на −1,55 м`); return; }
     const ft = bed + MM(POOL.F), hw = Math.round((wallTopY(r) - ft) / S);
-    this._save('pool-form1', () => { const b = app.objects.add(floorBelt({ ...r }, bed)); app.objects.update(r.id, { floor: b.id, ft: +ft.toFixed(6), hw }); });
+    let fid = null;
+    this._save('pool-form1', () => { const b = app.objects.add(floorBelt({ ...r }, bed)); fid = b.id; app.objects.update(r.id, { floor: b.id, ft: +ft.toFixed(6), hw }); });
+    this._grow(app.wallView, fid, 1.6);
     this.toast(`Опалубка днища: доски по краю плиты ${((r.L + 700) / 1000).toFixed(1)} × ${((r.W + 700) / 1000).toFixed(1)} м, 250 мм.${dmm < -120 ? ` Дно ниже отметки на ${-dmm} мм — стены выйдут выше (${hw} мм).` : ''} Дальше «5 · Арматура днища»`.replace(/(\d)\.(\d)/g, '$1,$2'));
   }
   _cage1(r, fb) {
     const app = this.app;
     if (!fb) { this.toast('Сначала «4 · Опалубка днища»'); return; }
     if (r.cage1 != null && app.objects.get(r.cage1)) { this.toast('Арматура днища уже связана — заливайте: «Бетон» → шланг по днищу, вибратор, правило по доскам'); return; }
-    this._save('pool-cage1', () => { const c = app.objects.add(floorCage(r, fb.top)); app.objects.update(r.id, { cage1: c.id }); });
+    let cid = null;
+    this._save('pool-cage1', () => { const c = app.objects.add(floorCage(r, fb.top)); cid = c.id; app.objects.update(r.id, { cage1: c.id }); });
+    this._grow(app.rebarView, cid, 2.4);
     this.toast('Две сетки Ø12 шаг 200 на стульчиках и «лягушках», выпуски под стены. Теперь бетон: «Бетон» → шланг по днищу, вибратор, правило по доскам');
   }
   _cage2(r, fb) {
     const app = this.app;
     if (!fb || !(fb.fill >= 0.95)) { this.toast(!fb ? 'Сначала днище' : 'Днище ещё не залито доверху — «Бетон» → шланг'); return; }
     if (r.cage2 != null && app.objects.get(r.cage2)) { this.toast('Арматура стен уже стоит — дальше «7 · Опалубка стен и закладные»'); return; }
-    this._save('pool-cage2', () => { const c = app.objects.add(wallCage(r)); app.objects.update(r.id, { cage2: c.id }); });
+    let cid = null;
+    this._save('pool-cage2', () => { const c = app.objects.add(wallCage(r)); cid = c.id; app.objects.update(r.id, { cage2: c.id }); });
+    this._grow(app.rebarView, cid, 2.4);
     this.toast('Стены: вертикали и горизонтали Ø12 шаг 200 в две сетки, связаны с выпусками; по шву — бентонитовый шнур. Дальше «7 · Опалубка стен и закладные»');
   }
   _form2(r, fb, wb) {
@@ -291,7 +352,9 @@ export class PoolWork {
     if (wb) { this.toast(wb.fill > 0.05 ? 'Стены уже залиты' : 'Опалубка стен стоит — заливайте: «Бетон» → шланг по верху щитов, вибратор'); return; }
     if (!(r.cage2 != null && app.objects.get(r.cage2))) { this.toast('Сначала «6 · Арматура стен»'); return; }
     if (uStrength(fb, app.clock) < 0.5) { this.toast(`Днище набирает прочность: ${Math.round(uStrength(fb, app.clock) * 200)} % от нужной для щитов — подождите`); return; }
-    this._save('pool-form2', () => { const b = app.objects.add(wallBelt(r)); app.objects.update(r.id, { wall: b.id }); });
+    let wid = null;
+    this._save('pool-form2', () => { const b = app.objects.add(wallBelt(r)); wid = b.id; app.objects.update(r.id, { wall: b.id }); });
+    this._grow(app.wallView, wid, 2.2);
     this.toast(`Щиты с двух сторон, ригели, стяжки; в щитах закладные: 2 скиммера, 3 форсунки, 2 прожектора, донный слив. Стены ${((r.hw || POOL.wallH) / 1000).toFixed(2).replace('.', ',')} м — заливайте: «Бетон» → шланг по верху щитов, вибратор`);
   }
   // ---- round the pool: the backfill, the deck's base, the deck ----
@@ -309,22 +372,36 @@ export class PoolWork {
     const cells = []; for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (inBand(x, z)) cells.push([iz * t.nx + ix, x, z]); }
     app.journal.begin('pool-fill', {}, app.clock);
     const low = Math.min(...cells.map(([i]) => t.hAt(i))), layers = Math.max(1, Math.ceil((r.g - low) / MM(300))), steps = [];
-    const along = (u) => { const per = 2 * (r.L + r.W + 4 * 550), d = u * per, w = r.L + 1100, h = r.W + 1100, m = -550; return d < w ? [m + d, -550] : d < w + h ? [r.L + 550, m + d - w] : d < 2 * w + h ? [r.L + 550 - (d - w - h), r.W + 550] : [-550, r.W + 550 - (d - 2 * w - h)]; };
+    // the way round the pool in the gap (550 out from the water's edge), corner to corner
+    const m = -550, ring = this._path(r, [[m, m], [r.L - m, m], [r.L - m, r.W - m], [m, r.W - m], [m, m + 1]]);
+    const perim = (x, z) => { const [s2, t2] = PF(r, x, z), w = r.L + 1100, h = r.W + 1100, a = s2 - m, b = t2 - m;
+      // (how far round the way a cell lies: by its nearest side)
+      const d0 = Math.abs(t2 - m), d1 = Math.abs(s2 - (r.L - m)), d2 = Math.abs(t2 - (r.W - m)), d3 = Math.abs(s2 - m), k = [d0, d1, d2, d3].indexOf(Math.min(d0, d1, d2, d3));
+      return k === 0 ? a : k === 1 ? w + b : k === 2 ? w + h + (w - a) : 2 * w + h + (h - b); };
+    const pc = cells.map(([i, x, z]) => [i, perim(x, z)]);
     for (let k = 0; k < layers; k++) {
-      const lv = Math.min(r.g, low + MM(300) * (k + 1));
-      steps.push([0.5, (u) => {
-        // (the sand tipped in round the pool, the layer coming up)
-        const y = low + MM(300) * k + (lv - low - MM(300) * k) * u;
-        for (const [i] of cells) { const h = t.hAt(i); if (h < y) t._push(i, y - h, M_SAND); }
+      const lv = Math.min(r.g, low + MM(300) * (k + 1)), y0 = low + MM(300) * k;
+      steps.push([0.7, (u) => {
+        // (the sand tipped in from a barrow going round: the layer comes up behind it, sloping
+        // down ahead of it, all round once)
+        const front = u * (ring.total + 1500);
+        for (const [i, d] of pc) {
+          const e = Math.max(0, Math.min(1, (front - d) / 1500)), y = y0 + (lv - y0) * e, h = t.hAt(i);
+          if (h < y) t._push(i, y - h, M_SAND);
+        }
         t._touch(ix0, iz0, ix1, iz1);
-        const [ss, tt] = along(u), [x, z] = PW(r, ss, tt);
-        if (Math.random() < 0.8) app.particles?.emit(new THREE.Vector3(x, r.g + MM(600), z), new THREE.Vector3(0, -0.15, 0), 0, MM(18 + Math.random() * 20), 0, 0, 1);
+        const q = ring.at(Math.min(ring.total, front)), [x, z] = PW(r, q.s, q.t);
+        if (u < 1 && Math.random() < 0.9) app.particles?.emit(new THREE.Vector3(x, r.g + MM(500), z), new THREE.Vector3(0, -0.15, 0), 0, MM(18 + Math.random() * 20), 0, 0, 1);
         if (Math.random() < 0.15) app.sfx?.pour?.(0.4);
       }]);
-      steps.push([0.6, (u) => {
-        // (the plate round it, the layer rammed)
-        const [ss, tt] = along(u), [x, z] = PW(r, ss, tt);
-        app.concreteGear.plateOn = true; app.concreteGear.set('plate', new THREE.Vector3(x, lv, z), Math.atan2(-r.u[1], r.u[0]), u === 0);
+      steps.push([ring.total / 1000 * 0.05, (u) => {
+        // (the plate round it after, heading the way it goes, turning at the corners; the sand
+        // rammed where it has been)
+        const q = ring.at(u * ring.total), [x, z] = PW(r, q.s, q.t), wide = MM(380);
+        app.concreteGear.plateOn = true; app.concreteGear.set('plate', new THREE.Vector3(x, lv, z), q.yaw, u === 0);
+        const ix0b = Math.max(0, Math.floor(t.toCellX(x - wide))), ix1b = Math.min(t.rx, Math.ceil(t.toCellX(x + wide))), iz0b = Math.max(0, Math.floor(t.toCellZ(z - wide))), iz1b = Math.min(t.rz, Math.ceil(t.toCellZ(z + wide)));
+        for (let iz = iz0b; iz <= iz1b; iz++) for (let ix = ix0b; ix <= ix1b; ix++) if (inBand(t.toWorldX(ix), t.toWorldZ(iz)) && Math.hypot(t.toWorldX(ix) - x, t.toWorldZ(iz) - z) < wide) t.comp[iz * t.nx + ix] = 1;
+        t._touch(ix0b, iz0b, ix1b, iz1b);
         if (u >= 1) { for (const [i] of cells) t.comp[i] = 1; app.concreteGear.plateOn = false; }
       }]);
     }
@@ -354,7 +431,7 @@ export class PoolWork {
       steps.push([0.9, (u) => { for (const i of cells) { const h = t.hAt(i), want = ys + (yc - ys) * u; if (h < want) { t.conc[i] += want - h; t.cTime[i] = app.clock; t.cSm[i] = 0.8; } } t._touch(ix0, iz0, ix1, iz1); }]);
     } else {
       // (the joists go up side by side — drawn by the pool's view from the record)
-      for (let k = 1; k <= 4; k++) steps.push([0.45, (u) => { app.poolView.deckLive = { id: r.id, sides: 0, base: (k - 1 + u) / 4 }; app.poolView.dirty = true; if (u >= 1) app.sfx?.stab?.(); }]);
+      steps.push([2.4, (u) => { app.poolView.deckLive = { id: r.id, sides: 0, base: +u.toFixed(3) }; app.poolView.dirty = true; if (Math.random() < 0.1) app.sfx?.stab?.(); }]);
     }
     const cleanup = () => { app.poolView.deckLive = null; app.poolView.dirty = true; };
     // (the record first: the view draws the joists from it while they go up)
@@ -371,7 +448,7 @@ export class PoolWork {
     if (!r.base) { this.toast('Сначала «14 · Основание площадки»'); return; }
     if (r.deck) { this.toast('Площадка уже уложена'); return; }
     const D = DECKS[r.base.key], steps = [], cleanup = () => { app.poolView.deckLive = null; app.poolView.dirty = true; };
-    for (let k = 1; k <= 4; k++) steps.push([0.7, (u) => { if (u >= 1) { app.poolView.deckLive = { id: r.id, sides: k, base: 1 }; app.poolView.dirty = true; app.sfx?.stab?.(); } }]);
+    steps.push([3.6, (u) => { app.poolView.deckLive = { id: r.id, sides: +(4 * u).toFixed(3), base: 1 }; app.poolView.dirty = true; if (Math.random() < 0.12) app.sfx?.stab?.(); }]);
     new FitJob(app, { steps, parts: [], cleanup, onAbort: cleanup, commit: () => {
       this._save('pool-deck', () => app.objects.update(r.id, { deck: true }));
       this.toast(`Площадка: ${D.name}${D.base === 'joists' ? ' — доски на скрытом крепеже, зазор 6 мм' : ' — на клею, шов 3 мм'}. Бассейн с площадкой готов`);
@@ -388,8 +465,14 @@ export class PoolWork {
       todo.push(b);
     }
     if (!todo.length) { this.toast(wait.length ? 'Рано снимать: ' + wait.join(', ') : !wb ? 'Снимать нечего — опалубка стен ещё не стоит' : 'Опалубка уже снята'); return; }
-    this._save('pool-strip', () => { for (const b of todo) app.objects.update(b.id, { stripped: true, set: true }); });
-    this.toast(todo.some((b) => b.part === 'wall') ? 'Щиты, ригели и стяжки сняли — чаша готова. Пазухи можно засыпать; внутри — «9 · Гидроизоляция»' : 'Доски днища сняли');
+    // (taken off board by board — the walers and the ties first, the boards from the top down — then recorded)
+    const save = () => {
+      this._save('pool-strip', () => { for (const b of todo) app.objects.update(b.id, { stripped: true, set: true }); });
+      this.toast(todo.some((b) => b.part === 'wall') ? 'Щиты, ригели и стяжки сняли — чаша готова. Пазухи можно засыпать; внутри — «9 · Гидроизоляция»' : 'Доски днища сняли');
+    };
+    const v = app.wallView, mark = () => { v.dirty = true; app.poolView.dirty = true; };
+    const steps = todo.map((b) => [b.part === 'wall' ? 1.8 : 0.9, (u) => { v.reveal = { id: b.id, u: Math.max(0, 0.84 * (1 - u)) }; mark(); if (Math.random() < 0.1) app.sfx?.stab?.(); }]);
+    new FitJob(app, { steps, parts: [], cleanup: () => { v.reveal = null; mark(); }, commit: save });
   }
 
   // ---- inside the bowl ----------------------------------------------------------------------

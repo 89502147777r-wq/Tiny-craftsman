@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, TRAY, PUMP } from '../config.js';
-import { POOL, PW, rimY, floorTopY, wallTopY, waterMax, faces, cellsOf, sheetsOf, copeLayout, MOSAICS, embeds } from '../world/pool.js';
+import { POOL, PW, PF, rimY, floorTopY, wallTopY, waterMax, faces, cellsOf, sheetsOf, copeLayout, MOSAICS, embeds } from '../world/pool.js';
 import { look } from './director.js';
+import { unrle } from '../tools/belt.js';
 
 // «How a backyard pool is built» — the pool done start to finish by the jobs of the pool tool
 // (poolTool.js), filmed and cut by the director (director.js) as a film is: flights low over the
@@ -71,22 +72,30 @@ export function* poolFilm(d, app) {
   d.shake(0.008, 0.4);
   yield d.sec(1.7);
   d.fly([[gy(8800, -1800, 1400), gy(5200, W2, pitY + 200)], [gy(8600, 4800, 1500), gy(3200, W2, pitY + 200)]], 2.2, { fx: 'whip', ease: 'linear' });
-  d.pin('+ 100 mm lean concrete', fl(POOL.L * 0.7, POOL.W * 0.3, -280), 1.4, -1);
-  yield d.held(1.3);
+  // (the lean concrete: slower, on its own shot — the grey front going over the stone)
+  yield d.until(() => app.concreteGear.show === 'hose' || !app.busy());
+  d.speed = 1.3;
+  d.fly([[gy(-1600, -1500, 1300), gy(1800, W2, pitY + 150)], [gy(1500, -1700, 1200), gy(5200, W2, pitY + 150)]], 2.4, { fx: 'flash', ease: 'linear' });
+  d.title('LEAN CONCRETE', '100 mm over the stone — a clean, level base', 3);
+  yield d.held(1.6);
 
   // 4 · the floor's bars: the flight — low over the mesh, the ties going by under the lens
-  d.speed = 1;
+  // (the edge boards of the slab going on, board by board, seen wide)
+  d.speed = 1.8;
   pw._form1(R(), null);
+  d.cut(look(gy(-2600, -2400, 2400), gy(3600, W2, -1500)), { fx: 'flash', drift: 0.05, push: 0.06 });
+  d.title('FLOOR FORMS & REBAR', 'edge boards, then two meshes Ø12', 4);
+  yield d.job();
+  d.speed = 1.2;
   pw._cage1(R(), pw._belts(R()).fb);
   const ty = -60;   // (the top mesh: just under the slab's top)
   d.fly([
     [fl(-500, W2 - 500, ty + 260), fl(900, W2, ty)],
     [fl(2200, W2 - 200, ty + 160), fl(3800, W2 + 100, ty - 30)],
     [fl(5200, W2 + 300, ty + 220), fl(6800, W2 + 200, ty - 40)],
-  ], 3.0, { fx: 'flash', ease: 'out' });
-  d.title('FLOOR REBAR', 'two meshes Ø12, every crossing tied', 4);
-  yield d.sec(1.2);
-  yield d.sec(1.8);
+  ], 3.0, { fx: 'flash' });
+  yield d.held(3.0);
+  d.speed = 1;
 
   // 5 · the floor poured: on the hose; a crane up off the concrete to straight down
   yield* pour(d, app, pw, 'floor', () => {
@@ -100,13 +109,18 @@ export function* poolFilm(d, app) {
   // 6 · the walls: forms with the parts cast in — a dolly along them inside, the pins going by
   d.kick('7 DAYS LATER', 0.9);
   app.clock += 2400;
-  pw._cage2(R(), pw._belts(R()).fb);
-  pw._form2(R(), pw._belts(R()).fb, null);
   d.cut({ target: mid(R().g - MM(1300)), yaw: 0.2, pitch: 0.95, dist: 0.9 }, { fx: 'flash', drift: 0.15 });
-  yield d.sec(0.8);
+  yield d.sec(0.6);
+  // (the walls' bars going up, then the forms round them board by board)
+  d.speed = 1.8;
+  pw._cage2(R(), pw._belts(R()).fb);
+  d.title('WALL REBAR & FORMS', 'lights, jets & skimmers cast in', 6);
+  yield d.job();
+  pw._form2(R(), pw._belts(R()).fb, null);
   const E = embeds(R()), lamp = E.light[0];
   d.fly([[fl(7400, 2700, 900), fl(5600, 0, 800)], [fl(4600, 2500, 1000), fl(2800, 0, 800)], [fl(1700, 2300, 1100), fl(0, 0, 900)]], 2.4, { fx: 'whip' });
-  d.title('WALL FORMS', 'lights, jets & skimmers cast in', 6);
+  yield d.job();
+  d.speed = 1;
   yield d.sec(0.7);
   d.pin('LED light', fl(lamp.a, 0, lamp.b), 1.5);
   yield d.sec(1.6);
@@ -119,9 +133,10 @@ export function* poolFilm(d, app) {
   d.kick('28 DAYS LATER', 0.9);
   d.cut(look(gy(-1800, -2200, 2600), gy(4200, W2, -1500)), { drift: 0.06, push: 0.05 });
   app.clock += 6000;
+  d.speed = 1.8;
   { const r = R(), { fb, wb } = pw._belts(r); pw._strip(r, fb, wb); }
-  yield d.sec(0.8);
-  d.speed = 4;
+  yield d.job();
+  d.speed = 3;
   { const r = R(), { fb, wb } = pw._belts(r); pw._fill(r, fb, wb); }
   d.fly([[gy(-2200, W2, 2200), gy(0, W2, -300)], [gy(-1900, -2300, 2000), gy(2500, -500, -300)], [gy(2600, -2700, 1800), gy(6000, -500, -300)]], 2.6, { fx: 'whip', ease: 'linear' });
   d.title('BACKFILL', 'sand in 300 mm layers, each compacted', 8);
@@ -211,44 +226,59 @@ export function* poolFilm(d, app) {
   d.mark('hookEnd');
 }
 
-// the hose over the floor slab / along the walls' tops till the forms are full; start() — the
-// first shot, then() a second and a bit on
+// the pour, as the film shows it: a front of concrete going over the slab from one end to the other
+// (the walls: round and round in lifts), the hose at the front — every frame a little more, never a
+// heap left standing; start() — the first shot, then() a second and a bit on
 function* pour(d, app, pw, part, start, then) {
-  const V = THREE.Vector3, r = pw.rec, hs = app.concreteTools.hose;
-  const belt = () => pw._belts(pw.rec)[part === 'floor' ? 'fb' : 'wb'];
-  const b = belt(), y = part === 'floor' ? b.top : wallTopY(r);
-  // the way the hose goes: back and forth over the slab / round the walls
-  const way = [];
-  if (part === 'floor') { for (let j = 0; j < 5; j++) { const t = -250 + (r.W + 500) * (j + 0.5) / 5; for (let i = 0; i <= 8; i++) way.push([-250 + (r.L + 500) * (j % 2 ? 8 - i : i) / 8, t]); } }
-  else { const o = -POOL.T / 2; for (const [s, t] of [[o, o], [r.L - o, o], [r.L - o, r.W - o], [o, r.W - o], [o, o]]) way.push([s, t]); }
-  const P = (k) => { const n = way.length - 1, f = Math.min(n, k), i = Math.min(n - 1, Math.floor(f)), u = f - i, [s0, t0] = way[i], [s1, t1] = way[i + 1], [x, z] = PW(r, s0 + (s1 - s0) * u, t0 + (t1 - t0) * u); return new V(x, y, z); };
+  const V = THREE.Vector3, r = pw.rec, belt = () => pw._belts(pw.rec)[part === 'floor' ? 'fb' : 'wb'];
+  const b0 = belt(), Hmm = b0.H / S, n = b0.ni * b0.nj, mask = unrle(b0.mask, n), cells = [];
+  const px = -b0.u[1], pz = b0.u[0];
+  for (let k = 0; k < n; k++) if (mask[k]) {
+    const i = k % b0.ni, j = Math.floor(k / b0.ni), x = b0.o[0] + (b0.u[0] * (i + 0.5) + px * (j + 0.5)) * b0.c, z = b0.o[1] + (b0.u[1] * (i + 0.5) + pz * (j + 0.5)) * b0.c;
+    const [ss, tt] = PF(r, x, z);
+    cells.push({ ss, tt, x, z });
+  }
+  // (the walls: how far round each cell lies, as a share of the way round)
+  const per = 2 * (r.L + r.W + 2 * POOL.T);
+  const round = (ss, tt) => { const o = -POOL.T / 2, w = r.L + POOL.T, h = r.W + POOL.T, d0 = Math.abs(tt - o), d1 = Math.abs(ss - (r.L - o)), d2 = Math.abs(tt - (r.W - o)), d3 = Math.abs(ss - o), m = Math.min(d0, d1, d2, d3);
+    return (m === d0 ? ss - o : m === d1 ? w + (tt - o) : m === d2 ? w + h + (w - (ss - o)) : 2 * w + h + (h - (tt - o))) / per; };
+  if (part === 'wall') for (const c of cells) c.p = round(c.ss, c.tt);
+  const lifts = 3, dur = part === 'floor' ? 3.0 : 3.2;
   app.setTool('hose');
-  d.speed = 10;
-  const ev = (p) => { const q = app.wallTool._screen(p); return { clientX: q.x, clientY: q.y }; };
-  hs.down(new V(), ev(P(0)));
+  app.journal.begin('concrete-pour', {}, app.clock);
   start();
-  let k = 0, done = false;
-  const full = () => { const c = hs.ch; return !!c && (c.full || c.h.reduce((a, v) => a + v, 0) / c.h.length / c.cap >= 0.985); };
-  // (the hose goes on when the concrete under it is up to the top)
-  d.each((dt) => {
+  const lv = new Array(cells.length).fill(0);
+  let t0 = d.t, done = false;
+  const y0 = part === 'floor' ? b0.top : b0.top;
+  d.each(() => {
     if (done) return true;
-    const c = hs.ch, p = P(k);
-    let here = false;
-    if (c) { const i = c.at(p.x, p.z), cap = c.brim ? c.brim(i) : c.cap; here = c.h[i] >= cap - 3; }
-    k += dt * (here ? 2.2 : 0.35) * (part === 'floor' ? 1 : 0.5);
-    if (k > way.length - 1) k = 0;
-    hs.move(new V(), ev(P(k)));
+    const u = Math.min(1, (d.t - t0) / dur), wob = (c) => 0.06 * Math.sin(c.tt * 0.004 + c.ss * 0.003);
+    let hx = 0, hz = 0, hy = y0;
+    if (part === 'floor') {
+      const front = -900 + (r.L + 2600) * u;
+      cells.forEach((c, k) => { lv[k] = Math.max(lv[k], Hmm * Math.max(0, Math.min(1, (front - c.ss) / 1500 + wob(c)))); });
+      const [x, z] = PW(r, Math.max(-200, Math.min(r.L + 200, front - 500)), r.W / 2 + Math.sin(u * Math.PI * 9) * r.W * 0.42);
+      hx = x; hz = z; hy = y0 + MM(Hmm * 0.8);
+    } else {
+      const F = u * (lifts + 0.35);
+      cells.forEach((c, k) => { lv[k] = Math.max(lv[k], Hmm * Math.max(0, Math.min(1, (F - c.p) / lifts + wob(c) * 0.3))); });
+      const q = F % 1, o = -POOL.T / 2, w = r.L + POOL.T, h = r.W + POOL.T, dd = q * per;
+      const [ss, tt] = dd < w ? [o + dd, o] : dd < w + h ? [r.L - o, o + dd - w] : dd < 2 * w + h ? [r.L - o - (dd - w - h), r.W - o] : [o, r.W - o - (dd - 2 * w - h)];
+      const [x, z] = PW(r, ss, tt); hx = x; hz = z; hy = wallTopY(r);
+    }
+    app.concreteGear.set('hose', new V(hx, hy, hz));
+    const bb = belt(), mean = lv.reduce((a, v) => a + v, 0) / lv.length / Hmm;
+    app.objects.update(bb.id, { lv: lv.map((v) => Math.round(v)), fill: +mean.toFixed(3), pourT: app.clock, wetT: app.clock });
+    if (Math.random() < 0.3) app.sfx?.pour?.(0.5);
     return false;
   });
   yield d.sec(1.3);
   then();
-  const t1 = d.t + 1.8;
-  yield d.until(() => full() || d.t > t1);
+  yield d.until(() => d.t - t0 >= dur);
   done = true;
-  hs.up();
-  yield d.until(() => !hs.busy);
-  // (what the hose did not reach in the film's time: topped up — the short shows the pour, not all of it)
-  { const b = belt(); if (b && !(b.fill >= 0.97)) pw._save('concrete-pour', () => app.objects.update(b.id, { lv: b.lv.map(() => b.H / S), fill: 1, castT: app.clock, pourT: app.clock, wetT: app.clock })); }
+  { const bb = belt(); app.objects.update(bb.id, { lv: lv.map(() => Math.round(Hmm)), fill: 1, castT: app.clock, pourT: app.clock, wetT: app.clock }); }
+  app.journal.commit(app.clock);
+  app.concreteGear.set(null);
   app.setTool('wall');
   d.speed = 1;
 }
