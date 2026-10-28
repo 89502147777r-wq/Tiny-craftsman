@@ -18,6 +18,12 @@
 | `assets/textures/leafy_grass/` (diff, nor_gl 1k) — трава вокруг участка на фонах «Луг», «Горы» | Leafy Grass | Charlotte Baglioni | CC0 | https://polyhaven.com/a/leafy_grass |
 | `assets/textures/forest_leaves_04/` (diff, nor_gl 1k) — лесная подстилка вокруг участка на фоне «В лесу» | Forest Leaves 04 | Rob Tuytel | CC0 | https://polyhaven.com/a/forest_leaves_04 |
 
+## Текстуры участка (ambientCG, CC0 1.0)
+
+| Файл в проекте | Ассет | Автор | Лицензия | Источник |
+|---|---|---|---|---|
+| `assets/textures/lawn/` (цвет 1024 px, нормали 512 px) — газон | Grass 001 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Grass001 |
+
 ## Текстуры бассейна (ambientCG, CC0 1.0)
 
 Ужаты до 1024 px (цвет) и 512 / 256 px (нормали, шероховатость). Синяя мозаика — та же «Tiles 132 A», перекрашенная (сдвиг оттенка и яркости только у стекла, швы те же).

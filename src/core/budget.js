@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, M_SAND, M_G5, M_G20 } from '../config.js';
 import { pitBox, DECKS, deckRing } from '../world/pool.js';
+import { lengthOf, PAVERS } from '../world/garden.js';
+import { areaOf } from '../world/lawn.js';
+import { postsOf, fenceLength, FENCE } from '../world/fence.js';
 
 // The budget (a mode of play): the money to build the house with, in US dollars.
 //   – the masonry units come on pallets bought beforehand (gas block, brick, cinder block): a
@@ -42,6 +45,13 @@ export const PRICE = {
   // the embeds (2 skimmers, 3 inlets, 2 lights, the main drain), water per m³
   pool: { coat: 6, mosaic: 48, stone: 28, embeds: 1250, water: 2, joists: 24 },
   haul: 18,          // m³ of soil taken off the plot by the dump truck
+  // a garden path: a kerb 1000 × 200 × 80 set on concrete (per piece, the concrete with it), the
+  // geotextile per m², the sand brushed into the joints per m² (the pavers: PAVERS[…].usd per m²)
+  path: { kerb: 9, geo: 1.2, joint: 0.6 },
+  // the lawn: topsoil per m³ delivered, turf per m² (rolls), seed per m²
+  lawn: { soil: 35, turf: 5, seed: 0.5 },
+  // the fence: a post 60 × 60 with its bag of concrete, a WPC slat per metre, a 3D panel with its brackets
+  fence: { post: 28, slatM: 6.5, panel: 62 },
 };
 
 export class Budget {
@@ -226,6 +236,23 @@ export class Budget {
       const dA = (q) => deckRing(q, q.base.w || 1500).reduce((s2, z) => s2 + (z[2] - z[0]) * (z[3] - z[1]), 0) / 1e6;
       if (a?.base && !b?.base && DECKS[a.base.key]?.base === 'joists') { const A = dA(a); add(P.pool.joists * A, `Опоры и лаги 50×100 · ${A.toFixed(1)} м² (${Math.ceil(A / 0.4 * 1.0)} м лаг)`); }
       if (a?.deck && !b?.deck && a.base) { const A = dA(a), D = DECKS[a.base.key]; add(D.usd * A, `${D.name} · ${A.toFixed(1)} м²${D.base === 'joists' ? ` (${Math.ceil(A / 0.146 / 4 * 1.05)} досок по 4 м)` : ` (${Math.ceil(A / (D.tile[0] * D.tile[1] / 1e6) * 1.05)} шт)`}`); }
+    } else if (type === 'path' && a) {
+      const d0 = b?.done || {}, d1 = a.done || {}, L = lengthOf(a) * M1, A = L * a.W / 1000, nk = Math.ceil(2 * L + 2 * (a.W / 1000 + 0.16));
+      if (d1.kerb && !d0.kerb) add(P.path.kerb * nk, `Бордюр 1000×200×80 · ${nk} шт с бетоном`);
+      if (d1.geo && !d0.geo) add(P.path.geo * A, `Геотекстиль · ${A.toFixed(1)} м²`);
+      if (d1.pave && !d0.pave) { const K = PAVERS[a.paver] || PAVERS.brick; add(K.usd * A * 1.05, `Плитка «${K.name}» · ${A.toFixed(1)} м²`); }
+      if (d1.joint && !d0.joint) add(P.path.joint * A, 'Песок для швов');
+    } else if (type === 'lawn' && a) {
+      const d0 = b?.done || {}, d1 = a.done || {}, A = areaOf(a.poly) * M1 * M1;
+      if (d1.soil && !d0.soil) add(P.lawn.soil * A * 0.1, `Плодородный грунт · ${(A * 0.1).toFixed(1)} м³`);
+      if (d1.grass && !d0.grass) add((a.how === 'seed' ? P.lawn.seed : P.lawn.turf) * A, a.how === 'seed' ? `Семена газона · ${(A * 0.035).toFixed(1)} кг` : `Рулонный газон · ${A.toFixed(0)} м²`);
+    } else if (type === 'fence' && a) {
+      const d0 = b?.done || {}, d1 = a.done || {}, np = postsOf(a).length;
+      if (d1.posts && !d0.posts) add(P.fence.post * np, `Столбы 60×60 с бетоном · ${np} шт`);
+      if (d1.fill && !d0.fill) {
+        if (a.kind === 'mesh') add(P.fence.panel * (np - 1), `3D-панели · ${np - 1} шт`);
+        else { const m = fenceLength(a) * M1 * Math.floor((a.H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)); add(P.fence.slatM * m, `Доска ДПК 140×20 · ${Math.round(m)} м`); }
+      }
     } else if (type === 'bitumen') {
       const sum = (r) => (r?.d || []).reduce((s, v, i) => s + (i % 4 === 3 ? v : 0), 0);
       add(P.bitumen * Math.max(0, sum(a) - sum(b)) * 0.006, 'Битум');

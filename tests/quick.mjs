@@ -352,6 +352,50 @@ console.log('—', sec());
 }
 console.log('—', sec());
 
+// ---- 2a. The garden: a path, a lawn and a fence through all their stages -------------------------
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const land = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, out = {};
+    tc.setTool('wall'); wt.setMode('lay');
+    const e = (p) => { const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
+    const drag = (pts) => { wt.down(pts[0], e(pts[0])); for (const p of pts) wt.move(p, e(p)); wt.up(); };
+    const tap = (p) => { wt.down(p, e(p)); wt.up(); for (let i = 0; i < 4000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
+    tc.rig.setState({ target: [0, 0.1, 0], yaw: 0.5, pitch: 0.9, dist: 1.6 }); tc.simulate(0.05);
+    // a path with a turn
+    Object.assign(tc.settings, { wallKind: 'land', landWhat: 'path', pathLayer: 'set', pathW: 1200 });
+    const P = []; for (let i = 0; i <= 20; i++) P.push(new V(-0.4 + 0.3 * i / 20, 0.1, 0.3)); for (let i = 1; i <= 15; i++) P.push(new V(-0.1, 0.1, 0.3 - 0.2 * i / 15));
+    drag(P);
+    const v0 = tc.terrain.totalVolume();
+    for (const k of ['dig', 'kerb', 'geo', 'grav', 'sand', 'pave', 'joint']) { tc.settings.pathLayer = k; tap(P[10]); }
+    const path = tc.objects.all('path')[0];
+    out.path = { legs: path?.pts.length, done: Object.keys(path?.done || {}).join(), dug: v0 > tc.terrain.totalVolume() - 1 };
+    // undo the joints and the pavers, redo
+    tc.journal.undo(); tc.journal.undo(); const und = tc.objects.all('path')[0].done; out.undo = !und.joint && !und.pave; tc.journal.redo(); tc.journal.redo();
+    out.redo = !!tc.objects.all('path')[0].done.joint;
+    // a lawn round it
+    Object.assign(tc.settings, { landWhat: 'lawn', lawnLayer: 'area', lawnHow: 'turf' });
+    const L = [], C = [[-0.55, 0.45], [0.15, 0.45], [0.15, -0.05], [-0.55, -0.05]];
+    for (let k = 0; k < 4; k++) for (let i = 0; i < 10; i++) L.push(new V(C[k][0] + (C[(k + 1) % 4][0] - C[k][0]) * i / 10, 0.1, C[k][1] + (C[(k + 1) % 4][1] - C[k][1]) * i / 10));
+    drag(L);
+    for (const k of ['soil', 'rake', 'roll', 'grass', 'water']) { tc.settings.lawnLayer = k; tap(new V(0.05, 0.1, 0.0)); }
+    const lawn = tc.objects.all('lawn')[0];
+    out.lawn = { done: Object.keys(lawn?.done || {}).join(), cells: tc.gardenView.parts.get('L' + lawn.id)?.sub.body?.children.length };
+    // a fence
+    Object.assign(tc.settings, { landWhat: 'fence', fenceLayer: 'line', fenceKind: 'slat', fenceH: 1800 });
+    const F = []; for (let i = 0; i <= 20; i++) F.push(new V(-0.6 + 0.8 * i / 20, 0.1, 0.55));
+    drag(F);
+    for (const k of ['holes', 'posts', 'fill']) { tc.settings.fenceLayer = k; tap(F[10]); }
+    const fence = tc.objects.all('fence')[0];
+    out.fence = { done: Object.keys(fence?.done || {}).join() };
+    return out;
+  });
+  check('garden: a path set out, dug, kerbed, stoned, sanded, paved, jointed; undo / redo', land.path.legs === 3 && land.path.done === 'dig,kerb,geo,grav,sand,pave,joint' && land.path.dug && land.undo && land.redo, JSON.stringify(land.path) + ` undo ${land.undo} redo ${land.redo}`);
+  check('garden: a lawn round it (topsoil, rake, roller, turf, water) and a fence (holes, posts, slats)', land.lawn.done === 'soil,rake,roll,grass,water' && land.lawn.cells >= 2 && land.fence.done === 'holes,posts,fill', JSON.stringify({ lawn: land.lawn, fence: land.fence }));
+  check('garden: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2b. English: a device in English gets the whole game in English ------------------------------
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }, 'en-US');
