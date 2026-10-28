@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { boxOf } from './freeBrick.js';
+import { boxOf, unitBoxes } from './freeBrick.js';
 
 // The ring beam (армопояс) cast in a timber formwork on the top course of the walls, as on
 // site: boards on edge along both faces of the top course (100 mm down over the masonry,
@@ -71,7 +71,7 @@ export function beltsOverlap(a, b) {
 
 // The ring on the top course under the finger: { rec (a belt without id), n cells } or null
 export function findBelt(app, p, screen, finger) {
-  const boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop').map(boxOf);
+  const boxes = unitBoxes(app).filter((b) => b.u.kind !== 'prop');
   // the top under the finger
   let pick = null, bd = Infinity;
   for (const b of boxes) {

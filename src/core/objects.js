@@ -13,7 +13,7 @@ export class ObjectStore {
   }
 
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
-  _emit(id, rec) { for (const fn of this.listeners) fn(id, rec); }
+  _emit(id, rec) { this.ver = (this.ver || 0) + 1; for (const fn of this.listeners) fn(id, rec); }
 
   get(id) { return this.map.get(id) || null; }
   all(type) { const out = []; for (const r of this.map.values()) if (!type || r.type === type) out.push(r); return out; }

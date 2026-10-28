@@ -33,6 +33,13 @@ const group = (u) => (u.kind === 'prop' ? 'prop' : u.kind === 'cinder' ? 'cinder
 function yawOf(q) { const v = new THREE.Vector3(1, 0, 0).applyQuaternion(new THREE.Quaternion().fromArray(q)); return Math.atan2(-v.z, v.x); }
 
 // a laid unit as a box: centre, axes, half sizes, bottom / top
+// (the units as boxes, made once for each state of the plot — a brick house has thousands)
+let _bx = null;
+export function unitBoxes(app) {
+  const v = app.objects.ver || 0;
+  if (!_bx || _bx.v !== v || _bx.o !== app.objects) _bx = { v, o: app.objects, all: app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf) };
+  return _bx.all;
+}
 export function boxOf(u) {
   const yaw = yawOf(u.q);
   return { u, x: u.p[0], z: u.p[2], yaw, ux: Math.cos(yaw), uz: -Math.sin(yaw), hl: u.s[0] / 2, hw: u.s[2] / 2, bot: u.p[1] - u.s[1] / 2, top: u.p[1] + u.s[1] / 2, kind: u.lintel ? 'lintel' : group(u) };
