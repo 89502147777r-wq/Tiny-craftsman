@@ -15,7 +15,7 @@ import { boxOf, unitBoxes } from './freeBrick.js';
 //          lv[] (mm of concrete per inside cell), sm[], fill, castT, pourT, set, stripped,
 //          segs: [[s0,t0,s1,t1,w]…] (the walls, for the cage) }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const BELT = { cell: 50, H: 250, over: 100, board: 25, cover: 40 };
+export const BELT = { cell: 50, H: 250, over: 100, board: 25, cover: 40, span: 6000 };   // (span: the widest a cast beam bridges between pillars / walls)
 const YIELD = 1.2, K = 30;   // (it runs along the beam quicker than in a narrow channel)
 
 // ---- the plan ------------------------------------------------------------------------------
@@ -108,22 +108,30 @@ export function findBelt(app, p, screen, finger) {
   // an opening left up to the top course (a door, a window under the ring beam) is bridged:
   // along a row / a column, a gap ≤ 3,2 m between two runs of the walls longer than a
   // wall is thick (across the house the runs are only the walls' thickness: not bridged)
+  // and a gap between a pillar and a wall, or between two pillars (a terrace under the roof): the beam
+  // over it is a ригель — up to 6 m, as on site; wider, a pillar more is needed in between
+  const bridged = new Uint8Array(ni * nj); let long = 0;
   {
-    const longRun = Math.ceil(MM(360) / c), maxGap = Math.round(MM(3200) / c), add = [];
+    const longRun = Math.ceil(MM(300) / c), maxGap = Math.round(MM(BELT.span) / c), add = [];
     const scan = (n, m, at) => {
+      // (a run is an end of a span only when it is a wall along the line — longer along it than
+      // across — or a pillar, about square: not a wall the line crosses)
+      const end = (a, p0, p1) => { const mid = (p0 + p1) >> 1; let w = 1; for (let d = a + 1; d < m && m_(at(d, mid)); d++) w++; for (let d = a - 1; d >= 0 && m_(at(d, mid)); d--) w++; return p1 - p0 >= longRun && p1 - p0 >= 0.75 * w; };
       for (let a = 0; a < m; a++) {
         const runs = []; let st = -1;
         for (let b = 0; b <= n; b++) { const on = b < n && m_(at(a, b)); if (on && st < 0) st = b; if (!on && st >= 0) { runs.push([st, b]); st = -1; } }
         for (let k = 1; k < runs.length; k++) {
           const [p0, p1] = runs[k - 1], [q0, q1] = runs[k];
-          if (q0 - p1 <= maxGap && p1 - p0 >= longRun && q1 - q0 >= longRun) for (let b = p1; b < q0; b++) add.push(at(a, b));
+          if (!end(a, p0, p1) || !end(a, q0, q1)) continue;
+          if (q0 - p1 <= maxGap) for (let b = p1; b < q0; b++) add.push(at(a, b));
+          else if (q0 - p1 <= Math.round(MM(16000) / c)) long = Math.max(long, (q0 - p1) * BELT.cell);
         }
       }
     };
     const m_ = (k) => m[k];
     scan(ni, nj, (j, i) => j * ni + i);
     scan(nj, ni, (i, j) => j * ni + i);
-    for (const k of add) m[k] = 1;
+    for (const k of add) { m[k] = 1; bridged[k] = 1; }
   }
   // the piece under the finger
   const pf = fr(pick), si = Math.floor((pf.s - s0) / c), sj = Math.floor((pf.t - t0) / c);
@@ -157,13 +165,36 @@ export function findBelt(app, p, screen, finger) {
       if (cur) segs.push(cur);
     }
   }
+  // the spans (what the beam bridges, nothing of the course under it): each a rectangle of cells; the
+  // beam over it as deep as the span asks (≈ 1/12 of it, 250 … 600 mm: below the ring beam's bottom
+  // by the rest), on a deck of plywood on beams and props down to what is under it (the slab, a sill)
+  const spans = [];
+  {
+    const seen = new Uint8Array(ni * nj), t = app.terrain;
+    for (let k0 = 0; k0 < ni * nj; k0++) {
+      if (!bridged[k0] || !keep[k0] || seen[k0]) continue;
+      let i0 = ni, i1 = -1, j0 = nj, j1 = -1; const st2 = [k0]; seen[k0] = 1;
+      while (st2.length) { const k = st2.pop(), i = k % ni, j = (k / ni) | 0; i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); for (const q of [i > 0 ? k - 1 : -1, i < ni - 1 ? k + 1 : -1, j > 0 ? k - ni : -1, j < nj - 1 ? k + ni : -1]) if (q >= 0 && bridged[q] && keep[q] && !seen[q]) { seen[q] = 1; st2.push(q); } }
+      const L = Math.max(i1 - i0 + 1, j1 - j0 + 1) * BELT.cell, h = Math.min(600, Math.max(BELT.H, Math.ceil(L / 12 / 50) * 50)), drop = h - BELT.H;
+      const sm = s0 + (i0 + i1 + 1) / 2 * c, tm = t0 + (j0 + j1 + 1) / 2 * c, x = sm * ux - tm * uz, z = sm * uz + tm * ux;
+      let floor = t.inside(x, z) ? t.heightAt(x, z) : T - MM(2500);
+      for (const b of boxes) if (b.top < T - MM(drop + 50) && Math.abs((x - b.x) * b.ux + (z - b.z) * b.uz) < b.hl && Math.abs(-(x - b.x) * b.uz + (z - b.z) * b.ux) < b.hw) floor = Math.max(floor, b.top);
+      spans.push([i0, j0, i1 + 1, j1 + 1, drop, +floor.toFixed(6), Math.round(L)]);
+    }
+  }
   const rec = {
     type: 'belt', o: [+(ux * s0 - uz * t0).toFixed(6), +(uz * s0 + ux * t0).toFixed(6)], u: [+ux.toFixed(6), +uz.toFixed(6)], c: +c.toFixed(7), ni, nj,
     mask: rle(keep), top: +T.toFixed(6), H: +MM(BELT.H).toFixed(6), lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0,
     // (the walls in the frame relative to the origin: from, to along; the line across; half width; along s?)
     segs: segs.map(([a, b, l, h, par]) => [+(a - (par ? s0 : t0)).toFixed(6), +(b - (par ? s0 : t0)).toFixed(6), +(l - (par ? t0 : s0)).toFixed(6), +h.toFixed(6), par ? 1 : 0]),
+    ...(spans.length ? { spans } : {}),
   };
-  return { rec, n, lenM: segs.reduce((a, v) => a + (v[1] - v[0]), 0) / S / 1000 };
+  // (the spans' cages: the bars of the beam, along its span, as deep as it is)
+  for (const [i0, j0, i1, j1, drop, , L] of spans) {
+    const par = i1 - i0 >= j1 - j0, a0 = (par ? i0 : j0) * c, a1 = (par ? i1 : j1) * c, l = ((par ? j0 + j1 : i0 + i1) / 2) * c, h = ((par ? j1 - j0 : i1 - i0) / 2) * c;
+    rec.segs.push([+(a0 - MM(250)).toFixed(6), +(a1 + MM(250)).toFixed(6), +l.toFixed(6), +h.toFixed(6), par ? 1 : 0, +MM(drop).toFixed(6), L > 3000 ? 14 : 12]);
+  }
+  return { rec, n, lenM: segs.reduce((a, v) => a + (v[1] - v[0]), 0) / S / 1000, long, spans: spans.length };
 }
 
 // the boards: the edges of the plan, merged into straight runs — [s0,t0,s1,t1, ns,nt]
@@ -198,8 +229,8 @@ export function beltCage(b) {
   const P = plan(b), bars = [], ties = [], stars = [], d = MM(12), ds = MM(6), cov = MM(BELT.cover), H = b.H, y0 = b.top;
   const W = (s, t, y) => { const [x, z] = toWorld(b, s, t); return [+x.toFixed(5), +y.toFixed(5), +z.toFixed(5)]; };
   const inside = (s, t) => { const i = Math.floor(s / b.c), j = Math.floor(t / b.c); return i >= 0 && j >= 0 && i < b.ni && j < b.nj && P.mask[j * b.ni + i]; };
-  for (const [a0, a1, l, h, par] of b.segs) {
-    const pt = (al, ac) => (par ? [al, l + ac] : [l + ac, al]);
+  for (const [a0, a1, l, h, par, drop = 0, dia = 12] of b.segs) {
+    const pt = (al, ac) => (par ? [al, l + ac] : [l + ac, al]), y0 = b.top - drop, H = b.H + drop, d = MM(dia);   // (a beam over a span: deeper, its bars thicker)
     // the ends: on through a corner as far as the ring goes (≤ 600 mm), less the cover
     const ext = (a, sg) => { let e = 0; while (e < MM(600) && inside(...pt(a + sg * (e + b.c * 0.5), 0))) e += b.c * 0.5; return Math.max(0, e - cov); };
     const e0 = ext(a0, -1), e1 = ext(a1, 1);
