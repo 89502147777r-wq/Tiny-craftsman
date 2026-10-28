@@ -113,7 +113,11 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
   const t = surface(app), D = dims(kind, opts.half), { L, H, W, J, B, B0 } = D;
   const cand = (x, z, yaw, bot, bed, how) => ({ x, z, yaw, ux: Math.cos(yaw), uz: -Math.sin(yaw), hl: L / 2, hw: W / 2, bot, top: bot + H, bed, how });
   const boxes = unitBoxes(app), around = (c, r = 0) => boxesNear(app, c.x, c.z, Math.max(c.hl, c.hw) * 1.42 + r);
-  const cands = [];
+  let cands = [];
+  // (with a finger: a place far from it on the screen is not even considered — the magnet moves a
+  // place at most about half a unit, so 170 px round the finger keeps all that could win)
+  const _v = new THREE.Vector3(), far = (c) => { if (!finger) return false; const sp = screen(_v.set(c.x, c.bot, c.z)); c._d = Math.hypot(sp.x - finger.x, sp.y - finger.y); return !sp.front || c._d > 170; };
+  const push = (c) => { if (!far(c)) cands.push(c); };
   // near the finger: on the screen (the finger is often over the ground behind a unit),
   // else in the plot
   const near = (b, px) => {
@@ -127,12 +131,12 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     const nx = -n.uz, nz = n.ux, bed = bedOf(n.u, D);   // the same course: the same bed under it
     for (const sg of [-1, 1]) {
       const a = n.hl + J + L / 2;
-      { const cc = cand(n.x + n.ux * a * sg, n.z + n.uz * a * sg, n.yaw, n.bot, bed, 'beside'); cc.across = false; cands.push(cc); }
+      { const cc = cand(n.x + n.ux * a * sg, n.z + n.uz * a * sg, n.yaw, n.bot, bed, 'beside'); cc.across = false; push(cc); }
       const b = n.hw + J + W / 2;
-      { const cc = cand(n.x + nx * b * sg, n.z + nz * b * sg, n.yaw, n.bot, bed, 'beside'); cc.leaf = true; cands.push(cc); }
+      { const cc = cand(n.x + nx * b * sg, n.z + nz * b * sg, n.yaw, n.bot, bed, 'beside'); cc.leaf = true; push(cc); }
       for (const sd of [-1, 1]) {
         const c = n.hl + J + W / 2, f = L / 2 - n.hw;
-        const cc = cand(n.x + n.ux * c * sg + nx * f * sd, n.z + n.uz * c * sg + nz * f * sd, n.yaw + Math.PI / 2, n.bot, bed, 'beside'); cc.across = true; cands.push(cc);
+        const cc = cand(n.x + n.ux * c * sg + nx * f * sd, n.z + n.uz * c * sg + nz * f * sd, n.yaw + Math.PI / 2, n.bot, bed, 'beside'); cc.across = true; push(cc);
       }
     }
   }
@@ -143,9 +147,12 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     const bx = -b.uz, bz = b.ux, q = (D.Lf + J) / 4, n = Math.floor((b.hl + L / 2) / q), onFace = inside(b, p.x, p.z, 0.002) && Math.abs(p.y - b.top) < 0.002;   // the finger on its top face
     for (let k = -n; k <= n; k++) for (const [yaw, half] of [[b.yaw, W / 2], [b.yaw + Math.PI / 2, L / 2]]) {
       const offs = new Set([0, +(b.hw - half).toFixed(7), -(b.hw - half).toFixed(7)]);
-      for (const o of offs) { const c = cand(b.x + b.ux * k * q + bx * o, b.z + b.uz * k * q + bz * o, yaw, b.top + B, B, 'top'); c.across = yaw !== b.yaw; c.onFace = onFace; cands.push(c); }
+      for (const o of offs) { const c = cand(b.x + b.ux * k * q + bx * o, b.z + b.uz * k * q + bz * o, yaw, b.top + B, B, 'top'); c.across = yaw !== b.yaw; c.onFace = onFace; push(c); }
     }
   }
+  // (the nearest 120 to the finger: the rest could not win — the score is the distance on the screen
+  // give or take 60 px)
+  if (finger && cands.length > 120) cands = cands.sort((a, b) => a._d - b._d).slice(0, 120);
   // on the ground / a slab (the first bed is thicker under a block: mortar, not glue)
   if (opts.ground !== false && t.inside(p.x, p.z)) {
     const e = edgeNear(t, p);
@@ -232,16 +239,16 @@ export function placeUnit(app, kind, p, screen, finger, turn, opts = {}) {
     }
     void best;
   }
-  for (let i = cands.length - 1; i >= 0; i--) if (cands[i].gone) cands.splice(i, 1);
+  cands = cands.filter((c) => !c.gone);
   cands.push(...snapped);
   // no turning by itself: every place has the direction of the work (the last unit laid,
   // or what it goes on / by), «Повернуть» turns it by 90°
   if (opts.yaw != null) {
     const want = opts.yaw + (turn ? Math.PI / 2 : 0);
-    for (let i = cands.length - 1; i >= 0; i--) if (Math.abs(Math.sin(cands[i].yaw - want)) > 0.05) cands.splice(i, 1);
+    cands = cands.filter((c) => Math.abs(Math.sin(c.yaw - want)) <= 0.05);
   } else if (turn) {
-    for (let i = cands.length - 1; i >= 0; i--) if (cands[i].how !== 'ground' && !cands[i].across) cands.splice(i, 1);
-  } else for (let i = cands.length - 1; i >= 0; i--) if (cands[i].across) cands.splice(i, 1);
+    cands = cands.filter((c) => c.how === 'ground' || c.across);
+  } else cands = cands.filter((c) => !c.across);
   const bias = { beside: 0, top: finger ? 22 : 20, ground: finger ? 45 : 60 };
   let best = null, bd = Infinity, bestBad = null, bb = Infinity;
   // places by / on the masonry first: when one of them fits, the bare ground (often the
