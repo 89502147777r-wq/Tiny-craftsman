@@ -3,6 +3,8 @@ import { MODEL_SCALE, M_G20 } from '../config.js';
 import { FitJob, drill } from './fitJob.js';
 import { isDoor, DOORS } from '../world/doors.js';
 import { PORCH, PORCH_LAYERS, PORCH_TILES, porchFor, blocksOf, footprint, inPorch, PW, canopyFor } from '../world/porch.js';
+import { FLIGHTS, FLIGHT_TEMPS } from '../world/facadeLights.js';
+const _ray = new THREE.Raycaster();
 
 // The house's outside (porch.js): «Экстерьер» → the porch at a door, stage by stage, and the canopy over
 // it. A touch near a door starts its porch (the pit dug); each next stage — a touch on the porch.
@@ -11,7 +13,22 @@ const NAME = Object.fromEntries(PORCH_LAYERS), ORDER = PORCH_LAYERS.map(([k]) =>
 
 export class ExtWork {
   constructor(app) { this.app = app; this.drag = null; }
-  get what() { return this.app.settings.extWhat === 'canopy' ? 'canopy' : 'porch'; }
+  get what() { const w = this.app.settings.extWhat; return w === 'canopy' || w === 'light' ? w : 'porch'; }
+  get lightKind() { return FLIGHTS[this.app.settings.flKind] ? this.app.settings.flKind : 'sconce'; }
+  get lightTemp() { return FLIGHT_TEMPS[this.app.settings.flTemp] ? this.app.settings.flTemp : 'warm'; }
+  // the house's surface under the finger: the point and its normal (the walls, the facades, the slabs, the roofs)
+  _hit(e) {
+    if (!e || e.clientX === undefined) return null;
+    const app = this.app; _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
+    const shown = (o) => { for (let q = o; q; q = q.parent) if (!q.visible) return false; return true; };
+    const h = _ray.intersectObject(app.wallView.group, true).find((q) => shown(q.object) && !q.object.userData.noPick && !q.object.userData.glow && q.face);
+    if (!h) return null;
+    const n = h.face.normal.clone();
+    if (h.instanceId != null && h.object.isInstancedMesh) { const m = new THREE.Matrix4(); h.object.getMatrixAt(h.instanceId, m); n.transformDirection(m); }
+    n.transformDirection(h.object.matrixWorld);
+    if (n.dot(_ray.ray.direction) > 0) n.negate();
+    return { p: h.point.clone(), n: n.normalize() };
+  }
   get layer() { return NAME[this.app.settings.porchLayer] ? this.app.settings.porchLayer : 'dig'; }
   get tile() { return PORCH_TILES[this.app.settings.porchTile] ? this.app.settings.porchTile : 'porc_anthracite'; }
   get view() { return this.app.gardenView; }
@@ -26,9 +43,10 @@ export class ExtWork {
     return best;
   }
   _porch(p) { return this.app.objects.all('porch').find((r) => inPorch(r, p.x, p.z, 400)) || null; }
-  down(p) {
+  down(p, e) {
     if (this.app.physJob) return true;
     if (this.what === 'canopy') { this._canopy(p); return true; }
+    if (this.what === 'light') return this._lightDown(p, e);
     const L = this.layer;
     let r = this._porch(p);
     if (!r) {
@@ -45,9 +63,68 @@ export class ExtWork {
     ({ grav: () => this._grav(r), form: () => this._form(r), conc: () => this._conc(r), strip: () => this._strip(r), tile: () => this._tile(r) })[L]?.();
     return true;
   }
-  move() {}
-  up() {}
-  interrupt() {}
+  move(p, e) {
+    const d = this.drag; if (!d) return;
+    const h = this._hit(e); if (!h) return;
+    const last = d.pts.at(-1);
+    if (Math.hypot(h.p.x - last[0], h.p.y - last[1], h.p.z - last[2]) < MM(120)) return;
+    d.pts.push([h.p.x, h.p.y, h.p.z, h.n.x, h.n.y, h.n.z].map((v) => +v.toFixed(6)));
+    this.app.ui?.showMeasure?.(`Светодиодная лента: ${(this._len(d.pts) / S / 1000).toFixed(1).replace('.', ',')} м — отпустите`);
+  }
+  up() {
+    const d = this.drag; this.drag = null;
+    if (!d) return;
+    this.app.ui?.hideMeasure?.();
+    if (d.pts.length < 2 || this._len(d.pts) < MM(300)) { this.toast('Ведите пальцем по фасаду, под свесом или по краю плиты — там ляжет лента'); return; }
+    this._install({ kind: 'led', pts: d.pts, temp: this.lightTemp });
+  }
+  interrupt() { if (this.drag) this.app.ui?.hideMeasure?.(); this.drag = null; }
+  _len(pts) { let s = 0; for (let i = 1; i < pts.length; i++) s += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]); return s; }
+  // a light: where the finger is on the house (a wall for a fixture on it, a soffit's underside for a
+  // downlight), a strip drawn along, the step lights into a porch
+  _lightDown(p, e) {
+    const app = this.app, kind = this.lightKind, temp = this.lightTemp, K = FLIGHTS[kind];
+    if (app.physJob) return true;
+    if (kind === 'steps') {
+      const r = app.objects.all('porch').find((q) => inPorch(q, p.x, p.z, 400));
+      if (!r) { this.toast('Коснитесь крыльца — свет встроят в подступенки'); return true; }
+      if (!(r.done || {}).tile) { this.toast('Подсветку ступеней ставят в облицовку: сначала крыльцо до «6 · Облицовка»'); return true; }
+      if (app.objects.all('flight').some((q) => q.porch === r.id)) { this.toast('У этого крыльца подсветка уже есть'); return true; }
+      this._install({ kind, porch: r.id, temp, p: [r.o[0], r.g, r.o[1]], n: [r.nrm[0], 0, r.nrm[1]] });
+      return true;
+    }
+    const h = this._hit(e);
+    if (kind === 'led') {
+      if (!h) { this.toast('Ведите пальцем по стене, свесу или краю плиты'); return true; }
+      this.drag = { pts: [[h.p.x, h.p.y, h.p.z, h.n.x, h.n.y, h.n.z].map((v) => +v.toFixed(6))] };
+      return true;
+    }
+    if (!h) { this.toast(K.on === 'ceiling' ? 'Коснитесь низа свеса кровли или плиты — туда врежут светильник' : 'Коснитесь стены дома — туда повесят светильник'); return true; }
+    if (K.on === 'wall' && Math.abs(h.n.y) > 0.4) { this.toast('Этот светильник — на стену: коснитесь стены'); return true; }
+    if (K.on === 'ceiling' && h.n.y > -0.6) { this.toast('Точечный светильник врезают в софит: коснитесь низа свеса или плиты снизу'); return true; }
+    // (an uplight: at the wall's foot, under where the finger touched)
+    const at = kind === 'uplight' ? new THREE.Vector3(h.p.x, h.p.y, h.p.z) : h.p;
+    this._install({ kind, p: [at.x, at.y, at.z].map((v) => +v.toFixed(6)), n: [h.n.x, h.n.y, h.n.z].map((v) => +v.toFixed(5)), temp });
+    return true;
+  }
+  _install(rec) {
+    const app = this.app, K = FLIGHTS[rec.kind];
+    app.journal.begin('flight', {}, app.clock);
+    const r = app.objects.add({ type: 'flight', ...rec }), key = 'X' + r.id, steps = [];
+    this.view.setAnim(key, { appear: 0, len: 0 });
+    if (rec.kind === 'led') {
+      const L = this._len(rec.pts);
+      steps.push([Math.max(1, L / MM(1000) * 0.35), (u) => this.view.setAnim(key, { len: L * u, appear: 1 })]);
+    } else {
+      const p = new THREE.Vector3(...rec.p), n = new THREE.Vector3(...rec.n);
+      if (rec.kind !== 'steps' && rec.kind !== 'uplight') steps.push(drill(app, p, n, 0.4, 60), drill(app, p.clone().add(new THREE.Vector3(0, rec.kind === 'downlight' ? 0 : MM(60), 0)), n, 0.3, 60));
+      steps.push([0.6, (u) => this.view.setAnim(key, { appear: u * u * (3 - 2 * u), len: 1e9 })]);
+    }
+    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); this.view.setAnim(key, null); }, commit: () => {
+      app.journal.commit(app.clock); this.view.setAnim(key, null);
+      this.toast(rec.kind === 'led' ? `Светодиодная лента ${(this._len(rec.pts) / S / 1000).toFixed(1).replace('.', ',')} м в алюминиевом профиле с рассеивателем — включится в сумерках` : `${K.name}: ${FLIGHT_TEMPS[rec.temp][0].toLowerCase()} — кабель в гофре, включится в сумерках`);
+    } });
+  }
   _cells(r, pad) {
     const t = this.app.terrain, [a0, a1, d0, d1] = footprint(r), cs = [PW(r, a0 - pad, d0), PW(r, a1 + pad, d0), PW(r, a0 - pad, d1 + pad), PW(r, a1 + pad, d1 + pad)];
     const box = [Math.min(...cs.map((c) => c[0])), Math.min(...cs.map((c) => c[1])), Math.max(...cs.map((c) => c[0])), Math.max(...cs.map((c) => c[1]))];
@@ -155,6 +232,7 @@ export class ExtWork {
   }
   next(r = this.app.objects.all('porch').at(-1)) {
     if (this.what === 'canopy') return [null, 'Коснитесь у двери — козырёк над входом'];
+    if (this.what === 'light') return [null, this.status()];
     if (!r) return ['dig', 'Коснитесь у входной двери — начнём крыльцо'];
     const d = r.done || {};
     for (const k of ORDER) if (!d[k]) return [k, NAME[k]];
@@ -162,6 +240,7 @@ export class ExtWork {
   }
   status() {
     if (this.what === 'canopy') return 'Коснитесь у входной двери — над ней повесят стеклянный козырёк';
+    if (this.what === 'light') return { sconce: 'Коснитесь стены — бра светит вверх и вниз', cube: 'Коснитесь стены — настенный куб светит вниз', downlight: 'Коснитесь низа свеса или плиты — врежут точечный светильник', uplight: 'Коснитесь стены у земли — прожектор в землю подсветит фасад снизу', led: 'Ведите пальцем по фасаду, под свесом или по краю плиты — ляжет светодиодная лента', steps: 'Коснитесь крыльца — свет в каждый подступенок' }[this.lightKind];
     return {
       dig: 'Коснитесь у входной двери — крыльцо по её порогу: площадка 1,2 м и ступени до земли; котлован 300 мм',
       grav: 'Коснитесь крыльца — щебень 150 мм с трамбовкой',
@@ -174,6 +253,6 @@ export class ExtWork {
   remove(id) {
     const app = this.app, r = app.objects.get(id); if (!r) return;
     app.journal.act(r.type + '-remove', {}, app.clock, () => app.objects.remove(id));
-    this.toast(r.type === 'canopy' ? 'Козырёк сняли' : 'Крыльцо убрали');
+    this.toast(r.type === 'canopy' ? 'Козырёк сняли' : r.type === 'flight' ? 'Светильник сняли' : 'Крыльцо убрали');
   }
 }

@@ -110,7 +110,7 @@ export class WallTool {
     }
   }
 
-  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || !!this.pool.drag || !!this.land.drag || !!this.col.drag; }
+  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || !!this.pool.drag || !!this.land.drag || !!this.ext.drag || !!this.col.drag; }
   // one finger works on the wall in every mode (the camera: two fingers)
   blocksOrbit() { return true; }
 
@@ -230,6 +230,7 @@ export class WallTool {
     if (this.facade.drag) { this.facade.move(p, e); return; }
     if (this.blind.drag) { this.blind.move(p, e); return; }
     if (this.pool.drag) { this.pool.move(p, e); return; }
+    if (this.ext.drag) { this.ext.move(p, e); return; }
     if (this.land.drag) { this.land.move(p, e); return; }
     if (this.col.drag) { this.col.move(p, e); return; }
     if (this.proof.drag) { this.proof.move(p, e); return; }
@@ -274,6 +275,7 @@ export class WallTool {
     if (this.facade.drag) { this.facade.up(); return; }
     if (this.blind.drag) { this.blind.up(); return; }
     if (this.pool.drag) { this.pool.up(); return; }
+    if (this.ext.drag) { this.ext.up(); return; }
     if (this.land.drag) { this.land.up(); return; }
     if (this.col.drag) { this.col.up(); return; }
     if (this.proof.drag) { this.proof.up(); return; }
@@ -310,7 +312,7 @@ export class WallTool {
     }
   }
 
-  interrupt() { this.pool.interrupt(); this.land.interrupt(); this.col.interrupt(); this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
+  interrupt() { this.pool.interrupt(); this.land.interrupt(); this.ext.interrupt(); this.col.interrupt(); this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
 
   update(dt) { if (this.rowJob) this._rowStep(); this.blind.update(dt); this.pool.update(dt); }
 
@@ -1224,7 +1226,7 @@ export class WallTool {
     if (id && app.objects.get(id)?.type === 'lawn') { this.land.removeLawn(id); return; }
     if (id && app.objects.get(id)?.type === 'fence') { this.land.removeFence(id); return; }
     if (id && app.objects.get(id)?.type === 'plant') { this.land.removePlant(id); return; }
-    if (id && ['porch', 'canopy'].includes(app.objects.get(id)?.type)) { this.ext.remove(id); return; }
+    if (id && ['porch', 'canopy', 'flight'].includes(app.objects.get(id)?.type)) { this.ext.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'column') { this.col.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'stock') { app.budget.remove(id); return; }
     if (id && isPoolBelt(app.objects.get(id))) { this.pool.belt(app.objects.get(id)); return; }

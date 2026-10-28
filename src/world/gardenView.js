@@ -5,6 +5,7 @@ import { lawnUniforms, buildLawn, lawnLine, lawnGhost, turfRoll, roller, sprinkl
 import { frameW } from './lawn.js';
 import { fenceString, fencePosts, fenceFill, fenceUniforms, auger, fenceGates } from './fence.js';
 import { PLANTS, plantBody, rootBall, mulchDisc, mulchStrip, spotsOf } from './plants.js';
+import { buildLight, lightLevel } from './facadeLights.js';
 import { porchConcrete, porchForm, porchTiles, porchUniforms, canopyMesh, blocksOf as porchBlocks } from './porch.js';
 
 // The garden drawn (garden.js): the paths — the pegs and the string of the setting-out, the
@@ -109,7 +110,7 @@ export class GardenView {
     this.live = null;          // a path being set out (no id): { pts, W }
     this.anim = {};            // id → { kerb: n, pave: n, geo, joint (mm along), roll }
     this.dirty = true;
-    objects.on((id, rec) => { if (rec?.type === 'path' || rec?.type === 'lawn' || rec?.type === 'fence' || rec?.type === 'plant' || rec?.type === 'porch' || rec?.type === 'canopy' || this.parts.has('P' + id) || this.parts.has('R' + id) || this.parts.has('C' + id) || this.parts.has(id) || this.parts.has('L' + id) || this.parts.has('F' + id)) this.dirty = true; });
+    objects.on((id, rec) => { if (rec?.type === 'path' || rec?.type === 'lawn' || rec?.type === 'fence' || rec?.type === 'plant' || rec?.type === 'porch' || rec?.type === 'canopy' || rec?.type === 'flight' || this.parts.has('X' + id) || this.parts.has('P' + id) || this.parts.has('R' + id) || this.parts.has('C' + id) || this.parts.has(id) || this.parts.has('L' + id) || this.parts.has('F' + id)) this.dirty = true; });
     this.liveLawn = null;   // a lawn being drawn: { poly, g }
   }
   setLive(l) { this.live = l; this.dirty = true; }
@@ -126,6 +127,7 @@ export class GardenView {
       if (e.plant) { this._plantFrame(e); continue; }
       if (e.porch) { this._porchFrame(e); continue; }
       if (e.canopy) { this._canopyFrame(e); continue; }
+      if (e.flight) { this._lightFrame(e); continue; }
       const r = e.rec, d = r.done || {}, a = this.anim[r.id] || {}, U = e.U;
       U.kerb.n.value = a.kerb ?? (d.kerb ? 1e9 : -1);
       U.bed.f.value = a.kerbS ?? (d.kerb ? 1e9 : -1e9);
@@ -219,7 +221,24 @@ export class GardenView {
       e.rec = r;
       this._part(e, 'body', [r.o, r.y, r.W, r.P].join('|'), () => canopyMesh(r));
     }
+    for (const r of this.objects.all('flight')) {
+      const key = 'X' + r.id; seen.add(key);
+      let e = this.parts.get(key);
+      if (!e) { e = { g: new THREE.Group(), keys: {}, sub: {}, flight: true }; this.group.add(e.g); this.parts.set(key, e); }
+      e.rec = r;
+      const pr = r.porch != null ? this.objects.get(r.porch) : null;
+      this._part(e, 'body', JSON.stringify([r.kind, r.p, r.n, r.temp, r.pts, pr && [pr.o, pr.H, pr.W, pr.n]]), () => buildLight(r, app, pr));
+    }
     for (const [k, e] of [...this.parts]) if (!seen.has(k)) { this.group.remove(e.g); dispose(e.g); this.parts.delete(k); }
+  }
+  // a light: on at dusk (the lens, the light it throws); going in: the fixture growing to its place, a
+  // strip shown along as far as it is stuck
+  _lightFrame(e) {
+    const G = e.sub.body; if (!G) return;
+    const a = this.anim['X' + e.rec.id], n = this._night || 0, k = Math.max(0, Math.min(1, (n - 0.08) / 0.45));
+    lightLevel(G, a ? 0 : k, a?.len ?? Infinity);
+    const b = G.userData.body;
+    if (e.rec.kind !== 'led') { const s = a ? Math.max(0.01, a.appear ?? 1) : 1; b.children.forEach((o) => o.scale.setScalar(s)); }
   }
   _porchFrame(e) {
     const r = e.rec, d = r.done || {}, a = this.anim['R' + r.id] || {};
