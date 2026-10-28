@@ -1,5 +1,10 @@
 // English for every Russian line of the game (the key: the Russian, {n} — what a template puts in)
 export default {
+"Пустой поддон — несите его и отпустите: на землю или на другой пустой поддон, в стопку": "Empty pallet — carry it and let go: on the ground or onto another empty pallet, to stack them",
+"Стопка уже 12 поддонов — выше не складывают, начните новую": "That stack is 12 pallets already — no higher; start a new one",
+"Поддон в стопку — в ней {n}": "Pallet stacked — {n} in the stack",
+"Сюда поддон не поставить — на землю рядом, не на бетон, не в яму, не к стене": "The pallet can't go here — onto the ground nearby, not on concrete, into a pit or against a wall",
+"Поддон перенесли": "Pallet moved",
 "🎲 Другой интерьер": "🎲 Another interior",
 "Новый интерьер: другие стили, мебель и цвета": "New interior: other styles, furniture and colours",
 "✨ Готово": "✨ Done",

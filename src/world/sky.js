@@ -96,7 +96,9 @@ export class Sky {
       ws.sun.color.set(0x9fb4e8);
       ws.sun.intensity = 0.32 * (1 - 0.8 * o);
     }
-    s.environmentIntensity = 0.9 * (0.05 + 0.95 * day) * (1 - 0.3 * o) + 0.03 * night;
+    s.environmentIntensity = 0.9 * (0.05 + 0.95 * day) * (1 - 0.3 * o) + 0.08 * night;
+    // (at night the shadows are soft, never black: the moon is faint and the sky lights what it does not)
+    ws.sun.shadow.intensity = 1 - 0.55 * night;
     app.renderer.toneMappingExposure = 1.05 * (1 + 0.45 * night);   // (the eye gets used to the dark)
     if (P?.sky) {
       const u = P.sky.material.uniforms;
@@ -139,7 +141,7 @@ export class Sky {
       app.scene.add(mast);
       const spot = new THREE.SpotLight(0xfff1d8, 0, 0, 0.62, 0.55, 0);
       spot.position.set(x, y0 + H + MM(100), z); spot.target.position.set(-x * 0.2, y0, -z * 0.2);
-      spot.shadow.mapSize.set(1024, 1024); spot.shadow.bias = -0.0004; spot.shadow.normalBias = 0.001;
+      spot.shadow.mapSize.set(1024, 1024); spot.shadow.bias = -0.0008; spot.shadow.normalBias = 0.004; spot.shadow.intensity = 0.6;
       app.scene.add(spot, spot.target);
       this.lamps.push({ mast, spot, glow, face });
     }
