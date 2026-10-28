@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE, CONCRETE } from '../config.js';
 import { KINDS } from '../world/walls.js';
-import { boxOf } from './freeBrick.js';
+import { boxOf, unitBoxes } from './freeBrick.js';
 import { rle } from './belt.js';
 
 // Openings in free masonry and what spans them:
@@ -24,27 +24,36 @@ const BEAR = 250;
 // of the wall's thickness
 const tolY = (a, b) => 0.34 * Math.min(a.top - a.bot, b.top - b.bot);
 export function findOpening(app, p, screen, finger) {
-  const boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q && !u.lintel && u.kind !== 'prop').map(boxOf);
+  const boxes = unitBoxes(app).filter((b) => b.kind !== 'lintel' && b.u.kind !== 'prop');
+  // the units by their line (the wall's direction) and course (60 mm bands): a gap is between two of
+  // one course in one line, so only those are paired — never every unit with every other
+  const yawK = (b) => Math.round((((b.yaw % Math.PI) + Math.PI) % Math.PI) / 0.04) % 79, bands = new Map();
+  for (let i = 0; i < boxes.length; i++) { const b = boxes[i], k = yawK(b) * 100000 + Math.round(b.top / (60 * S)); if (!bands.has(k)) bands.set(k, []); bands.get(k).push(i); }
+  const near = (b) => { const y = yawK(b), t = Math.round(b.top / (60 * S)), out = []; for (const dy of [-1, 0, 1]) for (const dt of [-2, -1, 0, 1, 2]) { const L = bands.get(((y + dy + 79) % 79) * 100000 + t + dt); if (L) out.push(...L); } return out; };
   let best = null, bd = Infinity;
-  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
-    const a = boxes[i], b = boxes[j], ty = tolY(a, b);
-    if (Math.abs(a.top - b.top) > ty || Math.abs(Math.sin(a.yaw - b.yaw)) > 0.05) continue;
-    const dx = b.x - a.x, dz = b.z - a.z, along = dx * a.ux + dz * a.uz, side = -dx * a.uz + dz * a.ux;
-    if (Math.abs(side) > Math.min(a.hw, b.hw) / 2) continue;
-    const gap = (Math.abs(along) - a.hl - b.hl) / S;
-    if (gap < 300 || gap > MAX_GAP) continue;
-    // nothing of that course in between
-    const sg = Math.sign(along), e0 = a.hl, e1 = Math.abs(along) - b.hl;
-    if (boxes.some((u, k) => k !== i && k !== j && Math.abs(u.top - a.top) < ty && (() => { const ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux; return Math.abs(sd - side / 2) < a.hw && s + u.hl > e0 + 0.0001 && s - u.hl < e1 - 0.0001; })())) continue;
-    const ux = a.ux * sg, uz = a.uz * sg, top = Math.max(a.top, b.top);
-    // the line: halfway between the two sides
-    const ox = a.x - a.uz * side / 2, oz = a.z + a.ux * side / 2;
-    const mid = (e0 + e1) / 2, cx = ox + ux * mid, cz = oz + uz * mid;
-    let d;
-    if (finger) { const sp = screen(new THREE.Vector3(cx, top, cz)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 160) continue; }
-    else { const dp = Math.hypot(cx - p.x, cz - p.z); if (dp > (e1 - e0) / 2 + 0.05) continue; d = Math.hypot(dp, top - p.y); }
-    d -= top * 1e-3;   // (stacked courses with the same gap: the top one — where a lintel goes)
-    if (d < bd) bd = d, best = { ux, uz, nx: -uz, nz: ux, yaw: Math.atan2(-uz, ux), o: [ox, oz], c0: e0, c1: e1, top, ty, width: Math.min(a.hw, b.hw) * 2, side: Math.abs(side), gap, kind: a.kind, a, b };
+  for (let i = 0; i < boxes.length; i++) {
+    const a = boxes[i], NB = near(a);
+    for (const j of NB) {
+      if (j <= i) continue;
+      const b = boxes[j], ty = tolY(a, b);
+      if (Math.abs(a.top - b.top) > ty || Math.abs(Math.sin(a.yaw - b.yaw)) > 0.05) continue;
+      const dx = b.x - a.x, dz = b.z - a.z, along = dx * a.ux + dz * a.uz, side = -dx * a.uz + dz * a.ux;
+      if (Math.abs(side) > Math.min(a.hw, b.hw) / 2) continue;
+      const gap = (Math.abs(along) - a.hl - b.hl) / S;
+      if (gap < 300 || gap > MAX_GAP) continue;
+      // nothing of that course in between
+      const sg = Math.sign(along), e0 = a.hl, e1 = Math.abs(along) - b.hl;
+      if (NB.some((k) => k !== i && k !== j && Math.abs(boxes[k].top - a.top) < ty && (() => { const u = boxes[k], ex = u.x - a.x, ez = u.z - a.z, s = (ex * a.ux + ez * a.uz) * sg, sd = -ex * a.uz + ez * a.ux; return Math.abs(sd - side / 2) < a.hw && s + u.hl > e0 + 0.0001 && s - u.hl < e1 - 0.0001; })())) continue;
+      const ux = a.ux * sg, uz = a.uz * sg, top = Math.max(a.top, b.top);
+      // the line: halfway between the two sides
+      const ox = a.x - a.uz * side / 2, oz = a.z + a.ux * side / 2;
+      const mid = (e0 + e1) / 2, cx = ox + ux * mid, cz = oz + uz * mid;
+      let d;
+      if (finger) { const sp = screen(new THREE.Vector3(cx, top, cz)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 160) continue; }
+      else { const dp = Math.hypot(cx - p.x, cz - p.z); if (dp > (e1 - e0) / 2 + 0.05) continue; d = Math.hypot(dp, top - p.y); }
+      d -= top * 1e-3;   // (stacked courses with the same gap: the top one — where a lintel goes)
+      if (d < bd) bd = d, best = { ux, uz, nx: -uz, nz: ux, yaw: Math.atan2(-uz, ux), o: [ox, oz], c0: e0, c1: e1, top, ty, width: Math.min(a.hw, b.hw) * 2, side: Math.abs(side), gap, kind: a.kind, a, b };
+    }
   }
   if (best) fullWidth(best, boxes);
   return best;
@@ -104,7 +113,7 @@ export function placeLintel(app, p, screen, finger) {
   const bot = (bear ? sup : op.top) + bed, q = new THREE.Quaternion().setFromAxisAngle(_Y, op.yaw);
   // nothing in its way above the course
   const me = { x, z, yaw: op.yaw, ux: op.ux, uz: op.uz, hl: L / 2, hw: op.width / 2, bot, top: bot + H };
-  const hit = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf).find((b) => me.bot < b.top - 1e-5 && me.top > b.bot + 1e-5 && overlap(me, b));
+  const hit = unitBoxes(app).find((b) => me.bot < b.top - 1e-5 && me.top > b.bot + 1e-5 && overlap(me, b));
   // why it can't go: too wide / short of bearing / the next course already over its ends /
   // something else in its place
   const why = !len ? 'long' : !bear ? 'bear' : hit ? (hit.bot > me.bot - (me.top - me.bot) * 0.5 ? 'above' : 'clash') : null;
@@ -123,7 +132,7 @@ export function placeLintelForm(app, p, screen, finger) {
   const c = 50 * S, bear = BEAR * S, W = op.width;
   const sup = bears(app, op, bear - 0.0001);
   const top = sup ?? op.top, H = (op.kind === 'brick' ? 2 * k.H + k.bed : k.H) * S;
-  const t = app.terrain, boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf);
+  const t = app.terrain, boxes = unitBoxes(app);
   // the ends: 250 mm onto the course each side — or as far as what already stands in the
   // course there (a block laid beside it: the formwork runs to its face, no board across
   // the end — the concrete is cast against the block, no gap left when it comes off)
@@ -167,7 +176,7 @@ export function placeProp(app, p, screen, finger) {
   const T = 40 * S, L = op.gap * S - 0.0008, mid = (op.c0 + op.c1) / 2;
   const x = op.o[0] + op.ux * mid, z = op.o[1] + op.uz * mid;
   // the floor under it: the ground, or the masonry of the sill under a window
-  const t = app.terrain, boxes = app.objects.all('unit').filter((u) => u.p && u.s && u.q).map(boxOf);
+  const t = app.terrain, boxes = unitBoxes(app);
   let floor = t.inside(x, z) ? t.heightAt(x, z) : 0;
   for (const b of boxes) if (b.top < op.top - T && Math.abs((x - b.x) * b.ux + (z - b.z) * b.uz) < b.hl && Math.abs(-(x - b.x) * b.uz + (z - b.z) * b.ux) < b.hw) floor = Math.max(floor, b.top);
   const q = new THREE.Quaternion().setFromAxisAngle(_Y, op.yaw);

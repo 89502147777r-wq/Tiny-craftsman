@@ -847,6 +847,7 @@ export class WallTool {
       const B = findBelt(app, p, scr, fing);
       if (B) B.exists = app.objects.all('belt').some((b) => Math.abs(b.top - B.rec.top) < 0.002 && beltsOverlap(b, B.rec));
       c.belt = B; c.free = undefined; c.snap = null;
+      { const sig = B ? JSON.stringify([B.exists, B.rec.o, B.rec.top, B.rec.ni, B.rec.nj]) : ''; if (sig === c.beltSig && !v.live && !v.liveBed) return; c.beltSig = sig; }
       v.live = null; v.hl = null; v.liveBed = null;
       v.liveBelt = B && !B.exists ? B.rec : null; v.dirty = true;
       app.ui.refresh();
@@ -864,8 +865,14 @@ export class WallTool {
       return;
     } else if (c.kind === 'lform') {
       // the formwork of a lintel cast in place: over the opening under the finger
+      // (looked for at most every 60 ms: a brick house has thousands of units to look through)
+      const now = performance.now(); if (now - (c.lformT || 0) < 60) return; c.lformT = now;
       const F = placeLintelForm(app, p, scr, fing);
       c.lform = F; c.free = undefined; c.snap = null;
+      // (the walls drawn again only when the formwork under the finger is another one)
+      const sig = F ? JSON.stringify([F.ok, F.rec.o, F.rec.top, F.rec.ni]) : '';
+      if (sig === c.lformSig && !v.live && !v.liveBed) return;
+      c.lformSig = sig;
       v.live = null; v.liveBed = null;
       v.liveBelt = F?.ok ? F.rec : null;
       if (F && !F.ok) {
