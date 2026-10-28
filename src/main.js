@@ -227,6 +227,8 @@ async function main() {
   document.getElementById('ui').hidden = !!app.filmMode;
   app.ready = true;
   if (app.filmMode) await startFilm(app.filmMode);
+  // (rec.html: the film recorded to an MP4 on this device)
+  if (app.filmMode && app.filmOffline && params.get('rec') === '1') import('./film/recordFilm.js').then((m) => m.recordFilm(app, { max: +(params.get('recmax') || 120) }));
   requestAnimationFrame(frame);
 }
 

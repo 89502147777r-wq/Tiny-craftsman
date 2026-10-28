@@ -1,5 +1,6 @@
 // English for every Russian line of the game (the key: the Russian, {n} — what a template puts in)
 export default {
+"⬇︎ Записать ролик в MP4 на этом устройстве": "⬇︎ Record the film as an MP4 on this device",
 "Горизонтальное ранчо (ДПК)": "Horizontal ranch slats (WPC)",
 "Евроштакетник": "Metal pickets",
 "Жалюзи": "Louvres",
