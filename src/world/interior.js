@@ -75,7 +75,7 @@ function mats() {
   const std = (o) => new THREE.MeshStandardMaterial({ roughness: 0.85, ...o });
   M.wall = std({ color: 0xf1ece3, emissive: 0xffd9a8, emissiveIntensity: 0 });
   M.ceil = std({ color: 0xf6f4ef, emissive: 0xffd9a8, emissiveIntensity: 0 });
-  M.floor = std({ map: tex('deck/oakporc', 'col.jpg', true), color: 0xd8c6b0, roughness: 0.6, emissive: 0x5a3a20, emissiveIntensity: 0 });
+  M.floor = std({ map: tex('deck/oakporc', 'col.jpg', true), color: 0xd8c6b0, roughness: 0.6 });
   M.fabric = std({ color: 0x8b8f93, roughness: 0.95 }); M.fabric2 = std({ color: 0xc9bca8, roughness: 0.95 }); M.fabric3 = std({ color: 0x3f4e5e, roughness: 0.95 });
   M.wood = std({ map: tex('deck/walnut', 'col.jpg', true), roughness: 0.55 }); M.oak = std({ map: tex('deck/oakporc', 'col.jpg', true), roughness: 0.6 });
   M.black = std({ color: 0x1b1c1e, roughness: 0.5, metalness: 0.3 }); M.white = std({ color: 0xf3f2ee, roughness: 0.45 }); M.steel = std({ color: 0xb9bcbf, metalness: 0.7, roughness: 0.3 });
@@ -84,6 +84,9 @@ function mats() {
   M.rug = std({ color: 0xb7aa98, roughness: 1 }); M.linen = new THREE.MeshStandardMaterial({ color: 0xf2eee6, roughness: 0.9, transparent: true, opacity: 0.82, side: THREE.DoubleSide, emissive: 0xffd9a8, emissiveIntensity: 0 });
   M.blind = std({ color: 0xe8e3d8, roughness: 0.9, side: THREE.DoubleSide, emissive: 0xffd9a8, emissiveIntensity: 0 });
   M.art = std({ color: 0x9c6b4e, roughness: 0.7 }); M.pot = std({ color: 0xd9d4ca, roughness: 0.6 });
+  // (indoors the sun does not reach — the light off the walls stands for it; at night the lamps' light
+  // on everything: each thing glows a little of its own colour, warm)
+  for (const m of Object.values(M)) if (m !== M.lamp && m !== M.tv) { if (!m.emissiveIntensity && m.emissive.getHex() === 0) m.emissive.setHex(0xffe2c0); m.userData.glow = { wall: 0.6, ceil: 0.75, floor: 0.45, linen: 0.85, blind: 0.8 }[Object.keys(M).find((k) => M[k] === m)] ?? 0.3; if (m.map) m.emissiveMap = m.map; }
   return M;
 }
 // a box in the room's frame: a along the wall from its o (mm), d into the room from the wall's inner face, y up from the floor
@@ -182,7 +185,7 @@ export function buildInterior(app) {
 // at night the rooms lit: the walls and the ceiling warm, the lamps bright, the light out of the windows
 export function interiorLight(G, k) {
   const m = mats();
-  m.wall.emissiveIntensity = 0.32 * k; m.ceil.emissiveIntensity = 0.42 * k; m.floor.emissiveIntensity = 0.25 * k; m.linen.emissiveIntensity = 0.55 * k; m.blind.emissiveIntensity = 0.5 * k;
+  for (const q of Object.values(m)) if (q.userData.glow) q.emissiveIntensity = q.userData.glow * (0.12 + 0.88 * k);
   m.lamp.emissiveIntensity = 0.3 + 2.6 * k; m.tv.emissiveIntensity = 0.6 * k;
   G.traverse((o) => { if (o.userData.spill) o.material.opacity = 0.55 * k; });
 }
