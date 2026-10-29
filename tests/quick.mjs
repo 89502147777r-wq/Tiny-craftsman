@@ -451,6 +451,20 @@ console.log('—', sec());
         const pt = tc.wallTool.proof; tc.settings.proofStage = 'plate'; pt.carryMove(new V(X0 + 2910 * S, y0 + 1015 * S, Z0), null); const po = pt.place?.rec.po;
         pt.carryMove(new V(X0 + 2700 * S, y0 + 1015 * S, Z0), null); const po2 = pt.place?.rec.po; pt.place = null; pt.carryDrop();
         out.plate = H && { T: Math.round(H.T / S), A: Math.round(w.A / S), B: Math.round(w.B / S), po, po2 };
+        // the facade at a corner: boards on one wall run on round it over the other's end — that end
+        // is insulation of the other face: glued over, a panel goes on it (cut to it)
+        { const FM = await import('/src/world/facade.js'), ft = tc.wallTool.facade, fs = ft.faces(), MM = (v) => v * S;
+          const F = fs.find((q) => q.cn1 && q.a1 - q.a0 > MM(1000)), G = F?.cn1.G, ge = G && (Math.abs(G.a0 - F.cn1.aF) < Math.abs(G.a1 - F.cn1.aF) ? 0 : 1);
+          const r0 = { type: 'facade', ux: F.ux, uz: F.uz, sg: F.sg, P: F.P, y0: F.y0, eps: [] }, rg = { type: 'facade', ux: G.ux, uz: G.uz, sg: G.sg, P: G.P, y0: G.y0, eps: [] };
+          // F's boards at its corner end running on over G's end (G has a board there flush)
+          for (let k = 0; k < 2; k++) { const y = F.y0 + MM(500) * k; r0.eps.push([F.a1 - MM(900), y, F.a1 + MM(100), y + MM(500), F.a1 - MM(900), F.a1 + MM(100)]); }
+          for (let k = 0; k < 2; k++) { const y = G.y0 + MM(500) * k, e = ge ? G.a1 : G.a0; rg.eps.push(ge ? [e - MM(1000), y, e, y + MM(500)] : [e, y, e + MM(1000), y + MM(500)]); }
+          tc.journal.act('fac', {}, tc.clock, () => { tc.objects.add(r0); tc.objects.add(rg); });
+          const ends = FM.cornerEnds(G, (X) => ft._rec(X)), eA = ends[0] ? (ends[0][0] + ends[0][2]) / 2 : null, eY = G.y0 + MM(250);
+          const glueOk = eA != null && ft._under(G, ft._rec(G), 'glue')(FM.ck(Math.floor(eA / FM.CELL), Math.floor(eY / FM.CELL)));
+          const sl = FM.slotAt(G, eA ?? 0, eY, 'pan', [600, 300]), tr = eA != null ? ft._panTrim(G, ft._rec(G), sl, eA) : null;
+          out.corner = { ends: ends.length, glueOk, pan: tr && Math.round((tr[2] - tr[0]) / S) };
+          tc.undo(); }
         tc.undo(); }
       tc.undo(); }
     return out;
@@ -462,6 +476,7 @@ console.log('—', sec());
   check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
   check('ring beam over hollow piers: one beam as wide as the piers; cast, one building (one wall plate)', land.span?.spans === 1 && land.span.wide[0] >= 350 && land.span.tied,JSON.stringify(land.span));
   check('wall plate: on the walls\' face and middle (a pier standing out ignored), moved across by the finger', land.plate && Math.abs(land.plate.T - 300) <= 10 && Math.abs(land.plate.A - 3000) <= 10 && Math.abs(land.plate.B - 3000) <= 10 && land.plate.po === 60 && land.plate.po2 === -75, JSON.stringify(land.plate));
+  check('facade corner: the board ends round a corner are glued and take a panel (cut to them)', land.corner?.ends >= 2 && land.corner.glueOk && land.corner.pan >= 60, JSON.stringify(land.corner));
   check('garden: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

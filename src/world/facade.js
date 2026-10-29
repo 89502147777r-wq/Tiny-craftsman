@@ -711,6 +711,10 @@ export function cornerEnds(F, recFor) {
   }
   return out;
 }
+// ALL the insulation in the plane of a face, as rects on it: its own boards (cut as they are) and
+// the ends of the other walls' boards round its corners. Every check of "is there insulation here"
+// (the glue, the mesh, the panels, how much is left) goes through this one — not the boards alone
+export function epsOn(F, rec, recFor) { return [...(rec?.eps || []).flatMap((q) => cutPiece(F, q, OFF.eps)), ...cornerEnds(F, recFor)]; }
 export const sameSlot = (p, q) => Math.abs(p[0] - q[0]) < MM(2) && Math.abs(p[1] - q[1]) < MM(2);
 
 // ---- the model of a face ------------------------------------------------------------------------
@@ -831,7 +835,7 @@ export function buildFacade(F, rec, live, recG = null) {
   // the glue; the mesh rolled out on it (loose: off the wall, sagging); pressed in
   const gg = new Geo(); sheet(gg, F, cellsCut(F, glue, OFF.glue), OFF.glue, [500, 500]); add(gg.mesh(mat('glue', () => stdMat(glueTex(), {}, 1))));
   const embIn = new Set([...emb].filter((k) => glue.has(k)));
-  const gl = new Geo(), under = [...eps.flatMap((q) => cutPiece(F, q, OFF.eps)), ...cornerEnds(F, recG)];
+  const gl = new Geo(), under = epsOn(F, rec, recG);
   for (const r of mesh) for (const q of cutPiece(F, r, OFF.loose)) {
     // in strips of 100 mm, each off the wall by its sag; the pressed-in cells under it skipped
     const st = MM(100);
