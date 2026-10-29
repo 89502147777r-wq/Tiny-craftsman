@@ -4,7 +4,7 @@ import { boxOf } from './freeBrick.js';
 import { FitJob, drive, hammer } from './fitJob.js';
 import { plan as beltPlan, toWorld as beltWorld, beltContains } from './belt.js';
 import { RWIN_TYPES, rwinSpan } from '../world/roofWindows.js';
-import { wingShape, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
+import { wingShape, valleys, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
 //   plate – carried from the tray onto the top of the walls: the house is found (its plan
@@ -301,6 +301,9 @@ function leanOf(app, p, B, yT) {
   return { ...H, lean: true, wings: [{ ...nw, e: ['end', 'end'], x: [0, 0], style: 'mono', md, abut: true, pitch: 12 }] };
 }
 
+// the roof has diagonal rafters to put up first: a hip end, or a valley between two wings
+function needHips(r) { const sh = r.wings.map((w) => wingShape(r, w)); return sh.some((f) => !f.mono && f.ends.includes('hip')) || valleys(r, sh).length > 0; }
+
 export class PitchedWork {
   constructor(app) { this.app = app; this.drag = null; this.place = null; }
   get stage() { return this.app.settings.proofStage || 'plate'; }
@@ -347,7 +350,7 @@ export class PitchedWork {
     if (!this.rec) return;
     if (!this.target && (o.style || o.pitch || o.md != null)) { this.app.ui.toast(`${o.style ? `Тип «${ROOF_TYPES[o.style]}»` : 'Уклон'} — для следующей крыши: поднесите мауэрлат к зданию без крыши (на той крыше стропила уже стоят)`); return; }
     const r = this.target || this.rec;   // (the gutters, the covering: on the roof worked on)
-    const k = this.wing, framed = (wi) => r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === wi);
+    const k = this.wing, framed = (wi) => r.done?.hips || r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === wi);
     const patch = {};
     if (o.style || o.pitch || o.md != null) {
       const list = k >= 0 ? [k] : r.wings.map((_, i) => i), blocked = list.filter(framed);
@@ -377,7 +380,7 @@ export class PitchedWork {
   turnRidge() {
     const r = this.target, app = this.app; if (!r) return;
     const k = this.wing, list = k >= 0 ? [k] : r.wings.map((_, i) => i);
-    const framed = (wi) => r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === wi);
+    const framed = (wi) => r.done?.hips || r.done?.frame === true || (r.done?.frame || []).some((q) => q[0] === wi);
     if (list.some(framed)) { app.ui.toast('Стропила уже стоят — конёк не повернуть (снимите стропила «Удалить»)'); return; }
     if (list.some((i) => r.wings[i].e.includes('join') || r.wings.some((o) => o.e.includes('join')))) { app.ui.toast('У дома из нескольких крыльев конёк идёт вдоль каждого крыла — поверните скат у односкатного крыла или выберите тип'); return; }
     const wings = r.wings.map((w, i) => (list.includes(i) ? { ...w, ux: +(-w.uz).toFixed(6), uz: +w.ux.toFixed(6), A: w.B, B: w.A } : w));
@@ -410,6 +413,14 @@ export class PitchedWork {
     if (!r.done?.[PREV[L]] && !(L === 'frame' && r.done?.frame)) { app.ui.toast(`${NAME[L]} — после этапа «${NAME[PREV[L]]}»`); return true; }
     const h = this._hit(e);
     if (!h) { app.ui.toast('Ведите пальцем по крыше вдоль конька'); return true; }
+    // the frame begins with the diagonal rafters (the hips from the ridge to the corners, the
+    // valleys where wings meet): the jack rafters and the rafters by them rest on them
+    if (L === 'frame' && needHips(r) && !r.done?.hips) {
+      this._save({ done: { ...r.done, hips: true } }, 'proof-hips');
+      const sh = r.wings.map((w) => wingShape(r, w)), nh = sh.reduce((n, f) => n + f.ends.filter((q) => q === 'hip').length * 2, 0), nv = valleys(r, sh).length;
+      app.ui.toast(`Диагональные стропила: ${nh ? `${nh} вальмовых от конька к углам` : ''}${nh && nv ? ', ' : ''}${nv ? `${nv} ендовых` : ''} — спаренные 2 × 50×200, верхом на прогон, низом на угол мауэрлата. Дальше рядовые стропила и нарожники: ведите пальцем вдоль конька`);
+      return true;
+    }
     this.drag = { wi: h.wi, a0: h.a, a1: h.a, f: h.f, dd: h.d };
     this._show();
     return true;
@@ -600,7 +611,7 @@ export class PitchedWork {
       plate: r ? 'Мауэрлат лежит — дальше «Лаги перекрытия»' : 'Скатная крыша: выберите тип, уклон и покрытие, потом тяните мауэрлат из лотка на верх стен — крыша встанет по дому (Г-, Т-образный — крыльями с ендовами)',
       joists: r?.done?.joists ? 'Лаги лежат — дальше «Коньковый прогон»' : 'Лаги перекрытия: тяните из лотка на дом — брусья 50×200 через 600 мм поперёк, с мауэрлата на мауэрлат',
       ridge: r?.done?.ridge ? 'Прогон стоит — дальше «Стропила»' : 'Коньковый прогон: тяните из лотка на дом — стойки на лаги через ≤ 3 м, прогон по коньку (концы на фронтонах)',
-      frame: `Стропила: ведите пальцем по крыше вдоль конька — пары встают через 600 мм${left < 1 ? `; осталось ${Math.round(left * 100)} %` : ''}`,
+      frame: r && needHips(r) && !r.done?.hips ? 'Стропила: коснитесь крыши — сначала диагональные (от конька к углам, в ендовы), на них потом лягут нарожники' : `Стропила: ведите пальцем по крыше вдоль конька — пары встают через 600 мм${left < 1 ? `; осталось ${Math.round(left * 100)} %` : ''}`,
       memb: 'Мембрана: ведите пальцем вдоль ската — рулон раскатывается внахлёст по стропилам',
       battens: 'Обрешётка: ведите пальцем — контробрешётка по стропилам и рейки поперёк (под мягкую черепицу — OSB)',
       cover: `${COVERS[r?.cover?.kind || 'metal']}: ведите пальцем вдоль ската — листы ложатся один за другим, на вальмах и у ендов подрезаются`,
@@ -611,7 +622,8 @@ export class PitchedWork {
   // «Удалить» on the roof: the last stage's last stretch comes off
   remove(id) {
     const app = this.app, r = app.objects.get(id); if (!r) return;
-    for (const [k, nm] of [...STAGES].reverse()) {
+    const order = STAGES.flatMap((q) => (q[0] === 'frame' ? [['hips', 'Диагональные стропила'], q] : [q]));
+    for (const [k, nm] of order.reverse()) {
       const v = r.done?.[k]; if (!v) continue;
       if (k === 'plate') { app.journal.act('proof-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Сняли мауэрлат — крыши нет'); return; }
       const nv = v === true || v.length <= 1 ? undefined : v.slice(0, -1), done = { ...r.done }; if (nv) done[k] = nv; else delete done[k];

@@ -428,8 +428,12 @@ export function buildPitched(roof, live = null, wins = []) {
         const yt = roof.y0 + MM(PITCHED.plate) + f.R * f.tn * 0.62, dt = f.R * 0.38;
         for (let a = f.lo + rw, k = 0; a <= f.hi - rw; a += step, k++) if (k % 2 === 0 && inSpans(fr, a) && Math.abs(a) <= w.A - roof.T && !under(a, 0) && f.top(a, dt) - tie / f.cs > yt + MM(80)) beams.add(f.W(a + rw, -dt, yt), f.W(a + rw, dt, yt), rw, MM(150));
       }
+    }
+    // the hip rafters (диагональные): first of the frame, from the ends of the ridge to the corners —
+    // the jack rafters rest on them (a roof framed before they came: where its rafters reach the end)
+    {
       const Le = w.B + f.Oe;
-      for (const k of [0, 1]) if (f.ends[k] === 'hip' && inSpans(fr, k ? f.hi - MM(100) : f.lo + MM(100))) {
+      for (const k of [0, 1]) if (f.ends[k] === 'hip' && (has('hips') || (fr.length && inSpans(fr, k ? f.hi - MM(100) : f.lo + MM(100))))) {
         const sa = k ? 1 : -1, Ae = w.A + f.Oe - MM(80), mid = (a, d) => f.top(a, d) - tie / 2 / f.cs;
         for (const sd of [-1, 1]) { const a0 = sa * Ae, d0 = sd * (Le - MM(80)); beams.add(f.W(a0, d0, mid(a0, d0)), f.W(sa * (f.Ra - f.R), 0, mid(sa * (f.Ra - f.R), 0) + tie * 0.3), rw * 1.6, tie); }
       }
@@ -485,7 +489,7 @@ export function buildPitched(roof, live = null, wins = []) {
   if (VL.length) {
     const vb = new Beams(), vf = new Beams();
     for (const [p, q] of VL) {
-      if (has('frame')) vb.add([p[0], p[1] - tie * 0.6, p[2]], [q[0], q[1] - tie * 0.6, q[2]], rw * 2, tie);
+      if (has('frame') || has('hips')) vb.add([p[0], p[1] - tie * 0.6, p[2]], [q[0], q[1] - tie * 0.6, q[2]], rw * 2, tie);
       if (has('cover')) vf.add([p[0], p[1] + coff + MM(25), p[2]], [q[0], q[1] + coff + MM(25), q[2]], MM(300), MM(4));
     }
     add(vb.mesh(wood)); add(vf.mesh(kind === 'shingle' ? mat('valSh', () => new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.8 })) : metalMat()));
