@@ -1,5 +1,11 @@
 // English for every Russian line of the game (the key: the Russian, {n} — what a template puts in)
 export default {
+"Перекрытие разбили отбойником и вывезли": "The slab was broken up with a breaker and taken away",
+"Перемычку разбили отбойником — проём снова открыт": "The lintel was broken up with a breaker — the opening is open again",
+"Пояс разбили отбойником и вывезли": "The ring beam was broken up with a breaker and taken away",
+"Перекрытие уже готово — коснитесь ещё раз, чтобы разбить его отбойником": "The slab is finished — touch again to break it up with a breaker",
+"Перемычка уже залита и готова — коснитесь ещё раз, чтобы разбить её отбойником": "The lintel is cast and finished — touch again to break it up with a breaker",
+"Пояс уже готов — коснитесь ещё раз, чтобы разбить его отбойником": "The ring beam is finished — touch again to break it up with a breaker",
 "Пролёт {n} м — монолитный ригель перекрывает до 6 м: поставьте промежуточный столб (шаг ≤ 6 м)": "Span {n} m — a cast beam spans up to 6 m: put an intermediate pillar in (≤ 6 m apart)",
 "Пустой поддон — несите его, вторым пальцем поворачивайте; отпустите на землю или на другой пустой поддон, в стопку": "Empty pallet — carry it, turn it with a second finger; let go on the ground or onto another empty pallet, to stack them",
 "На поддон с блоками пустой не кладут — на землю или на другой пустой": "An empty pallet doesn't go on a loaded one — onto the ground or another empty pallet",
