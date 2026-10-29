@@ -56,7 +56,7 @@ export const RWIN_COLOURS = { graphite: ['Графит', 0x3a3d41], grey: ['Се
 export const WATER = { rain: 0 };
 // the ground under what comes down to it (a downpipe, a chain): the blind area's top where it is
 export const GROUND = { at: null, normal: null };
-export const FINGER = new Set(['frame', 'memb', 'battens', 'cover']);   // (laid along the wing by the finger; the rest at one go)
+export const FINGER = new Set(['frame', 'memb', 'battens']);   // (laid along the wing by the finger; the covering carried from the tray piece by piece, the rest at one go)
 
 // ---- the textures ----------------------------------------------------------------------------
 const TEX = {};
@@ -374,7 +374,7 @@ function coverShingle(roof) {
 export function buildPitched(roof, live = null, wins = []) {
   const G = new THREE.Group(), done = { ...(roof.done || {}) };
   if (live?.stage) { const cur = done[live.stage]; done[live.stage] = live.all || cur === true ? true : [...(cur || []), [live.w, live.a0, live.a1]]; }
-  const has = (k) => !!done[k] && (done[k] === true || done[k].length);
+  const has = (k) => (k === 'cover' && roof.sheets?.length > 0) || (!!done[k] && (done[k] === true || done[k].length));
   const shapes = roof.wings.map((w) => wingShape(roof, w));
   const wood = mat('wood', () => new THREE.MeshStandardMaterial({ map: woodTex(), roughness: 0.85 }));
   const beams = new Beams(), tie = MM(PITCHED.rafterH), rw = MM(PITCHED.rafterW), step = MM(PITCHED.step);
@@ -508,7 +508,9 @@ export function buildPitched(roof, live = null, wins = []) {
           }
         }
       }
-      for (const [x0, x1, t0, t1] of planeSpans(P, cv, f)) {
+      // (the stretches laid along the wing, and the pieces laid by hand on this plane)
+      const own = (roof.sheets || []).filter((q) => q[0] === wi && q[1] === P.key).map((q) => coverSlot(roof, P, q[2], q[3]));
+      for (const [x0, x1, t0, t1] of [...planeSpans(P, cv, f), ...own]) {
         if (kind === 'metal') {
           const r = sheet(ctx, P, coff, 0, 0, mtileH, (x, t) => [x / MM(1000), t / MM(1000)], x0, x1, t0, t1, hs, { xs: gridOf(MM(MTILE.w), MT_U), ts: gridOf(MM(MTILE.s), MT_V) });
           if (!r) continue;
@@ -562,6 +564,44 @@ export function buildPitched(roof, live = null, wins = []) {
   add(beams.mesh(wood));
   G.userData.shapes = shapes;
   return G;
+}
+
+// The covering laid by hand, piece by piece: the places of the pieces on a plane — across it by
+// the width a piece covers, from the plane's edge; up it in rows of equal pieces from the eave (a
+// metal tile sheet up to 13 steps of 350, ending on a step; a seamed panel up to 6 m; soft shingles
+// a bundle's worth — seven rows of 143, a metre). The piece there is cut to the plane (a hip, the
+// ridge, a valley under another wing's roof, a roof window) when it is made.
+export function coverRows(roof, P) {
+  const kind = roof.cover?.kind || 'metal', W = MM(PITCHED.sheet[kind]);
+  const LEN = kind === 'metal' ? MM(MTILE.s * 13) : kind === 'seam' ? MM(6000) : MM(143 * 7), n = Math.max(1, Math.ceil(P.L / LEN - 1e-6));
+  const rowL = kind === 'metal' ? Math.ceil(P.L / n / MM(MTILE.s) - 1e-6) * MM(MTILE.s) : kind === 'shingle' ? LEN : P.L / n;
+  const X0 = Math.min(P.xa(0), P.xa(P.L)), X1 = Math.max(P.xb(0), P.xb(P.L));
+  return { W, rowL, ni: Math.max(1, Math.ceil((X1 - X0) / W - 1e-6)), nj: Math.max(1, Math.ceil(P.L / rowL - 1e-6)), X0, X1 };
+}
+export function coverSlot(roof, P, i, j) { const R = coverRows(roof, P); return [R.X0 + i * R.W, Math.min(R.X1, R.X0 + (i + 1) * R.W), j * R.rowL, Math.min(P.L, (j + 1) * R.rowL)]; }
+export function coverSlotAt(roof, P, x, t) { const R = coverRows(roof, P); return [Math.max(0, Math.min(R.ni - 1, Math.floor((x - R.X0) / R.W))), Math.max(0, Math.min(R.nj - 1, Math.floor(t / R.rowL)))]; }
+// the places with something of the plane in them (not past a hip, not all under another wing's roof)
+// → [[wi, key, i, j]…]
+export function coverSlots(roof) {
+  const shapes = roof.wings.map((w) => wingShape(roof, w)), out = [];
+  roof.wings.forEach((w, wi) => {
+    const f = shapes[wi];
+    for (const P of planes(roof, w, f)) {
+      const R = coverRows(roof, P);
+      for (let j = 0; j < R.nj; j++) for (let i = 0; i < R.ni; i++) {
+        const [xa, xb, ta, tb] = coverSlot(roof, P, i, j);
+        let any = false;
+        for (let k = 0; k <= 4 && !any; k++) for (let m = 0; m <= 4 && !any; m++) {
+          const t = ta + (tb - ta) * (k + 0.5) / 5.5, x = xa + (xb - xa) * (m + 0.5) / 5.5;
+          if (x < P.xa(t) || x > P.xb(t)) continue;
+          const [a, d] = P.at(x, t), q = f.W(a, d, 0);
+          if (roofTop(roof, shapes, q[0], q[2], wi) <= f.top(a, d) + MM(2)) any = true;
+        }
+        if (any) out.push([wi, P.key, i, j]);
+      }
+    }
+  });
+  return out;
 }
 
 // one piece of the covering as it is laid (a sheet of metal tile, a seamed panel, a row of

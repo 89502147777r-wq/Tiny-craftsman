@@ -4,7 +4,7 @@ import { boxOf } from './freeBrick.js';
 import { FitJob, drive, hammer } from './fitJob.js';
 import { plan as beltPlan, toWorld as beltWorld, beltContains } from './belt.js';
 import { RWIN_TYPES, rwinSpan } from '../world/roofWindows.js';
-import { wingShape, valleys, planes, planeSpans, coverPiece, MTILE, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
+import { wingShape, valleys, planes, planeSpans, coverPiece, coverSlot, coverSlotAt, coverSlots, coverRows, MTILE, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
 //   plate – carried from the tray onto the top of the walls: the house is found (its plan
@@ -307,7 +307,7 @@ function needHips(r) { const sh = r.wings.map((w) => wingShape(r, w)); return sh
 export class PitchedWork {
   constructor(app) { this.app = app; this.drag = null; this.place = null; }
   get stage() { return this.app.settings.proofStage || 'plate'; }
-  get isCarry() { return !FINGER.has(this.stage); }
+  get isCarry() { return !FINGER.has(this.stage); }   // (the covering too: piece by piece from the tray)
   // the roof worked on: the one last under the finger (several buildings, each its own roof)
   get rec() { const all = this.app.objects.all('proof'); return all.find((r) => r.id === this.sel) || all.at(-1) || null; }
   // the roof under the finger (its surface first hit), else the one nearest the point
@@ -339,7 +339,54 @@ export class PitchedWork {
     return { style: type, pitch, cover: { kind, col }, gut: { kind: gk, col: gc }, md: w?.md || 0 };
   }
   _ends(wings) { return wings; }
-  _live(live) { const v = this.app.wallView; v.liveProof = live && !live.ghost ? { ...live, id: this.rec?.id ?? null } : live; v.proofDirty = true; }
+  _live(live) { const v = this.app.wallView; v.liveProof = live && !live.ghost ? { ...live, id: this.rec?.id ?? null } : live; v.proofDirty = true; if (!live) this._ghostOff(); }
+  _ghostOff() { const g = this._ghost; if (!g) return; this.app.scene.remove(g.mesh); if (this.place?.sheet !== g) g.mesh.geometry.dispose(); this._ghost = null; }   // (the piece let go keeps its geometry: it goes down onto the roof)
+  // ---- the covering, piece by piece from the tray: the place on the slope under the finger, the
+  // piece made for it (cut to the plane: a hip, the ridge, a valley, a roof window) ----
+  _sheetMove(e) {
+    const app = this.app, r = this.rec, no = (why) => { this._ghostOff(); this.why = why; return { ok: false, why }; };
+    if (!r?.done?.battens) return no('Покрытие — на обрешётку: сначала этап «Обрешётка»');
+    if (r.done.cover === true) return no('Покрытие уже уложено — дальше «Конёк и планки»');
+    const h = this._hit(e); if (!h) return no('Поднесите лист к скату крыши');
+    const w = r.wings[h.wi], pa = planeAt(r, w, h.f, h.a, h.d); if (!pa) return no('Поднесите лист к скату крыши');
+    const [i, j] = coverSlotAt(r, pa.P, pa.x, pa.t), key = `${r.id}:${h.wi}:${pa.key}:${i}:${j}`;
+    const spOf = (v) => (v === true ? [[h.f.lo - 1, h.f.hi + 1]] : (v || []).filter((q) => q[0] === h.wi).map((q) => [q[1], q[2]]));
+    const slot = coverSlot(r, pa.P, i, j), cx = (slot[0] + slot[1]) / 2, ct = (slot[2] + slot[3]) / 2, inn = (v) => planeSpans(pa.P, spOf(v), h.f).some(([x0, x1, t0, t1]) => cx >= x0 && cx <= x1 && ct >= t0 && ct <= t1);
+    const taken = (r.sheets || []).some((q) => q[0] === h.wi && q[1] === pa.key && q[2] === i && q[3] === j) || inn(r.done.cover);
+    const why = taken ? 'Здесь лист уже лежит' : !inn(r.done.battens) ? 'Здесь ещё нет обрешётки' : !coverSlots(r).some((q) => q[0] === h.wi && q[1] === pa.key && q[2] === i && q[3] === j) ? 'Здесь листу нет места' : null;
+    if (this._ghost?.key !== key) {
+      this._ghostOff();
+      const wins = app.objects.all('rwin').filter((q) => q.host === r.id && !q.flat), pc = coverPiece(r, h.wi, pa.key, ...slot, wins);
+      if (!pc) return no('Здесь листу нет места');
+      // (cut: narrower than a whole piece at its row — at a hip, at the ridge, in a valley)
+      const R = coverRows(r, pa.P), cut = slot[3] - slot[2] < R.rowL - MM(5) || slot[1] - slot[0] < R.W - MM(5) || pa.P.xa(slot[2]) > slot[0] + MM(5) || pa.P.xb(slot[2]) < slot[1] - MM(5) || pa.P.xa(slot[3]) > slot[0] + MM(5) || pa.P.xb(slot[3]) < slot[1] - MM(5);
+      this._ghost = { key, ...pc, slot, cut, at: [h.wi, pa.key, i, j], mat0: pc.mesh.material };
+      pc.mesh.position.copy(pc.n).multiplyScalar(MM(80));
+      app.scene.add(pc.mesh);
+    }
+    const g = this._ghost;
+    g.mesh.material = why ? (this._red ||= new THREE.MeshBasicMaterial({ color: 0xd03030, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false })) : g.mat0;
+    this.why = why;
+    this.place = why ? null : { sheet: g };
+    return { ok: !why, why };
+  }
+  _sheetDrop(g) {
+    const app = this.app, r = this.rec, kind = r.cover?.kind || 'metal';
+    this._ghost = null;   // (the piece goes down onto the battens, then it is part of the roof)
+    const m = g.mesh, n = g.n, [xa, xb, ta, tb] = g.slot, xm = (xa + xb) / 2;
+    const at = (x, t) => { const [a, dd] = g.P.at(Math.max(g.P.xa(t) + MM(100), Math.min(g.P.xb(t) - MM(100), x)), t); return new THREE.Vector3(...g.f.W(a, dd, g.f.top(a, dd) + MM(40))); };
+    const steps = [[0.3, (u) => { m.position.copy(n).multiplyScalar(MM(80) * (1 - u) * (1 - u)); }]];
+    if (kind === 'shingle') for (const t of [ta + (tb - ta) * 0.3, ta + (tb - ta) * 0.7]) steps.push(hammer(app, at(xm, t), n, 2, 0.12));
+    else for (const t of [ta + MM(90), (ta + tb) / 2, tb - MM(120)]) if (t > ta && t < tb) steps.push(drive(app, at(xm, t), n, null, 0.22));
+    app.scene.remove(m);
+    new FitJob(app, { steps, parts: [m], commit: () => {
+      const cur = app.objects.get(r.id); if (!cur) return;
+      const sheets = [...(cur.sheets || []), g.at], all = coverSlots(cur), full = all.every((q) => sheets.some((s2) => s2[0] === q[0] && s2[1] === q[1] && s2[2] === q[2] && s2[3] === q[3]));
+      app.journal.act('proof-sheet', {}, app.clock, () => app.objects.update(r.id, { sheets, ...(full ? { done: { ...cur.done, cover: true } } : {}) }));
+      const nm = kind === 'metal' ? 'Лист металлочерепицы' : kind === 'seam' ? 'Фальцевая панель' : 'Пачка мягкой черепицы';
+      app.ui.toast(full ? `${COVERS[kind]} уложена вся — дальше «Конёк и планки»` : `${nm}${g.cut ? ' (подрезан по месту)' : ''} — уложено ${sheets.length} из ${all.length}`);
+    } });
+  }
   _save(patch, label) {
     const app = this.app, r = this.rec;
     app.journal.act(label, {}, app.clock, () => { if (r) app.objects.update(r.id, { ...patch }); else app.objects.add({ type: 'proof', ...patch }); });
@@ -489,46 +536,7 @@ export class PitchedWork {
   }
   // the stretch laid as it is done: piece by piece along the slope (a sheet of the covering
   // screwed down, a run of battens nailed) — one by a short stroke in full, more quickly
-  // the covering laid as on site, piece by piece, each plane from the eave up: metal tile in sheets
-  // (1110 mm covered, up to 13 steps of 350 long — a longer slope in two, the upper over the
-  // lower), seamed panels the whole length, soft shingles in rows; each piece let down onto the
-  // battens and fixed (screws, clips, nails) — the roof drawn again only when the stretch is done
-  _layCover(d, sp, save) {
-    const app = this.app, r = this.rec, f = d.f, w = r.wings[d.wi], kind = r.cover?.kind || 'metal';
-    this._live(null);   // (not the stretch at once: the pieces, one by one)
-    const wins = app.objects.all('rwin').filter((q) => q.host === r.id && !q.flat), pieces = [];
-    const W = MM(PITCHED.sheet[kind]), LEN = kind === 'metal' ? MM(MTILE.s * 13) : kind === 'shingle' ? MM(143 * 2) : Infinity;
-    for (const P of planes(r, w, f)) for (const [sx0, sx1, st0, st1] of planeSpans(P, [sp], f)) {
-      const X0 = Math.max(sx0, Math.min(P.xa(0), P.xa(P.L))), X1 = Math.min(sx1, Math.max(P.xb(0), P.xb(P.L))), T0 = Math.max(0, st0), T1 = Math.min(P.L, st1);
-      if (X1 - X0 < MM(50) || T1 - T0 < MM(50)) continue;
-      // (the sheets: from the end of the stretch the finger began at — the next one over the last's edge wave)
-      const nx = Math.max(1, Math.round((X1 - X0) / W)), nt = Math.max(1, Math.ceil((T1 - T0) / LEN - 1e-6));
-      for (let i = 0; i < nx; i++) {
-        const xa = X0 + (X1 - X0) * i / nx, xb = X0 + (X1 - X0) * (i + 1) / nx;
-        for (let j = 0; j < nt; j++) {
-          // (cut to whole steps: a sheet ends on a step, the next one up laps over it)
-          let ta = T0 + j * LEN, tb = j === nt - 1 ? T1 : T0 + (j + 1) * LEN;
-          if (kind === 'metal' && j > 0) ta = Math.round(ta / MM(MTILE.s)) * MM(MTILE.s);
-          if (kind === 'metal' && j < nt - 1) tb = Math.round(tb / MM(MTILE.s)) * MM(MTILE.s);
-          const pc = coverPiece(r, d.wi, P.key, xa, xb, ta, tb, wins);
-          if (pc) { pc.mesh.visible = false; pieces.push({ ...pc, xa, xb, ta, tb }); }
-        }
-      }
-    }
-    if (!pieces.length) { save(); return; }
-    const fix = kind === 'shingle' ? 1 : 2, per = kind === 'shingle' ? 0.09 : 0.32, total = pieces.length * (per + fix * 0.12), T = Math.min(1, 9 / total), steps = [];
-    for (const q of pieces) {
-      // let down onto the battens from a hand's height over them
-      steps.push([per * T, (u) => { q.mesh.visible = true; const e = 1 - u; q.mesh.position.copy(q.n).multiplyScalar(MM(kind === 'shingle' ? 120 : 300) * e * e); }]);
-      const at = (x, t) => { const [a, dd] = q.P.at(x, t); return new THREE.Vector3(...q.f.W(a, dd, q.f.top(a, dd) + MM(40))); };
-      const xm = (q.xa + q.xb) / 2;
-      if (kind === 'shingle') steps.push(hammer(app, at(xm, (q.ta + q.tb) / 2), q.n, 1, 0.1 * T));
-      else for (const t of [q.ta + MM(80), q.tb - MM(120)]) if (t > q.ta && t < q.tb) steps.push(drive(app, at(xm, t), q.n, null, 0.12 * T));
-    }
-    new FitJob(app, { steps, parts: pieces.map((q) => q.mesh), commit: save, cleanup: () => this._live(null) });
-  }
   _fitSpan(d, sp, L, save) {
-    if (L === 'cover') return this._layCover(d, sp, save);
     const app = this.app, f = d.f, r = this.rec, k = MM(L === 'cover' ? PITCHED.sheet[r.cover?.kind || 'metal'] : STEP[L]);
     const n = Math.max(1, Math.round((sp[1] - sp[0]) / k)), one = n <= 2, T = one ? 1 : Math.min(1, 3.5 / (n * 0.3));
     const side = Math.sign(d.dd || 1), steps = [];
@@ -550,6 +558,7 @@ export class PitchedWork {
   // the share of the roof not done in a stage
   left(r, L) {
     const cur = r.done?.[L]; if (cur === true) return 0;
+    if (L === 'cover' && r.sheets?.length) return Math.max(0, 1 - r.sheets.length / Math.max(1, coverSlots(r).length));
     const shapes = r.wings.map((w) => wingShape(r, w));
     let all = 0, got = 0;
     shapes.forEach((f, wi) => { all += f.hi - f.lo; for (const s of (cur || []).filter((q) => q[0] === wi)) got += s[2] - s[1]; });
@@ -599,6 +608,7 @@ export class PitchedWork {
     }
     this.pick(e, p);
     const r = this.rec;
+    if (L === 'cover') return this._sheetMove(e);
     if (L === 'gutter') {
       if (!r?.done?.trim) { this._live(null); return { ok: false, why: 'Водосток — когда стоят лобовые доски (этап «Конёк и планки»)' }; }
       if (r.done.gutter) return { ok: false, why: 'Водосток уже висит' };
@@ -623,6 +633,7 @@ export class PitchedWork {
   }
   carryDrop() {
     const app = this.app, P = this.place;
+    if (P?.sheet) { this.place = null; this._sheetDrop(P.sheet); return; }
     this.place = null; this._live(null); this._po = 0;
     if (this.stage === 'plate') app.ui.hideMeasure();
     if (!P) { app.ui.toast(this.why || (this.stage === 'plate' ? 'Мауэрлат — на верх стен' : 'Конёк и планки — на крышу с покрытием')); this.why = null; return; }
@@ -644,6 +655,7 @@ export class PitchedWork {
   }
   status(carry) {
     const L = this.stage, r = this.rec;
+    if (carry && L === 'cover') return this.place ? `Отпустите — ${this.place.sheet.cut ? 'лист подрежется по месту и ' : ''}ляжет сюда` : this.why || 'Поднесите лист к скату крыши';
     if (carry) return this.place ? (L === 'plate' ? 'Ведите пальцем поперёк стены — сдвиг мауэрлата по шпилькам; отпустите' : 'Отпустите') : (L === 'plate' ? 'Поднесите мауэрлат к верху стен' : L === 'gutter' ? 'Поднесите водосток к крыше' : L === 'ridge' ? 'Поднесите прогон к дому' : L === 'joists' ? 'Поднесите лаги к дому' : 'Поднесите конёк к крыше');
     const left = r ? this.left(r, L) : 1;
     return {
@@ -653,7 +665,7 @@ export class PitchedWork {
       frame: r && needHips(r) && !r.done?.hips ? 'Стропила: коснитесь крыши — сначала диагональные (от конька к углам, в ендовы), на них потом лягут нарожники' : `Стропила: ведите пальцем по крыше вдоль конька — пары встают через 600 мм${left < 1 ? `; осталось ${Math.round(left * 100)} %` : ''}`,
       memb: 'Мембрана: ведите пальцем вдоль ската — рулон раскатывается внахлёст по стропилам',
       battens: 'Обрешётка: ведите пальцем — контробрешётка по стропилам и рейки поперёк (под мягкую черепицу — OSB)',
-      cover: `${COVERS[r?.cover?.kind || 'metal']}: ведите пальцем вдоль ската — листы ложатся один за другим, на вальмах и у ендов подрезаются`,
+      cover: `${COVERS[r?.cover?.kind || 'metal']}: тяните ${r?.cover?.kind === 'shingle' ? 'пачку' : r?.cover?.kind === 'seam' ? 'панель' : 'лист'} из лотка на скат — по одному, от карниза вверх; у вальм, конька и ендов подрезается сам${r?.sheets?.length ? `; уложено ${r.sheets.length} из ${coverSlots(r).length}` : ''}`,
       trim: 'Конёк и планки: тяните из лотка на крышу',
       gutter: 'Водосток: тяните из лотка на крышу — желоба по карнизам, трубы по углам',
     }[L];
@@ -661,6 +673,12 @@ export class PitchedWork {
   // «Удалить» on the roof: the last stage's last stretch comes off
   remove(id) {
     const app = this.app, r = app.objects.get(id); if (!r) return;
+    // (the covering laid by hand: the last piece off, while nothing over it is on)
+    if (r.sheets?.length && !r.done?.trim && !r.done?.gutter) {
+      const done = { ...r.done }; delete done.cover;
+      app.journal.act('proof-remove', {}, app.clock, () => app.objects.update(id, { sheets: r.sheets.slice(0, -1), done }));
+      app.ui.toast('Сняли последний лист покрытия'); return;
+    }
     const order = STAGES.flatMap((q) => (q[0] === 'frame' ? [['hips', 'Диагональные стропила'], q] : [q]));
     for (const [k, nm] of order.reverse()) {
       const v = r.done?.[k]; if (!v) continue;
