@@ -1,0 +1,42 @@
+# One-off (removed after use): downloads the chosen CC BY / CC0 door, gate and window models from
+# Sketchfab with the repository secret SKETCHFAB_TOKEN and commits them to this branch, in incoming/.
+name: Fetch Sketchfab models
+on:
+  push:
+    branches: [fetch-openings]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download
+        env:
+          TOKEN: ${{ secrets.SKETCHFAB_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "SKETCHFAB_TOKEN is not set"; exit 1; fi
+          mkdir -p incoming
+          for pair in win_res:ae11104237314463a61251fd46ded4b4 win_pvc1:d575a353371b42a6bdf675b20b5a9cb3 win_pvc:4b28b2af5c5f463790ca05e3ecc23a1f win_alu:2d4228e6e80f48049a75cd447608ffcf win_fenster:8cbec12b9b4b49f5a261c8da87d89d91 door_modern:a4765b435d06458ab5b905167bd8160a door_modfront:ddcba7626665441a8fcab2d0b66c3cec door_pack:8c4ec9cba82746b78c7206748bc9c540 door_metalcol:05ce6351d826426d8d0bb5e7e867e57d door_woodcol:948ae091149548d3a5e604ecec63735b door_tenakin:e1fded63275d42c2a48448f09bdb8a30 gar_sect:c96dae1810df4027ad8f695383ff3c97 gar_ind:20ced63367824ec1a2ada0fbf118b413 gar_roll:fb7a0e3b6cf348f48831a80e49054609; do
+            name=${pair%%:*}; uid=${pair##*:}
+            for try in 1 2 3 4 5 6; do
+              curl -sS -H "Authorization: Token $TOKEN" "https://api.sketchfab.com/v3/models/$uid/download" -o dl.json
+              grep -q "Too many requests" dl.json || break
+              echo "rate limited ($name), waiting"; sleep 60
+            done
+            sleep 8
+            url=$(python3 -c "import json;d=json.load(open('dl.json'));print((d.get('glb') or d.get('gltf') or {}).get('url','') if isinstance(d,dict) else '')")
+            kind=$(python3 -c "import json;d=json.load(open('dl.json'));print('glb' if isinstance(d,dict) and d.get('glb') else 'zip')")
+            if [ -z "$url" ]; then echo "no download for $name: $(head -c 200 dl.json)"; continue; fi
+            curl -sSL "$url" -o "incoming/$name.$kind"
+            sz=$(stat -c %s "incoming/$name.$kind"); echo "$name $sz"
+            if [ "$sz" -gt 95000000 ]; then echo "too big: $name"; rm "incoming/$name.$kind"; fi
+          done
+          rm -f dl.json
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add incoming
+          git commit -m "Downloaded Sketchfab door / gate / window models (CC BY / CC0)" || echo "nothing downloaded"
+          git push
