@@ -158,6 +158,8 @@ export class Backdrop {
       ws.sun.userData.dir.set(-0.5, 0.95, -0.34).normalize();
       this._drop(null);   // (the panoramas off the GPU)
     }
+    // (the light round everything changed: what is hidden yet compiled for it in the background)
+    setTimeout(() => app.warmUp?.(), 50);
   }
 
   update() {}

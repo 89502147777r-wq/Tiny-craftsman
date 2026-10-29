@@ -181,7 +181,16 @@ export class HoseTool extends ConcreteTool {
 
   move(p, e) {
     if (this.state !== 'work') return;
-    this.uT = this._uAt(e);
+    // (what is under the hose looked for again at most every 50 ms: a ray through all the
+    // masonry of a house at each move of the finger held the stream back)
+    const now = performance.now();
+    if (now - (this._uAtT || 0) > 50) { this._uAtT = now; this.uT = this._uAt(e); this._uLast = this.uT ? this._uHit.clone() : null; }
+    else if (this.uT && this._uLast) {
+      // (in between: the same thing, the point on its top plane under the finger)
+      _ray.setFromCamera(this.app.gestures.ndc(e.clientX, e.clientY), this.app.camera);
+      const q = _ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -this._uLast.y), new THREE.Vector3());
+      if (q) this._uHit = q;
+    }
     if (this.uT || this.app.terrain.inside(p.x, p.z)) { if (this.uT) p = new THREE.Vector3(this._uHit.x, 0, this._uHit.z); this.p.copy(p); this.gear.set('hose', this._tip(p)); }
   }
 
