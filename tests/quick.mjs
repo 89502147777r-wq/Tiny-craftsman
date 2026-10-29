@@ -507,6 +507,38 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2c. the modelled doors, gates and windows: all come, each fits any opening ------------------
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const op = await page.evaluate(async () => {
+    const K = await import('/src/world/openingKits.js'), Wn = await import('/src/world/windows.js'), Dr = await import('/src/world/doors.js');
+    await K.loadKits();
+    const out = { kits: K.kitsLoaded(), want: Object.keys(K.KITS).length, bad: [], band: 0, hold: null, built: 0 };
+    // every window / door / gate at a small and a big opening: inside the opening (its sill, casings,
+    // guides a little past it), nothing NaN, of the model when it has one
+    const T = await import('three'), b = new T.Box3();
+    const sizes = (k) => (k.startsWith('gar') ? [[2400, 2000], [5500, 2600]] : k === 'door6' ? [[1400, 2050], [2200, 2500]] : k === 'portal' ? [[1800, 2100], [4200, 2600]] : [[900, 1200], [2400, 2400]]);
+    for (const key of [...Object.keys(Wn.WINDOWS).filter((k) => k !== 'corner'), ...Object.keys(Dr.DOORS)]) for (const [w, h] of sizes(key)) {
+      const door = Dr.isDoor(key), g = (door ? Dr.buildDoor : Wn.buildWindow)(key, w, h, 300, 'brown');
+      g.scale.setScalar(1); g.updateMatrixWorld(true); b.setFromObject(g); out.built++;
+      const pad = key.startsWith('gar') ? 400 : 150, ok = [b.min.x, b.max.x, b.min.y, b.max.y].every(Number.isFinite) && b.min.x > -w / 2 - pad && b.max.x < w / 2 + pad && b.min.y > -120 && (key.startsWith('gar') || b.max.y < h + pad);
+      const model = door ? !!(Dr.doorKit?.(key) || ['gar3', 'gar4'].includes(key)) : !!Wn.windowKit(key);
+      if (!ok || !model) out.bad.push(`${key} ${w}x${h} ${ok ? '' : 'box ' + [b.min.x, b.max.x, b.min.y, b.max.y].map(Math.round)} ${model ? '' : 'drawn'}`);
+    }
+    // the frame keeps its width: the band along the left edge of a 1000 and a 2000 window only moves
+    const a1 = K.fitKit('w_tilt', -500, 500, 0, 1400, 0), a2 = K.fitKit('w_tilt', -1000, 1000, 0, 1400, 0);
+    for (let p = 0; p < a1.length; p++) { const x1 = a1[p].geo.attributes.position, x2 = a2[p].geo.attributes.position; for (let i = 0; i < x1.count; i++) if (x1.getX(i) < -500 + 100 && Math.abs(x2.getX(i) - x1.getX(i) + 500) > 0.01) out.band++; }
+    // a door's handle stays at the height of a hand on a taller door
+    const hy = (h) => { const q = K.fitKit('d_steel_grey', -500, 500, 0, h, 0).filter((x) => x.role === 'metal'); const bb = new T.Box3(); for (const x of q) { x.geo.computeBoundingBox(); bb.union(x.geo.boundingBox); } return Math.round((bb.min.y + bb.max.y) / 2); };
+    out.hold = [hy(2050), hy(2600)];
+    return out;
+  });
+  check('openings: the door, gate and window models all load; every kind is made of them and fits small and big openings', op.kits === op.want && !op.bad.length && op.built > 40, JSON.stringify({ ...op, bad: op.bad.slice(0, 6) }));
+  check('openings: a model\'s frame keeps its width when stretched (9-slice), a door\'s handle stays at hand height', op.band === 0 && Math.abs(op.hold[0] - op.hold[1]) < 5, JSON.stringify({ band: op.band, hold: op.hold }));
+  check('openings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 3. WebKit (Safari's engine), if installed ------------------------------------------------------
 if (process.env.WEBKIT) {
   try {

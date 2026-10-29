@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { hasKit, fitKit, kitMat, mergeParts, kitSize } from './openingKits.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { canvas, normalOf } from './roof.js';
+import { mats as winMats } from './windows.js';
 import { panelTex } from './facade.js';
 
 // The garage doors, built to the opening like the doors (doors.js) — in mm, the local frame
@@ -23,7 +25,13 @@ export const GARAGES = {
   // (thermo-walnut planken across), the joints of the sections falling in the boards' gaps; no
   // handle — an electric operator on a rail under the ceiling opens it
   gar4: { name: 'Гаражные скрытые, под отделку фасада', kind: 'sectional', flush: true },
+  gar5: { name: 'Гаражные подъёмные, белые', kind: 'sectional' },
+  gar6: { name: 'Гаражные секционные, антрацит с остеклением', kind: 'sectional' },
 };
+// the models of their outer face (openingKits.js): the panels of a sectional door, a roller
+// door's curtain — the tracks, the shaft and springs, the guides and the box stay drawn
+const KIT = { gar1: 'g_sect', gar2: 'g_roll', gar5: 'g_white', gar6: 'g_modern' };
+export const garageKit = (key) => (hasKit(KIT[key]) ? KIT[key] : null);
 export const GARAGE_SIZE = [1800, 6000, 1200, 3500];   // w from…to, h from…to (mm) (low ones: a shed, a store for the mower, a carport for a quad)
 
 const M = {};
@@ -72,28 +80,32 @@ function planarUV(g, su, sv) {
   return g;
 }
 
-function sectional(G, w, h, t, flush = false) {
+function sectional(G, w, h, t, flush = false, kit = null) {
   const zi = -t / 2, cw = w + 180, top = h + 90, n = Math.max(3, Math.round(top / 560)), ph = top / n, zc = zi - 32, d = 40;
+  // the modelled panels: their outer face where ours would be
+  if (kit) { const kd = kitSize(kit)[2]; G.kit.push(...fitKit(kit, -cw / 2, cw / 2, 0, top, zc + d / 2 + 6 - kd / 2)); }
   // the panels, their joints (a dark line where one closes into the next), two ribs each
   for (let k = 0; k < n; k++) {
     const y0 = k * ph, y1 = y0 + ph;
-    box(G.panel, 0, (y0 + y1) / 2, zc, cw, ph - 3, d);
-    box(G.groove, 0, y1 - 1.5, zc + d / 2 - 6, cw, 4, 12);
-    if (flush) box(G.clad, 0, (y0 + y1) / 2, zc + d / 2 + 12, cw - 4, ph - 3, 22);   // (the cladding on the panel: planken on a thin subframe)
-    else for (const f of [1 / 3, 2 / 3]) { box(G.groove, 0, y0 + ph * f, zc + d / 2 + 0.5, cw - 4, 6, 2); box(G.panel, 0, y0 + ph * f + 5, zc + d / 2 + 1.5, cw - 4, 4, 2); }
+    if (!kit) {
+      box(G.panel, 0, (y0 + y1) / 2, zc, cw, ph - 3, d);
+      box(G.groove, 0, y1 - 1.5, zc + d / 2 - 6, cw, 4, 12);
+      if (flush) box(G.clad, 0, (y0 + y1) / 2, zc + d / 2 + 12, cw - 4, ph - 3, 22);   // (the cladding on the panel: planken on a thin subframe)
+      else for (const f of [1 / 3, 2 / 3]) { box(G.groove, 0, y0 + ph * f, zc + d / 2 + 0.5, cw - 4, 6, 2); box(G.panel, 0, y0 + ph * f + 5, zc + d / 2 + 1.5, cw - 4, 4, 2); }
+    }
     // the hinges between the panels and the rollers at the sides (inside)
-    if (k) for (const x of [-cw / 2 + 60, -cw / 6, cw / 6, cw / 2 - 60]) box(G.galv, x, y0, zc - d / 2 - 4, 50, 70, 8);
+    if (k && !kit) for (const x of [-cw / 2 + 60, -cw / 6, cw / 6, cw / 2 - 60]) box(G.galv, x, y0, zc - d / 2 - 4, 50, 70, 8);
     for (const s of [-1, 1]) cyl(G.galv, 22, 26, s * (cw / 2 + 18), y0 + ph / 2, zc - 10, 'x');
   }
   // the inside face white (the panels' inner skin)
-  box(G.panelIn, 0, top / 2, zc - d / 2 - 0.5, cw - 6, top - 6, 1);
+  if (!kit) box(G.panelIn, 0, top / 2, zc - d / 2 - 0.5, cw - 6, top - 6, 1);   // (a model's leaf is its own inside too)
   // the seals: at the bottom, up the sides, the lintel's
   box(G.rubber, 0, 6, zc + 4, cw, 12, d - 4);
   for (const s of [-1, 1]) box(G.rubber, s * (w / 2 + 70), top / 2, zi - 6, 30, top, 12);
   box(G.rubber, 0, h + 50, zi - 6, w + 160, 30, 12);
   // the handle outside on the bottom panel
-  if (!flush) { box(G.iron, 0, ph * 0.55, zc + d / 2 + 14, 160, 26, 14); for (const s of [-1, 1]) box(G.iron, s * 70, ph * 0.55, zc + d / 2 + 6, 20, 26, 14); }
-  else {
+  if (!flush && !kit) { box(G.iron, 0, ph * 0.55, zc + d / 2 + 14, 160, 26, 14); for (const s of [-1, 1]) box(G.iron, s * 70, ph * 0.55, zc + d / 2 + 6, 20, 26, 14); }
+  else if (flush) {
     // the operator: a rail down the middle under the ceiling, the motor at its far end, the arm to the top panel
     const L2 = Math.min(3400, top + 600);
     box(G.galv, 0, top + 260, zi - 60 - L2 / 2, 60, 40, L2);
@@ -118,7 +130,7 @@ function sectional(G, w, h, t, flush = false) {
   box(G.galv, 0, top + 140, zi - 40, 120, 140, 6);   // (the middle bearing plate)
 }
 
-function roller(G, w, h, t) {
+function roller(G, w, h, t, flush = false, kit = null) {
   const zo = t / 2, gw = 70, gx = w / 2 + gw / 2 - 20, slat = 77, zc = zo + 38;
   // the guides on the facade, either side of the opening
   for (const s of [-1, 1]) {
@@ -126,7 +138,9 @@ function roller(G, w, h, t) {
     box(G.rubber, s * (gx - gw / 2 + 4), h / 2, zc, 6, h, 30);
   }
   // the curtain: slats with a rounded face, the joints dark
-  const cw = w + 2 * gw - 70, n = Math.ceil((h - 60) / slat);
+  const cw = w + 2 * gw - 70, n = kit ? 0 : Math.ceil((h - 60) / slat);
+  // the modelled curtain (its slats, the bottom bar and its lock) between the guides
+  if (kit) G.kit.push(...fitKit(kit, -cw / 2, cw / 2, 0, h, zc));
   for (let k = 0; k < n; k++) {
     const y0 = 60 + k * slat, y1 = Math.min(h, y0 + slat);
     box(G.alu, 0, (y0 + y1) / 2, zc, cw, y1 - y0 - 3, 12);
@@ -134,8 +148,10 @@ function roller(G, w, h, t) {
     box(G.groove, 0, y1 - 1.5, zc + 4, cw, 3, 6);
   }
   // the bottom bar, its seal and the lock
-  box(G.aluDark, 0, 32, zc, cw, 56, 20); box(G.rubber, 0, 3, zc, cw, 6, 18);
-  cyl(G.iron, 14, 6, 0, 32, zc + 12, 'z', 16); box(G.iron, 0, 32, zc + 15, 4, 16, 2);
+  if (!kit) {
+    box(G.aluDark, 0, 32, zc, cw, 56, 20); box(G.rubber, 0, 3, zc, cw, 6, 18);
+    cyl(G.iron, 14, 6, 0, 32, zc + 12, 'z', 16); box(G.iron, 0, 32, zc + 15, 4, 16, 2);
+  }
   // the box over the opening: a square back, the front rounded down to the slot
   const bh = 300, bd = 300, sh = new THREE.Shape(), r = 120, bx = w + 2 * gw;
   sh.moveTo(0, 0); sh.lineTo(bd - r, 0); sh.quadraticCurveTo(bd, 0, bd, r); sh.lineTo(bd, bh); sh.lineTo(0, bh); sh.lineTo(0, 0);
@@ -188,11 +204,15 @@ function swing(G, w, h, t) {
 // model's scale, its origin at the middle of the bottom of the opening, in the middle of the wall
 export function buildGarage(key, w, h, t = 300, wood = null) {
   const P = GARAGES[key], MM = mats(wood);
-  const G = { panel: [], panelIn: [], groove: [], galv: [], spring: [], rubber: [], alu: [], aluDark: [], iron: [], frame: [], wood: [], ledge: [], clad: [] };
-  (P.kind === 'roller' ? roller : P.kind === 'swing' ? swing : sectional)(G, w, h, t, !!P.flush);
+  const G = { panel: [], panelIn: [], groove: [], galv: [], spring: [], rubber: [], alu: [], aluDark: [], iron: [], frame: [], wood: [], ledge: [], clad: [], kit: [] };
+  const kit = hasKit(KIT[key]) ? KIT[key] : null;
+  (P.kind === 'roller' ? roller : P.kind === 'swing' ? swing : sectional)(G, w, h, t, !!P.flush, kit);
   const g = new THREE.Group();
+  const by = new Map();
+  for (const q of G.kit) { const mat = q.role === 'glass' ? winMats().glass : kitMat(q.mat, null, q.role === 'metal' ? { roughness: 0.3 } : {}); (by.get(mat) || by.set(mat, []).get(mat)).push(q.geo); }
+  for (const [mat, list] of by) { const mesh = new THREE.Mesh(mergeParts(list, mergeGeometries), mat); mesh.castShadow = !mat.transparent; mesh.receiveShadow = true; if (mat.transparent) mesh.renderOrder = 2; g.add(mesh); }
   for (const [k, list] of Object.entries(G)) {
-    if (!list.length) continue;
+    if (!list.length || k === 'kit') continue;
     let geo = mergeGeometries(list.map((q) => { const n = q.index ? q.toNonIndexed() : q; for (const a of Object.keys(n.attributes)) if (a !== 'position') n.deleteAttribute(a); return n; }), false);
     geo = planarUV(geo, k === 'wood' || k === 'ledge' ? 900 : k === 'clad' ? 1000 : 300, k === 'wood' || k === 'ledge' ? 1800 : k === 'clad' ? 1000 : 300);
     const mesh = new THREE.Mesh(geo, k === 'clad' ? cladMat() : MM[k]);

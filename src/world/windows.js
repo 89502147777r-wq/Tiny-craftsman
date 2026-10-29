@@ -1,12 +1,15 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
+import { hasKit, fitKit, kitMat, mergeParts } from './openingKits.js';
 
 // Windows, built to the opening they go into (a model of a fixed size would stretch its
 // profiles): the frame and the sashes swept along real cross-sections of the profiles
 // (mitred corners), the black rubber seals, the glazing beads, the double glazing with the
 // spacer along its edges, the handles; outside the sill flashing, inside the window board,
 // the foam in the gap round the frame. Everything in mm; the group is scaled to the model.
+// Once the modelled windows have come (openingKits.js), the frame, the sashes, the glass and
+// the handles are theirs, fitted to the opening; the foam, the tapes, the sill and the board stay these.
 //
 // The local frame of a window: x along the wall (0 = the middle of the opening), y up
 // from the bottom of the opening, z across the wall (+ outside), the wall's middle at 0.
@@ -122,7 +125,7 @@ export function glazing(G, x0, y0, x1, y1, z, gap = 16) {
 // scale, its origin at the middle of the bottom of the opening, in the middle of the wall
 export function buildWindow(key, w, h, t = 300, col = 'white') {
   const P = WINDOWS[key], M = mats(), gap = 18;
-  const G = { frame: [], inner: [], seal: [], bead: [], glass: [], spacer: [], chrome: [], board: [], foam: [], tapeOut: [], tapeIn: [] };
+  const G = { frame: [], inner: [], seal: [], bead: [], glass: [], spacer: [], chrome: [], board: [], foam: [], tapeOut: [], tapeIn: [], sillF: [] };
   const X0 = -w / 2 + gap, X1 = w / 2 - gap, Y0 = P.floor ? -40 : (P.sill ? 30 : 10) + gap, Y1 = h - gap;   // (a floor-to-ceiling frame: its bottom 40 under the opening's floor — the screed goes over it)   // the frame's outside (a sill support profile under a PVC frame)
   const zF = t / 2 - 35 - 70;   // the frame stands in the outer part of the wall, 70 in from its face
   // the foam in the gap round it, a little back from the faces of the frame
@@ -198,19 +201,26 @@ export function buildWindow(key, w, h, t = 300, col = 'white') {
   if (P.sill) {
     // outside: the sill flashing — out past the face of the wall, sloped, a drip at its edge
     const zo = zF + 35, out = t / 2 - zo + 40, ys = Y0 - 4;
-    box(G.frame, 0, ys - 12, zo + out / 2, w + 40, 2, out, 0.14);
-    box(G.frame, 0, ys - 12 - Math.sin(0.14) * out / 2 - 9, zo + out - 1, w + 40, 18, 2);
+    box(G.sillF, 0, ys - 12, zo + out / 2, w + 40, 2, out, 0.14);
+    box(G.sillF, 0, ys - 12 - Math.sin(0.14) * out / 2 - 9, zo + out - 1, w + 40, 18, 2);
     // the support profile under the frame
-    box(G.frame, 0, Y0 - 15, zF, X1 - X0, 30, 60);
+    box(G.sillF, 0, Y0 - 15, zF, X1 - X0, 30, 60);
     // inside: the window board, 40 thick, into the reveals 50 each side, 50 past the wall
     const zi = zF - 35, inn = zi + t / 2 + 50;
     box(G.board, 0, Y0 - 20, zi - inn / 2, w + 100, 40, inn);
   }
   const g = new THREE.Group();
+  // the modelled window (openingKits.js), when it has come: its frame, sashes, glass, handles
+  // instead of the drawn ones (the foam, the tapes, the sill and the board stay ours)
+  const kit = windowKit(key);
+  if (kit) {
+    for (const k of ['frame', 'inner', 'seal', 'bead', 'glass', 'spacer', 'chrome']) G[k] = [];
+    kitWindow(g, kit, P, X0, X1, Y0, Y1, zF, col, M);
+  }
   for (const [k, list] of Object.entries(G)) {
     if (!list.length) continue;
     const fm = frameMat(col, P.mat === 'alu');
-    const mat = k === 'frame' ? fm : k === 'inner' ? M.pvc : k === 'bead' ? fm : k === 'board' ? (P.mat === 'pvc' || P.mat === 'anth' ? M.pvc : M.board) : M[k];
+    const mat = k === 'frame' || k === 'sillF' ? fm : k === 'inner' ? M.pvc : k === 'bead' ? fm : k === 'board' ? (P.mat === 'pvc' || P.mat === 'anth' ? M.pvc : M.board) : M[k];
     const mesh = new THREE.Mesh(mergeGeometries(list.map((q) => (q.index ? q.toNonIndexed() : q)), false), mat);
     mesh.castShadow = k !== 'glass'; mesh.receiveShadow = k !== 'glass';
     if (k === 'glass') mesh.renderOrder = 2;
@@ -219,6 +229,41 @@ export function buildWindow(key, w, h, t = 300, col = 'white') {
   g.scale.setScalar(S);
   g.userData.window = { key, w, h, col };
   return g;
+}
+
+// which model a window is made of: a PVC one of tilt-and-turn sashes, the narrow aluminium ones
+// of the aluminium window, the portal of the lift-and-slide one; → null while it hasn't come
+export function windowKit(key) {
+  const P = WINDOWS[key];
+  if (!P || P.corner) return null;
+  const k = P.slide ? 'w_slide' : P.mat === 'alu' ? 'w_alu' : 'w_tilt';
+  return hasKit(k) ? k : null;
+}
+// the modelled window over [X0, X1] × [Y0, Y1], its outer face at the drawn frame's (zF + 35):
+// one model a sash (a PVC window of three: three of them side by side, their frames together
+// the mullions), the narrow aluminium one a pane of up to 1600, the portal a pair of panels to 3 m
+function kitWindow(g, kit, P, X0, X1, Y0, Y1, zF, col, M) {
+  const W = X1 - X0, n = kit === 'w_tilt' ? P.cols.length : kit === 'w_alu' ? Math.max(1, Math.round(W / 1800)) : Math.max(1, Math.round(W / 3200));
+  const hex = (WIN_COLOURS[col] || WIN_COLOURS.white)[1], alu = P.mat === 'alu';
+  const depth = kit === 'w_tilt' ? 128 : kit === 'w_alu' ? 70 : 130;
+  const by = new Map();
+  for (let i = 0; i < n; i++) {
+    const a = X0 + W * i / n, b = X0 + W * (i + 1) / n;
+    for (const q of fitKit(kit, a, b, Y0, Y1, zF + 35 - depth / 2, { split: !alu, depth })) {
+      const mat = q.role === 'frame' ? kitMat(q.mat, hex, { roughness: alu ? 0.36 : 0.34, metalness: alu ? 0.45 : 0 })
+        : q.role === 'frameIn' ? kitMat(q.mat, 0xf1f1ec, { roughness: 0.34, metalness: 0 })   // (white inside: the face toward the room)
+        : q.role === 'glass' || q.role === 'frosted' ? M.glass
+        : q.role === 'seal' ? M.seal
+        : kitMat(q.mat, null, q.role === 'metal' ? { roughness: 0.3 } : {});
+      (by.get(mat) || by.set(mat, []).get(mat)).push(q.geo);
+    }
+  }
+  for (const [mat, list] of by) {
+    const mesh = new THREE.Mesh(mergeParts(list, mergeGeometries), mat);
+    mesh.castShadow = mat !== M.glass; mesh.receiveShadow = mat !== M.glass;
+    if (mat === M.glass) mesh.renderOrder = 2;
+    g.add(mesh);
+  }
 }
 
 // Corner glazing for a corner opening `c` (findCorners): the group in the model's scale, its origin

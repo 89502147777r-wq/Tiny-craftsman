@@ -8,6 +8,7 @@ import { PALLETS } from '../core/budget.js';
 import { buildWindow, buildCorner } from './windows.js';
 import { buildRail } from './railing.js';
 import { buildDoor, isDoor } from './doors.js';
+import { kitsLoaded } from './openingKits.js';
 import { buildRoof } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
@@ -474,6 +475,7 @@ export class WallView {
   }
 
   update() {
+    if (this._kitsAt !== kitsLoaded()) { this._kitsAt = kitsLoaded(); if (this._win) this._buildWindows(); }
     if (this.railDirty || this.liveRail !== this._liveRailAt) this._buildRails();
     if (this.blindStream !== this._streamAt) { this._streamAt = this.blindStream; setStream(this.stream, this.blindStream?.r, this.blindStream); }
     if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); if (this.proofDirty) this._buildProofs(); if (this.blindDirty) this._buildBlinds(); return; }
@@ -920,7 +922,7 @@ export class WallView {
   _buildWindows() {
     const recs = [...this.objects.all('window'), ...(this.liveWin ? [{ id: 'live', ...this.liveWin }] : [])], seen = new Set();
     for (const r of recs) {
-      const key = `${r.key}:${r.w}:${r.h}:${r.t}:${r.col || 'white'}:${r.corner ? JSON.stringify(r.corner) : ''}`;
+      const key = `${r.key}:${r.w}:${r.h}:${r.t}:${r.col || 'white'}:${r.corner ? JSON.stringify(r.corner) : ''}:${kitsLoaded()}`;   // (built anew when the models have come)
       let e = this._win.get(r.id);
       if (!e || e.key !== key) {
         if (e) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); }

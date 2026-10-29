@@ -125,6 +125,30 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | `assets/textures/brick_scan/` — кирпич | Red Brick | jimmy_jee | CC BY 4.0 | https://sketchfab.com/3d-models/60e8f501a6dc421e9eae3adf7d08789e |
 | `assets/models/cinder/` — шлакоблок | Cinderblock/concrete brick | william.sayin | CC BY 4.0 | https://sketchfab.com/3d-models/2358b37cb7d142dca00aff66c678f5cd |
 
+## Окна, двери, гаражные ворота (Sketchfab, CC BY 4.0)
+
+Обработаны glTF-Transform (выбраны нужные части, роли материалов, упрощение, WebP, meshopt); в игре подгоняются к любому проёму по 9 частям (`src/world/openingKits.js`), цвет рамы, стекло и монтаж (пена, ленты, отлив, подоконник, наличники, направляющие ворот) — наши.
+
+| Файл | Модель | Автор | Лицензия | Источник |
+|---|---|---|---|---|
+| `assets/models/openings/w_tilt.glb` | Residential Window | AleixoAlonso | CC BY 4.0 | https://sketchfab.com/3d-models/ae11104237314463a61251fd46ded4b4 |
+| `assets/models/openings/w_alu.glb` | Aluminium Window | 4ndr3wpop | CC BY 4.0 | https://sketchfab.com/3d-models/2d4228e6e80f48049a75cd447608ffcf |
+| `assets/models/openings/w_slide.glb` | PVC Windows 1 | faiyaz5yaz | CC BY 4.0 | https://sketchfab.com/3d-models/d575a353371b42a6bdf675b20b5a9cb3 |
+| `assets/models/openings/d_black.glb` | Modern Front Door | MaleOreo. | CC BY 4.0 | https://sketchfab.com/3d-models/ddcba7626665441a8fcab2d0b66c3cec |
+| `assets/models/openings/d_wood_side.glb` | Modern Door | daniyalmalik | CC BY 4.0 | https://sketchfab.com/3d-models/a4765b435d06458ab5b905167bd8160a |
+| `assets/models/openings/d_steel_grey.glb` | Metal Door collection | PremModel | CC BY 4.0 | https://sketchfab.com/3d-models/05ce6351d826426d8d0bb5e7e867e57d |
+| `assets/models/openings/d_steel_white.glb` | Metal Door collection | PremModel | CC BY 4.0 | https://sketchfab.com/3d-models/05ce6351d826426d8d0bb5e7e867e57d |
+| `assets/models/openings/d_oak.glb` | Wooden Door Collection | PremModel | CC BY 4.0 | https://sketchfab.com/3d-models/948ae091149548d3a5e604ecec63735b |
+| `assets/models/openings/d_white_glass.glb` | Front Door | Tenakin | CC BY 4.0 | https://sketchfab.com/3d-models/e1fded63275d42c2a48448f09bdb8a30 |
+| `assets/models/openings/d_leaf_a.glb` | Front Doors Pack | AleixoAlonso | CC BY 4.0 | https://sketchfab.com/3d-models/8c4ec9cba82746b78c7206748bc9c540 |
+| `assets/models/openings/d_leaf_e.glb` | Front Doors Pack | AleixoAlonso | CC BY 4.0 | https://sketchfab.com/3d-models/8c4ec9cba82746b78c7206748bc9c540 |
+| `assets/models/openings/d_leaf_f.glb` | Front Doors Pack | AleixoAlonso | CC BY 4.0 | https://sketchfab.com/3d-models/8c4ec9cba82746b78c7206748bc9c540 |
+| `assets/models/openings/g_sect.glb` | garage door | galdinojcjunior | CC BY 4.0 | https://sketchfab.com/3d-models/c96dae1810df4027ad8f695383ff3c97 |
+| `assets/models/openings/g_wicket.glb` | garage door | galdinojcjunior | CC BY 4.0 | https://sketchfab.com/3d-models/c96dae1810df4027ad8f695383ff3c97 |
+| `assets/models/openings/g_modern.glb` | garage door | galdinojcjunior | CC BY 4.0 | https://sketchfab.com/3d-models/68a1239324124bd19f547459b827da81 |
+| `assets/models/openings/g_white.glb` | White garage door | axonite | CC BY 4.0 | https://sketchfab.com/3d-models/24f55df472c84376acd1f74414acd29c |
+| `assets/models/openings/g_roll.glb` | Garage Door 01 | amineloop | CC BY 4.0 | https://sketchfab.com/3d-models/fb7a0e3b6cf348f48831a80e49054609 |
+
 ## Фото-задники
 
 | Файл | Источник |
