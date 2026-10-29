@@ -56,7 +56,8 @@ export const RWIN_COLOURS = { graphite: ['Графит', 0x3a3d41], grey: ['Се
 export const WATER = { rain: 0 };
 // the ground under what comes down to it (a downpipe, a chain): the blind area's top where it is
 export const GROUND = { at: null, normal: null };
-export const FINGER = new Set(['frame', 'memb', 'battens']);   // (laid along the wing by the finger; the covering carried from the tray piece by piece, the rest at one go)
+export const MEMB = { roll: 1500, lap: 150, pitch: 1350 };   // (the underlay: a roll 1.5 m wide, each row up over the last by 150)
+export const FINGER = new Set(['joists', 'frame', 'memb', 'battens']);   // (laid along the wing by the finger; the covering carried from the tray piece by piece, the rest at one go)
 
 // ---- the textures ----------------------------------------------------------------------------
 const TEX = {};
@@ -198,7 +199,9 @@ export function planeAt(roof, w, f, a, d) {
   return { P, key: P.key, x, t };
 }
 // the stretches of a wing done in a stage: true — all; [[w, a0, a1]…]
-const spans = (done, k, wi, f) => (done === true ? [[f.lo - 1, f.hi + 1]] : (done || []).filter((s) => s[0] === wi).map((s) => [s[1], s[2]]));
+// (a stretch: [a0, a1] along the wing — the slopes either side together, a hip end once it is
+// reached; or [x0, x1, plane, t0, t1] on one plane only — t0…t1 up it, else the whole of it)
+const spans = (done, k, wi, f) => (done === true ? [[f.lo - 1, f.hi + 1]] : (done || []).filter((s) => s[0] === wi).map((s) => s.slice(1)));
 // the pieces of v0…v1 where hidden(v) is false (sampled every 50 mm)
 function runs(v0, v1, hidden) {
   const out = [], n = Math.max(2, Math.ceil(Math.abs(v1 - v0) / MM(50)));
@@ -210,12 +213,15 @@ function runs(v0, v1, hidden) {
   }
   return out;
 }
-const inSpans = (sp, a) => sp.some(([a0, a1]) => a >= a0 - 1e-7 && a <= a1 + 1e-7);
+const inSpans = (sp, a) => sp.some(([a0, a1, key]) => key == null && a >= a0 - 1e-7 && a <= a1 + 1e-7);
 // a plane's stretches for a stage: in x (x along a), or in t (a slope along the ridge) — [[x0, x1, t0, t1]…]
 export function planeSpans(P, sp, f) {
-  if (P.end) return inSpans(sp, P.end > 0 ? f.hi - MM(100) : f.lo + MM(100)) ? [[-Infinity, Infinity, 0, Infinity]] : [];
-  if (P.xd) return sp.map(([a0, a1]) => { const t0 = P.tOfA(a0), t1 = P.tOfA(a1); return [-Infinity, Infinity, Math.min(t0, t1), Math.max(t0, t1)]; });
-  return sp.map(([a0, a1]) => [a0, a1, 0, Infinity]);
+  const out = [], along = sp.filter((q) => q[2] == null);
+  if (P.end) { if (inSpans(along, P.end > 0 ? f.hi - MM(100) : f.lo + MM(100))) out.push([-Infinity, Infinity, 0, Infinity]); }
+  else if (P.xd) for (const [a0, a1] of along) { const t0 = P.tOfA(a0), t1 = P.tOfA(a1); out.push([-Infinity, Infinity, Math.min(t0, t1), Math.max(t0, t1)]); }
+  else for (const [a0, a1] of along) out.push([a0, a1, 0, Infinity]);
+  for (const q of sp) if (q[2] === P.key) out.push([q[0], q[1], q[3] ?? 0, q[4] ?? Infinity]);
+  return out;
 }
 // the normal of a plane, and its directions along x and up t (world)
 // the rafters of a plane: evenly, ≤ 600 apart, from wall to wall at a gable (the first and the last
@@ -373,7 +379,7 @@ function coverShingle(roof) {
 // { stage, all }); wins: the windows in it ({ wi, plane, x, t, key, col })
 export function buildPitched(roof, live = null, wins = []) {
   const G = new THREE.Group(), done = { ...(roof.done || {}) };
-  if (live?.stage) { const cur = done[live.stage]; done[live.stage] = live.all || cur === true ? true : [...(cur || []), [live.w, live.a0, live.a1]]; }
+  if (live?.stage) { const cur = done[live.stage]; done[live.stage] = live.all || cur === true ? true : [...(cur || []), [live.w, live.a0, live.a1, ...(live.key ? [live.key, live.t0 ?? 0, live.t1 ?? Infinity] : [])]]; }
   const has = (k) => (k === 'cover' && roof.sheets?.length > 0) || (!!done[k] && (done[k] === true || done[k].length));
   const shapes = roof.wings.map((w) => wingShape(roof, w));
   const wood = mat('wood', () => new THREE.MeshStandardMaterial({ map: woodTex(), roughness: 0.85 }));
@@ -409,7 +415,8 @@ export function buildPitched(roof, live = null, wins = []) {
     const P0 = PL.find((q) => !q.end && !q.xd);
     if (P0) { const RG = rafterGrid(w, P0); for (let k = 0; k <= RG.n; k++) { const a = RG.x0 + k * RG.step + rw; if (Math.abs(a) <= jA - MM(25)) joistAt.push(a); } }
     else for (let a = -jA + MM(50); a <= jA - MM(50) + 1e-7; a += step) joistAt.push(a);
-    if (has('joists')) for (const a of joistAt) { if (under(a, 0)) continue; beams.add(f.W(a, -ib - MM(60), yL), f.W(a, ib + MM(60), yL), rw, MM(200)); }
+    const jo = spans(done.joists, 'joists', wi, f);
+    if (has('joists')) for (const a of joistAt) { if (under(a, 0) || !inSpans(jo, a)) continue; beams.add(f.W(a, -ib - MM(60), yL), f.W(a, ib + MM(60), yL), rw, MM(200)); }
     // the ridge purlin (as on site): a sill (лежень 150 × 100) along the ridge line on the joists —
     // the load spread over several of them — the posts on it (≤ 3 m apart; one in the middle under
     // a short ridge: a hip roof on a near square plan), braced by struts (подкосы 50 × 150 at 45°)
@@ -491,7 +498,8 @@ export function buildPitched(roof, live = null, wins = []) {
     const mb = spans(done.memb, 'memb', wi, f), bt = spans(done.battens, 'battens', wi, f), cv = spans(done.cover, 'cover', wi, f);
     for (const P of PL) {
       const hs = holesOf(P), F = frameOf(f, P);
-      for (const [x0, x1, t0, t1] of planeSpans(P, mb, f)) { const r = sheet(ctx, P, MM(1), MM(150), MM(150), null, (x, t) => [x / MM(1500), t / MM(1500)], x0, x1, t0, t1, hs); if (r) add(new THREE.Mesh(r.g, mat('memb', () => new THREE.MeshStandardMaterial({ map: membTex(), roughness: 0.75, side: THREE.DoubleSide })))); }
+      // (the membrane in rolls 1.5 m wide along the eave, each over the one under it by 150)
+      for (const [x0, x1, t0, t1] of planeSpans(P, mb, f)) { const row = Math.round(t0 / MM(MEMB.pitch)), r = sheet(ctx, P, MM(1 + (row % 2) * 0.8), MM(150), MM(150), null, (x, t) => [x / MM(1500), (t - t0) / MM(1500)], x0, x1, t0, t1, hs); if (r) add(new THREE.Mesh(r.g, mat('memb', () => new THREE.MeshStandardMaterial({ map: membTex(), roughness: 0.75, side: THREE.DoubleSide })))); }
       if (bt.length) {
         const cb = MM(PITCHED.cb);
         for (const [x, t0, t1] of rafterLines(P, bt)) beams.add(F.pt(x, t0, cb / 2).toArray(), F.pt(x, t1, cb / 2).toArray(), cb, cb, F.n);
