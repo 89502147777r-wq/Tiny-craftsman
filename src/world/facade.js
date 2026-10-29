@@ -479,7 +479,11 @@ export function facadeFaces(objects) {
       if (front.length >= 3 && cover > (y1 - y0) * 0.5) continue;
       // a tier standing out under it: the wall's facade starts on a starter track over it
       const ledge = big.some((o) => o !== T && o.f > T.f + MM(10) && Math.max(...o.us.map((u) => u.top)) <= y0 + MM(30));
-      const holes = opens.filter((o) => Math.abs(o.line.d - L.d) < 1e-9 && Math.abs(o.line.ux - L.ux) < 1e-9).map((o) => { const m = o.x * L.ux + o.z * L.uz, w = MM(o.w) / 2; return [m - w, o.y0, m + w, o.y1]; });
+      // (the openings in this face: masonry each side of them in it — a gap between the end of the
+      // wall and a pier on its line is not a window of this face; [4]: a real opening, framed)
+      const holes = opens.filter((o) => Math.abs(o.line.d - L.d) < 1e-9 && Math.abs(o.line.ux - L.ux) < 1e-9).map((o) => { const m = o.x * L.ux + o.z * L.uz, w = MM(o.w) / 2; return [m - w, o.y0, m + w, o.y1]; })
+        .filter((h) => h[2] > b0 + MM(20) && h[0] < b1 - MM(20) && Math.min(h[3], y1) - Math.max(h[1], y0) > MM(20))
+        .map((h) => [...h, h[0] > b0 + MM(40) && h[2] < b1 - MM(40) ? 1 : 0]);
       faces.push({ ux: L.ux, uz: L.uz, nx, nz, sg, P, a0: b0, a1: b1, y0, y1, holes, hw: L.hw, wrap0: false, wrap1: false, ledge, ru: Math.sign(L.ux * sg * nz - L.uz * sg * nx) || 1 });
     }
   }
@@ -923,6 +927,7 @@ export function buildFacade(F, rec, live, recG = null) {
   // steel sheet in the panels' colour from the wall's face out to the panels' face, the sill
   // a flashing (отлив) standing 40 mm proud with a drip
   if (vp.length) for (const h of F.holes) {
+    if (!h[4]) continue;
     const near = vp.find((p) => p[0] < h[2] + MM(150) && p[2] > h[0] - MM(150) && p[1] < h[3] + MM(150) && p[3] > h[1] - MM(150));
     if (!near) continue;
     const cols = PANELS[near[4]][2], gf = new Geo(), t = MM(1.2), R0 = [0.5, 0.5, 0.5, 0.5];
@@ -933,6 +938,40 @@ export function buildFacade(F, rec, live, recG = null) {
     const ys = h[1];
     if (ys > F.y0 + MM(50)) { boxUV(gf, F, h[0] - MM(20), h[2] + MM(20), MM(2), OFF.vent + MM(40), ys, ys + t * 1.5, R0); boxUV(gf, F, h[0] - MM(20), h[2] + MM(20), OFF.vent + MM(38), OFF.vent + MM(40), ys - MM(25), ys, R0); }
     group.add(gf.mesh(mat('reveal' + near[4], () => new THREE.MeshStandardMaterial({ color: cols[0], metalness: 0.35, roughness: 0.5 }))));
+  }
+  // a free end of the face (no corner: by a porch's opening, a pier): the panels' end closed with an
+  // end trim from the wall's face out to the panels' face — the wool and the membrane not left showing
+  if (vp.length) for (const e of [0, 1]) {
+    if (e ? F.cn1 : F.cn0) continue;
+    const aEnd = e ? F.a1 : F.a0, mine = vp.filter((p) => (e ? p[2] >= aEnd - MM(5) : p[0] <= aEnd + MM(5)));
+    if (!mine.length) continue;
+    const cols = PANELS[mine[0][4]][2], gf = new Geo(), t = MM(1.2), R0 = [0.5, 0.5, 0.5, 0.5], y0 = Math.min(...mine.map((p) => p[1])), y1 = Math.min(F.y1, Math.max(...mine.map((p) => p[3])));
+    boxUV(gf, F, e ? aEnd : aEnd - t, e ? aEnd + t : aEnd, MM(2), OFF.vent + MM(1), y0, y1, R0);
+    boxUV(gf, F, e ? aEnd - MM(20) : aEnd, e ? aEnd + t : aEnd + MM(20), OFF.vent, OFF.vent + MM(1.5), y0, y1, R0);
+    group.add(gf.mesh(mat('reveal' + mine[0][4], () => new THREE.MeshStandardMaterial({ color: cols[0], metalness: 0.35, roughness: 0.5 }))));
+  }
+  // the windows of a wet facade framed once it is finished round them: the reveals (откосы) — the jambs
+  // and the head — plastered from the wall's face out to the finish (in its colour and texture), or
+  // lined with the panel's stone; the sill a steel flashing (отлив) 40 mm proud of the finish, a drip
+  for (const h of F.holes) {
+    if (!h[4]) continue;
+    const ring = (k) => { const [i, j] = cij(k), a = (i + 0.5) * CELL, y = (j + 0.5) * CELL; return a > h[0] - MM(250) && a < h[2] + MM(250) && y > h[1] - MM(250) && y < h[3] + MM(250) && !inR(h, a, y); };
+    let m = null, o1 = OFF.fin;
+    for (const [variant, set] of Object.entries(pl)) { const [tex, col] = variant.split(':'); if ([...set].some((k) => (fl.v.has(k) || fl.h.has(k)) && ring(k))) { m = mat('fin' + variant, () => stdMat(plasterTex(tex, col), {}, 3)); break; } }
+    if (!m) { const p = pan.find((q) => q[0] < h[2] + MM(150) && q[2] > h[0] - MM(150) && q[1] < h[3] + MM(150) && q[3] > h[1] - MM(150)); if (p) { m = mat('pan' + p[4], () => stdMat(panelTex(p[4]))); o1 = OFF.pan; } }
+    if (!m) continue;
+    const gr = new Geo(), t = MM(15), R0 = [0, 0, 0.3, 1];
+    boxUV(gr, F, h[0], h[0] + t, MM(2), o1, h[1], h[3], R0);
+    boxUV(gr, F, h[2] - t, h[2], MM(2), o1, h[1], h[3], R0);
+    if (!F.topAt || h[3] < F.topAt((h[0] + h[2]) / 2) - MM(30)) boxUV(gr, F, h[0], h[2], MM(2), o1, h[3] - t, h[3], [0, 0, 1, 0.3]);
+    group.add(gr.mesh(m));
+    if (h[1] > F.y0 + MM(50)) {
+      const gs = new Geo(), R1 = [0.5, 0.5, 0.5, 0.5];
+      boxUV(gs, F, h[0] - MM(25), h[2] + MM(25), MM(2), o1 + MM(40), h[1], h[1] + MM(2), R1);
+      boxUV(gs, F, h[0] - MM(25), h[2] + MM(25), o1 + MM(38), o1 + MM(40), h[1] - MM(25), h[1], R1);
+      for (const a of [h[0] - MM(25), h[2] + MM(23)]) boxUV(gs, F, a, a + MM(2), MM(2), o1 + MM(40), h[1], h[1] + MM(30), R1);   // (the end caps up the jambs)
+      group.add(gs.mesh(mat('sillFlash', () => new THREE.MeshStandardMaterial({ color: 0x3b3e42, metalness: 0.45, roughness: 0.45 }))));
+    }
   }
   // its corners: an angle over the panels' ends where both faces are clad
   for (const e of [0, 1]) {
