@@ -793,14 +793,22 @@ app.exportProject = () => {
 // the buildings only (no undo history, no ground): small enough to send — what is built, to look into
 app.exportObjects = async () => {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-  const text = JSON.stringify({ build: BUILD, objects: app.objects.all() });
+  // (the buildings and the ground they stand on — the soil, the sand, the gravel, the concrete
+  // cast in it — without the history: a project that opens as it is, a few MB packed)
+  const p = buildProject(); p.journal = { nextId: app.journal.nextId, done: [], undone: [] }; delete p.track;
+  const text = toJSON(p);
   let blob = new Blob([text], { type: 'application/json' }), name = `tiny-craftsman-buildings-${stamp}.json`;
   try { if (typeof CompressionStream !== 'undefined') { blob = await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob(); blob = new Blob([blob], { type: 'application/gzip' }); name += '.gz'; } } catch { /* not compressed */ }
   download(name, blob).catch((e) => app.ui?.toast('Не удалось сохранить файл: ' + (e?.message || e)));
 };
 
 app.importProject = async (file) => {
-  const p = fromJSON(await file.text());
+  // (a packed one — the bug-report export: .gz)
+  let text;
+  const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+  if (head[0] === 0x1f && head[1] === 0x8b && typeof DecompressionStream !== 'undefined') text = await new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  else text = await file.text();
+  const p = fromJSON(text);
   await clearLocal(); SAVE.j.clear(); SAVE.legacy = false;
   applyProject(p);
   applySettings();
