@@ -695,6 +695,22 @@ export function epsTrim(F, s, recFor) {
   }
   return [+a0.toFixed(6), +a1.toFixed(6)];
 }
+// at a corner, the ends of the other wall's boards where they run on round it — over this face's
+// end, in its plane: the glue, the mesh, the plaster of this face go on over them (the corner is
+// plastered round, not left with the insulation's end showing) → rects on F
+export function cornerEnds(F, recFor) {
+  const out = [];
+  if (!recFor) return out;
+  for (const e of [0, 1]) {
+    const cn = e ? F.cn1 : F.cn0; if (!cn) continue;
+    const end = e ? F.a1 : F.a0, G = cn.G, gEnd = Math.abs(G.a0 - cn.aF) < Math.abs(G.a1 - cn.aF) ? G.a0 : G.a1, hiG = gEnd === G.a1;
+    for (const r of recFor(G)?.eps || []) for (const q of cutPiece(G, r, OFF.eps)) {
+      if ((hiG ? q[2] - gEnd : gEnd - q[0]) < OFF.eps * 0.5) continue;
+      out.push(e ? [end, q[1], end + OFF.eps, q[3]] : [end - OFF.eps, q[1], end, q[3]]);
+    }
+  }
+  return out;
+}
 export const sameSlot = (p, q) => Math.abs(p[0] - q[0]) < MM(2) && Math.abs(p[1] - q[1]) < MM(2);
 
 // ---- the model of a face ------------------------------------------------------------------------
@@ -815,7 +831,7 @@ export function buildFacade(F, rec, live, recG = null) {
   // the glue; the mesh rolled out on it (loose: off the wall, sagging); pressed in
   const gg = new Geo(); sheet(gg, F, cellsCut(F, glue, OFF.glue), OFF.glue, [500, 500]); add(gg.mesh(mat('glue', () => stdMat(glueTex(), {}, 1))));
   const embIn = new Set([...emb].filter((k) => glue.has(k)));
-  const gl = new Geo(), under = eps.flatMap((q) => cutPiece(F, q, OFF.eps));
+  const gl = new Geo(), under = [...eps.flatMap((q) => cutPiece(F, q, OFF.eps)), ...cornerEnds(F, recG)];
   for (const r of mesh) for (const q of cutPiece(F, r, OFF.loose)) {
     // in strips of 100 mm, each off the wall by its sag; the pressed-in cells under it skipped
     const st = MM(100);
