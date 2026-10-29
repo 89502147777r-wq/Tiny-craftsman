@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { FitJob, bring, wait, drill, drive, hammer, part, at } from './fitJob.js';
-import { buildFacade, epsTrim, cornerEnds, W, epsDowels, woolDowels, FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
+import { buildFacade, epsTrim, epsOn, W, epsDowels, woolDowels, FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
 
 // The facade done by hand (facade.js), on the outside of the walls:
 //   eps  – the boards carried from the tray, one by one, staggered, cut at the openings and
@@ -26,6 +26,26 @@ export class FacadeWork {
   get variant() { return `${this.app.settings.facTex || 'bark'}:${this.app.settings.facCol || 'white'}`; }
   faces() { return this.app.wallView.facadeFaces(); }
   _rec(F) { return recOf(this.app.objects.all('facade'), F); }
+  // the insulation on a face — its boards and the ends of the boards round its corners (facade.js epsOn)
+  _eps(F, rec = this._rec(F)) { return epsOn(F, rec, (G) => this._rec(G)); }
+  // a panel cut to the insulation under it, across: from where the finger is out to where the
+  // insulation stops (a corner's end strip, the edge of what is insulated so far) — as it is cut on
+  // site; the whole panel where it is all on insulation; null where there is none
+  _panTrim(F, rec, slot, a) {
+    const eps = this._eps(F, rec), ys = [];
+    for (let y = slot[1] + MM(15); y < slot[3] - MM(10); y += MM(50)) if (!F.topAt || y < F.topAt(a) - MM(20)) ys.push(y);
+    if (!ys.length) return slot;
+    const on = (x) => ys.every((y) => eps.some((r) => inR(r, x, y)) || F.holes.some((h) => inR(h, x, y)));
+    const st = MM(10), x0 = slot[0], x1 = slot[2];
+    let c = Math.max(x0 + st / 2, Math.min(x1 - st / 2, a));
+    if (!on(c)) { let best = null; for (let x = x0 + st / 2; x < x1; x += st) if (on(x) && (best == null || Math.abs(x - a) < Math.abs(best - a))) best = x; if (best == null) return null; c = best; }
+    let lo = c, hi = c;
+    while (lo - st > x0 && on(lo - st)) lo -= st;
+    while (hi + st < x1 && on(hi + st)) hi += st;
+    lo = lo - st / 2 <= x0 + st ? x0 : lo - st / 2; hi = hi + st / 2 >= x1 - st ? x1 : hi + st / 2;
+    if (hi - lo < MM(60)) return null;
+    return [+lo.toFixed(6), slot[1], +hi.toFixed(6), slot[3]];
+  }
   // the face under the finger (at the height of what is on it): the nearest along the ray
   _hit(e, off, only) {
     if (!e || e.clientX === undefined) return null;
@@ -54,12 +74,12 @@ export class FacadeWork {
   // what is under a cell (its middle) — for the coats
   _under(F, rec, layer, live) {
     const eps = rec?.eps || [], mesh = rec?.mesh || [];
-    const glue = cellsOf(rec?.glue), emb = cellsOf(rec?.emb), pl = Object.values(rec?.pl || {}).map(cellsOf), pan = rec?.pan || [], ends = cornerEnds(F, (G) => this._rec(G));
+    const glue = cellsOf(rec?.glue), emb = cellsOf(rec?.emb), pl = Object.values(rec?.pl || {}).map(cellsOf), pan = rec?.pan || [], under = this._eps(F, rec);
     return (k) => {
       const [i, j] = cij(k), a = (i + 0.5) * CELL, y = (j + 0.5) * CELL;
       if (!cutPiece(F, [a - 1e-7, y - 1e-7, a + 1e-7, y + 1e-7], OFF.fin).length) return false;   // (an opening, off the face)
       if (pan.some((p) => inR(p, a, y))) return false;
-      if (layer === 'glue') return eps.some((s) => inR(s, a, y) && cutPiece(F, s, OFF.eps).some((r) => inR(r, a, y))) || ends.some((r) => inR(r, a, y));   // (and the other wall's board ends round the corner)
+      if (layer === 'glue') return under.some((r) => inR(r, a, y));
       if (layer === 'emb') return glue.has(k) && mesh.some((r) => inR(r, a, y));
       if (layer === 'pl') return emb.has(k) && mesh.some((r) => inR(r, a, y));
       if (layer === 'fl') return pl.some((s) => s.has(k)) || (live && live.has(k));
@@ -77,7 +97,7 @@ export class FacadeWork {
     const h = this._hit(e, off);
     if (!h) { app.ui.toast(this.faces().length ? 'Ведите по наружной стороне стены' : 'Фасад — по наружным стенам: сначала кладка'); return true; }
     const rec = this._rec(h.F);
-    const need = { glue: [rec?.eps?.length, 'Клей — по утеплителю: сначала листы ППС'], mesh: [rec?.glue?.length, 'Сетку кладут в свежий клей: сначала клей шпателем'], emb: [rec?.mesh?.length, 'Сначала раскатайте сетку по клею'], pl: [rec?.emb?.length, 'Штукатурка — по базовому слою: сетку вдавить в клей шпателем'], fl: [Object.keys(rec?.pl || {}).length, 'Затирают свежую штукатурку: сначала нанесите её шпателем'], mb: [rec?.mw?.length, 'Мембрану натягивают по минвате: сначала плиты утеплителя'] }[L];
+    const need = { glue: [this._eps(h.F, rec).length, 'Клей — по утеплителю: сначала листы ППС'], mesh: [rec?.glue?.length, 'Сетку кладут в свежий клей: сначала клей шпателем'], emb: [rec?.mesh?.length, 'Сначала раскатайте сетку по клею'], pl: [rec?.emb?.length, 'Штукатурка — по базовому слою: сетку вдавить в клей шпателем'], fl: [Object.keys(rec?.pl || {}).length, 'Затирают свежую штукатурку: сначала нанесите её шпателем'], mb: [rec?.mw?.length, 'Мембрану натягивают по минвате: сначала плиты утеплителя'] }[L];
     if (need && !need[0]) { app.ui.toast(need[1]); return true; }
     this.drag = { F: h.F, rec, off, a0: h.a, y0: h.y, a: h.a, y: h.y, cells: new Set(), da: 0, dy: 0 };
     if (L !== 'mesh' && L !== 'mb') { this.drag.ok = this._under(h.F, rec, L, this.drag.cells); this._dab(h.a, h.y); }
@@ -236,7 +256,7 @@ export class FacadeWork {
   }
   // the share of the face's insulation not done yet in this layer
   _left(F, rec, L) {
-    const eps = (rec?.eps || []).flatMap((s) => cutPiece(F, s, OFF.eps)), all = area(eps);
+    const eps = this._eps(F, rec), all = area(eps);
     if (!all) return null;
     const set = L === 'glue' ? cellsOf(rec.glue) : L === 'emb' ? cellsOf(rec.emb) : L === 'pl' ? new Set(Object.values(rec.pl || {}).flatMap((r) => [...cellsOf(r)])) : new Set([...cellsOf(rec.fl?.v), ...cellsOf(rec.fl?.h)]);
     return Math.max(0, Math.round((1 - set.size * CELL * CELL / all) * 100));
@@ -275,6 +295,7 @@ export class FacadeWork {
     const F = h.F, rec = this._rec(F), off = L === 'eps' ? OFF.eps : L === 'mw' ? OFF.mw : L === 'vp' ? OFF.vent : OFF.pan;
     let slot = V ? ventSlot(F, h.a, h.y, L, md) : slotAt(F, h.a, h.y, L, md);
     if (L === 'eps') slot = [...slot, ...epsTrim(F, slot, (G) => this._rec(G))];   // (at a corner: cut to what is round it)
+    if (L === 'pan') slot = this._panTrim(F, rec, slot, h.a) || slot;   // (cut to the insulation under it)
     const piece = cutPiece(F, slot, off), full = L === 'eps' ? MM(FACADE.epsL) * MM(FACADE.epsW) : MM(md[0]) * MM(md[1]);
     const why = this._why(F, rec, L, slot, piece);
     const cut = !why && Math.abs(area(piece) - full) > full * 0.01;
@@ -296,7 +317,7 @@ export class FacadeWork {
       // (its points under the face's top: by a gable's slope the panel is cut along it)
       const pts = piece.flatMap((r) => [[(r[0] + r[2]) / 2, (r[1] + r[3]) / 2], [r[0] + MM(60), r[1] + MM(60)], [r[2] - MM(60), r[3] - MM(60)], [r[0] + MM(60), r[3] - MM(60)], [r[2] - MM(60), r[1] + MM(60)]])
         .filter(([a, y]) => !F.topAt || y < F.topAt(a) - MM(20)).slice(0, 5);
-      const eps = (rec?.eps || []).flatMap((s) => cutPiece(F, s, OFF.eps)), pl = Object.values(rec?.pl || {}).map(cellsOf);
+      const eps = this._eps(F, rec), pl = Object.values(rec?.pl || {}).map(cellsOf);
       if (!pts.every(([a, y]) => eps.some((r) => inR(r, a, y)))) why = 'Панели вешают на утеплитель: сначала листы ППС';
       else if (pts.some(([a, y]) => pl.some((s) => s.has(ck(Math.floor(a / CELL), Math.floor(y / CELL)))))) why = 'Здесь уже штукатурка';
     }
@@ -314,6 +335,7 @@ export class FacadeWork {
     for (let y = y0 + sy / 2; y <= y1; y += sy) for (let a = a0 + sa / 2; a <= a1; a += sa) {
       let slot = V ? ventSlot(F, a, y, L, md) : slotAt(F, a, y, L, md);
       if (L === 'eps') slot = [...slot, ...epsTrim(F, slot, (G) => this._rec(G))];
+      if (L === 'pan') slot = this._panTrim(F, rec, slot, a) || slot;
       const ca = (slot[0] + slot[2]) / 2, cy = (slot[1] + slot[3]) / 2;
       if (ca < a0 - MM(40) || ca > a1 + MM(40) || cy < y0 - MM(40) || cy > y1 + MM(40)) continue;
       if (out.some((q) => sameSlot(q, slot))) continue;
