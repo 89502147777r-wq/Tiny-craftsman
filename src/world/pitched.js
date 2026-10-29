@@ -770,64 +770,102 @@ function gutters(G, roof, w, f, wi, shapes, PL, kind, cc, coff, metalMat) {
   const up = new THREE.Vector3(0, 1, 0), ground = roof.g ?? roof.y0 - MM(3000), gAt = (p) => GROUND.at?.(p.x, p.z) ?? ground, sq = typ === 'square', chain = typ === 'chain' || typ === 'cups';
   const depth = sq ? MM(85) : MM(62), prof = sq ? [[-MM(62), MM(6)], [-MM(62), -MM(85)], [MM(56), -MM(85)], [MM(72), MM(12)], [MM(80), MM(12)]] : gutterRound(MM(62));
   const pipes = new Beams(), hooks = new Beams(), tubes = [], links = [], drains = [], streams = [];
+  // the runs along the eaves (each plane's, where it is the roof's edge): its axis line (the top of
+  // the gutter on its middle), the way out from the wall
+  const RUNS = [];
   for (const P of PL) {
     const F = frameOf(f, P), out = F.et.clone().setY(0).normalize().negate();
     for (const [x0, x1] of runs(P.xa(0), P.xb(0), (x) => { const [a, d] = P.at(x, 0); return !vis(a, d); })) {
       if (x1 - x0 < MM(300)) continue;
-      const lip = (x) => F.pt(x, 0, coff).addScaledVector(out, MM(50)).addScaledVector(up, -MM(55));   // the top of the gutter, on its axis
-      const c0 = lip(x0), c1 = lip(x1), along = c1.clone().sub(c0).normalize(), side = new THREE.Vector3().crossVectors(along, up).normalize();
-      const sgn = side.dot(out) > 0 ? 1 : -1;   // (the profile's +s: out, away from the wall)
-      G.add(trough(c0, c1, prof.map(([q, y]) => [q * sgn, y]), gm));
-      // the hooks under it every 600
-      for (let x = x0 + MM(150); x < x1 - MM(100); x += MM(600)) {
-        const c = lip(x);
-        for (let i = 0; i + 1 < prof.length; i++) {
-          const pa = c.clone().addScaledVector(side, prof[i][0] * sgn * 1.04).addScaledVector(up, prof[i][1] - MM(3)), pb = c.clone().addScaledVector(side, prof[i + 1][0] * sgn * 1.04).addScaledVector(up, prof[i + 1][1] - MM(3));
-          hooks.add(pa.toArray(), pb.toArray(), MM(4), MM(25), along);
-        }
-        // and back up to the fascia board
-        const back = c.clone().addScaledVector(out, -MM(62)).addScaledVector(up, MM(6));
-        hooks.add(back.toArray(), back.clone().addScaledVector(out, -MM(40)).addScaledVector(up, MM(30)).toArray(), MM(25), MM(4));
+      const lip = (x) => F.pt(x, 0, coff).addScaledVector(out, MM(50)).addScaledVector(up, -MM(55));
+      const c0 = lip(x0), c1 = lip(x1);
+      RUNS.push({ P, out, lip, x0, x1, c0, c1, m: [0, 0], cap: [true, true], pipe: [false, false] });
+    }
+  }
+  // the corners: two runs whose ends come together (round a hip corner — at the same height) meet on
+  // the crossing of their axes, mitred (a corner piece); the downpipe of the corner on one of them
+  const xz = (v) => new THREE.Vector2(v.x, v.z);
+  for (let a = 0; a < RUNS.length; a++) for (let b = a + 1; b < RUNS.length; b++) for (const ea of [0, 1]) for (const eb of [0, 1]) {
+    const A = RUNS[a], B = RUNS[b], pa = ea ? A.c1 : A.c0, pb = eb ? B.c1 : B.c0;
+    if (pa.distanceTo(pb) > MM(400) || Math.abs(pa.y - pb.y) > MM(30)) continue;
+    const da = xz(A.c1).sub(xz(A.c0)).normalize(), db = xz(B.c1).sub(xz(B.c0)).normalize(), den = da.x * db.y - da.y * db.x;
+    if (Math.abs(den) < 0.2) continue;
+    const pA = xz(A.c0), pB = xz(B.c0), t = ((pB.x - pA.x) * db.y - (pB.y - pA.y) * db.x) / den, X = pA.clone().addScaledVector(da, t);
+    const y = (pa.y + pb.y) / 2, P3 = new THREE.Vector3(X.x, y, X.y);
+    // (the mitre: half the turn; convex — the outer edge the longer)
+    const dirA = ea ? da : da.clone().negate(), dirB = eb ? db : db.clone().negate(), turn = Math.acos(Math.max(-1, Math.min(1, -dirA.dot(dirB)))), k = Math.tan(Math.max(0, Math.PI - turn) / 2);
+    const conv = new THREE.Vector2(B.out.x, B.out.z).dot(dirA) > 0 ? 1 : -1;
+    if (ea) A.c1 = P3.clone(); else A.c0 = P3.clone();
+    if (eb) B.c1 = P3.clone(); else B.c0 = P3.clone();
+    A.m[ea] = k * conv; B.m[eb] = k * conv; A.cap[ea] = false; B.cap[eb] = false;
+    // one downpipe for the corner: on the longer of the two
+    const LA = A.c0.distanceTo(A.c1), LB = B.c0.distanceTo(B.c1);
+    if (LA >= LB) A.pipe[ea] = true; else B.pipe[eb] = true;
+  }
+  for (const R of RUNS) {
+    // (an end at a gable — no corner: the outlet near it, an end cap)
+    for (const e of [0, 1]) if (R.cap[e]) R.pipe[e] = true;
+    const { out, c0, c1 } = R, along = c1.clone().sub(c0).normalize(), side = new THREE.Vector3().crossVectors(along, up).normalize();
+    const sgn = side.dot(out) > 0 ? 1 : -1;   // (the profile's +s: out, away from the wall)
+    G.add(trough(c0, c1, prof.map(([q, y]) => [q * sgn, y]), gm, R.m.map((m) => m * sgn), R.cap));
+    const L = c0.distanceTo(c1), at = (s) => c0.clone().addScaledVector(along, s);
+    // the hooks under it every 600
+    for (let s = MM(150); s < L - MM(100); s += MM(600)) {
+      const c = at(s);
+      for (let i = 0; i + 1 < prof.length; i++) {
+        const pa = c.clone().addScaledVector(side, prof[i][0] * sgn * 1.04).addScaledVector(up, prof[i][1] - MM(3)), pb = c.clone().addScaledVector(side, prof[i + 1][0] * sgn * 1.04).addScaledVector(up, prof[i + 1][1] - MM(3));
+        hooks.add(pa.toArray(), pb.toArray(), MM(4), MM(25), along);
       }
-      // where the water comes down: near both ends of the run
-      for (const x of [x0 + MM(250), x1 - MM(250)]) {
-        const c = lip(x), bot = c.clone().addScaledVector(up, -depth);
-        // the outlet (воронка) under the gutter
-        tubes.push(cone(bot, MM(sq ? 58 : 52), MM(sq ? 44 : 46), MM(70)));
-        if (chain) {
-          const top = bot.clone().addScaledVector(up, -MM(70)), g0 = gAt(top);
-          const end = new THREE.Vector3(top.x, g0 + MM(70), top.z);
-          if (typ === 'chain') for (let y = top.y, k = 0; y > end.y + MM(20); y -= MM(42), k++) links.push([top.x, y - MM(21), top.z, k % 2]);
-          else for (let y = top.y; y > end.y + MM(60); y -= MM(118)) links.push([top.x, y - MM(40), top.z, 2]);
-          drains.push(end.clone().setY(g0));
-          streams.push([top, end, MM(typ === 'chain' ? 17 : 10)]);
-        } else {
-          // the downpipe: down from the outlet, the offset back to the wall, down the wall, the kick out at the foot
-          const top = bot.clone().addScaledVector(up, -MM(70));
-          const wallP = top.clone().addScaledVector(out, -(f.Oe - MM(110))).setY(top.y - MM(350));
-          // (the inlet under the kick: on the ground there — or the blind area)
-          const inl = wallP.clone().addScaledVector(out, MM(330)), gk = gAt(inl);
-          const foot = wallP.clone().setY(gk + MM(320)), kick = foot.clone().addScaledVector(out, MM(260)).setY(gk + MM(130));
-          const p0 = top.clone().setY(top.y - MM(100));
-          const path = [top, p0, wallP, foot, kick];
-          for (let i = 0; i + 1 < path.length; i++) {
-            if (sq) pipes.add(path[i].toArray(), path[i + 1].toArray(), MM(100), MM(75), out);
-            else tubes.push(tube(path[i], path[i + 1], MM(45)));
-          }
-          if (!sq) for (let i = 1; i + 1 < path.length; i++) tubes.push(new THREE.SphereGeometry(MM(45), 10, 6).translate(path[i].x, path[i].y, path[i].z));
-          // the clamps to the wall every 1.5 m
-          for (let y = wallP.y - MM(300); y > foot.y + MM(200); y -= MM(1500)) {
-            const cp = wallP.clone().setY(y);
-            if (sq) pipes.add(cp.clone().setY(y - MM(15)).toArray(), cp.clone().setY(y + MM(15)).toArray(), MM(108), MM(83), out);
-            else tubes.push(tube(cp.clone().setY(y - MM(15)), cp.clone().setY(y + MM(15)), MM(50)));
-            pipes.add(cp.toArray(), cp.clone().addScaledVector(out, -MM(70)).toArray(), MM(6), MM(20));
-          }
-          // the stormwater inlet under the kick: a square grate on the surface there
-          const ch = kick.clone().addScaledVector(out, MM(60)).setY(gk);
-          drains.push({ ch, out, n: GROUND.normal?.(ch.x, ch.z) || up.clone() });
-          streams.push([kick.clone().addScaledVector(out, MM(30)), ch.clone().setY(gk + MM(15)), MM(20)]);
-        }
+      const back = c.clone().addScaledVector(out, -MM(62)).addScaledVector(up, MM(6));
+      hooks.add(back.toArray(), back.clone().addScaledVector(out, -MM(40)).addScaledVector(up, MM(30)).toArray(), MM(25), MM(4));
+    }
+    // where the water comes down: one outlet a corner, one near a free end; a run over 10 m one more in the middle
+    const outs = [];
+    if (R.pipe[0]) outs.push(MM(sq ? 260 : 240));
+    if (R.pipe[1]) outs.push(L - MM(sq ? 260 : 240));
+    if (L > MM(10000)) outs.push(L / 2);
+    for (const s of outs) {
+      const c = at(s), bot = c.clone().addScaledVector(up, -depth);
+      // the outlet (воронка) under the gutter
+      if (sq) { pipes.add(bot.toArray(), bot.clone().addScaledVector(up, -MM(70)).toArray(), MM(110), MM(85), out); }
+      else tubes.push(cone(bot, MM(52), MM(46), MM(70)));
+      if (chain) {
+        const top = bot.clone().addScaledVector(up, -MM(70)), g0 = gAt(top);
+        const end = new THREE.Vector3(top.x, g0 + MM(70), top.z);
+        if (typ === 'chain') for (let y = top.y, k = 0; y > end.y + MM(20); y -= MM(42), k++) links.push([top.x, y - MM(21), top.z, k % 2]);
+        else for (let y = top.y; y > end.y + MM(60); y -= MM(118)) links.push([top.x, y - MM(40), top.z, 2]);
+        drains.push(end.clone().setY(g0));
+        streams.push([top, end, MM(typ === 'chain' ? 17 : 10)]);
+        continue;
       }
+      // the downpipe: down from the outlet, two 45° bends back to the wall, down the wall (clamps),
+      // a 45° bend out at the foot over the inlet / the channel
+      const top = bot.clone().addScaledVector(up, -MM(70));
+      const back = Math.max(0, f.Oe - MM(110)), wallP = top.clone().addScaledVector(out, -back).setY(top.y - MM(100) - back);
+      const inl = wallP.clone().addScaledVector(out, MM(330)), gk = gAt(inl);
+      const foot = wallP.clone().setY(gk + MM(300)), kick = foot.clone().addScaledVector(out, MM(200)).setY(gk + MM(100));
+      const p0 = top.clone().setY(top.y - MM(100));
+      const path = [top, p0, wallP, foot, kick];
+      for (let i = 0; i + 1 < path.length; i++) {
+        if (sq) { const dd = path[i + 1].clone().sub(path[i]).normalize(), lat = new THREE.Vector3().crossVectors(out, up).normalize(); pipes.add(path[i].toArray(), path[i + 1].toArray(), MM(100), MM(75), new THREE.Vector3().crossVectors(lat, dd)); }
+        else tubes.push(tube(path[i], path[i + 1], MM(45)));
+      }
+      // (the bends: a sleeve over each joint)
+      for (let i = 1; i + 1 < path.length; i++) {
+        if (sq) pipes.add(path[i].clone().addScaledVector(up, -MM(40)).toArray(), path[i].clone().addScaledVector(up, MM(40)).toArray(), MM(106), MM(81), out);
+        else tubes.push(new THREE.SphereGeometry(MM(47), 12, 8).translate(path[i].x, path[i].y, path[i].z));
+      }
+      // the clamps to the wall every 1.5 m
+      for (let y = wallP.y - MM(300); y > foot.y + MM(200); y -= MM(1500)) {
+        const cp = wallP.clone().setY(y);
+        if (sq) pipes.add(cp.clone().setY(y - MM(15)).toArray(), cp.clone().setY(y + MM(15)).toArray(), MM(108), MM(83), out);
+        else tubes.push(tube(cp.clone().setY(y - MM(15)), cp.clone().setY(y + MM(15)), MM(50)));
+        pipes.add(cp.toArray(), cp.clone().addScaledVector(out, -MM(70)).toArray(), MM(6), MM(20));
+      }
+      // (the stormwater inlet under the kick)
+      const ch = kick.clone().addScaledVector(out, MM(60)).setY(gk);
+      drains.push({ ch, out, n: GROUND.normal?.(ch.x, ch.z) || up.clone() });
+      streams.push([kick.clone().addScaledVector(out, MM(30)), ch.clone().setY(gk + MM(15)), MM(20)]);
     }
   }
   const m = pipes.mesh(gm); if (m) G.add(m);
@@ -889,19 +927,22 @@ function gutterRound(r) {
   return pts;
 }
 // a gutter from c0 to c1 along its profile, the ends closed
-function trough(c0, c1, prof, material) {
+// m: at each end, how far a point of the profile goes on along the run per its offset out (a mitre
+// at a corner — 0 square); cap: the end closed (a gable end, not a corner)
+function trough(c0, c1, prof, material, m = [0, 0], cap = [true, true]) {
   const dir = c1.clone().sub(c0).normalize(), up = new THREE.Vector3(0, 1, 0), side = new THREE.Vector3().crossVectors(dir, up).normalize(), pos = [], idx = [], n = prof.length;
-  const at = (c, [q, y]) => c.clone().addScaledVector(side, q).addScaledVector(up, y);
-  for (const c of [c0, c1]) for (const pr of prof) { const p = at(c, pr); pos.push(p.x, p.y, p.z); }
+  const at = (c, [q, y], e) => c.clone().addScaledVector(side, q).addScaledVector(up, y).addScaledVector(dir, (e ? 1 : -1) * m[e] * q);
+  for (const [e, c] of [[0, c0], [1, c1]]) for (const pr of prof) { const p = at(c, pr, e); pos.push(p.x, p.y, p.z); }
   for (let i = 0; i + 1 < n; i++) idx.push(i, n + i, i + 1, i + 1, n + i, n + i + 1);
   // the end caps: a fan from the middle of the top
   for (const [k, c] of [[0, c0], [1, c1]]) {
+    if (!cap[k]) continue;
     const mid = c.clone().addScaledVector(up, Math.min(...prof.map((q) => q[1])) * 0.25), base = pos.length / 3; pos.push(mid.x, mid.y, mid.z);
     for (let i = 0; i + 1 < n; i++) idx.push(base, k * n + i, k * n + i + 1);
   }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
-  const m = new THREE.Mesh(g, material); m.castShadow = m.receiveShadow = true;
-  return m;
+  const mm = new THREE.Mesh(g, material); mm.castShadow = mm.receiveShadow = true;
+  return mm;
 }
 // a round pipe from a to b
 function tube(a, b, r, seg = 10) {

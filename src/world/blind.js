@@ -267,7 +267,8 @@ const M = {
   conc: () => mat('conc', () => { const cv = noiseTex('#a7a49d', 0.12, 256, 6000); const t = asTex(cv); return new THREE.MeshStandardMaterial({ map: t, normalMap: normalOf(noiseTex('#808080', 0.5, 128, 3000), 0.6), roughness: 0.88 }); }),
   joint: () => mat('joint', () => new THREE.MeshStandardMaterial({ color: 0x3b3936, roughness: 0.9 })),
   kerb: () => mat('kerb', () => new THREE.MeshStandardMaterial({ map: asTex(noiseTex('#9d9a94', 0.15, 128, 2000)), roughness: 0.85 })),
-  chan: () => mat('chan', () => new THREE.MeshStandardMaterial({ color: 0x8c8a85, roughness: 0.85 })),
+  chan: () => mat('chan', () => new THREE.MeshStandardMaterial({ color: 0x8a8c8c, roughness: 0.62 })),
+  galv: () => mat('galv', () => new THREE.MeshStandardMaterial({ color: 0xaeb3b6, metalness: 0.85, roughness: 0.35 })),
   grate: () => mat('grate', () => { const cv = canvas(64, 64), g = cv.getContext('2d'); g.clearRect(0, 0, 64, 64); g.fillStyle = '#2f3134'; g.fillRect(0, 0, 64, 6); g.fillRect(0, 58, 64, 6); for (let x = 0; x < 64; x += 8) g.fillRect(x, 0, 3, 64); return new THREE.MeshStandardMaterial({ map: asTex(cv), alphaTest: 0.5, metalness: 0.7, roughness: 0.45, side: THREE.DoubleSide }); }),
   rod: () => mat('rod', () => new THREE.MeshStandardMaterial({ color: 0x5e5a55, metalness: 0.7, roughness: 0.55 })),
   chair: () => mat('chair', () => new THREE.MeshStandardMaterial({ color: 0x2b2d30, roughness: 0.6 })),
@@ -444,30 +445,69 @@ export function buildBlind(rec, live) {
     for (const sg of P.segs) K.push(segBox(P, sg, sg.s0 - MM(80), sg.s1 + MM(80), sg.at, sg.at + sg.n * MM(80), g0 - MM(80), outerTop + MM(25)));
     add(merge(K), M.kerb());
   }
-  // the channels with grates outside the edge, a sand trap at the end; water in the rain
+  // the channels outside the edge (лотки DN100 of polymer concrete in metre sections, a galvanized
+  // edge angle along the top of each wall, a grate of galvanized bars across, a sand trap with its
+  // basket at the end); at a corner of the area where both sides have one, they meet in a corner
+  // piece — one runs on over the corner, the other opens into it; water in the rain
   const drains = new Set(rec.drains || []);
-  const water = [];
+  const water = [], body = [], edge = [], joints = [], bars = [], dark = [];
+  const o = rec.finKind === 'tile' ? MM(80) : 0, wch = MM(BLIND.chan), wl = MM(18), cy = outerTop - MM(5), deep = MM(120), EPS = MM(5);
+  const onSegs = P.segs.filter((sg) => drains.has(sg.key));
+  // (the corner of two channels: the end of one at the line of the other, where that one ends)
+  const meet = (A, e) => { const sA = e ? A.s1 : A.s0; return onSegs.find((B) => B !== A && B.axis !== A.axis && B.n === (e ? 1 : -1) && A.n === (Math.abs(B.s0 - A.at) < EPS ? -1 : 1) && Math.abs(B.at - sA) < EPS && (Math.abs(B.s0 - A.at) < EPS || Math.abs(B.s1 - A.at) < EPS)); };
   for (const sg of P.segs) {
     const on = drains.has(sg.key), hl = live?.seg === sg.key;
     if (!on && !hl) continue;
-    const o = (rec.finKind === 'tile' ? MM(80) : 0), c0 = sg.at + sg.n * o, c1 = c0 + sg.n * MM(BLIND.chan), cy = outerTop - MM(5), deep = MM(120);
+    const c0 = sg.at + sg.n * o, c1 = c0 + sg.n * wch;
     if (hl && !on) { add(segBox(P, sg, sg.s0, sg.s1, c0, c1, cy - deep, cy + MM(10)), M.live(live.ok), false); continue; }
-    const parts = [
-      segBox(P, sg, sg.s0, sg.s1, c0, c0 + sg.n * MM(20), cy - deep, cy - MM(4)),
-      segBox(P, sg, sg.s0, sg.s1, c1 - sg.n * MM(20), c1, cy - deep, cy - MM(4)),
-      segBox(P, sg, sg.s0, sg.s1, c0, c1, cy - deep - MM(20), cy - deep),
-      segBox(P, sg, sg.s0 - MM(20), sg.s0, c0, c1, cy - deep, cy - MM(4)), segBox(P, sg, sg.s1, sg.s1 + MM(20), c0, c1, cy - deep, cy - MM(4)),
-    ];
-    // the sand trap at the end: a box 300 × 300
-    const e0 = sg.s1 - MM(300);
-    parts.push(segBox(P, sg, e0, sg.s1, c1, c1 + sg.n * MM(20), cy - deep - MM(200), cy - MM(4)));
-    add(merge(parts), M.chan());
-    add(segBox(P, sg, sg.s0, sg.s1, c0 + sg.n * MM(18), c1 - sg.n * MM(18), cy - deep + MM(2), cy - deep + MM(3)), M.dark(), false);
-    // the grate on top (its bars across)
-    const gr = segBox(P, sg, sg.s0, sg.s1, c0 + sg.n * MM(20), c1 - sg.n * MM(20), cy - MM(6), cy - MM(4));
-    const uvA = gr.attributes.uv; for (let i = 0; i < uvA.count; i++) uvA.setX(i, uvA.getX(i) * (sg.s1 - sg.s0) / MM(80));
-    add(gr, M.grate(), false);
-    water.push(segBox(P, sg, sg.s0, sg.s1, c0 + sg.n * MM(21), c1 - sg.n * MM(21), cy - deep + MM(5), cy - deep + MM(25)));
+    // its ends: [extended to, wall there, inner wall from] — the owner of a corner (the one along d)
+    // runs on over the corner square; the other runs on to it, open
+    const ends = [0, 1].map((e) => {
+      const B = meet(sg, e), s = e ? sg.s1 : sg.s0, dir = e ? 1 : -1;
+      if (!B) return { s, wall: true, inner: s };
+      const own = sg.axis === 'd';
+      return own ? { s: s + dir * (o + wch), wall: true, inner: s } : { s: s + dir * o, wall: false, inner: s + dir * o };
+    });
+    const [E0, E1] = ends, s0 = E0.s, s1 = E1.s;
+    // the body: the walls, the bottom
+    body.push(segBox(P, sg, E0.inner, E1.inner, c0, c0 + sg.n * wl, cy - deep, cy - MM(4)));
+    body.push(segBox(P, sg, s0, s1, c1 - sg.n * wl, c1, cy - deep, cy - MM(4)));
+    body.push(segBox(P, sg, s0, s1, c0, c1, cy - deep - MM(20), cy - deep));
+    for (const [E, d] of [[E0, -1], [E1, 1]]) if (E.wall) body.push(segBox(P, sg, d < 0 ? E.s : E.s - wl, d < 0 ? E.s + wl : E.s, c0, c1, cy - deep, cy - MM(4)));
+    // the galvanized angles on the walls' tops, the joints between the metre sections
+    edge.push(segBox(P, sg, E0.inner, E1.inner, c0 + sg.n * MM(2), c0 + sg.n * (wl + MM(3)), cy - MM(4), cy - MM(2)));
+    edge.push(segBox(P, sg, s0, s1, c1 - sg.n * (wl + MM(3)), c1 - sg.n * MM(2), cy - MM(4), cy - MM(2)));
+    for (let q = s0 + MM(1000); q < s1 - MM(100); q += MM(1000)) joints.push(segBox(P, sg, q - MM(1.5), q + MM(1.5), c0 - sg.n * MM(0.5), c1 + sg.n * MM(0.5), cy - deep - MM(20), cy - MM(4.5)));
+    // inside: dark
+    dark.push(segBox(P, sg, s0, s1, c0 + sg.n * wl, c1 - sg.n * wl, cy - deep + MM(1), cy - deep + MM(2)));
+    // the grate: bars 6 mm across every 18 mm, a frame bar along each side (in the corner square
+    // the owner's bars)
+    const ga = c0 + sg.n * (wl + MM(1)), gb = c1 - sg.n * (wl + MM(1));
+    edge.push(segBox(P, sg, s0 + MM(2), s1 - MM(2), ga, ga + sg.n * MM(5), cy - MM(14), cy - MM(4)));
+    edge.push(segBox(P, sg, s0 + MM(2), s1 - MM(2), gb - sg.n * MM(5), gb, cy - MM(14), cy - MM(4)));
+    for (let q = s0 + MM(12); q < s1 - MM(8); q += MM(18)) bars.push([sg, q, ga, gb]);
+    // the sand trap at the far end where it is open to nothing: a box 300 deeper, a basket in it
+    if (!meet(sg, 1)) {
+      body.push(segBox(P, sg, sg.s1 - MM(300), sg.s1, c1, c1 + sg.n * wl, cy - deep - MM(220), cy - MM(4)));
+      body.push(segBox(P, sg, sg.s1 - MM(300), sg.s1, c0, c1, cy - deep - MM(240), cy - deep - MM(220)));
+      dark.push(segBox(P, sg, sg.s1 - MM(290), sg.s1 - wl, c0 + sg.n * wl, c1 - sg.n * wl, cy - deep - MM(180), cy - deep - MM(178)));
+    }
+    water.push(segBox(P, sg, s0, s1, c0 + sg.n * MM(21), c1 - sg.n * MM(21), cy - deep + MM(5), cy - deep + MM(25)));
+  }
+  if (body.length) {
+    add(merge(body), M.chan());
+    add(merge(edge), M.galv());
+    add(merge(joints), M.dark(), false);
+    add(merge(dark), M.dark(), false);
+    // the bars: one instanced mesh
+    const geo = new THREE.BoxGeometry(1, 1, 1), im = new THREE.InstancedMesh(geo, M.galv(), bars.length), m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), yaw = Math.atan2(-P.W2(1, 0)[1], P.W2(1, 0)[0]);
+    q4.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    bars.forEach(([sg, q, ga, gb], k) => {
+      const cm = (ga + gb) / 2, [x, z] = sg.axis === 'a' ? P.W2(q, cm) : P.W2(cm, q), across = Math.abs(gb - ga);
+      const sc = sg.axis === 'a' ? new THREE.Vector3(MM(6), MM(12), across) : new THREE.Vector3(across, MM(12), MM(6));
+      im.setMatrixAt(k, m4.compose(new THREE.Vector3(x, cy - MM(10), z), q4, sc));
+    });
+    im.castShadow = true; im.receiveShadow = true; G.add(im);
   }
   if (water.length) {
     const wm = mat('bwater', () => new THREE.MeshStandardMaterial({ color: 0x8fa3b0, transparent: true, opacity: 0, roughness: 0.05, metalness: 0.2, depthWrite: false }));
