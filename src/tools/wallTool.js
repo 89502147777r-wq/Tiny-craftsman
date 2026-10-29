@@ -127,6 +127,9 @@ export class WallTool {
     this._focus();
   }
   get kind() { return this.app.settings.wallKind || 'block'; }
+  // (the work that aims by the ray from the finger, not by a point on the ground: a stroke over a wall
+  // under the eaves, with only the sky behind it, still reaches it — gestures.point)
+  aimsByRay() { return this.mode === 'lay' && (this.kind === 'facade' || this.kind === 'proof' || this.kind === 'roof'); }
   get openKind() { return this.app.settings.openKind || 'window'; }
 
   // the wall nearest to a point (within reach), with the position along it (real mm)

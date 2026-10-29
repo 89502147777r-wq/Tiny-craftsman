@@ -70,6 +70,12 @@ export class Gestures {
     return this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -h), p) ? p : null;
   }
 
+  // the point a tool gets: the ground (or what lies on it) under the finger; with nothing there —
+  // looking up at a wall under the eaves, behind a porch's pillars, at the sky over it — a point on
+  // the ray as far off as what the camera looks at (the tools aiming by the ray itself — the facade,
+  // the roof — work on, the stroke is not lost to the camera)
+  point(x, y) { return this.ground(x, y) || (this.app.activeTool()?.aimsByRay?.() ? this.ray.ray.at(this.app.camera.position.distanceTo(this.app.rig.target), new THREE.Vector3()) : null); }
+
   down(e) {
     const app = this.app;
     app.sfx.unlock();
@@ -111,7 +117,7 @@ export class Gestures {
     if (e.pointerType === 'mouse' && e.shiftKey) { this.mode = 'pan'; return; }
     const tool = app.activeTool();
     if (tool) {
-      const p = this.ground(e.clientX, e.clientY);
+      const p = this.point(e.clientX, e.clientY);
       if (p) app.lastPoint = p.clone();
       if (p && tool.down(p, e)) {
         this.mode = 'tool';
@@ -157,7 +163,7 @@ export class Gestures {
       return;
     }
     if (this.mode === 'tool') {
-      const g = this.ground(e.clientX, e.clientY);
+      const g = this.point(e.clientX, e.clientY);
       if (g) { app.activeTool()?.move(g, e); app.lastPoint = g.clone(); }
       app.ui.moveMeasure(e.clientX, e.clientY);
     }
@@ -178,7 +184,7 @@ export class Gestures {
       return;
     }
     if (this.mode === 'tool') {
-      app.activeTool()?.up(this.ground(e.clientX, e.clientY), e);
+      app.activeTool()?.up(this.point(e.clientX, e.clientY), e);
       this.mode = 'none';
       app.ui.refresh();
     } else if (this.mode === 'orbit' && isTap && app.tool === 'camera') {
