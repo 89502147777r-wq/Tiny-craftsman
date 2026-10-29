@@ -687,7 +687,10 @@ export function epsTrim(F, s, recFor) {
     const cn = e ? F.cn1 : F.cn0; if (!cn) continue;
     const end = e ? F.a1 : F.a0, G = cn.G, gEnd = Math.abs(G.a0 - cn.aF) < Math.abs(G.a1 - cn.aF) ? G.a0 : G.a1, hiG = gEnd === G.a1;
     let reach = null;
-    for (const r of recFor(G)?.eps || []) {
+    // (what is round the corner: its insulation boards, or the wool of a ventilated facade — it stops
+    // flush with this wall: the board runs on over its end, the corner closed)
+    const RG = recFor(G);
+    for (const r of [...(RG?.eps || []), ...(RG?.mw || []).map((q) => { const c = cutPiece(G, q, OFF.mw)[0]; return c || q; })]) {
       if (Math.min(r[3], s[3]) - Math.max(r[1], s[1]) <= MM(20)) continue;
       const lo = typeof r[4] === 'number' ? Math.max(r[0], r[4]) : r[0], hi = typeof r[4] === 'number' ? Math.min(r[2], r[5]) : r[2];
       if (lo > gEnd + OFF.eps + MM(5) || hi < gEnd - OFF.eps - MM(5)) continue;
@@ -719,6 +722,8 @@ export function cornerEnds(F, recFor) {
 // the ends of the other walls' boards round its corners. Every check of "is there insulation here"
 // (the glue, the mesh, the panels, how much is left) goes through this one — not the boards alone
 export function epsOn(F, rec, recFor) { return [...(rec?.eps || []).flatMap((q) => cutPiece(F, q, OFF.eps)), ...cornerEnds(F, recFor)]; }
+// the reveals of a window run in from the wall's face to its frame (it stands 70 mm in, windows.js)
+const REVEAL = MM(68);
 export const sameSlot = (p, q) => Math.abs(p[0] - q[0]) < MM(2) && Math.abs(p[1] - q[1]) < MM(2);
 
 // ---- the model of a face ------------------------------------------------------------------------
@@ -932,19 +937,23 @@ export function buildFacade(F, rec, live, recG = null) {
     if (!near) continue;
     const cols = PANELS[near[4]][2], gf = new Geo(), t = MM(1.2), R0 = [0.5, 0.5, 0.5, 0.5];
     // (1 mm into the opening: over the cut edges of the wool and the membrane)
-    boxUV(gf, F, h[0] + MM(1), h[0] + MM(1) + t, MM(2), OFF.vent, h[1], h[3] - MM(1), R0);
-    boxUV(gf, F, h[2] - MM(1) - t, h[2] - MM(1), MM(2), OFF.vent, h[1], h[3] - MM(1), R0);
-    if (!F.topAt || h[3] < F.topAt((h[0] + h[2]) / 2) - MM(30)) boxUV(gf, F, h[0] + MM(1), h[2] - MM(1), MM(2), OFF.vent, h[3] - MM(1) - t, h[3] - MM(1), R0);
+    boxUV(gf, F, h[0] + MM(1), h[0] + MM(1) + t, -REVEAL, OFF.vent, h[1], h[3] - MM(1), R0);
+    boxUV(gf, F, h[2] - MM(1) - t, h[2] - MM(1), -REVEAL, OFF.vent, h[1], h[3] - MM(1), R0);
+    if (!F.topAt || h[3] < F.topAt((h[0] + h[2]) / 2) - MM(30)) boxUV(gf, F, h[0] + MM(1), h[2] - MM(1), -REVEAL, OFF.vent, h[3] - MM(1) - t, h[3] - MM(1), R0);
     const ys = h[1];
-    if (ys > F.y0 + MM(50)) { boxUV(gf, F, h[0] - MM(20), h[2] + MM(20), MM(2), OFF.vent + MM(40), ys, ys + t * 1.5, R0); boxUV(gf, F, h[0] - MM(20), h[2] + MM(20), OFF.vent + MM(38), OFF.vent + MM(40), ys - MM(25), ys, R0); }
+    if (ys > F.y0 + MM(50)) { boxUV(gf, F, h[0] - MM(20), h[2] + MM(20), -REVEAL, OFF.vent + MM(40), ys, ys + t * 1.5, R0); boxUV(gf, F, h[0] - MM(20), h[2] + MM(20), OFF.vent + MM(38), OFF.vent + MM(40), ys - MM(25), ys, R0); }
     group.add(gf.mesh(mat('reveal' + near[4], () => new THREE.MeshStandardMaterial({ color: cols[0], metalness: 0.35, roughness: 0.5 }))));
   }
   // a free end of the face (no corner: by a porch's opening, a pier): the panels' end closed with an
   // end trim from the wall's face out to the panels' face — the wool and the membrane not left showing
+  // (and at a corner where the other wall is not a ventilated one — plastered, or bare yet: a corner
+  // profile over the end of the panels, the rails, the wool)
   if (vp.length) for (const e of [0, 1]) {
-    if (e ? F.cn1 : F.cn0) continue;
-    const aEnd = e ? F.a1 : F.a0, mine = vp.filter((p) => (e ? p[2] >= aEnd - MM(5) : p[0] <= aEnd + MM(5)));
-    if (!mine.length) continue;
+    const cn = e ? F.cn1 : F.cn0;
+    if (cn && (!recG || recG(cn.G)?.vp?.length)) continue;
+    const near = vp.filter((p) => (e ? p[2] >= (e ? F.a1 : F.a0) - MM(5) : p[0] <= F.a0 + MM(5))).flatMap((p) => cutPiece(F, p, OFF.vent).map((r) => [...r, p[4]]));
+    if (!near.length) continue;
+    const aEnd = e ? Math.max(...near.map((r) => r[2])) : Math.min(...near.map((r) => r[0])), mine = near.map((r) => [r[0], r[1], r[2], r[3], r[4]]);
     const cols = PANELS[mine[0][4]][2], gf = new Geo(), t = MM(1.2), R0 = [0.5, 0.5, 0.5, 0.5], y0 = Math.min(...mine.map((p) => p[1])), y1 = Math.min(F.y1, Math.max(...mine.map((p) => p[3])));
     boxUV(gf, F, e ? aEnd : aEnd - t, e ? aEnd + t : aEnd, MM(2), OFF.vent + MM(1), y0, y1, R0);
     boxUV(gf, F, e ? aEnd - MM(20) : aEnd, e ? aEnd + t : aEnd + MM(20), OFF.vent, OFF.vent + MM(1.5), y0, y1, R0);
@@ -961,15 +970,15 @@ export function buildFacade(F, rec, live, recG = null) {
     if (!m) { const p = pan.find((q) => q[0] < h[2] + MM(150) && q[2] > h[0] - MM(150) && q[1] < h[3] + MM(150) && q[3] > h[1] - MM(150)); if (p) { m = mat('pan' + p[4], () => stdMat(panelTex(p[4]))); o1 = OFF.pan; } }
     if (!m) continue;
     const gr = new Geo(), t = MM(15), R0 = [0, 0, 0.3, 1];
-    boxUV(gr, F, h[0], h[0] + t, MM(2), o1, h[1], h[3], R0);
-    boxUV(gr, F, h[2] - t, h[2], MM(2), o1, h[1], h[3], R0);
-    if (!F.topAt || h[3] < F.topAt((h[0] + h[2]) / 2) - MM(30)) boxUV(gr, F, h[0], h[2], MM(2), o1, h[3] - t, h[3], [0, 0, 1, 0.3]);
+    boxUV(gr, F, h[0], h[0] + t, -REVEAL, o1, h[1], h[3], R0);
+    boxUV(gr, F, h[2] - t, h[2], -REVEAL, o1, h[1], h[3], R0);
+    if (!F.topAt || h[3] < F.topAt((h[0] + h[2]) / 2) - MM(30)) boxUV(gr, F, h[0], h[2], -REVEAL, o1, h[3] - t, h[3], [0, 0, 1, 0.3]);
     group.add(gr.mesh(m));
     if (h[1] > F.y0 + MM(50)) {
       const gs = new Geo(), R1 = [0.5, 0.5, 0.5, 0.5];
-      boxUV(gs, F, h[0] - MM(25), h[2] + MM(25), MM(2), o1 + MM(40), h[1], h[1] + MM(2), R1);
+      boxUV(gs, F, h[0] - MM(25), h[2] + MM(25), -REVEAL, o1 + MM(40), h[1], h[1] + MM(2), R1);
       boxUV(gs, F, h[0] - MM(25), h[2] + MM(25), o1 + MM(38), o1 + MM(40), h[1] - MM(25), h[1], R1);
-      for (const a of [h[0] - MM(25), h[2] + MM(23)]) boxUV(gs, F, a, a + MM(2), MM(2), o1 + MM(40), h[1], h[1] + MM(30), R1);   // (the end caps up the jambs)
+      for (const a of [h[0] - MM(25), h[2] + MM(23)]) boxUV(gs, F, a, a + MM(2), -REVEAL, o1 + MM(40), h[1], h[1] + MM(30), R1);   // (the end caps up the jambs)
       group.add(gs.mesh(mat('sillFlash', () => new THREE.MeshStandardMaterial({ color: 0x3b3e42, metalness: 0.45, roughness: 0.45 }))));
     }
   }
