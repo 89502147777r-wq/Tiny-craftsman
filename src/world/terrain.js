@@ -1421,14 +1421,33 @@ export class Terrain {
 
   // ---- snapshots (undo, save, Blender export) -------------------------------
   // One snapshot buffer is reused (only one action is pending at a time).
+  // (kept up to date by the tiles changed since the last one — the diff trusts the same marks —
+  // not copied whole each time: 13 arrays of a million cells at every touch of every tool)
   snapshot() {
+    const fresh = !this._snap;
     const s = (this._snap ||= { nat: new Float32Array(this.nat.length), loose: new Float32Array(this.nat.length), ldep: new Float32Array(this.nat.length),
       lH: new Float32Array(this.lH.length), lM: new Uint8Array(this.lM.length), lN: new Uint8Array(this.lN.length),
       conc: new Float32Array(this.nat.length), cTime: new Float32Array(this.nat.length), cSm: new Float32Array(this.nat.length),
       top: new Float32Array(this.nat.length), topM: new Uint8Array(this.nat.length), bit: new Float32Array(this.nat.length), comp: new Float32Array(this.nat.length) });
-    s.nat.set(this.nat); s.loose.set(this.loose); s.ldep.set(this.ldep); s.lH.set(this.lH); s.lM.set(this.lM); s.lN.set(this.lN);
-    s.conc.set(this.conc); s.cTime.set(this.cTime); s.cSm.set(this.cSm); s.top.set(this.top); s.topM.set(this.topM); s.bit.set(this.bit); s.comp.set(this.comp);
-    this.jDirty?.fill(0);
+    const J = this.jDirty, one = ['nat', 'loose', 'ldep', 'lN', 'conc', 'cTime', 'cSm', 'top', 'topM', 'bit', 'comp'], L = this.lH.length / this.nat.length;
+    let k = 0; if (J) for (const v of J) k += v;
+    if (fresh || !J || this._snapStale || k > J.length * 0.4) {
+      for (const f of one) s[f].set(this[f]);
+      s.lH.set(this.lH); s.lM.set(this.lM);
+    } else if (k) {
+      const n = this.nx;
+      for (let tz = 0; tz < this.jtnz; tz++) for (let tx = 0; tx < this.jtnx; tx++) {
+        if (!J[tz * this.jtnx + tx]) continue;
+        const x0 = tx * 32, x1 = Math.min(n, x0 + 32);
+        for (let iz = tz * 32, ze = Math.min(this.nz, tz * 32 + 32); iz < ze; iz++) {
+          const a = iz * n + x0, b = iz * n + x1;
+          for (const f of one) s[f].set(this[f].subarray(a, b), a);
+          s.lH.set(this.lH.subarray(a * L, b * L), a * L); s.lM.set(this.lM.subarray(a * L, b * L), a * L);
+        }
+      }
+    }
+    this._snapStale = false;
+    J?.fill(0);
     return s;
   }
 

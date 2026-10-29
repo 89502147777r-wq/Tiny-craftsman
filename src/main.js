@@ -223,6 +223,21 @@ async function main() {
     step(dt, now / 1000, due);
     requestAnimationFrame(frame);
   }
+  // the shaders of what is hidden yet (the pump and its hose, the stream of concrete, the hand
+  // tools, the ghosts …) made ready while the loading screen is still up — compiled the first time
+  // they show, they held the game for a second or two on a phone (the first touch of the hose);
+  // all shown once into a small target (the shadows too), nothing is left to compile then
+  // (in the background where the phone can — KHR_parallel_shader_compile — and again whenever the
+  // light round them changes: a material is compiled anew for another sky)
+  app.warmUp = () => {
+    const hid = [];
+    scene.traverse((o) => { if (!o.visible) { hid.push(o); o.visible = true; } });
+    let p = null;
+    try { p = renderer.compileAsync ? renderer.compileAsync(scene, camera) : (renderer.compile(scene, camera), null); } catch { /* not worth stopping for */ }
+    for (const o of hid) o.visible = false;   // (the programs are made; they finish linking on their own)
+    return p?.catch?.(() => {});
+  };
+  if (!app.filmMode) app.warmUp();
   document.getElementById('loading').classList.add('done');
   document.getElementById('ui').hidden = !!app.filmMode;
   app.ready = true;
