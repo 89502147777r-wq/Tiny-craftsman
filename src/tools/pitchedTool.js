@@ -4,7 +4,7 @@ import { boxOf } from './freeBrick.js';
 import { FitJob, drive, hammer } from './fitJob.js';
 import { plan as beltPlan, toWorld as beltWorld, beltContains } from './belt.js';
 import { RWIN_TYPES, rwinSpan } from '../world/roofWindows.js';
-import { wingShape, valleys, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
+import { wingShape, valleys, planes, planeSpans, coverPiece, MTILE, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
 //   plate – carried from the tray onto the top of the walls: the house is found (its plan
@@ -489,11 +489,50 @@ export class PitchedWork {
   }
   // the stretch laid as it is done: piece by piece along the slope (a sheet of the covering
   // screwed down, a run of battens nailed) — one by a short stroke in full, more quickly
+  // the covering laid as on site, piece by piece, each plane from the eave up: metal tile in sheets
+  // (1110 mm covered, up to 13 steps of 350 long — a longer slope in two, the upper over the
+  // lower), seamed panels the whole length, soft shingles in rows; each piece let down onto the
+  // battens and fixed (screws, clips, nails) — the roof drawn again only when the stretch is done
+  _layCover(d, sp, save) {
+    const app = this.app, r = this.rec, f = d.f, w = r.wings[d.wi], kind = r.cover?.kind || 'metal';
+    this._live(null);   // (not the stretch at once: the pieces, one by one)
+    const wins = app.objects.all('rwin').filter((q) => q.host === r.id && !q.flat), pieces = [];
+    const W = MM(PITCHED.sheet[kind]), LEN = kind === 'metal' ? MM(MTILE.s * 13) : kind === 'shingle' ? MM(143 * 2) : Infinity;
+    for (const P of planes(r, w, f)) for (const [sx0, sx1, st0, st1] of planeSpans(P, [sp], f)) {
+      const X0 = Math.max(sx0, Math.min(P.xa(0), P.xa(P.L))), X1 = Math.min(sx1, Math.max(P.xb(0), P.xb(P.L))), T0 = Math.max(0, st0), T1 = Math.min(P.L, st1);
+      if (X1 - X0 < MM(50) || T1 - T0 < MM(50)) continue;
+      // (the sheets: from the end of the stretch the finger began at — the next one over the last's edge wave)
+      const nx = Math.max(1, Math.round((X1 - X0) / W)), nt = Math.max(1, Math.ceil((T1 - T0) / LEN - 1e-6));
+      for (let i = 0; i < nx; i++) {
+        const xa = X0 + (X1 - X0) * i / nx, xb = X0 + (X1 - X0) * (i + 1) / nx;
+        for (let j = 0; j < nt; j++) {
+          // (cut to whole steps: a sheet ends on a step, the next one up laps over it)
+          let ta = T0 + j * LEN, tb = j === nt - 1 ? T1 : T0 + (j + 1) * LEN;
+          if (kind === 'metal' && j > 0) ta = Math.round(ta / MM(MTILE.s)) * MM(MTILE.s);
+          if (kind === 'metal' && j < nt - 1) tb = Math.round(tb / MM(MTILE.s)) * MM(MTILE.s);
+          const pc = coverPiece(r, d.wi, P.key, xa, xb, ta, tb, wins);
+          if (pc) { pc.mesh.visible = false; pieces.push({ ...pc, xa, xb, ta, tb }); }
+        }
+      }
+    }
+    if (!pieces.length) { save(); return; }
+    const fix = kind === 'shingle' ? 1 : 2, per = kind === 'shingle' ? 0.09 : 0.32, total = pieces.length * (per + fix * 0.12), T = Math.min(1, 9 / total), steps = [];
+    for (const q of pieces) {
+      // let down onto the battens from a hand's height over them
+      steps.push([per * T, (u) => { q.mesh.visible = true; const e = 1 - u; q.mesh.position.copy(q.n).multiplyScalar(MM(kind === 'shingle' ? 120 : 300) * e * e); }]);
+      const at = (x, t) => { const [a, dd] = q.P.at(x, t); return new THREE.Vector3(...q.f.W(a, dd, q.f.top(a, dd) + MM(40))); };
+      const xm = (q.xa + q.xb) / 2;
+      if (kind === 'shingle') steps.push(hammer(app, at(xm, (q.ta + q.tb) / 2), q.n, 1, 0.1 * T));
+      else for (const t of [q.ta + MM(80), q.tb - MM(120)]) if (t > q.ta && t < q.tb) steps.push(drive(app, at(xm, t), q.n, null, 0.12 * T));
+    }
+    new FitJob(app, { steps, parts: pieces.map((q) => q.mesh), commit: save, cleanup: () => this._live(null) });
+  }
   _fitSpan(d, sp, L, save) {
+    if (L === 'cover') return this._layCover(d, sp, save);
     const app = this.app, f = d.f, r = this.rec, k = MM(L === 'cover' ? PITCHED.sheet[r.cover?.kind || 'metal'] : STEP[L]);
     const n = Math.max(1, Math.round((sp[1] - sp[0]) / k)), one = n <= 2, T = one ? 1 : Math.min(1, 3.5 / (n * 0.3));
     const side = Math.sign(d.dd || 1), steps = [];
-    const P = (a, dd) => { const [x, z] = f.W(a, dd); return new THREE.Vector3(x, f.top(a, dd) + MM(L === 'cover' ? 12 : 30), z); };
+    const P = (a, dd) => new THREE.Vector3(...f.W(a, dd, f.top(a, dd) + MM(L === 'cover' ? 12 : 30)));
     const N = (a, dd) => { const e = MM(50), p0 = P(a, dd), pa = P(a + e, dd), pd = P(a, dd + e); return new THREE.Vector3().crossVectors(pd.sub(p0), pa.sub(p0)).normalize().multiplyScalar(side); };
     for (let i = 0; i < n; i++) {
       const a1 = i === n - 1 ? sp[1] : sp[0] + (i + 1) * k, am = sp[0] + (i + 0.5) * k;
