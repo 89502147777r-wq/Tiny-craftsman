@@ -34,7 +34,7 @@ import { buildRoofWindow, rwinSpan } from './roofWindows.js';
 //          pitch (°), cover { kind, col }, gut { kind, col } (the gutters: GUTTERS, GUTTER_COLOURS), wings: […], done: { stage: true | [[w, a0, a1]…] } }
 // A stage laid by the finger is done over stretches along a wing's ridge (a0…a1).
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const PITCHED = { plate: 150, rafterW: 50, rafterH: 200, step: 600, eave: 500, gable: 400, cb: 50, batten: [25, 100], sheet: { metal: 1180, seam: 500, shingle: 1000 } };
+export const PITCHED = { plate: 150, rafterW: 50, rafterH: 200, step: 600, eave: 500, gable: 400, cb: 50, batten: [25, 100], sheet: { metal: 1110, seam: 500, shingle: 1000 } };   // (sheet: the width a sheet covers — a metal tile 1180 wide, 1110 of it six waves, the seventh under the next)
 export const ROOF_TYPES = { gable: 'Двускатная', hip: 'Вальмовая', mono: 'Односкатная' };
 export const PITCHES = { gable: [25, 30, 35, 45], hip: [20, 25, 30, 35], mono: [8, 12, 15, 20] };
 // any pitch within these (the chips above are the usual ones; ± steps between them)
@@ -212,7 +212,7 @@ function runs(v0, v1, hidden) {
 }
 const inSpans = (sp, a) => sp.some(([a0, a1]) => a >= a0 - 1e-7 && a <= a1 + 1e-7);
 // a plane's stretches for a stage: in x (x along a), or in t (a slope along the ridge) — [[x0, x1, t0, t1]…]
-function planeSpans(P, sp, f) {
+export function planeSpans(P, sp, f) {
   if (P.end) return inSpans(sp, P.end > 0 ? f.hi - MM(100) : f.lo + MM(100)) ? [[-Infinity, Infinity, 0, Infinity]] : [];
   if (P.xd) return sp.map(([a0, a1]) => { const t0 = P.tOfA(a0), t1 = P.tOfA(a1); return [-Infinity, Infinity, Math.min(t0, t1), Math.max(t0, t1)]; });
   return sp.map(([a0, a1]) => [a0, a1, 0, Infinity]);
@@ -356,6 +356,18 @@ export function valleys(roof, shapes) {
 
 const MATS = {};
 const mat = (k, make) => MATS[k] || (MATS[k] = make());
+// the covering's materials (shared by the roof and the sheets being laid)
+// (steel coated with polyester: a paint with a sheen, not bare metal — the zinc and the copper of
+// a seamed roof are metal)
+function coverMetal(roof) {
+  const kind = roof.cover?.kind || 'metal', cc = COVER_COLOURS[kind][roof.cover?.col] || Object.values(COVER_COLOURS[kind])[0];
+  const bare = kind === 'seam' && (roof.cover?.col === 'zinc' || roof.cover?.col === 'copper');
+  return mat('cov' + kind + (roof.cover?.col || ''), () => new THREE.MeshPhysicalMaterial({ color: kind === 'shingle' ? 0x3a3a3a : cc[1], metalness: bare ? 0.75 : 0.1, roughness: bare ? 0.38 : 0.5, clearcoat: bare ? 0 : 0.25, clearcoatRoughness: 0.4, envMapIntensity: bare ? 1 : 0.55, side: THREE.DoubleSide }));
+}
+function coverShingle(roof) {
+  const cc = COVER_COLOURS.shingle[roof.cover?.col] || Object.values(COVER_COLOURS.shingle)[0];
+  return mat('sh' + roof.cover?.col, () => { const T2 = shingleTex(cc[1]); return new THREE.MeshStandardMaterial({ map: T2.map, normalMap: T2.normalMap, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.93, envMapIntensity: 0.4, side: THREE.DoubleSide }); });
+}
 
 // the roof, built to its stages (live: a stage being laid now — { stage, w, a0, a1 } or
 // { stage, all }); wins: the windows in it ({ wi, plane, x, t, key, col })
@@ -370,8 +382,7 @@ export function buildPitched(roof, live = null, wins = []) {
   const coff = MM(PITCHED.cb + (kind === 'shingle' ? 22 : PITCHED.batten[0] + 2));
   // (steel coated with polyester: a paint with a sheen, not bare metal — the zinc and the copper of
   // a seamed roof are metal)
-  const bare = kind === 'seam' && (roof.cover?.col === 'zinc' || roof.cover?.col === 'copper');
-  const metalMat = () => mat('cov' + kind + (roof.cover?.col || ''), () => new THREE.MeshPhysicalMaterial({ color: cc[1], metalness: bare ? 0.75 : 0.1, roughness: bare ? 0.38 : 0.5, clearcoat: bare ? 0 : 0.25, clearcoatRoughness: 0.4, envMapIntensity: bare ? 1 : 0.55, side: THREE.DoubleSide }));
+  const metalMat = () => coverMetal(roof);
   const add = (m) => { if (m) { m.castShadow = m.receiveShadow = true; G.add(m); } return m; };
   const VL = valleys(roof, shapes);
   roof.wings.forEach((w, wi) => {
@@ -530,8 +541,8 @@ export function buildPitched(roof, live = null, wins = []) {
           }
           add(rib.mesh(metalMat()));
         } else {
-          const T2 = shingleTex(cc[1]), r = sheet(ctx, P, coff, MM(250), MM(286), null, (x, t) => [x / MM(2000), t / MM(572)], x0, x1, t0, t1, hs);
-          if (r) add(new THREE.Mesh(r.g, mat('sh' + roof.cover.col, () => new THREE.MeshStandardMaterial({ map: T2.map, normalMap: T2.normalMap, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.93, envMapIntensity: 0.4, side: THREE.DoubleSide }))));
+          const r = sheet(ctx, P, coff, MM(250), MM(286), null, (x, t) => [x / MM(2000), t / MM(572)], x0, x1, t0, t1, hs);
+          if (r) add(new THREE.Mesh(r.g, coverShingle(roof)));
         }
       }
       // the windows in this plane
@@ -551,6 +562,21 @@ export function buildPitched(roof, live = null, wins = []) {
   add(beams.mesh(wood));
   G.userData.shapes = shapes;
   return G;
+}
+
+// one piece of the covering as it is laid (a sheet of metal tile, a seamed panel, a row of
+// shingles): plane key of wing wi, x0…x1, t0…t1 — a mesh in place, its normal (for the carry)
+export function coverPiece(roof, wi, key, x0, x1, t0, t1, wins = []) {
+  const shapes = roof.wings.map((w) => wingShape(roof, w)), f = shapes[wi], w = roof.wings[wi], P = planes(roof, w, f).find((q) => q.key === key);
+  if (!P) return null;
+  const kind = roof.cover?.kind || 'metal', coff = MM(PITCHED.cb + (kind === 'shingle' ? 22 : PITCHED.batten[0] + 2)), ctx = { f, wi, roof, shapes };
+  const hs = wins.filter((q) => q.wi === wi && q.plane === P.key).map((q) => { const [, W1, H1] = RWIN[q.key] || RWIN.s2, [W2, H2] = rwinSpan(q.wtype, W1, H1); return [q.x - MM(W2 / 2 + 75), q.x + MM(W2 / 2 + 75), q.t - MM(H2 / 2 + 60), q.t + MM(H2 / 2 + 80)]; });
+  const r = kind === 'metal' ? sheet(ctx, P, coff, 0, 0, mtileH, (x, t) => [x / MM(1000), t / MM(1000)], x0, x1, t0, t1, hs, { xs: gridOf(MM(MTILE.w), MT_U), ts: gridOf(MM(MTILE.s), MT_V) })
+    : kind === 'seam' ? sheet(ctx, P, coff, MM(100), MM(150), null, (x, t) => [x / MM(1000), t / MM(1000)], x0, x1, t0, t1, hs)
+    : sheet(ctx, P, coff, MM(250), MM(143), null, (x, t) => [x / MM(2000), t / MM(572)], x0, x1, t0, t1, hs);
+  if (!r) return null;
+  const m = new THREE.Mesh(r.g, kind === 'shingle' ? coverShingle(roof) : coverMetal(roof)); m.castShadow = m.receiveShadow = true;
+  return { mesh: m, n: frameOf(f, P).n, P, f };
 }
 
 // the masonry under the roof: each outer wall of the wing (not where it joins another) built up
