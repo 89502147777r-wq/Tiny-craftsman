@@ -31,6 +31,24 @@ export function wallLines(units) {
   }
   return lines;
 }
+// the courses of a line of wall: the units by the levels of their bottoms → [{ bot, top, us }]
+// (a course of bricks under blocks is a course of its own: the step to the next one is over
+// half the lower of the two units, not of the block; but bricks laid at the height of a course
+// of blocks — a brick pier on the same line — are of that course (the one they are mostly
+// beside), not courses between)
+export function courseLevels(units) {
+  const lv = [];
+  for (const u of [...units].sort((p, q) => p.bot - q.bot)) {
+    const uh = u.top - u.bot;
+    let c = lv.at(-1), own = true;
+    if (c && u.bot - c.bot > Math.min(uh, c.us[0].top - c.us[0].bot) * 0.5) {
+      c = null;
+      for (let i = lv.length - 1; i >= 0 && lv[i].top > u.bot; i--) if (uh < lv[i].h * 0.75 && Math.min(u.top, lv[i].top) - u.bot >= uh * 0.5) { c = lv[i]; own = false; break; }
+    }
+    if (!c) lv.push({ bot: u.bot, top: u.top, h: uh, us: [u] }); else { c.us.push(u); if (own) { c.top = Math.max(c.top, u.top); c.h = Math.max(c.h, uh); } }
+  }
+  return lv;
+}
 export const masonry = (app) => app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop').map(boxOf);
 
 export function findOpenings(app) {
@@ -43,10 +61,7 @@ export function findOpenings(app) {
   for (const L of lines) {
     if (L.units.length < 3) continue;
     // its courses: the levels of the bottoms of the units
-    const lv = [];
-    // (a course of bricks under blocks is a course of its own: the step to the next one is
-    // over half the lower of the two units, not of the block)
-    for (const u of [...L.units].sort((p, q) => p.bot - q.bot)) if (!lv.length || u.bot - lv.at(-1).bot > Math.min(u.top - u.bot, lv.at(-1).us[0].top - lv.at(-1).us[0].bot) * 0.5) lv.push({ bot: u.bot, top: u.top, us: [u] }); else { const c = lv.at(-1); c.us.push(u); c.top = Math.max(c.top, u.top); }
+    const lv = courseLevels(L.units);
     // each course: the masonry along it (joints bridged), the gaps between
     const covered = (c) => { const iv = c.us.map((u) => [u.a0, u.a1]).sort((p, q) => p[0] - q[0]), m = []; for (const v of iv) { if (m.length && v[0] <= m.at(-1)[1] + MM(30)) m.at(-1)[1] = Math.max(m.at(-1)[1], v[1]); else m.push([...v]); } return m; };
     const gaps = lv.map((c) => { const m = covered(c), g = []; for (let i = 1; i < m.length; i++) if (m[i][0] - m[i - 1][1] >= MM(MIN_W)) g.push([m[i - 1][1], m[i][0]]); return g; });
@@ -151,8 +166,7 @@ export function findCorners(app) {
   const lines = wallLines(units).filter((L) => L.units.length >= 3), out = [];
   // a course of a line: its bottom, top and what it covers along it (the joints bridged)
   const courses = (L) => {
-    const lv = [];
-    for (const u of [...L.units].sort((p, q) => p.bot - q.bot)) if (!lv.length || u.bot - lv.at(-1).bot > Math.min(u.top - u.bot, lv.at(-1).us[0].top - lv.at(-1).us[0].bot) * 0.5) lv.push({ bot: u.bot, top: u.top, us: [u] }); else { const c = lv.at(-1); c.us.push(u); c.top = Math.max(c.top, u.top); }
+    const lv = courseLevels(L.units);
     for (const c of lv) { const iv = c.us.map((u) => [u.a0, u.a1]).sort((p, q) => p[0] - q[0]), m = []; for (const v of iv) { if (m.length && v[0] <= m.at(-1)[1] + MM(30)) m.at(-1)[1] = Math.max(m.at(-1)[1], v[1]); else m.push([...v]); } c.m = m; }
     return lv;
   };
