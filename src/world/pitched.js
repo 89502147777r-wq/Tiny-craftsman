@@ -30,7 +30,7 @@ import { buildRoofWindow, rwinSpan } from './roofWindows.js';
 //          slope rises — 0: +d, 1: −d, 2: +a, 3: −a), abut (a mono-pitch lean-to: its high edge
 //          against the wall of the house — a garage built on to it: no overhang there, no wall plate
 //          on that wall but a ledger anchored to it, the abutment flashing up the wall) }
-//   roof { y0 (the top of the walls), T (their thickness), style ('gable'|'hip'|'mono'),
+//   roof { y0 (the top of the walls), T (their thickness), po (the wall plate moved across them, mm out), style ('gable'|'hip'|'mono'),
 //          pitch (°), cover { kind, col }, gut { kind, col } (the gutters: GUTTERS, GUTTER_COLOURS), wings: […], done: { stage: true | [[w, a0, a1]…] } }
 // A stage laid by the finger is done over stretches along a wing's ridge (a0…a1).
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
@@ -108,7 +108,7 @@ function shingleTex(cols) {
 export function wingShape(roof, w) {
   const style = w.style || roof.style || 'gable', pitch = w.pitch || roof.pitch || 35;
   const al = pitch * Math.PI / 180, tn = Math.tan(al), cs = Math.cos(al), mono = style === 'mono', md = mono ? (w.md || 0) : -1;
-  const T = roof.T, R = w.B - T / 2 + MM(75), Ra = w.A - T / 2 + MM(75);
+  const T = roof.T, po = MM(roof.po || 0), R = w.B - T / 2 + po + MM(75), Ra = w.A - T / 2 + po + MM(75);
   const base = roof.y0 + MM(PITCHED.plate) + MM(PITCHED.rafterH) / cs;
   const Oe = MM(PITCHED.eave), Og = MM(PITCHED.gable);
   // the ends: a join runs on into the wing it meets; a free end — a hip, or a gable (a mono-pitch
@@ -342,7 +342,7 @@ export function buildPitched(roof, live = null, wins = []) {
     const holesOf = (P) => wins.filter((q) => q.wi === wi && q.plane === P.key).map((q) => { const [, W1, H1] = RWIN[q.key] || RWIN.s2, [W2, H2] = rwinSpan(q.wtype, W1, H1); return [q.x - MM(W2 / 2 + 75), q.x + MM(W2 / 2 + 75), q.t - MM(H2 / 2 + 60), q.t + MM(H2 / 2 + 80)]; });
     // the wall plate on the middle of the walls (not across where a wing joins on); the masonry under the roof
     if (has('plate')) {
-      const ya = roof.y0 + MM(75), ia = w.A - roof.T / 2, ib = w.B - roof.T / 2, pl = MM(PITCHED.plate);
+      const ya = roof.y0 + MM(75), ia = w.A - roof.T / 2 + MM(roof.po || 0), ib = w.B - roof.T / 2 + MM(roof.po || 0), pl = MM(PITCHED.plate);   // (po: moved across the walls, mm out)
       for (const s of [-1, 1]) {
         // (a lean-to: on the wall of the house it leans on no plate — a ledger 75 × 200 on anchors
         // against its face, under the rafters' upper ends)
@@ -355,7 +355,7 @@ export function buildPitched(roof, live = null, wins = []) {
       walls(G, roof, w, f);
     }
     // the ceiling joists across the house on the plate, every 600 (not inside another wing)
-    const yL = roof.y0 + MM(PITCHED.plate) + MM(100), ib = w.B - roof.T / 2, jA = w.A - roof.T, joistAt = [];
+    const yL = roof.y0 + MM(PITCHED.plate) + MM(100), ib = w.B - roof.T / 2 + MM(roof.po || 0), jA = w.A - roof.T, joistAt = [];
     // (beside each rafter, nailed to it — where the rafters run across the house; else every 600)
     const P0 = PL.find((q) => !q.end && !q.xd);
     if (P0) { const RG = rafterGrid(w, P0); for (let k = 0; k <= RG.n; k++) { const a = RG.x0 + k * RG.step + rw; if (Math.abs(a) <= jA - MM(25)) joistAt.push(a); } }

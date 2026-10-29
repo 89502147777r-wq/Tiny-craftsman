@@ -436,6 +436,22 @@ console.log('—', sec());
         const apart = !buildings(tc).some((g) => at(0)(g) && at(3380)(g));
         tc.journal.act('ring', {}, tc.clock, () => tc.objects.add({ ...B.rec, fill: 1, castT: -1e6, set: true, stripped: true }));
         out.span.tied = apart && buildings(tc).some((g) => at(0)(g) && at(3380)(g)); tc.undo(); }
+      // the wall plate on a block house 6 × 6 m with a brick pier standing 150 mm out of a wall:
+      // the walls' face and thickness (300) from the walls, not the pier; moved by the finger across
+      { const { findHouse } = await import('/src/tools/pitchedTool.js'), U = [], qz = [0, Math.SQRT1_2, 0, Math.SQRT1_2];
+        for (let r = 0; r < 4; r++) for (let k = 0; k < 10; k++) {
+          const a = -2700 + k * 600 + 300, y = y0 + (3 + r * 253 + 125) * S;
+          if (a < 2700) { U.push({ type: 'unit', free: true, kind: 'block', p: [X0 + a * S, y, Z0 - 2850 * S], q, s: [600 * S, 250 * S, 300 * S], bedT: 3 * S }, { type: 'unit', free: true, kind: 'block', p: [X0 + a * S, y, Z0 + 2850 * S], q, s: [600 * S, 250 * S, 300 * S], bedT: 3 * S }); }
+          const b = -3000 + k * 600 + 300;
+          if (b < 3000) U.push({ type: 'unit', free: true, kind: 'block', p: [X0 - 2850 * S, y, Z0 + b * S], q: qz, s: [600 * S, 250 * S, 300 * S], bedT: 3 * S }, { type: 'unit', free: true, kind: 'block', p: [X0 + 2850 * S, y, Z0 + b * S], q: qz, s: [600 * S, 250 * S, 300 * S], bedT: 3 * S });
+        }
+        for (let r = 0; r < 13; r++) for (const t of [-65, 65]) U.push({ type: 'unit', free: true, kind: 'brick', p: [X0 + 3025 * S, y0 + (12 + r * 77 + 32.5) * S, Z0 + (500 + t) * S], q, s: [250 * S, 65 * S, 120 * S], bedT: 12 * S });
+        tc.journal.act('house', {}, tc.clock, () => { for (const r of U) tc.objects.add(r); });
+        const P0 = new V(X0 + 2850 * S, y0 + 1015 * S, Z0), H = findHouse(tc, P0), w = H?.wings[0];
+        const pt = tc.wallTool.proof; tc.settings.proofStage = 'plate'; pt.carryMove(new V(X0 + 2910 * S, y0 + 1015 * S, Z0), null); const po = pt.place?.rec.po;
+        pt.carryMove(new V(X0 + 2700 * S, y0 + 1015 * S, Z0), null); const po2 = pt.place?.rec.po; pt.place = null; pt.carryDrop();
+        out.plate = H && { T: Math.round(H.T / S), A: Math.round(w.A / S), B: Math.round(w.B / S), po, po2 };
+        tc.undo(); }
       tc.undo(); }
     return out;
   });
@@ -445,6 +461,7 @@ console.log('—', sec());
   check('exterior: a porch cast to a door (pit, stone, forms, concrete, stripped, tiled) and a canopy over it', land.porch.steps === 3 && land.porch.done === 'dig,grav,form,conc,strip,tile' && land.porch.canopy === 1 && land.porch.lights === 'steps', JSON.stringify(land.porch));
   check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
   check('ring beam over hollow piers: one beam as wide as the piers; cast, one building (one wall plate)', land.span?.spans === 1 && land.span.wide[0] >= 350 && land.span.tied,JSON.stringify(land.span));
+  check('wall plate: on the walls\' face and middle (a pier standing out ignored), moved across by the finger', land.plate && Math.abs(land.plate.T - 300) <= 10 && Math.abs(land.plate.A - 3000) <= 10 && Math.abs(land.plate.B - 3000) <= 10 && land.plate.po === 60 && land.plate.po2 === -75, JSON.stringify(land.plate));
   check('garden: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
