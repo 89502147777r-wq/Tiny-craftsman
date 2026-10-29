@@ -790,6 +790,15 @@ app.exportProject = () => {
   download(`tiny-craftsman-stage${STAGE}-${stamp}.json`, text).catch((e) => app.ui?.toast('Не удалось сохранить файл: ' + (e?.message || e)));
 };
 
+// the buildings only (no undo history, no ground): small enough to send — what is built, to look into
+app.exportObjects = async () => {
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  const text = JSON.stringify({ build: BUILD, objects: app.objects.all() });
+  let blob = new Blob([text], { type: 'application/json' }), name = `tiny-craftsman-buildings-${stamp}.json`;
+  try { if (typeof CompressionStream !== 'undefined') { blob = await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob(); blob = new Blob([blob], { type: 'application/gzip' }); name += '.gz'; } } catch { /* not compressed */ }
+  download(name, blob).catch((e) => app.ui?.toast('Не удалось сохранить файл: ' + (e?.message || e)));
+};
+
 app.importProject = async (file) => {
   const p = fromJSON(await file.text());
   await clearLocal(); SAVE.j.clear(); SAVE.legacy = false;

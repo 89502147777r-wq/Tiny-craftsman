@@ -138,6 +138,7 @@ export class UI {
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     for (const b of document.querySelectorAll('#budget-row button')) b.addEventListener('click', () => { const v = +b.dataset.b; if (v) app.budget.start(v); else app.budget.stop(); this.openMenu(false); this.refresh(); });
     $('act-export').addEventListener('click', () => app.exportProject());
+    $('act-export-obj').addEventListener('click', () => app.exportObjects());
     $('act-import').addEventListener('click', () => $('import-file').click());
     $('import-file').addEventListener('change', async (e) => {
       const f = e.target.files[0];

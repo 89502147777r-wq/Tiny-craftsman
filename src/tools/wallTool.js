@@ -1366,7 +1366,19 @@ export class WallTool {
         app.ui.toast(sl ? 'Опалубку перекрытия разобрали' : b.lform ? 'Опалубку перемычки разобрали' : 'Опалубку пояса разобрали');
         return;
       }
-      if (b.stripped) { app.ui.toast(sl ? 'Стойки и опалубка уже сняты — перекрытие готово' : 'Опалубка уже снята — пояс готов'); return; }
+      if (b.stripped) {
+        // cast and stripped: it comes out only broken up (a breaker) — a second touch within 4 s
+        const now = performance.now();
+        if (this._breakAsk?.id === b.id && now - this._breakAsk.t < 4000) {
+          this._breakAsk = null;
+          app.journal.act('belt-break', {}, app.clock, () => { for (const c of app.objects.all('cage').filter((r) => r.beltId === b.id)) app.objects.remove(c.id); app.objects.remove(b.id); });
+          app.ui.toast(sl ? 'Перекрытие разбили отбойником и вывезли' : b.lform ? 'Перемычку разбили отбойником — проём снова открыт' : 'Пояс разбили отбойником и вывезли');
+          return;
+        }
+        this._breakAsk = { id: b.id, t: now };
+        app.ui.toast(sl ? 'Перекрытие уже готово — коснитесь ещё раз, чтобы разбить его отбойником' : b.lform ? 'Перемычка уже залита и готова — коснитесь ещё раз, чтобы разбить её отбойником' : 'Пояс уже готов — коснитесь ещё раз, чтобы разбить его отбойником');
+        return;
+      }
       const k = uStrength(b, app.clock);
       if (!(b.fill >= 0.95) || k < 1) { app.ui.toast(!(b.fill >= 0.95) ? (sl ? 'Перекрытие залито не доверху — долейте бетон' : 'Пояс залит не доверху — долейте бетон') : `Бетон набирает прочность: ${Math.round(k * 100)} % — ${sl ? (b.cant ? 'стойки рано убирать: консоль без них просядет' : 'стойки рано убирать: плита прогнётся') : 'опалубку рано снимать'}`); return; }
       app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, { stripped: true, set: true }));
