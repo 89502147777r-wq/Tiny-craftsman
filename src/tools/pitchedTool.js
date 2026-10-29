@@ -4,7 +4,7 @@ import { boxOf } from './freeBrick.js';
 import { FitJob, drive, hammer } from './fitJob.js';
 import { plan as beltPlan, toWorld as beltWorld, beltContains } from './belt.js';
 import { RWIN_TYPES, rwinSpan } from '../world/roofWindows.js';
-import { wingShape, valleys, planes, planeSpans, coverPiece, coverSlot, coverSlotAt, coverSlots, coverRows, MTILE, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
+import { wingShape, valleys, planes, planeSpans, frameOf, MEMB, coverPiece, coverSlot, coverSlotAt, coverSlots, coverRows, MTILE, roofTop, planeAt, rafterGrid, STAGES, FINGER, PITCHED, PITCHES, PITCH_RANGE, ROOF_TYPES, COVERS, COVER_COLOURS, RWIN, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 
 // The pitched roof laid by hand (pitched.js):
 //   plate – carried from the tray onto the top of the walls: the house is found (its plan
@@ -18,7 +18,7 @@ import { wingShape, valleys, planes, planeSpans, coverPiece, coverSlot, coverSlo
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 const _ray = new THREE.Raycaster();
 const NAME = Object.fromEntries(STAGES);
-const STEP = { frame: PITCHED.step, memb: 1000, battens: PITCHED.step };
+const STEP = { joists: PITCHED.step, frame: PITCHED.step, memb: 600, battens: PITCHED.step };
 const PREV = { joists: 'plate', ridge: 'joists', frame: 'ridge', memb: 'frame', battens: 'memb', cover: 'battens', trim: 'cover', gutter: 'trim' };
 
 // the house under the roof: the plan of the masonry in a grid along its walls, filled in,
@@ -459,7 +459,7 @@ export class PitchedWork {
     if (!r) { app.ui.toast('Сначала мауэрлат: тяните его из лотка на верх стен — крыша встанет по дому'); return true; }
     if (!r.done?.[PREV[L]] && !(L === 'frame' && r.done?.frame)) { app.ui.toast(`${NAME[L]} — после этапа «${NAME[PREV[L]]}»`); return true; }
     const h = this._hit(e);
-    if (!h) { app.ui.toast('Ведите пальцем по крыше вдоль конька'); return true; }
+    if (!h) { app.ui.toast(L === 'joists' ? 'Ведите пальцем над домом вдоль конька' : 'Ведите пальцем по крыше'); return true; }
     // the frame begins with the diagonal rafters (the hips from the ridge to the corners, the
     // valleys where wings meet): the jack rafters and the rafters by them rest on them
     if (L === 'frame' && needHips(r) && !r.done?.hips) {
@@ -468,47 +468,88 @@ export class PitchedWork {
       app.ui.toast(`Диагональные стропила: ${nh ? `${nh} вальмовых от конька к углам` : ''}${nh && nv ? ', ' : ''}${nv ? `${nv} ендовых` : ''} — спаренные 2 × 50×200, верхом на прогон, низом на угол мауэрлата. Дальше рядовые стропила и нарожники: ведите пальцем вдоль конька`);
       return true;
     }
-    this.drag = { wi: h.wi, a0: h.a, a1: h.a, f: h.f, dd: h.d };
+    this.drag = this._dragAt(h);
     this._show();
     return true;
+  }
+  // a stroke: along the wing (the joists; the rafters on the long slopes — in pairs, both sides
+  // together) or on the one plane the finger is on (the jack rafters of a hip end; the membrane,
+  // a roll at a time; the battens, slope by slope)
+  _dragAt(h) {
+    const r = this.rec, L = this.stage, pa = planeAt(r, r.wings[h.wi], h.f, h.a, h.d);
+    const own = pa && (L === 'memb' || L === 'battens' || (L === 'frame' && pa.P.end));
+    return { wi: h.wi, a0: h.a, a1: h.a, f: h.f, dd: h.d, key: own ? pa.key : null, P: pa?.P, x0: pa?.x, x1: pa?.x, t: pa?.t };
   }
   move(p, e) {
     const d = this.drag; if (!d) return;
     const h = this._hit(e);
     if (!h) return;
-    if (h.wi !== d.wi) { this._commit(); this.drag = { wi: h.wi, a0: h.a, a1: h.a, f: h.f }; }
-    else { d.a0 = Math.min(d.a0, h.a); d.a1 = Math.max(d.a1, h.a); }
+    const n = this._dragAt(h);
+    if (h.wi !== d.wi || n.key !== d.key) { this._commit(); this.drag = n; }
+    else { d.a0 = Math.min(d.a0, h.a); d.a1 = Math.max(d.a1, h.a); if (n.x0 != null) { d.x0 = Math.min(d.x0, n.x0); d.x1 = Math.max(d.x1, n.x1); } }
     this._show();
   }
-  // the stretch done: rounded to whole rafters / sheets, cut to what the stage before did
+  // the stretches of a stage done on a wing (as pitched.js reads them)
+  _sp(v, wi, f) { return v === true ? [[f.lo - 1, f.hi + 1]] : (v || []).filter((q) => q[0] === wi).map((q) => q.slice(1)); }
+  _on(v, wi, f, P, x, t) { return planeSpans(P, this._sp(v, wi, f), f).some(([x0, x1, t0, t1]) => x >= x0 - 1e-6 && x <= x1 + 1e-6 && t >= t0 - 1e-6 && t <= t1 + 1e-6); }
+  // the stretch done: rounded to whole rafters / rolls, cut to what the stage before did →
+  // [a0, a1] or [x0, x1, plane, t0?, t1?]
   _span(d) {
-    const L = this.stage, r = this.rec, f = d.f, k = MM(L === 'cover' ? PITCHED.sheet[r.cover?.kind || 'metal'] : STEP[L]);
+    const L = this.stage, r = this.rec, f = d.f, k = MM(STEP[L] || PITCHED.step), prev = r.done?.[PREV[L]];
+    if (d.key) {
+      const P = d.P, lo = Math.min(P.xa(0), P.xa(P.L)), hi = Math.max(P.xb(0), P.xb(P.L));
+      let x0 = lo + Math.floor((d.x0 - lo) / k) * k, x1 = lo + Math.ceil((Math.max(d.x1, d.x0 + 1e-6) - lo) / k) * k;
+      if (x0 - lo < k * 1.2) x0 = lo; if (hi - x1 < k * 1.2) x1 = hi;
+      x0 = Math.max(lo, x0); x1 = Math.min(hi, x1);
+      if (x1 - x0 < MM(50)) return null;
+      const xm = (x0 + x1) / 2;
+      if (L === 'memb') {
+        // (the next roll up: the lowest row not yet rolled out here — from the eave, each over the last)
+        const n = Math.max(1, Math.ceil((P.L - MM(MEMB.lap)) / MM(MEMB.pitch) - 1e-6));
+        let j = 0; while (j < n && this._on(r.done?.memb, d.wi, f, P, xm, j * MM(MEMB.pitch) + MM(700))) j++;
+        if (j >= n) return null;
+        const t0 = j * MM(MEMB.pitch), t1 = Math.min(P.L, t0 + MM(MEMB.roll));
+        if (prev !== true && !this._on(prev, d.wi, f, P, xm, (t0 + t1) / 2)) return null;
+        return [+x0.toFixed(6), +x1.toFixed(6), P.key, +t0.toFixed(6), +t1.toFixed(6)];
+      }
+      // (the battens: up from the eave as far as the membrane goes under them; the jack rafters of a
+      // hip end on its diagonals — the stage before there)
+      if (L === 'battens' && prev !== true) {
+        let tt = 0; const st = MM(100), inP = (t) => xm < P.xa(t) || xm > P.xb(t);
+        while (tt < P.L && (this._on(prev, d.wi, f, P, xm, Math.min(P.L, tt + st / 2)) || inP(tt + st / 2))) tt += st;
+        if (tt < MM(300)) return null;
+        return tt >= P.L - MM(50) ? [+x0.toFixed(6), +x1.toFixed(6), P.key] : [+x0.toFixed(6), +x1.toFixed(6), P.key, 0, +tt.toFixed(6)];
+      }
+      if (prev !== true && ![0.15, 0.5, 0.85].every((q) => this._on(prev, d.wi, f, P, xm, P.L * q) || xm < P.xa(P.L * q) || xm > P.xb(P.L * q))) return null;
+      return [+x0.toFixed(6), +x1.toFixed(6), P.key];
+    }
     let a0 = f.lo + Math.floor((d.a0 - f.lo) / k) * k, a1 = f.lo + Math.ceil((Math.max(d.a1, d.a0 + 1e-6) - f.lo) / k) * k;
     if (a0 - f.lo < k * 1.2) a0 = f.lo; if (f.hi - a1 < k * 1.2) a1 = f.hi;   // (near the end: on to it)
     a0 = Math.max(f.lo, a0); a1 = Math.min(f.hi, a1);
-    const prev = r.done?.[PREV[L]];
     if (prev !== true && Array.isArray(prev)) {
-      const ps = prev.filter((s) => s[0] === d.wi);
+      const ps = prev.filter((q) => q[0] === d.wi && q[3] == null);
       if (!ps.length) return null;
-      a0 = Math.max(a0, Math.min(...ps.map((s) => s[1]))); a1 = Math.min(a1, Math.max(...ps.map((s) => s[2])));
+      a0 = Math.max(a0, Math.min(...ps.map((q) => q[1]))); a1 = Math.min(a1, Math.max(...ps.map((q) => q[2])));
     }
     return a1 - a0 > MM(50) ? [+a0.toFixed(6), +a1.toFixed(6)] : null;
   }
+  _liveOf(d, sp, cut = null) { return sp.length > 2 ? { stage: this.stage, w: d.wi, a0: sp[0], a1: cut?.x1 ?? sp[1], key: sp[2], t0: sp[3] ?? 0, t1: cut?.t1 ?? sp[4] ?? Infinity } : { stage: this.stage, w: d.wi, a0: sp[0], a1: cut?.x1 ?? sp[1] }; }
   _show() {
     const d = this.drag, sp = d && this._span(d);
-    this._live(sp ? { stage: this.stage, w: d.wi, a0: sp[0], a1: sp[1] } : null);
+    this._live(sp ? this._liveOf(d, sp) : null);
     if (sp) this.app.ui.showMeasure(`${NAME[this.stage]}: ${((sp[1] - sp[0]) / S / 1000).toFixed(1).replace('.', ',')} м`);
   }
-  _commit() {
+  _commit(sp = null) {
     const d = this.drag, r = this.rec; if (!d || !r) return false;
-    const sp = this._span(d); if (!sp) return false;
+    sp = sp || this._span(d); if (!sp) return false;
     const cur = r.done?.[this.stage];
     if (cur === true) return false;
-    // merged with what is done on that wing
-    const list = [...(cur || []), [d.wi, ...sp]], merged = [];
-    for (const wi of [...new Set(list.map((s) => s[0]))]) {
-      const iv = list.filter((s) => s[0] === wi).map((s) => [s[1], s[2]]).sort((p, q) => p[0] - q[0]);
-      for (const v of iv) { const m = merged.filter((s) => s[0] === wi).at(-1); if (m && v[0] <= m[2] + MM(10)) m[2] = Math.max(m[2], v[1]); else merged.push([wi, v[0], v[1]]); }
+    // merged with what is done on that wing (on that plane, in that row)
+    const list = [...(cur || []), [d.wi, ...sp]], merged = [], gk = (q) => `${q[0]}|${q.slice(3).join('|')}`;
+    for (const g of [...new Set(list.map(gk))]) {
+      const grp = list.filter((q) => gk(q) === g), tail = grp[0].slice(3), iv = grp.map((q) => [q[1], q[2]]).sort((p, q) => p[0] - q[0]), out = [];
+      for (const v of iv) { const m = out.at(-1); if (m && v[0] <= m[2] + MM(10)) m[2] = Math.max(m[2], v[1]); else out.push([grp[0][0], v[0], v[1], ...tail]); }
+      merged.push(...out);
     }
     this._save({ done: { ...r.done, [this.stage]: merged } }, 'proof-' + this.stage);
     return true;
@@ -516,54 +557,68 @@ export class PitchedWork {
   up() {
     const app = this.app, d = this.drag, L = this.stage;
     if (!d) return;
-    // the covering / the battens: laid out piece by piece (fitJob.js), then saved
-    const sp = (L === 'cover' || L === 'battens') && this.rec?.done?.[L] !== true ? this._span(d) : null;
-    if (sp) {
-      this.drag = null; app.ui.hideMeasure();
-      this._fitSpan(d, sp, L, () => {
-        this.drag = d; const ok = this._commit(); this.drag = null; this._live(null);
-        if (!ok) return;
-        const r = this.rec, left = this.left(r, L);
-        app.ui.toast({ battens: 'Контробрешётка и обрешётка прибиты', cover: `${COVERS[r.cover.kind]} уложена` }[L] + (left > 0.02 ? ` — осталось ${Math.round(left * 100)} %` : ' — весь скат готов'));
-      });
-      return;
-    }
-    const ok = this._commit();
-    this.drag = null; this._live(null); app.ui.hideMeasure();
-    if (!ok) { app.ui.toast(`${NAME[L]}: ведите пальцем по крыше вдоль конька — там, где уже готов этап «${NAME[PREV[L]]}»`); return; }
-    const r = this.rec, left = this.left(r, L);
-    app.ui.toast({ frame: 'Стропила стоят', memb: 'Мембрана раскатана внахлёст', battens: 'Контробрешётка и обрешётка прибиты', cover: `${COVERS[r.cover.kind]} уложена` }[L] + (left > 0.02 ? ` — осталось ${Math.round(left * 100)} %` : ' — весь скат готов'));
+    // laid as it is done (fitJob.js), then saved: the joists one by one, a roll unrolled, the battens up the slope
+    const sp = this.rec?.done?.[L] !== true ? this._span(d) : null;
+    this.drag = null; app.ui.hideMeasure();
+    if (!sp) { this._live(null); app.ui.toast(L === 'memb' && d.key ? 'Мембрана: здесь все рулоны уже раскатаны — или ещё нет стропил' : `${NAME[L]}: ведите пальцем по крыше — там, где уже готов этап «${NAME[PREV[L]]}»`); return; }
+    const done = () => {
+      this.drag = d; const ok = this._commit(sp); this.drag = null; this._live(null);
+      if (!ok) return;
+      const r = this.rec, left = this.left(r, L);
+      app.ui.toast({ joists: 'Лаги перекрытия 50×200 уложены с мауэрлата на мауэрлат', frame: 'Стропила стоят', memb: 'Рулон мембраны раскатан и прихвачен скобами — следующий выше внахлёст 150 мм', battens: 'Контробрешётка и обрешётка прибиты — снизу вверх' }[L] + (left > 0.02 ? ` — осталось ${Math.round(left * 100)} %` : ' — этап готов'));
+    };
+    if (L === 'frame') { done(); return; }
+    this._fitSpan(d, sp, L, done);
   }
-  // the stretch laid as it is done: piece by piece along the slope (a sheet of the covering
-  // screwed down, a run of battens nailed) — one by a short stroke in full, more quickly
+  // the stretch laid as it is done, piece by piece: the joists one by one along the wing, a roll
+  // of membrane unrolled along the eave and stapled, the battens nailed from the eave up
   _fitSpan(d, sp, L, save) {
-    const app = this.app, f = d.f, r = this.rec, k = MM(L === 'cover' ? PITCHED.sheet[r.cover?.kind || 'metal'] : STEP[L]);
-    const n = Math.max(1, Math.round((sp[1] - sp[0]) / k)), one = n <= 2, T = one ? 1 : Math.min(1, 3.5 / (n * 0.3));
-    const side = Math.sign(d.dd || 1), steps = [];
-    const P = (a, dd) => new THREE.Vector3(...f.W(a, dd, f.top(a, dd) + MM(L === 'cover' ? 12 : 30)));
-    const N = (a, dd) => { const e = MM(50), p0 = P(a, dd), pa = P(a + e, dd), pd = P(a, dd + e); return new THREE.Vector3().crossVectors(pd.sub(p0), pa.sub(p0)).normalize().multiplyScalar(side); };
-    for (let i = 0; i < n; i++) {
-      const a1 = i === n - 1 ? sp[1] : sp[0] + (i + 1) * k, am = sp[0] + (i + 0.5) * k;
-      steps.push([(one ? 0.35 : 0.12) * T, (u) => { if (u >= 1) this._live({ stage: L, w: d.wi, a0: sp[0], a1 }); }]);
-      const span = f.R || MM(4000), pts = one ? [0.25, 0.5, 0.75] : [0.5];
-      for (const q of pts) {
-        const dd = side * span * q, p = P(am, dd), nn = N(am, dd);
-        if (nn.y < 0) nn.negate();
-        steps.push(L === 'cover' ? drive(app, p, nn, null, (one ? 0.26 : 0.1) * T) : hammer(app, p, nn, one ? 2 : 1, (one ? 0.16 : 0.1) * T));
+    const app = this.app, f = d.f, r = this.rec, steps = [], up = new THREE.Vector3(0, 1, 0);
+    const onP = (P, x, t, o = MM(30)) => { const [a, dd] = P.at(x, t); return new THREE.Vector3(...f.W(a, dd, f.top(a, dd) + o)); };
+    if (sp.length > 2) {
+      const P = d.P, n = frameOf(f, P).n, [x0, x1] = sp, t0 = sp[3] ?? 0, t1 = sp[4] ?? P.L;
+      if (L === 'memb') {
+        // unrolled along the eave in steps of 600, stapled along its top edge
+        const k = MM(600), m = Math.max(1, Math.ceil((x1 - x0) / k)), T = Math.min(1, 4 / (m * 0.25));
+        for (let i = 1; i <= m; i++) {
+          const xe = Math.min(x1, x0 + i * k), xm = xe - k / 2, tm = Math.min(t1 - MM(100), t0 + MM(1350)), x = Math.max(P.xa(tm) + MM(50), Math.min(P.xb(tm) - MM(50), xm));
+          steps.push([0.12 * T, (u) => { if (u >= 1) this._live(this._liveOf(d, sp, { x1: xe })); }]);
+          steps.push(hammer(app, onP(P, x, tm), n, 1, 0.12 * T));
+        }
+      } else {
+        // up the slope a batten at a time (two to a step on the screen), nailed to the counter-battens
+        const k = MM(L === 'battens' && r.cover?.kind === 'shingle' ? 1250 : 700), m = Math.max(1, Math.ceil((t1 - t0) / k)), T = Math.min(1, 4.5 / (m * 0.3)), xm = (x0 + x1) / 2;
+        for (let i = 1; i <= m; i++) {
+          const te = Math.min(t1, t0 + i * k), tm = te - k / 2, x = Math.max(P.xa(tm) + MM(80), Math.min(P.xb(tm) - MM(80), xm));
+          steps.push([0.12 * T, (u) => { if (u >= 1) this._live(this._liveOf(d, sp, { t1: te })); }]);
+          if (x > P.xa(tm) && x < P.xb(tm)) steps.push(hammer(app, onP(P, x, tm), n, 1, 0.14 * T));
+        }
+      }
+    } else {
+      // the joists one at a time, nailed to the wall plate at each end
+      const k = MM(PITCHED.step), m = Math.max(1, Math.round((sp[1] - sp[0]) / k)), T = Math.min(1, 4.5 / (m * 0.3)), w = r.wings[d.wi], yP = r.y0 + MM(PITCHED.plate) + MM(120);
+      for (let i = 1; i <= m; i++) {
+        const ae = i === m ? sp[1] : sp[0] + i * k, am = ae - k / 2;
+        steps.push([0.1 * T, (u) => { if (u >= 1) this._live(this._liveOf(d, sp, { x1: ae })); }]);
+        for (const sg of [-1, 1]) steps.push(hammer(app, new THREE.Vector3(...f.W(am, sg * (w.B - r.T / 2), yP)), up, 1, 0.1 * T));
       }
     }
     new FitJob(app, { steps, parts: [], commit: save, cleanup: () => this._live(null) });
   }
-
-  // the share of the roof not done in a stage
   left(r, L) {
     const cur = r.done?.[L]; if (cur === true) return 0;
     if (L === 'cover' && r.sheets?.length) return Math.max(0, 1 - r.sheets.length / Math.max(1, coverSlots(r).length));
     const shapes = r.wings.map((w) => wingShape(r, w));
+    if (L === 'joists') { let all = 0, got = 0; shapes.forEach((f, wi) => { all += f.hi - f.lo; for (const q of (cur || []).filter((q2) => q2[0] === wi)) got += q[2] - q[1]; }); return Math.max(0, 1 - got / all); }
+    // (the planes sampled: what share of them the stage covers)
     let all = 0, got = 0;
-    shapes.forEach((f, wi) => { all += f.hi - f.lo; for (const s of (cur || []).filter((q) => q[0] === wi)) got += s[2] - s[1]; });
-    return Math.max(0, 1 - got / all);
+    shapes.forEach((f, wi) => { for (const P of planes(r, r.wings[wi], f)) for (let a = 0; a < 8; a++) for (let b = 0; b < 8; b++) {
+      const t = P.L * (b + 0.5) / 8, xa = P.xa(t), xb = P.xb(t); if (xb - xa < MM(50)) continue;
+      const x = xa + (xb - xa) * (a + 0.5) / 8; all++; if (this._on(cur, wi, f, P, x, t)) got++;
+    } });
+    return all ? Math.max(0, 1 - got / all) : 0;
   }
+
 
   // ---- the wall plate and the trims: from the tray ----
   carryMove(p, e) {
@@ -660,11 +715,11 @@ export class PitchedWork {
     const left = r ? this.left(r, L) : 1;
     return {
       plate: r ? 'Мауэрлат лежит — дальше «Лаги перекрытия»' : 'Скатная крыша: выберите тип, уклон и покрытие, потом тяните мауэрлат из лотка на верх стен — крыша встанет по дому (Г-, Т-образный — крыльями с ендовами)',
-      joists: r?.done?.joists ? 'Лаги лежат — дальше «Коньковый прогон»' : 'Лаги перекрытия: тяните из лотка на дом — брусья 50×200 через 600 мм поперёк, с мауэрлата на мауэрлат',
+      joists: `Лаги перекрытия: ведите пальцем над домом вдоль конька — брусья 50×200 через 600 мм поперёк, с мауэрлата на мауэрлат, по одной${r?.done?.joists && left < 1 ? (left > 0.02 ? `; осталось ${Math.round(left * 100)} %` : ' — все лежат, дальше «Коньковый прогон»') : ''}`,
       ridge: r?.done?.ridge ? 'Прогон стоит — дальше «Стропила»' : 'Коньковый прогон: тяните из лотка на дом — стойки на лаги через ≤ 3 м, прогон по коньку (концы на фронтонах)',
       frame: r && needHips(r) && !r.done?.hips ? 'Стропила: коснитесь крыши — сначала диагональные (от конька к углам, в ендовы), на них потом лягут нарожники' : `Стропила: ведите пальцем по крыше вдоль конька — пары встают через 600 мм${left < 1 ? `; осталось ${Math.round(left * 100)} %` : ''}`,
-      memb: 'Мембрана: ведите пальцем вдоль ската — рулон раскатывается внахлёст по стропилам',
-      battens: 'Обрешётка: ведите пальцем — контробрешётка по стропилам и рейки поперёк (под мягкую черепицу — OSB)',
+      memb: `Мембрана: ведите пальцем вдоль карниза по одному скату — рулон 1,5 м раскатывается по стропилам, следующий ряд выше внахлёст 150 мм${r?.done?.memb && left > 0.02 ? `; осталось ${Math.round(left * 100)} %` : ''}`,
+      battens: `Обрешётка: ведите пальцем по одному скату — контррейки по стропилам и рейки поперёк, снизу вверх (под мягкую черепицу — OSB)${r?.done?.battens && left > 0.02 ? `; осталось ${Math.round(left * 100)} %` : ''}`,
       cover: `${COVERS[r?.cover?.kind || 'metal']}: тяните ${r?.cover?.kind === 'shingle' ? 'пачку' : r?.cover?.kind === 'seam' ? 'панель' : 'лист'} из лотка на скат — по одному, от карниза вверх; у вальм, конька и ендов подрезается сам${r?.sheets?.length ? `; уложено ${r.sheets.length} из ${coverSlots(r).length}` : ''}`,
       trim: 'Конёк и планки: тяните из лотка на крышу',
       gutter: 'Водосток: тяните из лотка на крышу — желоба по карнизам, трубы по углам',
