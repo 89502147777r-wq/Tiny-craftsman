@@ -815,13 +815,16 @@ export function buildFacade(F, rec, live, recG = null) {
   // the glue; the mesh rolled out on it (loose: off the wall, sagging); pressed in
   const gg = new Geo(); sheet(gg, F, cellsCut(F, glue, OFF.glue), OFF.glue, [500, 500]); add(gg.mesh(mat('glue', () => stdMat(glueTex(), {}, 1))));
   const embIn = new Set([...emb].filter((k) => glue.has(k)));
-  const gl = new Geo();
+  const gl = new Geo(), under = eps.flatMap((q) => cutPiece(F, q, OFF.eps));
   for (const r of mesh) for (const q of cutPiece(F, r, OFF.loose)) {
     // in strips of 100 mm, each off the wall by its sag; the pressed-in cells under it skipped
     const st = MM(100);
     for (let y = q[1]; y < q[3] - 1e-7; y += st) for (let a = q[0]; a < q[2] - 1e-7; a += st) {
       const c = [a, y, Math.min(a + st, q[2]), Math.min(y + st, q[3])], mid = ck(Math.floor((c[0] + c[2]) / 2 / CELL), Math.floor((c[1] + c[3]) / 2 / CELL));
       if (embIn.has(mid)) continue;
+      // (only over the boards: at a corner a board may stop flush, the mesh does not hang on in the air)
+      const ca = (c[0] + c[2]) / 2, cy = (c[1] + c[3]) / 2;
+      if (!under.some((u) => inR(u, ca, cy))) continue;
       const sag = MM(2.5 + 2.5 * Math.sin(a / MM(370) + y / MM(530)) * Math.cos(y / MM(290)));
       sheet(gl, F, [c], OFF.loose + sag, [500, 500], [r[0], r[1]]);
     }
