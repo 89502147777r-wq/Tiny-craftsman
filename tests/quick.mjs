@@ -423,6 +423,14 @@ console.log('—', sec());
       tc.journal.act('pier', {}, tc.clock, () => { for (const r of recs) tc.objects.add(r); });
       const o = findOpenings(tc).find((v) => Math.abs(v.x - (X0 + 3000 * S)) < 0.02 && Math.abs(v.z - Z0) < 0.02);
       out.pier = o && { ok: o.ok, w: o.w, h: o.h, floor: Math.round((o.y0 - y0) / S) };
+      tc.undo();
+      // a ring beam over two hollow piers (two rows of bricks, 140 mm between) 3 m apart: one beam
+      // as wide as the piers over the span, not a strip over each row
+      const { findBelt } = await import('/src/tools/belt.js'), P = [];
+      for (let r = 0; r < 12; r++) for (const a of [0, 3380]) for (const t of [-130, 130]) P.push({ type: 'unit', free: true, kind: 'brick', p: [X0 + a * S, y0 + (12 + r * 77 + 32.5) * S, Z0 + t * S], q, s: [380 * S, 65 * S, 120 * S], bedT: 12 * S });
+      tc.journal.act('piers', {}, tc.clock, () => { for (const r of P) tc.objects.add(r); });
+      const top = P.at(-1), B = findBelt(tc, new V(top.p[0], top.p[1] + 32.5 * S, top.p[2]), null, null), sp = B?.rec.spans || [];
+      out.span = { spans: sp.length, wide: sp.map(([i0, j0, i1, j1]) => Math.min(i1 - i0, j1 - j0) * 50), long: sp.map(([, , , , , , L]) => L) };
       tc.undo(); }
     return out;
   });
@@ -431,6 +439,7 @@ console.log('—', sec());
   check('garden: a lawn round it (topsoil, rake, roller, turf, water), a fence (holes, posts, slats), plants and a light', land.lawn.done === 'soil,rake,roll,grass,water' && land.lawn.cells >= 2 && land.fence.done === 'holes,posts,fill' && land.fence.gate === 'wicket:hung:open' && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
   check('exterior: a porch cast to a door (pit, stone, forms, concrete, stripped, tiled) and a canopy over it', land.porch.steps === 3 && land.porch.done === 'dig,grav,form,conc,strip,tile' && land.porch.canopy === 1 && land.porch.lights === 'steps', JSON.stringify(land.porch));
   check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
+  check('ring beam over hollow piers: one beam as wide as the piers', land.span?.spans === 1 && land.span.wide[0] >= 350, JSON.stringify(land.span));
   check('garden: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
