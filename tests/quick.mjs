@@ -464,6 +464,14 @@ console.log('—', sec());
           const glueOk = eA != null && ft._under(G, ft._rec(G), 'glue')(FM.ck(Math.floor(eA / FM.CELL), Math.floor(eY / FM.CELL)));
           const sl = FM.slotAt(G, eA ?? 0, eY, 'pan', [600, 300]), tr = eA != null ? ft._panTrim(G, ft._rec(G), sl, eA) : null;
           out.corner = { ends: ends.length, glueOk, pan: tr && Math.round((tr[2] - tr[0]) / S) };
+          // a stroke at a wall with only the sky behind the finger (looking up under the eaves): the
+          // facade still gets it — the camera does not take it; the shovel still leaves the sky to the camera
+          { const st0 = tc.rig.state(); tc.rig.setState({ target: [X0, y0 + MM(2500), Z0], yaw: 0, pitch: -0.35, dist: 0.25 }); tc.simulate(1 / 30);
+            const W = innerWidth / 2, H = innerHeight * 0.12, k0 = tc.settings.wallKind, t0 = tc.tool;
+            tc.setTool('wall'); tc.settings.wallKind = 'facade'; tc.wallTool.setMode('lay'); const onFac = !!tc.gestures.point(W, H);
+            tc.setTool('shovel'); const onShovel = !!tc.gestures.point(W, H);
+            tc.settings.wallKind = k0; tc.setTool(t0); tc.rig.setState(st0);
+            out.corner.sky = { onFac, onShovel }; }
           tc.undo(); }
         tc.undo(); }
       tc.undo(); }
@@ -476,7 +484,7 @@ console.log('—', sec());
   check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
   check('ring beam over hollow piers: one beam as wide as the piers; cast, one building (one wall plate)', land.span?.spans === 1 && land.span.wide[0] >= 350 && land.span.tied,JSON.stringify(land.span));
   check('wall plate: on the walls\' face and middle (a pier standing out ignored), moved across by the finger', land.plate && Math.abs(land.plate.T - 300) <= 10 && Math.abs(land.plate.A - 3000) <= 10 && Math.abs(land.plate.B - 3000) <= 10 && land.plate.po === 60 && land.plate.po2 === -75, JSON.stringify(land.plate));
-  check('facade corner: the board ends round a corner are glued and take a panel (cut to them)', land.corner?.ends >= 2 && land.corner.glueOk && land.corner.pan >= 60, JSON.stringify(land.corner));
+  check('facade corner: the board ends round a corner are glued and take a panel (cut to them); a stroke with the sky behind it reaches the facade', land.corner?.ends >= 2 && land.corner.glueOk && land.corner.pan >= 60 && land.corner.sky?.onFac && !land.corner.sky.onShovel, JSON.stringify(land.corner));
   check('garden: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
