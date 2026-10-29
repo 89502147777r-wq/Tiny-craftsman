@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { FitJob, bring, wait, drill, drive, hammer, part, at } from './fitJob.js';
-import { buildFacade, W, epsDowels, woolDowels, FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
+import { buildFacade, epsTrim, W, epsDowels, woolDowels, FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
 
 // The facade done by hand (facade.js), on the outside of the walls:
 //   eps  – the boards carried from the tray, one by one, staggered, cut at the openings and
@@ -272,7 +272,9 @@ export class FacadeWork {
     this.place = null;
     if (!h) { this._live(null); return null; }
     const V = L === 'mw' || L === 'vp', key = L === 'vp' ? this.ventKey : this.app.settings.facPanel || 'stone:sandstone', md = L === 'mw' ? [VENT_SUB.mwL, VENT_SUB.mwW] : panelMod(key);
-    const F = h.F, rec = this._rec(F), slot = V ? ventSlot(F, h.a, h.y, L, md) : slotAt(F, h.a, h.y, L, md), off = L === 'eps' ? OFF.eps : L === 'mw' ? OFF.mw : L === 'vp' ? OFF.vent : OFF.pan;
+    const F = h.F, rec = this._rec(F), off = L === 'eps' ? OFF.eps : L === 'mw' ? OFF.mw : L === 'vp' ? OFF.vent : OFF.pan;
+    let slot = V ? ventSlot(F, h.a, h.y, L, md) : slotAt(F, h.a, h.y, L, md);
+    if (L === 'eps') slot = [...slot, ...epsTrim(F, slot, (G) => this._rec(G))];   // (at a corner: cut to what is round it)
     const piece = cutPiece(F, slot, off), full = L === 'eps' ? MM(FACADE.epsL) * MM(FACADE.epsW) : MM(md[0]) * MM(md[1]);
     const why = this._why(F, rec, L, slot, piece);
     const cut = !why && Math.abs(area(piece) - full) > full * 0.01;
@@ -310,7 +312,9 @@ export class FacadeWork {
     const off = L === 'eps' ? OFF.eps : L === 'mw' ? OFF.mw : L === 'vp' ? OFF.vent : OFF.pan, rec = this._rec(F), out = [];
     const [a0, y0, a1, y1] = rect, sa = MM(md[0]) / 4, sy = MM(md[1]) / 2;
     for (let y = y0 + sy / 2; y <= y1; y += sy) for (let a = a0 + sa / 2; a <= a1; a += sa) {
-      const slot = V ? ventSlot(F, a, y, L, md) : slotAt(F, a, y, L, md), ca = (slot[0] + slot[2]) / 2, cy = (slot[1] + slot[3]) / 2;
+      let slot = V ? ventSlot(F, a, y, L, md) : slotAt(F, a, y, L, md);
+      if (L === 'eps') slot = [...slot, ...epsTrim(F, slot, (G) => this._rec(G))];
+      const ca = (slot[0] + slot[2]) / 2, cy = (slot[1] + slot[3]) / 2;
       if (ca < a0 - MM(40) || ca > a1 + MM(40) || cy < y0 - MM(40) || cy > y1 + MM(40)) continue;
       if (out.some((q) => sameSlot(q, slot))) continue;
       const piece = cutPiece(F, slot, off);

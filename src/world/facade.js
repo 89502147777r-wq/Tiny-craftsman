@@ -440,15 +440,27 @@ export function facadeFaces(objects) {
     // set back) is a face of its own — the wall's facade starts over the plinth
     const outer = (u) => { const c = u.b.x * nx + u.b.z * nz, h = across(u.b, nx, nz); return sg > 0 ? c + h : -(c - h); };
     // (one material within 60 mm is one wall: courses laid a little in or out by hand — the glue
-    // under the boards makes it up, they go on flat over the outermost; another material standing
-    // out — a brick plinth under the blocks — or a step over 60 mm is a tier of its own)
+    // under the boards makes it up, they go on flat over the outermost; another material — a brick
+    // plinth under the blocks, even flush with them — or a step over 60 mm is a tier of its own:
+    // the boards of each start and stop at its edges, not one sheet over brick and block)
     const mat = (u) => (u.b.kind === 'brick' ? 'brick' : u.b.kind === 'cinder' ? 'cinder' : 'block');
     const sorted = [...L.units].sort((p, q) => outer(p) - outer(q)), tiers = [];
     for (const u of sorted) {
-      const f = outer(u), m = mat(u), T = tiers.find((q) => q.m === m && f - q.f0 < MM(60)) || tiers.find((q) => q.m !== m && Math.abs(f - q.f) < MM(10));
+      const f = outer(u), m = mat(u), T = tiers.find((q) => q.m === m && f - q.f0 < MM(60));
       if (T) { T.us.push(u); T.f = Math.max(T.f, f); } else tiers.push({ f, f0: f, m, us: [u] });
     }
-    const big = tiers.filter((T) => T.us.length >= 3);
+    // (a tier in pieces that do not touch — a brick pier on the line of the wall, the brick plinth
+    // under the blocks — is a face each: not one rectangle over both and the blocks between)
+    const parts = [];
+    for (const T of tiers) {
+      const us = [...T.us].sort((p, q) => p.a0 - q.a0), par = us.map((_, i) => i), root = (i) => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; }, gap = MM(40);
+      for (let i = 0; i < us.length; i++) for (let j = i + 1; j < us.length && us[j].a0 <= us[i].a1 + gap; j++) {
+        if (Math.min(us[i].top, us[j].top) - Math.max(us[i].bot, us[j].bot) > -gap) par[root(i)] = root(j);
+      }
+      const g = new Map(); us.forEach((u, i) => { const r = root(i); (g.get(r) || g.set(r, []).get(r)).push(u); });
+      for (const q of g.values()) parts.push({ ...T, us: q });
+    }
+    const big = parts.filter((T) => T.us.length >= 3);
     for (const T of big) {
       const mine = new Set(T.us.map((u) => u.b));
       let b0 = Infinity, b1 = -Infinity, y0 = Infinity, y1 = -Infinity;
@@ -549,7 +561,11 @@ export function minus(rects, h) {
 const clip = (r, e) => { const q = [Math.max(r[0], e[0]), Math.max(r[1], e[1]), Math.min(r[2], e[2]), Math.min(r[3], e[3])]; return q[2] - q[0] > 1e-7 && q[3] - q[1] > 1e-7 ? q : null; };
 // a piece as it is on the wall: its rect cut to the face and round the openings
 export function cutPiece(F, r, off) {
-  const q = clip(r, ext(F, off)); if (!q) return [];
+  // (a board cut at a corner when it went on: its ends along the face, r[4]…r[5])
+  // (the board itself may run on round either end of a corner by its thickness, as epsTrim cut it)
+  const own = typeof r[4] === 'number';
+  if (own) r = [Math.max(r[0], r[4]), r[1], Math.min(r[2], r[5]), r[3]];
+  const q = clip(r, own && Math.abs(off - OFF.eps) < 1e-9 ? [F.a0 - (F.cn0 ? OFF.eps : 0), F.y0, F.a1 + (F.cn1 ? OFF.eps : 0), F.y1] : ext(F, off)); if (!q) return [];
   let out = [q]; for (const h of F.holes) out = minus(out, h);
   // a gable: what is over its slopes is off (the rest is cut along them when it is drawn)
   if (F.topAt) out = out.filter((p) => Math.max(F.topAt(p[0]), F.topAt(p[2]), ...F.top.filter(([a]) => a > p[0] && a < p[2]).map(([, y]) => y)) > p[1] + MM(5));
@@ -656,6 +672,28 @@ export function railsHold(rec, pieces) {
     const n = (rec?.rl || []).filter(([a, r0, r1]) => a >= a0 - MM(5) && a <= a1 + MM(5) && Math.min(r1, y1) - Math.max(r0, y0) > Math.min(y1 - y0, MM(300)) * 0.6).length;
     return n >= (a1 - a0 < MM(450) ? 1 : 2);
   });
+}
+// a board at a corner of the house: never out in the air — round the corner it runs on over the end
+// of the other wall's board there by its thickness when that one stops flush with the corner; it
+// stops flush itself when the other one runs on over it or is not there yet (that one then runs
+// on over this) → its ends along the face [a0, a1]; recFor(G): the record of a face
+export function epsTrim(F, s, recFor) {
+  let a0 = s[0], a1 = s[2];
+  for (const e of [0, 1]) {
+    const cn = e ? F.cn1 : F.cn0; if (!cn) continue;
+    const end = e ? F.a1 : F.a0, G = cn.G, gEnd = Math.abs(G.a0 - cn.aF) < Math.abs(G.a1 - cn.aF) ? G.a0 : G.a1, hiG = gEnd === G.a1;
+    let reach = null;
+    for (const r of recFor(G)?.eps || []) {
+      if (Math.min(r[3], s[3]) - Math.max(r[1], s[1]) <= MM(20)) continue;
+      const lo = typeof r[4] === 'number' ? Math.max(r[0], r[4]) : r[0], hi = typeof r[4] === 'number' ? Math.min(r[2], r[5]) : r[2];
+      if (lo > gEnd + OFF.eps + MM(5) || hi < gEnd - OFF.eps - MM(5)) continue;
+      const q = hiG ? hi - gEnd : gEnd - lo; reach = reach == null ? q : Math.max(reach, q);
+    }
+    const over = reach != null && reach > -MM(5) && reach < OFF.eps * 0.5;   // (the other stops flush: this one runs on over it)
+    const lim = over ? (e ? end + OFF.eps : end - OFF.eps) : end;
+    if (e) a1 = Math.min(a1, lim); else a0 = Math.max(a0, lim);
+  }
+  return [+a0.toFixed(6), +a1.toFixed(6)];
 }
 export const sameSlot = (p, q) => Math.abs(p[0] - q[0]) < MM(2) && Math.abs(p[1] - q[1]) < MM(2);
 
@@ -900,7 +938,7 @@ export function buildFacade(F, rec, live, recG = null) {
   if (ghost?.kind === 'eps' || (['pan', 'mw', 'vp'].includes(ghost?.kind) && !ghost.ok)) {
     const gh = new Geo(), o0 = ghost.kind === 'eps' || ghost.kind === 'mw' ? 0 : ghost.kind === 'vp' ? OFF.vent0 : OFF.eps, o1 = ghost.kind === 'eps' || ghost.kind === 'mw' ? OFF.eps : ghost.kind === 'vp' ? OFF.vent : OFF.pan;
     board(gh, F, cutPiece(F, ghost.slot, o1), o0 + MM(1), o1 + MM(1), [FACADE.epsL, FACADE.epsW], F.ru > 0 ? [ghost.slot[0], ghost.slot[1]] : [ghost.slot[2], ghost.slot[1]]);
-    const m = gh.mesh(ghost.ok && ghost.kind === 'eps' ? mat('epsGhost', () => stdMat(epsTex(), { emissive: 0x1d6b33, emissiveIntensity: 0.35 })) : mat('ghostRed', () => new THREE.MeshBasicMaterial({ color: 0xd04040, transparent: true, opacity: 0.5, depthWrite: false })));
+    const m = gh.mesh(ghost.ok && ghost.kind === 'eps' ? mat('epsGhost2', () => stdMat(epsTex(), { emissive: 0x2fbf4f, emissiveIntensity: 0.6, transparent: true, opacity: 0.8 })) : mat('ghostRed', () => new THREE.MeshBasicMaterial({ color: 0xd04040, transparent: true, opacity: 0.5, depthWrite: false })));
     if (m) { m.castShadow = false; m.userData.noPick = true; group.add(m); }
   }
   // the tool in the hand: the spatula, the float, the roll
