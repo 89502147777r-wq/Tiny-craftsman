@@ -34,7 +34,8 @@ export function houseOutside(app) { _outside = null; findHouse(app, null, true);
 let _bk = null, _bs = null;
 export function buildings(app) {
   const us = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop' && !u.lintel), slabs = app.objects.all('belt').filter((b) => b.kind === 'slab');
-  const key = us.length + ':' + (us.at(-1)?.id ?? 0) + ':' + slabs.map((b) => b.id).join(',');
+  const rings = app.objects.all('belt').filter((b) => !b.kind && !b.lform);
+  const key = us.length + ':' + (us.at(-1)?.id ?? 0) + ':' + slabs.map((b) => b.id).join(',') + ':' + rings.map((b) => b.id).join(',');
   if (key === _bk) return _bs;
   const bx = us.map(boxOf), n = bx.length, par = Int32Array.from({ length: n }, (_, i) => i), gap = MM(100);
   const root = (i) => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
@@ -59,6 +60,12 @@ export function buildings(app) {
       if (Math.hypot(b.x - a.x, b.z - a.z) > rad[i] + rad[j] + gap || root(i) === root(j) || apart(a, b)) continue;
       par[root(i)] = root(j);
     }
+  }
+  // a ring beam cast over them ties them into one: the walls and the pillars apart from them
+  // (a porch, a terrace under the same roof) carry one wall plate, one roof
+  for (const R of rings) {
+    let first = -1;
+    for (let i = 0; i < n; i++) if (Math.abs(bx[i].top - R.top) < MM(30) && beltContains(R, bx[i].x, bx[i].z)) { if (first < 0) first = i; else if (root(i) !== root(first)) par[root(i)] = root(first); }
   }
   const g = new Map(); bx.forEach((b, i) => { const r = root(i); if (!g.has(r)) g.set(r, []); g.get(r).push(b); });
   _bk = key; _bs = [...g.values()].sort((p, q) => q.length - p.length);

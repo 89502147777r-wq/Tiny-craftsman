@@ -431,6 +431,11 @@ console.log('—', sec());
       tc.journal.act('piers', {}, tc.clock, () => { for (const r of P) tc.objects.add(r); });
       const top = P.at(-1), B = findBelt(tc, new V(top.p[0], top.p[1] + 32.5 * S, top.p[2]), null, null), sp = B?.rec.spans || [];
       out.span = { spans: sp.length, wide: sp.map(([i0, j0, i1, j1]) => Math.min(i1 - i0, j1 - j0) * 50), long: sp.map(([, , , , , , L]) => L) };
+      // cast, it ties the piers into one building: one wall plate, one roof over both
+      { const { buildings } = await import('/src/tools/pitchedTool.js'), at = (a) => (g) => g.some((b) => Math.abs(b.x - (X0 + a * S)) < 0.01 && Math.abs(b.z - Z0) < 0.03);
+        const apart = !buildings(tc).some((g) => at(0)(g) && at(3380)(g));
+        tc.journal.act('ring', {}, tc.clock, () => tc.objects.add({ ...B.rec, fill: 1, castT: -1e6, set: true, stripped: true }));
+        out.span.tied = apart && buildings(tc).some((g) => at(0)(g) && at(3380)(g)); tc.undo(); }
       tc.undo(); }
     return out;
   });
@@ -439,7 +444,7 @@ console.log('—', sec());
   check('garden: a lawn round it (topsoil, rake, roller, turf, water), a fence (holes, posts, slats), plants and a light', land.lawn.done === 'soil,rake,roll,grass,water' && land.lawn.cells >= 2 && land.fence.done === 'holes,posts,fill' && land.fence.gate === 'wicket:hung:open' && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
   check('exterior: a porch cast to a door (pit, stone, forms, concrete, stripped, tiled) and a canopy over it', land.porch.steps === 3 && land.porch.done === 'dig,grav,form,conc,strip,tile' && land.porch.canopy === 1 && land.porch.lights === 'steps', JSON.stringify(land.porch));
   check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
-  check('ring beam over hollow piers: one beam as wide as the piers', land.span?.spans === 1 && land.span.wide[0] >= 350, JSON.stringify(land.span));
+  check('ring beam over hollow piers: one beam as wide as the piers; cast, one building (one wall plate)', land.span?.spans === 1 && land.span.wide[0] >= 350 && land.span.tied,JSON.stringify(land.span));
   check('garden: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
