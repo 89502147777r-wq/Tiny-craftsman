@@ -69,23 +69,28 @@ export function findOpenings(app) {
     for (let k = 0; k < lv.length; k++) gaps[k].forEach((g0, gi) => {
       if (used[k].has(gi)) return;
       // up the courses while the gap goes on (the width: what is open in all of them)
-      let a0 = g0[0], a1 = g0[1], top = k;
+      // (only the courses with masonry by the gap count: the courses of a pier or a wall further
+      // along the same line, laid to other heights, neither stop nor split it)
+      let a0 = g0[0], a1 = g0[1], top = k, prev = k;
+      const by = (c) => c.us.some((u) => u.a1 > a0 - MM(300) && u.a0 < a1 + MM(300));
       used[k].add(gi);
       for (let q = k + 1; q < lv.length; q++) {
-        if (lv[q].bot - lv[q - 1].top > MM(60)) break;   // (a slab / a ring beam between: the next storey's opening)
+        if (!by(lv[q])) continue;
+        if (lv[q].bot - lv[prev].top > MM(60)) break;   // (a slab / a ring beam between: the next storey's opening)
         const j = gaps[q].findIndex((g) => Math.min(a1, g[1]) - Math.max(a0, g[0]) >= MM(MIN_W));
         if (j < 0) break;
         // a lintel cast in place spans it at this course (the course beside it, the gap filled
         // with concrete): the opening stops under it (a floor slab cast inside at this level does not)
         { const m = (a0 + a1) / 2, mx = L.ux * m - L.uz * L.d, mz = L.uz * m + L.ux * L.d;
-          if (app.objects.all('belt').some((b) => b.kind !== 'slab' && b.fill > 0.3 && b.top > lv[q - 1].top - MM(30) && b.top < lv[q].bot + MM(40) && beltContains(b, mx, mz))) break; }
-        used[q].add(j); a0 = Math.max(a0, gaps[q][j][0]); a1 = Math.min(a1, gaps[q][j][1]); top = q;
+          if (app.objects.all('belt').some((b) => b.kind !== 'slab' && b.fill > 0.3 && b.top > lv[prev].top - MM(30) && b.top < lv[q].bot + MM(40) && beltContains(b, mx, mz))) break; }
+        used[q].add(j); a0 = Math.max(a0, gaps[q][j][0]); a1 = Math.min(a1, gaps[q][j][1]); top = prev = q;
       }
       // the bottom: the top of the course under it, or the floor (the bed under the first course)
       // the storey: back down to the first course over a slab / the foundation
-      let k0 = k; while (k0 > 0 && lv[k0].bot - lv[k0 - 1].top <= MM(60)) k0--;
+      let k0 = k, kb = -1;
+      for (let i = k - 1; i >= 0; i--) { if (!by(lv[i])) continue; if (kb < 0) kb = i; if (lv[k0].bot - lv[i].top <= MM(60)) k0 = i; else break; }
       const first = k === k0, yTop = lv[top].top;
-      let y0 = !first ? lv[k - 1].top : lv[k].bot - (lv[k].us[0].b.u.bedT ?? MM(20));
+      let y0 = !first ? lv[kb].top : lv[k].bot - (lv[k].us[0].b.u.bedT ?? MM(20));
       // nothing under it down to the bottom of the masonry beside it (any of it — a first course
       // laid a little off this line, a slab cast in the gap): the opening goes on down there
       const band = L.hw + MM(200), near = [];

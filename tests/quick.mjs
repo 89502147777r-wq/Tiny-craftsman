@@ -414,12 +414,23 @@ console.log('—', sec());
     tc.wallTool.ext.ready(); for (let i = 0; i < 30; i++) tc.simulate(1 / 30);
     const off = !tc.gardenView.interior; tc.undo(); for (let i = 0; i < 30; i++) tc.simulate(1 / 30);
     out.interior = { on, rooms, rerolled, off, back: !!tc.gardenView.interior };
+    // openings: a doorway in a block wall from the floor, a brick pier on the same line laid
+    // to other heights (its courses neither split nor shorten it)
+    { const { findOpenings } = await import('/src/tools/windowFit.js');
+      const S = 1 / 1000 / (9000 / 860), X0 = 1.2, Z0 = 1.2, y0 = tc.terrain.heightAt(X0, Z0), q = [0, 0, 0, 1], recs = [];
+      for (let r = 0; r < 10; r++) for (let k = 0; k < 10; k++) { const a = k * 603 + 300 + (r % 2) * 300; if (a > 6000 - 300 || (r < 8 && a > 1500 && a < 4500)) continue; recs.push({ type: 'unit', free: true, kind: 'block', p: [X0 + a * S, y0 + (3 + r * 253 + 125) * S, Z0], q, s: [600 * S, 250 * S, 300 * S], bedT: 3 * S }); }
+      for (let r = 0; r < 30; r++) for (const a of [-1100, -850]) recs.push({ type: 'unit', free: true, kind: 'brick', p: [X0 + a * S, y0 + (19 + r * 77 + 32.5) * S, Z0], q, s: [250 * S, 65 * S, 120 * S], bedT: 12 * S });
+      tc.journal.act('pier', {}, tc.clock, () => { for (const r of recs) tc.objects.add(r); });
+      const o = findOpenings(tc).find((v) => Math.abs(v.x - (X0 + 3000 * S)) < 0.02 && Math.abs(v.z - Z0) < 0.02);
+      out.pier = o && { ok: o.ok, w: o.w, h: o.h, floor: Math.round((o.y0 - y0) / S) };
+      tc.undo(); }
     return out;
   });
   check('«Готово»: rooms furnished behind the windows, another interior, off again, undo', land.interior.on && land.interior.rooms >= 1 && land.interior.rerolled && land.interior.off && land.interior.back, JSON.stringify(land.interior));
   check('garden: a path set out, dug, kerbed, stoned, sanded, paved, jointed; undo / redo', land.path.legs === 3 && land.path.done === 'dig,kerb,geo,grav,sand,pave,joint' && land.path.dug && land.undo && land.redo, JSON.stringify(land.path) + ` undo ${land.undo} redo ${land.redo}`);
   check('garden: a lawn round it (topsoil, rake, roller, turf, water), a fence (holes, posts, slats), plants and a light', land.lawn.done === 'soil,rake,roll,grass,water' && land.lawn.cells >= 2 && land.fence.done === 'holes,posts,fill' && land.fence.gate === 'wicket:hung:open' && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
   check('exterior: a porch cast to a door (pit, stone, forms, concrete, stripped, tiled) and a canopy over it', land.porch.steps === 3 && land.porch.done === 'dig,grav,form,conc,strip,tile' && land.porch.canopy === 1 && land.porch.lights === 'steps', JSON.stringify(land.porch));
+  check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
   check('garden: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
