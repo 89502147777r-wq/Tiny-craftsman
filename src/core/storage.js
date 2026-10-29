@@ -107,12 +107,12 @@ export function fromJSON(text) {
   });
 }
 
-export async function download(name, text) {
-  const blob = new Blob([text], { type: 'application/json' });
+export async function download(name, text, type = 'application/json') {
+  const blob = text instanceof Blob ? text : new Blob([text], { type });
   // iPhone / iPad: the share sheet («Сохранить в Файлы», a messenger) — Safari does not save
   // a blob link (an error in a home-screen app)
   try {
-    const file = new File([blob], name, { type: 'application/json' });
+    const file = new File([blob], name, { type: blob.type || type });
     if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: name }); return 'shared'; }
   } catch (e) { if (e?.name === 'AbortError') return 'cancelled'; }
   const url = URL.createObjectURL(blob);

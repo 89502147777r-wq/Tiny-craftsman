@@ -1,5 +1,6 @@
 // English for every Russian line of the game (the key: the Russian, {n} — what a template puts in)
 export default {
+"🐞 Экспорт построек (без истории, маленький файл) — для разбора ошибок": "🐞 Export the buildings (no history, a small file) — for bug reports",
 "Перекрытие разбили отбойником и вывезли": "The slab was broken up with a breaker and taken away",
 "Перемычку разбили отбойником — проём снова открыт": "The lintel was broken up with a breaker — the opening is open again",
 "Пояс разбили отбойником и вывезли": "The ring beam was broken up with a breaker and taken away",
