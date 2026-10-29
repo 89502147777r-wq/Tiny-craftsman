@@ -41,9 +41,11 @@ export const PITCHES = { gable: [25, 30, 35, 45], hip: [20, 25, 30, 35], mono: [
 export const PITCH_RANGE = { gable: [10, 60], hip: [10, 50], mono: [3, 35] };
 export const COVERS = { metal: 'Металлочерепица', seam: 'Фальц', shingle: 'Мягкая черепица' };
 export const COVER_COLOURS = {
-  metal: { ral3005: ['Вишня', 0x5b1f26], ral8017: ['Шоколад', 0x45322e], ral7024: ['Графит', 0x474a50], ral6005: ['Зелёный мох', 0x163f33], ral3011: ['Красно-коричневый', 0x7a2622] },
+  // (the RAL shades of the polyester coatings the sheets come in)
+  metal: { ral3005: ['Вишня', 0x5e2129], ral8017: ['Шоколад', 0x45322e], ral7024: ['Графит', 0x474a51], ral6005: ['Зелёный мох', 0x2f4538], ral3011: ['Красно-коричневый', 0x781f19], ral3009: ['Оксидно-красный', 0x642424], ral8019: ['Серо-коричневый', 0x403a3a], ral8004: ['Медно-коричневый', 0x8e402a], ral9005: ['Чёрный', 0x111113] },
   seam: { ral7024: ['Графит', 0x45484d], ral7016: ['Антрацит', 0x383e42], ral9005: ['Чёрный', 0x17181a], zinc: ['Титан-цинк', 0x8d9295], copper: ['Медь', 0xa8653f] },
-  shingle: { brown: ['Коричневая', ['#5e3b28', '#4a2c1e', '#6f4a33']], red: ['Красная', ['#7d2b22', '#65221b', '#8f3a2c']], grey: ['Серая', ['#5d6064', '#4b4e52', '#70737a']], green: ['Зелёная', ['#34463a', '#2a3a2f', '#43574a']] },
+  // (the blends of granules: a few tones mixed, the tabs each a little different)
+  shingle: { brown: ['Коричневая', ['#5a3d2b', '#432d20', '#6e4c35', '#30221a', '#7b5a40']], red: ['Красная', ['#76342a', '#5b2820', '#874436', '#43201b', '#935a48']], grey: ['Серая', ['#6a6c6e', '#4f5153', '#828486', '#3b3c3e', '#96989a']], green: ['Зелёная', ['#3c4f3e', '#2d3c2f', '#4d614e', '#232d24', '#5d705b']], black: ['Антрацит', ['#3a3a3c', '#2a2a2c', '#4b4b4e', '#1d1d1f', '#5a5a5d']], wood: ['Выветренное дерево', ['#6e6152', '#544a3f', '#857766', '#3f372f', '#97897a']] },
 };
 export const STAGES = [['plate', 'Мауэрлат и фронтоны'], ['joists', 'Лаги перекрытия'], ['ridge', 'Коньковый прогон'], ['frame', 'Стропила'], ['memb', 'Мембрана'], ['battens', 'Обрешётка'], ['cover', 'Покрытие'], ['trim', 'Конёк и планки'], ['gutter', 'Водосток']];
 // the windows in the roof (мансардные окна): the same windows go into a slope (between the
@@ -85,22 +87,40 @@ function osbTex() {
   g.strokeStyle = 'rgba(60,40,20,0.6)'; g.lineWidth = 2; g.strokeRect(1, 1, n - 2, n - 2);
   return (TEX.osb = asTex(c));
 }
-// soft shingles: rows of hexagonal tabs, the granules in three tones (a tile 1000 × 572)
+// soft shingles: rows of hexagonal tabs (a tile 1000 × 572: four rows of 143 mm showing), each
+// tab its own mix of the blend's granules; under each tab's lower edge the shadow of its
+// thickness on the row below; the height for the normals: the tabs over the row under, grains
 function shingleTex(cols) {
   const key = 'sh' + cols.join(); if (TEX[key]) return TEX[key];
-  const n = 512, m = 293, c = canvas(n, m), g = c.getContext('2d'), hc = canvas(n, m), h = hc.getContext('2d');
-  g.fillStyle = '#1b1b1b'; g.fillRect(0, 0, n, m); h.fillStyle = '#202020'; h.fillRect(0, 0, n, m);
-  const rows = 4, rh = m / rows, tw = n / 3;
-  for (let r = 0; r < rows + 1; r++) for (let k = -1; k < 4; k++) {
-    const x0 = k * tw + (r % 2 ? tw / 2 : 0), y0 = r * rh - rh * 0.15;
-    const col = cols[Math.floor(rnd() * cols.length)];
-    // a hexagonal tab, its lower part showing
-    const P = [[x0 + 4, y0], [x0 + tw - 4, y0], [x0 + tw - 4, y0 + rh * 0.8], [x0 + tw / 2 + 18, y0 + rh * 1.05], [x0 + tw / 2 - 18, y0 + rh * 1.05], [x0 + 4, y0 + rh * 0.8]];
-    for (const ctx of [g, h]) { ctx.beginPath(); P.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fillStyle = ctx === g ? col : '#9a9a9a'; ctx.fill(); }
-    // its granules
-    for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(${rnd() < 0.5 ? '255,255,255' : '0,0,0'},${0.06 + rnd() * 0.1})`; g.fillRect(x0 + rnd() * tw, y0 + rnd() * rh, 1.6, 1.6); }
+  const n = 2048, m = 586, c = canvas(n, m), g = c.getContext('2d'), hc = canvas(n, m), h = hc.getContext('2d');
+  const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const pal = cols.map(rgb), rows = 4, rh = m / rows, tw = n / 6;   // (2 m across: six tabs a row, less of a repeat)
+  // (under the cut-outs: the layer below — the same granules, in shade)
+  const mean = [0, 1, 2].map((i) => pal.reduce((a, q) => a + q[i], 0) / pal.length);
+  g.fillStyle = `rgb(${mean.map((v) => v * 0.42).join(',')})`; g.fillRect(0, 0, n, m);
+  for (let i = 0; i < 30000; i++) { const q = pal[Math.floor(rnd() * pal.length)], l = 0.3 + rnd() * 0.25; g.fillStyle = `rgb(${q.map((v) => v * l).join(',')})`; g.fillRect(rnd() * n, rnd() * m, 1.5, 1.5); }
+  h.fillStyle = '#000'; h.fillRect(0, 0, n, m);
+  // from the top row down: each row's tabs over the one above's lower part (as laid, from the eave up — seen the other way)
+  for (let r = -1; r < rows + 1; r++) for (let k = -1; k < 7; k++) {
+    const x0 = k * tw + (((r % 2) + 2) % 2 ? tw / 2 : 0), y0 = r * rh - rh * 0.2, cut = 26;
+    const P = [[x0 + 3, y0], [x0 + tw - 3, y0], [x0 + tw - 3, y0 + rh * 0.78], [x0 + tw / 2 + cut, y0 + rh * 1.2], [x0 + tw / 2 - cut, y0 + rh * 1.2], [x0 + 3, y0 + rh * 0.78]];
+    const path = (ctx) => { ctx.beginPath(); P.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); };
+    // the shadow it casts down on the row below (its thickness, the light from above)
+    g.save(); g.translate(0, 5); path(g); g.fillStyle = 'rgba(0,0,0,0.32)'; g.filter = 'blur(3px)'; g.fill(); g.restore();
+    // the tab: its own tone of the blend, the granules of all of them
+    // (a tab: the blend's mean, pulled a third of the way to one of its tones — a mosaic, not a checkerboard)
+    const tone = pal[Math.floor(rnd() * pal.length)], sh = 0.93 + rnd() * 0.14, base = mean.map((v, i) => (v * 0.62 + tone[i] * 0.38) * sh);
+    g.save(); path(g); g.clip();
+    g.fillStyle = `rgb(${base.map((v) => Math.min(255, v)).join(',')})`; g.fillRect(x0, y0, tw, rh * 1.3);
+    for (let i = 0; i < 2600; i++) { const q = pal[Math.floor(rnd() * pal.length)], l = 0.75 + rnd() * 0.5; g.fillStyle = `rgba(${q.map((v) => Math.min(255, v * l)).join(',')},${0.55 + rnd() * 0.45})`; const sz = 1 + rnd() * 1.6; g.fillRect(x0 + rnd() * tw, y0 + rnd() * rh * 1.25, sz, sz); }
+    // (the sealing strip of bitumen across, under the next row — a darker band)
+    g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x0, y0 + rh * 0.05, tw, 6);
+    g.restore();
+    h.save(); path(h); h.clip(); h.fillStyle = '#b4b4b4'; h.fillRect(x0, y0, tw, rh * 1.3);
+    for (let i = 0; i < 1400; i++) { const v = 150 + rnd() * 70; h.fillStyle = `rgb(${v},${v},${v})`; h.fillRect(x0 + rnd() * tw, y0 + rnd() * rh * 1.25, 1.5, 1.5); }
+    h.restore();
   }
-  return (TEX[key] = { map: asTex(c), normalMap: normalOf(hc, 3) });
+  return (TEX[key] = { map: asTex(c), normalMap: normalOf(hc, 5) });
 }
 
 // ---- the shape of a wing -----------------------------------------------------------------------
@@ -242,17 +262,32 @@ class Beams {
 
 // a sheet over a plane at an offset along its normal; only where this wing's roof is the top
 // (not inside a wing it runs into), not in the holes (the windows), within x0…x1, t0…t1
-function sheet(ctx, P, off, dx, dt, prof, uv, x0 = -Infinity, x1 = Infinity, t0 = 0, t1 = Infinity, holes = []) {
+// the metal tile (a Monterrey profile): waves 185 mm apart across, 23 mm high, rounded crests;
+// the stamped steps 350 mm apart up the slope, 15 mm, facing the eave (the sheet's first step
+// at its lower edge); the crests round off down into each step as the tiles' fronts
+export const MTILE = { w: 185, s: 350, wave: 23, step: 15 };
+const ss = (a, b, v) => { const q = Math.min(1, Math.max(0, (v - a) / (b - a))); return q * q * (3 - 2 * q); };
+export function mtileH(x, t) {
+  const u = (((x / MM(MTILE.w)) % 1) + 1) % 1, v = (((t / MM(MTILE.s)) % 1) + 1) % 1;
+  const c = Math.pow(0.5 + 0.5 * Math.cos(2 * Math.PI * u), 0.75);
+  return MM(MTILE.wave) * c * (0.62 + 0.38 * ss(0.02, 0.4, v)) + MM(MTILE.step) * ss(0, 0.055, v) * (1 - 0.22 * v);
+}
+// its samples: the crests rounded, the step sharp
+const MT_U = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], MT_V = [0, 0.025, 0.055, 0.14, 0.34, 0.6, 0.82];
+const gridOf = (k, us) => (a0, a1) => { const out = [a0]; for (let i = Math.floor(a0 / k); i * k < a1; i++) for (const u of us) { const q = (i + u) * k; if (q > a0 + 1e-7 && q < a1 - 1e-7) out.push(q); } out.push(a1); return out; };
+function sheet(ctx, P, off, dx, dt, prof, uv, x0 = -Infinity, x1 = Infinity, t0 = 0, t1 = Infinity, holes = [], grid = null) {
   const { f, wi, roof, shapes } = ctx;
   const X0 = Math.max(x0, Math.min(P.xa(0), P.xa(P.L))), X1 = Math.min(x1, Math.max(P.xb(0), P.xb(P.L)));
   const T0 = Math.max(0, t0), T1 = Math.min(P.L, t1);
   if (X1 - X0 < 1e-6 || T1 - T0 < 1e-6) return null;
-  const nx = Math.max(1, Math.ceil((X1 - X0) / dx)), nt = Math.max(1, Math.ceil((T1 - T0) / dt)), pos = [], uvs = [], hide = [], idx = [];
+  // (the samples along x and t: even, or where the profile asks for them — the steps, the crests)
+  const XS = grid ? grid.xs(X0, X1) : null, TS = grid ? grid.ts(T0, T1) : null;
+  const nx = XS ? XS.length - 1 : Math.max(1, Math.ceil((X1 - X0) / dx)), nt = TS ? TS.length - 1 : Math.max(1, Math.ceil((T1 - T0) / dt)), pos = [], uvs = [], hide = [], idx = [];
   const { n } = frameOf(f, P);
   for (let j = 0; j <= nt; j++) {
-    const t = Math.min(T1, T0 + j * dt), xa = Math.max(X0, P.xa(t)), xb = Math.min(X1, P.xb(t));
+    const t = TS ? TS[j] : Math.min(T1, T0 + j * dt), xa = Math.max(X0, P.xa(t)), xb = Math.min(X1, P.xb(t));
     for (let i = 0; i <= nx; i++) {
-      const x = xb < xa ? xa : Math.max(xa, Math.min(xb, X0 + i * (X1 - X0) / nx));
+      const x = xb < xa ? xa : Math.max(xa, Math.min(xb, XS ? XS[i] : X0 + i * (X1 - X0) / nx));
       const [a, d] = P.at(x, t), y = f.top(a, d), h = off + (prof ? prof(x, t) : 0), w = f.W(a, d, y);
       pos.push(w[0] + n.x * h, w[1] + n.y * h, w[2] + n.z * h);
       uvs.push(...uv(x, t));
@@ -333,7 +368,10 @@ export function buildPitched(roof, live = null, wins = []) {
   const beams = new Beams(), tie = MM(PITCHED.rafterH), rw = MM(PITCHED.rafterW), step = MM(PITCHED.step);
   const kind = roof.cover?.kind || 'metal', cc = COVER_COLOURS[kind][roof.cover?.col] || Object.values(COVER_COLOURS[kind])[0];
   const coff = MM(PITCHED.cb + (kind === 'shingle' ? 22 : PITCHED.batten[0] + 2));
-  const metalMat = () => mat('cov' + kind + (roof.cover?.col || ''), () => new THREE.MeshStandardMaterial({ color: cc[1], metalness: kind === 'seam' ? 0.55 : 0.35, roughness: kind === 'seam' ? 0.42 : 0.5, side: THREE.DoubleSide }));
+  // (steel coated with polyester: a paint with a sheen, not bare metal — the zinc and the copper of
+  // a seamed roof are metal)
+  const bare = kind === 'seam' && (roof.cover?.col === 'zinc' || roof.cover?.col === 'copper');
+  const metalMat = () => mat('cov' + kind + (roof.cover?.col || ''), () => new THREE.MeshPhysicalMaterial({ color: cc[1], metalness: bare ? 0.75 : 0.1, roughness: bare ? 0.38 : 0.5, clearcoat: bare ? 0 : 0.25, clearcoatRoughness: 0.4, envMapIntensity: bare ? 1 : 0.55, side: THREE.DoubleSide }));
   const add = (m) => { if (m) { m.castShadow = m.receiveShadow = true; G.add(m); } return m; };
   const VL = valleys(roof, shapes);
   roof.wings.forEach((w, wi) => {
@@ -461,8 +499,24 @@ export function buildPitched(roof, live = null, wins = []) {
       }
       for (const [x0, x1, t0, t1] of planeSpans(P, cv, f)) {
         if (kind === 'metal') {
-          const prof = (x, t) => { const wv = 0.5 - 0.5 * Math.cos(2 * Math.PI * x / MM(185)), fr2 = (t % MM(350)) / MM(350); return MM(19) * wv + MM(16) * Math.min(1, fr2 / 0.92) - MM(16) * Math.max(0, (fr2 - 0.92) / 0.08); };
-          const r = sheet(ctx, P, coff, MM(185 / 6), MM(350 / 7), prof, (x, t) => [x / MM(1000), t / MM(1000)], x0, x1, t0, t1, hs); if (r) add(new THREE.Mesh(r.g, metalMat()));
+          const r = sheet(ctx, P, coff, 0, 0, mtileH, (x, t) => [x / MM(1000), t / MM(1000)], x0, x1, t0, t1, hs, { xs: gridOf(MM(MTILE.w), MT_U), ts: gridOf(MM(MTILE.s), MT_V) });
+          if (!r) continue;
+          add(new THREE.Mesh(r.g, metalMat()));
+          // the roofing screws with their washers (in the colour): in every other wave's trough just over
+          // each step — into the batten under it
+          const sc = [], xs0 = Math.max(x0, Math.min(P.xa(0), P.xa(P.L))), xs1 = Math.min(x1, Math.max(P.xb(0), P.xb(P.L)));
+          for (let t = (Math.ceil(Math.max(0, t0) / MM(MTILE.s)) + 0.1) * MM(MTILE.s); t < Math.min(P.L, t1) - MM(100); t += MM(MTILE.s)) {
+            for (let k = Math.ceil(xs0 / MM(MTILE.w * 2) - 0.25); (2 * k + 0.5) * MM(MTILE.w) < xs1; k++) {
+              const x = (2 * k + 0.5) * MM(MTILE.w);   // (a trough: half a wave from a crest)
+              if (x < P.xa(t) + MM(80) || x > P.xb(t) - MM(80) || x < x0 || x > x1) continue;
+              const [a, d] = P.at(x, t); if (under(a, d) || hs.some((q) => x > q[0] - MM(60) && x < q[1] + MM(60) && t > q[2] - MM(60) && t < q[3] + MM(60))) continue;
+              sc.push(F.pt(x, t, coff + mtileH(x, t) + MM(3)));
+            }
+          }
+          if (sc.length) {
+            const geo = mat('screwGeo', () => new THREE.CylinderGeometry(MM(7), MM(7.5), MM(6), 10)), q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), F.n), M = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1);
+            const im = new THREE.InstancedMesh(geo, metalMat(), sc.length); sc.forEach((p, i) => im.setMatrixAt(i, M.compose(p, q, one))); add(im);
+          }
         } else if (kind === 'seam') {
           const r = sheet(ctx, P, coff, MM(100), MM(150), null, (x, t) => [x / MM(1000), t / MM(1000)], x0, x1, t0, t1, hs); if (!r) continue;
           add(new THREE.Mesh(r.g, metalMat()));
@@ -476,8 +530,8 @@ export function buildPitched(roof, live = null, wins = []) {
           }
           add(rib.mesh(metalMat()));
         } else {
-          const T2 = shingleTex(cc[1]), r = sheet(ctx, P, coff, MM(250), MM(286), null, (x, t) => [x / MM(1000), t / MM(572)], x0, x1, t0, t1, hs);
-          if (r) add(new THREE.Mesh(r.g, mat('sh' + roof.cover.col, () => new THREE.MeshStandardMaterial({ map: T2.map, normalMap: T2.normalMap, roughness: 0.95, side: THREE.DoubleSide }))));
+          const T2 = shingleTex(cc[1]), r = sheet(ctx, P, coff, MM(250), MM(286), null, (x, t) => [x / MM(2000), t / MM(572)], x0, x1, t0, t1, hs);
+          if (r) add(new THREE.Mesh(r.g, mat('sh' + roof.cover.col, () => new THREE.MeshStandardMaterial({ map: T2.map, normalMap: T2.normalMap, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.93, envMapIntensity: 0.4, side: THREE.DoubleSide }))));
         }
       }
       // the windows in this plane
