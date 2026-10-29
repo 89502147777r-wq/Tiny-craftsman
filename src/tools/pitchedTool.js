@@ -185,15 +185,22 @@ export function findHouse(app, near = null, whole = false, base = false, band = 
   // the wings: the ridge along the longer side; an end touching another rectangle joins it.
   // Each side of a rectangle (on the 100 mm grid) goes onto the true outer face of the
   // walls along it (the wall plate, the studs in the ring beam, the blind area line up)
-  const corners = units.flatMap((b) => [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => { const x = b.x + b.ux * b.hl * sx - b.uz * b.hw * sz, z = b.z + b.uz * b.hl * sx + b.ux * b.hw * sz; return [toA(x, z), toD(x, z)]; }));
+  // (each unit in the frame: its extent along a and d)
+  const ext = units.map((b) => { let p0 = Infinity, p1 = -Infinity, q0 = Infinity, q1 = -Infinity; for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { const x = b.x + b.ux * b.hl * sx - b.uz * b.hw * sz, z = b.z + b.uz * b.hl * sx + b.ux * b.hw * sz, pa = toA(x, z), pd = toD(x, z); p0 = Math.min(p0, pa); p1 = Math.max(p1, pa); q0 = Math.min(q0, pd); q1 = Math.max(q1, pd); } return [p0, p1, q0, q1]; });
+  // the face of the walls along a side: where most of them end (by their length along it) — a
+  // pier standing out of the wall, a sill, is not the face the wall plate lines up with
   const face = (v, lo, hi, isA, out) => {
-    let best = null;
-    for (const [pa, pd] of corners) {
-      const q = isA ? pa : pd, r = isA ? pd : pa;
-      if (Math.abs(q - v) > C * 1.2 || r < lo + C || r > hi - C) continue;
-      if (best == null || (out > 0 ? q > best : q < best)) best = q;
+    const bins = new Map();
+    for (const [p0, p1, q0, q1] of ext) {
+      const q = isA ? (out > 0 ? p1 : p0) : (out > 0 ? q1 : q0), r0 = isA ? q0 : p0, r1 = isA ? q1 : p1;
+      if (Math.abs(q - v) > C * 1.2) continue;
+      const len = Math.min(r1, hi - C) - Math.max(r0, lo + C);
+      if (len <= 0) continue;
+      const k = Math.round(q / MM(5)); bins.set(k, (bins.get(k) || 0) + len);
     }
-    return best ?? v;
+    let best = null, bw = 0;
+    for (const [k, wt] of bins) if (wt > bw * 1.001 || (Math.abs(wt - bw) <= bw * 0.001 && (out > 0 ? k > best : k < best))) { best = k; bw = wt; }
+    return best == null ? v : best * MM(5);
   };
   const wings = rects.map((r) => {
     let ra = [a0 + r.i0 * C, a0 + r.i1 * C], rd = [d0 + r.j0 * C, d0 + r.j1 * C];
@@ -223,7 +230,23 @@ export function findHouse(app, near = null, whole = false, base = false, band = 
   // the top: the walls, or a ring beam cast on them
   let y0 = Math.max(...units.map((b) => b.top));
   for (const b of app.objects.all('belt')) if (b.kind !== 'pool' && b.fill > 0.5 && b.top + b.H > y0 - MM(50) && b.top + b.H < y0 + MM(400) && (band == null || wings.some((w) => beltContains(b, w.cx, w.cz)))) y0 = Math.max(y0, b.top + b.H);
-  const T = [...units.map((b) => 2 * Math.min(b.hw, b.hl))].sort((p, q) => p - q)[Math.floor(units.length / 2)];
+  // the walls' thickness: from the face inward along each side, through the masonry there (the
+  // joints bridged) — not the commonest unit (a brick pier's 120 mm bricks in a 300 mm block house)
+  let T = [...units.map((b) => 2 * Math.min(b.hw, b.hl))].sort((p, q) => p - q)[Math.floor(units.length / 2)];
+  {
+    const deep = [];
+    for (const w of wings) for (const [isA, out] of [[true, -1], [true, 1], [false, -1], [false, 1]]) {
+      const f = isA ? w.ra[out > 0 ? 1 : 0] : w.rd[out > 0 ? 1 : 0], [lo, hi] = isA ? w.rd : w.ra;
+      for (let r = lo + MM(300); r <= hi - MM(300); r += MM(400)) {
+        const near = ext.filter(([p0, p1, q0, q1]) => (isA ? q0 <= r && q1 >= r : p0 <= r && p1 >= r));
+        const inside = (q) => near.some(([p0, p1, q0, q1]) => (isA ? p0 <= q && p1 >= q : q0 <= q && q1 >= q));
+        let last = null, gap = 0;
+        for (let k = 1; k <= 80; k++) { const q = f - out * MM(10) * k + out * MM(5); if (inside(q)) { last = k; gap = 0; } else if (last != null && ++gap > 2) break; else if (last == null && k > 3) break; }
+        if (last != null && last * 10 >= 80) deep.push(MM(last * 10));
+      }
+    }
+    if (deep.length >= 4) { deep.sort((p, q) => p - q); T = deep[deep.length >> 1]; }
+  }
   const g = Math.min(...all.map((b) => b.bot)) - MM(20);
   return { y0: +y0.toFixed(6), T: +T.toFixed(6), g: +g.toFixed(6), wings: wings.map((w) => ({ cx: +w.cx.toFixed(6), cz: +w.cz.toFixed(6), ux: +w.ux.toFixed(6), uz: +w.uz.toFixed(6), A: +w.A.toFixed(6), B: +w.B.toFixed(6), e: w.e, x: w.x.map((v) => +v.toFixed(6)) })) };
 }
@@ -488,6 +511,7 @@ export class PitchedWork {
     const app = this.app, L = this.stage;
     this.place = null; this.why = null;
     if (L === 'plate') {
+      app.ui.hideMeasure();
       // the building at the finger (a house, a garage beside it: each its own roof)
       // (at the top of a lower part built on to a house — a garage — its own lean-to roof)
       const B = buildingAt(app, p), lean = findLean(app, p), key = app.objects.all('unit').length + ':' + app.objects.all('belt').length + ':' + (B?.[0]?.u.id ?? 0) + ':' + (lean ? Math.round(lean.y0 * 1e4) + ':' + Math.round(lean.wings[0].cx * 1e3) : '');
@@ -503,7 +527,22 @@ export class PitchedWork {
         const near = H.wings.some((w) => { const dx = p.x - w.cx, dz = p.z - w.cz, a = dx * w.ux + dz * w.uz, d = -dx * w.uz + dz * w.ux; return Math.abs(a) < w.A + MM(4000) && Math.abs(d) < w.B + MM(4000); });
         if (!near) { this._live(null); this.why = 'Поднесите мауэрлат к дому — к верху стен'; return { ok: false, why: this.why }; }
       }
-      const o = this.opts(null), rec = { ...H, ...o, wings: this._ends(H.wings, o.style), done: { plate: true } };   // (a new roof: as chosen in the menu)
+      // across the walls: where the finger is on the top of a wall — on the line of the studs, or
+      // moved out / in by as much as they still go through the plate (30 mm of wood beside each);
+      // on anchors (no studs), from flush with the outer face to flush with the inner
+      const studs = app.objects.all('belt').some((b) => b.studs?.length && Math.abs(b.top + b.H - H.y0) < MM(40));
+      const lim = studs ? 75 - 30 - 6 : Math.max(0, Math.round(H.T / S / 2) - 75);
+      if (p) {
+        let best = null;
+        for (const w of H.wings) {
+          const dx = p.x - w.cx, dz = p.z - w.cz, a = dx * w.ux + dz * w.uz, d = -dx * w.uz + dz * w.ux;
+          for (const out of [Math.abs(a) <= w.A ? Math.abs(d) - (w.B - H.T / 2) : null, Math.abs(d) <= w.B ? Math.abs(a) - (w.A - H.T / 2) : null]) if (out != null && Math.abs(out) < H.T / 2 + MM(100) && (best == null || Math.abs(out) < Math.abs(best))) best = out;
+        }
+        if (best != null) { let mm = Math.round(best / S / 5) * 5; if (Math.abs(mm) <= 8) mm = 0; this._po = Math.max(-lim, Math.min(lim, mm)); }
+      }
+      const po = Math.max(-lim, Math.min(lim, this._po || 0));
+      app.ui.showMeasure(po === 0 ? (studs ? 'Мауэрлат по оси шпилек' : 'Мауэрлат по оси стены') : `Мауэрлат сдвинут ${po > 0 ? 'наружу' : 'внутрь'} на ${Math.abs(po)} мм${studs ? ` (шпильки в брусе, до ${lim} мм)` : po === lim ? ' — заподлицо с наружной гранью' : po === -lim ? ' — заподлицо с внутренней гранью' : ''}`);
+      const o = this.opts(null), rec = { ...H, ...o, po, wings: this._ends(H.wings, o.style), done: { plate: true } };   // (a new roof: as chosen in the menu)
       this.place = { rec };
       this._live({ ghost: rec });
       return { ok: true };
@@ -534,7 +573,8 @@ export class PitchedWork {
   }
   carryDrop() {
     const app = this.app, P = this.place;
-    this.place = null; this._live(null);
+    this.place = null; this._live(null); this._po = 0;
+    if (this.stage === 'plate') app.ui.hideMeasure();
     if (!P) { app.ui.toast(this.why || (this.stage === 'plate' ? 'Мауэрлат — на верх стен' : 'Конёк и планки — на крышу с покрытием')); this.why = null; return; }
     if (P.rec) {
       // (a new roof: on the building it was carried to — the others keep theirs)
@@ -542,7 +582,7 @@ export class PitchedWork {
       if (id != null) this.sel = id;
       const n = P.rec.wings.length, t = ROOF_TYPES[P.rec.style].toLowerCase();
       const studs = app.objects.all('belt').some((b) => b.studs?.length);
-      app.ui.toast(`Мауэрлат 150×150 ${studs ? 'на шпильках армопояса, шайбы и гайки' : 'на анкерах'} по всему дому${P.rec.style !== 'hip' ? ', фронтоны из блоков' : ''} — крыша ${t}${n > 1 ? `, ${n} крыла с ендовами` : ''}, ${P.rec.pitch}°. Дальше — лаги перекрытия, коньковый прогон, стропила`);
+      app.ui.toast(`Мауэрлат 150×150 ${studs ? 'на шпильках армопояса, шайбы и гайки' : 'на анкерах'} по всему дому${P.rec.po ? `, сдвинут ${P.rec.po > 0 ? 'наружу' : 'внутрь'} на ${Math.abs(P.rec.po)} мм` : ''}${P.rec.style !== 'hip' ? ', фронтоны из блоков' : ''} — крыша ${t}${n > 1 ? `, ${n} крыла с ендовами` : ''}, ${P.rec.pitch}°. Дальше — лаги перекрытия, коньковый прогон, стропила`);
       return;
     }
     const r = this.rec;
@@ -554,7 +594,7 @@ export class PitchedWork {
   }
   status(carry) {
     const L = this.stage, r = this.rec;
-    if (carry) return this.place ? 'Отпустите' : (L === 'plate' ? 'Поднесите мауэрлат к верху стен' : L === 'gutter' ? 'Поднесите водосток к крыше' : L === 'ridge' ? 'Поднесите прогон к дому' : L === 'joists' ? 'Поднесите лаги к дому' : 'Поднесите конёк к крыше');
+    if (carry) return this.place ? (L === 'plate' ? 'Ведите пальцем поперёк стены — сдвиг мауэрлата по шпилькам; отпустите' : 'Отпустите') : (L === 'plate' ? 'Поднесите мауэрлат к верху стен' : L === 'gutter' ? 'Поднесите водосток к крыше' : L === 'ridge' ? 'Поднесите прогон к дому' : L === 'joists' ? 'Поднесите лаги к дому' : 'Поднесите конёк к крыше');
     const left = r ? this.left(r, L) : 1;
     return {
       plate: r ? 'Мауэрлат лежит — дальше «Лаги перекрытия»' : 'Скатная крыша: выберите тип, уклон и покрытие, потом тяните мауэрлат из лотка на верх стен — крыша встанет по дому (Г-, Т-образный — крыльями с ендовами)',

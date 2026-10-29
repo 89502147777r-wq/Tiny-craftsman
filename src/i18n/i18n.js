@@ -48,7 +48,7 @@ export function tr(s) {
   if (r === null) {
     // a line glued of pieces: by its separators, then whatever known lines it holds
     const seg = s.split(/( — | · |\. |: |; |, |\n)/);
-    r = seg.length > 1 ? seg.map((x, i) => (i % 2 ? x : look(x) ?? x)).join('') : s;
+    r = seg.length > 1 ? seg.map((x, i) => (i % 2 || !x.trim() ? x : look(x) ?? x)).join('') : s;
     if (CYR.test(r)) for (const k of PARTS) if (r.includes(k)) r = r.split(k).join(EN[k]);
     for (const [re, to] of UNITS) r = r.replace(re, to);
   }
