@@ -803,7 +803,12 @@ app.exportObjects = async () => {
 };
 
 app.importProject = async (file) => {
-  const p = fromJSON(await file.text());
+  // (a packed one — the bug-report export: .gz)
+  let text;
+  const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+  if (head[0] === 0x1f && head[1] === 0x8b && typeof DecompressionStream !== 'undefined') text = await new Response(file.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  else text = await file.text();
+  const p = fromJSON(text);
   await clearLocal(); SAVE.j.clear(); SAVE.legacy = false;
   applyProject(p);
   applySettings();
