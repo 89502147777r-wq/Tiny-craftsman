@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { mats, box, glazing } from './windows.js';
-import { GARAGES, GARAGE_SIZE, buildGarage } from './garage.js';
+import { GARAGES, GARAGE_SIZE, buildGarage, garageKit } from './garage.js';
+import { hasKit, fitKit, kitMat, mergeParts } from './openingKits.js';
 
 // Doors, built to the opening like the windows (windows.js): the frame (коробка) round the
 // top and the sides, the leaf (полотно) in it with a 3 mm gap, its panels / grooves / glass,
@@ -10,6 +11,8 @@ import { GARAGES, GARAGE_SIZE, buildGarage } from './garage.js';
 // entrance door; the casings (наличники) over the joint with the wall; the foam and the
 // tapes in the gap round the frame. All in mm; the local frame as a window's (x along the
 // wall, y up from the floor of the opening, z across the wall, + outside).
+// Once the modelled doors have come (openingKits.js), a door is one of them (with its frame, or
+// its leaf in this frame), fitted to the opening; the foam and the casings stay drawn.
 const S = 1 / 1000 / MODEL_SCALE;
 
 export const DOORS = {
@@ -18,12 +21,22 @@ export const DOORS = {
   door3: { name: 'Межкомнатная, дуб', leaf: 'wood', panels: true },
   door4: { name: 'Межкомнатная белая со стеклом', leaf: 'white', frosted: true },
   door5: { name: 'Двустворчатая входная, дуб', leaf: 'wood', entrance: true, double: true, panels: true, lites: true },
+  door6: { name: 'Входная с боковым стеклом, тёмное дерево', leaf: 'black', entrance: true, pull: true },
+  door7: { name: 'Входная стальная белая', leaf: 'white', entrance: true },
+  door8: { name: 'Входная, орех со стёклами', leaf: 'wood', entrance: true, lites: true },
+  door9: { name: 'Входная, орех с полосой стекла', leaf: 'wood', entrance: true, slit: true },
+  door10: { name: 'Калитка, к секционным воротам', leaf: 'white', entrance: true },
   // the garage doors (garage.js)
   ...Object.fromEntries(Object.entries(GARAGES).map(([k, g]) => [k, { name: g.name, garage: g.kind }])),
 };
 export const isDoor = (key) => key in DOORS;
+// the models they are made of (openingKits.js): a whole door with its frame (kit) or the leaf
+// only, in our frame (leafKit); until the models come, drawn as below
+const KIT = { door1: 'd_steel_grey', door2: 'd_black', door3: 'd_oak', door4: 'd_white_glass', door6: 'd_wood_side', door7: 'd_steel_white', door10: 'g_wicket' };
+const LEAF_KIT = { door5: 'd_leaf_e', door8: 'd_leaf_a', door9: 'd_leaf_f' };
+export const doorKit = (key) => (hasKit(KIT[key]) ? KIT[key] : hasKit(LEAF_KIT[key]) ? LEAF_KIT[key] : garageKit(key));
 
-const SIZES = { door1: [400, 9000, 900, 9000], door2: [400, 9000, 900, 9000], door3: [400, 9000, 900, 9000], door4: [400, 9000, 900, 9000], door5: [800, 9000, 900, 9000], ...Object.fromEntries(Object.keys(GARAGES).map((k) => [k, GARAGE_SIZE])) };   // (made to any opening: the leaf, its panels, glass and handles follow it)
+const SIZES = { door1: [400, 9000, 900, 9000], door2: [400, 9000, 900, 9000], door3: [400, 9000, 900, 9000], door4: [400, 9000, 900, 9000], door5: [800, 9000, 900, 9000], door6: [1300, 9000, 1900, 9000], door7: [400, 9000, 900, 9000], door8: [400, 9000, 900, 9000], door9: [400, 9000, 900, 9000], door10: [400, 9000, 900, 9000], ...Object.fromEntries(Object.keys(GARAGES).map((k) => [k, GARAGE_SIZE])) };   // (made to any opening: the leaf, its panels, glass and handles follow it)
 export function doorFits(key, w, h) {
   const [w0, w1, h0, h1] = SIZES[key], n = DOORS[key].name;
   if (w < w0) return `Проём ${w} мм узок для двери «${n}» (от ${w0} мм)`;
@@ -102,6 +115,24 @@ export function buildDoor(key, w, h, t = 300) {
   box(G.foam, X0 - gap / 2, (Y0 + Y1) / 2, zF, gap, Y1 - Y0, Math.min(fd, 60));
   box(G.foam, X1 + gap / 2, (Y0 + Y1) / 2, zF, gap, Y1 - Y0, Math.min(fd, 60));
   box(G.foam, 0, Y1 + gap / 2, zF, X1 - X0 + 2 * gap, gap, Math.min(fd, 60));
+  // the casings: inside an entrance door, both sides of an interior one — 70 wide, 10 thick, mitred tops (as boxes)
+  function cas(side) {
+    const z = side * (t / 2 + 5), cw = 70, list = frameMat === 'wood' ? G.leaf : P.leaf === 'white' ? G.casing : G.casing;
+    box(list, X0 - cw / 2 + 10, (Y1 + cw - 10) / 2, z, cw, Y1 + cw - 10, 10);
+    box(list, X1 + cw / 2 - 10, (Y1 + cw - 10) / 2, z, cw, Y1 + cw - 10, 10);
+    box(list, 0, Y1 + cw / 2 - 10, z, X1 - X0 + 2 * cw - 20, cw, 10);
+  }
+  const kit = KIT[key] && hasKit(KIT[key]) ? KIT[key] : null, leafKit = !kit && LEAF_KIT[key] && hasKit(LEAF_KIT[key]) ? LEAF_KIT[key] : null;
+  const kitParts = [];
+  if (kit) {
+    // the modelled door with its own frame, in the opening: its outer face where ours would be
+    // (an entrance one in the outer part of the wall, an interior one in the middle)
+    const d = 175;
+    kitParts.push(...fitKit(kit, X0, X1, 0, Y1, ent ? zF + fd / 2 - d / 2 : 0));
+    cas(-1);
+    if (!ent) cas(1);
+    return assemble();
+  }
   // the frame: two jambs and the head
   box(FR, X0 + F / 2, Y1 / 2, zF, F, Y1, fd);
   box(FR, X1 - F / 2, Y1 / 2, zF, F, Y1, fd);
@@ -115,13 +146,6 @@ export function buildDoor(key, w, h, t = 300) {
   // the threshold of an entrance door
   const thr = ent ? 22 : 0;
   if (ent) box(G.chrome, 0, thr / 2, zF, X1 - X0, thr, fd + 20);
-  // the casings: inside an entrance door, both sides of an interior one — 70 wide, 10 thick, mitred tops (as boxes)
-  const cas = (side) => {
-    const z = side * (t / 2 + 5), cw = 70, list = frameMat === 'wood' ? G.leaf : P.leaf === 'white' ? G.casing : G.casing;
-    box(list, X0 - cw / 2 + 10, (Y1 + cw - 10) / 2, z, cw, Y1 + cw - 10, 10);
-    box(list, X1 + cw / 2 - 10, (Y1 + cw - 10) / 2, z, cw, Y1 + cw - 10, 10);
-    box(list, 0, Y1 + cw / 2 - 10, z, X1 - X0 + 2 * cw - 20, cw, 10);
-  };
   cas(-1);
   if (!ent) cas(1);
   // the leaves
@@ -132,6 +156,14 @@ export function buildDoor(key, w, h, t = 300) {
   const leafList = LF || (G[P.leaf] = G[P.leaf] || []);
   leaves.forEach(([a, b, hand], li) => {
     const lw = b - a, lh = ly1 - ly0, cx = (a + b) / 2, cy = (ly0 + ly1) / 2;
+    if (leafKit) {
+      // the modelled leaf (its handle on its right): a pair's right leaf mirrored, both handles
+      // in the middle, the hinges at the jambs
+      const flip = P.double && li === 1, zi = zL - lt / 2;
+      kitParts.push(...fitKit(leafKit, flip ? -b : a, flip ? -a : b, ly0, ly1, zL, { flip }));
+      for (const f of [0.1, 0.5, 0.88]) box(G.chrome, P.double && li === 1 ? b : a, ly0 + lh * f, zi - 2, 14, 110, 14);
+      return;
+    }
     // the hinges on the side away from the handle
     const hingeX = hand > 0 ? a : b, handleX = hand > 0 ? b - 70 : a + 70;
     const zo = zL + lt / 2, zi = zL - lt / 2;   // the leaf's outer / inner face
@@ -190,7 +222,23 @@ export function buildDoor(key, w, h, t = 300) {
       }
     }
   });
+  return assemble();
+  function assemble() {
   const g = new THREE.Group();
+  if (kitParts.length) {
+    const by = new Map();
+    for (const q of kitParts) {
+      const mat = q.role === 'glass' ? M.glass : q.role === 'frosted' ? D.frosted : kitMat(q.mat, null, q.role === 'metal' ? { roughness: 0.3 } : {});
+      (by.get(mat) || by.set(mat, []).get(mat)).push(q.geo);
+    }
+    for (const [mat, list] of by) {
+      const mesh = new THREE.Mesh(mergeParts(list, mergeGeometries), mat);
+      const see = mat === M.glass || mat === D.frosted;
+      mesh.castShadow = !see; mesh.receiveShadow = true;
+      if (see) mesh.renderOrder = 2;
+      g.add(mesh);
+    }
+  }
   const matOf = (k) => (k === 'leaf' ? WOOD || M.board : k === 'frame' ? D[frameMat] || D.steel : k === 'casing' ? (P.leaf === 'white' ? D.white : WOOD || M.board) : D[k] || M[k] || M.pvc);
   for (const [k, list] of Object.entries(G)) {
     if (!list.length) continue;
@@ -204,4 +252,5 @@ export function buildDoor(key, w, h, t = 300) {
   g.scale.setScalar(S);
   g.userData.window = { key, w, h };
   return g;
+  }
 }

@@ -12,6 +12,7 @@ import { OutlineView, contains, gradeY } from './world/outlines.js';
 import { FormworkView } from './world/formwork.js';
 import { RebarView } from './world/rebar.js';
 import { WallView } from './world/walls.js';
+import { loadKits, onKits } from './world/openingKits.js';
 import { buildStacks } from './world/stacks.js';
 import { Sky } from './world/sky.js';
 import { Backdrop, PANOS, isPano } from './world/backdrop.js';
@@ -48,6 +49,7 @@ import { initLang } from './i18n/i18n.js';
 const app = (window.__tc = { ready: false, BUILD });
 
 async function main() {
+  const kitsP = loadKits();
   const canvas = document.getElementById('view');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -237,6 +239,12 @@ async function main() {
     for (const o of hid) o.visible = false;   // (the programs are made; they finish linking on their own)
     return p?.catch?.(() => {});
   };
+  // the modelled doors, gates and windows (openingKits.js): waited for a little while the loading
+  // screen is up (the openings are drawn of them from the start), else they come in the background
+  // and the openings are built anew of them then
+  onKits(() => setTimeout(() => app.warmUp?.(), 300));
+  await Promise.race([kitsP, new Promise((r) => setTimeout(r, 6000))]);
+  app.wallView.update?.();
   if (!app.filmMode) app.warmUp();
   document.getElementById('loading').classList.add('done');
   document.getElementById('ui').hidden = !!app.filmMode;
