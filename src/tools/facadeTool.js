@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { FitJob, bring, wait, drill, drive, hammer, part, at } from './fitJob.js';
-import { buildFacade, epsTrim, W, epsDowels, woolDowels, FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
+import { buildFacade, epsTrim, cornerEnds, W, epsDowels, woolDowels, FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
 
 // The facade done by hand (facade.js), on the outside of the walls:
 //   eps  – the boards carried from the tray, one by one, staggered, cut at the openings and
@@ -54,12 +54,12 @@ export class FacadeWork {
   // what is under a cell (its middle) — for the coats
   _under(F, rec, layer, live) {
     const eps = rec?.eps || [], mesh = rec?.mesh || [];
-    const glue = cellsOf(rec?.glue), emb = cellsOf(rec?.emb), pl = Object.values(rec?.pl || {}).map(cellsOf), pan = rec?.pan || [];
+    const glue = cellsOf(rec?.glue), emb = cellsOf(rec?.emb), pl = Object.values(rec?.pl || {}).map(cellsOf), pan = rec?.pan || [], ends = cornerEnds(F, (G) => this._rec(G));
     return (k) => {
       const [i, j] = cij(k), a = (i + 0.5) * CELL, y = (j + 0.5) * CELL;
       if (!cutPiece(F, [a - 1e-7, y - 1e-7, a + 1e-7, y + 1e-7], OFF.fin).length) return false;   // (an opening, off the face)
       if (pan.some((p) => inR(p, a, y))) return false;
-      if (layer === 'glue') return eps.some((s) => inR(s, a, y) && cutPiece(F, s, OFF.eps).some((r) => inR(r, a, y)));
+      if (layer === 'glue') return eps.some((s) => inR(s, a, y) && cutPiece(F, s, OFF.eps).some((r) => inR(r, a, y))) || ends.some((r) => inR(r, a, y));   // (and the other wall's board ends round the corner)
       if (layer === 'emb') return glue.has(k) && mesh.some((r) => inR(r, a, y));
       if (layer === 'pl') return emb.has(k) && mesh.some((r) => inR(r, a, y));
       if (layer === 'fl') return pl.some((s) => s.has(k)) || (live && live.has(k));
