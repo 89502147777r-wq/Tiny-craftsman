@@ -105,6 +105,22 @@ export function findBelt(app, p, screen, finger) {
     const j0 = Math.ceil((f.t - f.ht - e - t0) / c - 0.5), j1 = Math.floor((f.t + f.ht + e - t0) / c - 0.5);
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) m[j * ni + i] = 1;
   }
+  // a small hole closed all round (the core of a brick pier left for a column, ≤ 600 mm): the
+  // beam goes over the whole pier — a pier is one support, not a ring of two strips beside it
+  {
+    const lab = new Uint8Array(ni * nj), small = Math.round(MM(600) / c);
+    for (let k0 = 0; k0 < ni * nj; k0++) {
+      if (m[k0] || lab[k0]) continue;
+      const st = [k0], comp = []; lab[k0] = 1; let edge = false, i0 = ni, i1 = -1, j0 = nj, j1 = -1;
+      while (st.length) {
+        const k = st.pop(), i = k % ni, j = (k / ni) | 0; comp.push(k);
+        i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j);
+        if (i === 0 || j === 0 || i === ni - 1 || j === nj - 1) edge = true;
+        for (const q of [i > 0 ? k - 1 : -1, i < ni - 1 ? k + 1 : -1, j > 0 ? k - ni : -1, j < nj - 1 ? k + ni : -1]) if (q >= 0 && !m[q] && !lab[q]) { lab[q] = 1; st.push(q); }
+      }
+      if (!edge && i1 - i0 < small && j1 - j0 < small) for (const k of comp) m[k] = 1;
+    }
+  }
   // an opening left up to the top course (a door, a window under the ring beam) is bridged:
   // along a row / a column, a gap ≤ 3,2 m between two runs of the walls longer than a
   // wall is thick (across the house the runs are only the walls' thickness: not bridged)
@@ -132,6 +148,29 @@ export function findBelt(app, p, screen, finger) {
     scan(ni, nj, (j, i) => j * ni + i);
     scan(nj, ni, (i, j) => j * ni + i);
     for (const k of add) { m[k] = 1; bridged[k] = 1; }
+    // a beam is as wide as what it bears on (the narrower of its two ends, ≤ 600 mm): not two
+    // strips over a pier of two rows of bricks with a hollow between, not a strip over a part of it
+    const seen = new Uint8Array(ni * nj), wide = Math.round(MM(600) / c), fill = [];
+    for (let k0 = 0; k0 < ni * nj; k0++) {
+      if (!bridged[k0] || seen[k0]) continue;
+      let i0 = ni, i1 = -1, j0 = nj, j1 = -1; const st = [k0]; seen[k0] = 1;
+      while (st.length) { const k = st.pop(), i = k % ni, j = (k / ni) | 0; i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); for (const q of [i > 0 ? k - 1 : -1, i < ni - 1 ? k + 1 : -1, j > 0 ? k - ni : -1, j < nj - 1 ? k + ni : -1]) if (q >= 0 && bridged[q] && !seen[q]) { seen[q] = 1; st.push(q); } }
+      const alongJ = j1 - j0 >= i1 - i0, n2 = alongJ ? ni : nj, at = alongJ ? (a, e) => e * ni + a : (a, e) => a * ni + e;
+      const [a0, a1, e0, e1] = alongJ ? [i0, i1, j0 - 1, j1 + 1] : [j0, j1, i0 - 1, i1 + 1];
+      if (e0 < 0 || e1 >= (alongJ ? nj : ni)) continue;
+      // across each end: the masonry under the beam's end, out to its sides
+      // (over a hollow ≤ 150 mm in it: the core of a pier)
+      const ext = (e) => {
+        let lo = a0, hi = a1;
+        for (let d; ; lo = d) { d = lo - 1; while (d > 0 && d >= lo - 4 && !m[at(d, e)]) d--; if (d < 0 || d < lo - 4 || !m[at(d, e)]) break; }
+        for (let d; ; hi = d) { d = hi + 1; while (d < n2 - 1 && d <= hi + 4 && !m[at(d, e)]) d++; if (d >= n2 || d > hi + 4 || !m[at(d, e)]) break; }
+        return [lo, hi];
+      };
+      const [l0, h0] = ext(e0), [l1, h1] = ext(e1), lo = Math.max(l0, l1), hi = Math.min(h0, h1);
+      if (hi - lo + 1 > wide || (lo === a0 && hi === a1)) continue;
+      for (let a = lo; a <= hi; a++) for (let e = e0 + 1; e < e1; e++) { const k = at(a, e); if (!m[k]) fill.push(k); }
+    }
+    for (const k of fill) { m[k] = 1; bridged[k] = 1; }
   }
   // the piece under the finger
   const pf = fr(pick), si = Math.floor((pf.s - s0) / c), sj = Math.floor((pf.t - t0) / c);
