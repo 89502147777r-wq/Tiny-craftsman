@@ -361,19 +361,40 @@ export function buildPitched(roof, live = null, wins = []) {
     if (P0) { const RG = rafterGrid(w, P0); for (let k = 0; k <= RG.n; k++) { const a = RG.x0 + k * RG.step + rw; if (Math.abs(a) <= jA - MM(25)) joistAt.push(a); } }
     else for (let a = -jA + MM(50); a <= jA - MM(50) + 1e-7; a += step) joistAt.push(a);
     if (has('joists')) for (const a of joistAt) { if (under(a, 0)) continue; beams.add(f.W(a, -ib - MM(60), yL), f.W(a, ib + MM(60), yL), rw, MM(200)); }
-    // the ridge purlin (as on site): posts on the joists, the purlin on the posts and on the
-    // gables; the rafters rest on it
+    // the ridge purlin (as on site): a sill (лежень 150 × 100) along the ridge line on the joists —
+    // the load spread over several of them — the posts on it (≤ 3 m apart; one in the middle under
+    // a short ridge: a hip roof on a near square plan), braced by struts (подкосы 50 × 150 at 45°)
+    // from the sill; the purlin on the posts and on the gables; the rafters rest on it
     if ((has('ridge') || has('frame')) && !f.mono) {
       const [r0, r1] = f.ridgeA, yR = f.ridge - tie / f.cs - MM(100);
       for (const [b0, b1] of runs(r0, r1, (a) => under(a, 0))) if (b1 - b0 > MM(200)) beams.add(f.W(b0, 0, yR), f.W(b1, 0, yR), MM(150), MM(200));
-      const in0 = Math.max(r0, -(w.A - roof.T)), in1 = Math.min(r1, w.A - roof.T), n = Math.max(1, Math.ceil((in1 - in0) / MM(3000)));
-      for (let i = 0; i <= n; i++) {
-        if ((i === 0 && f.ends[0] !== 'hip') || (i === n && f.ends[1] !== 'hip')) continue;   // (a gable / a joined wing carries the end)
-        let a = in0 + (in1 - in0) * i / n;
-        if (has('joists')) a = joistAt.reduce((p, q) => (Math.abs(q - a) < Math.abs(p - a) ? q : p), joistAt[0]) + rw / 2 + MM(50);   // (beside a joist, nailed to it)
-        if (under(a, 0) || yR - MM(100) - (yL + MM(100)) < MM(150)) continue;
-        if (!has('joists')) beams.add(f.W(a, -ib, yL), f.W(a, ib, yL), MM(100), MM(200));   // (a roof begun before the joists: a beam under the post)
-        beams.add(f.W(a, 0, yL + MM(100)), f.W(a, 0, yR - MM(100)), MM(100), MM(100));
+      const in0 = Math.max(r0, -(w.A - roof.T)), in1 = Math.min(r1, w.A - roof.T), posts = [];
+      if (in1 - in0 < MM(1200)) { if (f.ends[0] === 'hip' || f.ends[1] === 'hip') posts.push((in0 + in1) / 2); }
+      else {
+        const n = Math.max(1, Math.ceil((in1 - in0) / MM(3000)));
+        for (let i = 0; i <= n; i++) if (!((i === 0 && f.ends[0] !== 'hip') || (i === n && f.ends[1] !== 'hip'))) posts.push(in0 + (in1 - in0) * i / n);   // (a gable / a joined wing carries the end)
+      }
+      const yJ = yL + MM(100), ySill = yJ + MM(50), yP0 = ySill + MM(50), H = yR - MM(100) - yP0, pw = H > MM(2500) ? MM(150) : MM(100);
+      // (beside a joist, nailed to it; a lone post's struts across stand on that joist)
+      const jNear = (a) => joistAt.reduce((p, q) => (Math.abs(q - a) < Math.abs(p - a) ? q : p), joistAt[0]);
+      const ok = H < MM(150) ? [] : posts.map((a) => (has('joists') && joistAt.length ? jNear(a) + rw / 2 + pw / 2 : a)).filter((a) => !under(a, 0));
+      if (ok.length) {
+        // the sill: past the end posts by a joist spacing or two, within the walls
+        const lim = w.A - roof.T - MM(50), s0 = Math.max(-lim, Math.min(...ok) - MM(900)), s1 = Math.min(lim, Math.max(...ok) + MM(900));
+        if (!has('joists')) for (const a of [s0 + MM(100), ...ok, s1 - MM(100)]) beams.add(f.W(a, -ib, yL), f.W(a, ib, yL), MM(100), MM(200));   // (a roof begun before the joists: beams under the sill)
+        beams.add(f.W(s0, 0, ySill), f.W(s1, 0, ySill), MM(150), MM(100));
+        for (const a of ok) {
+          beams.add(f.W(a, 0, yP0), f.W(a, 0, yR - MM(100)), pw, pw);
+          // the struts at 45°: along the ridge from the sill up to the post; a lone post (a tent of
+          // a hip roof on a near square plan) across too — on the joist beside it, nailed to its side
+          const sr = Math.min(MM(1000), H * 0.45);
+          if (sr < MM(300)) continue;
+          for (const da of [1, -1]) { const ea = a + da * (sr + pw / 2); if (Math.abs(ea) <= lim) beams.add(f.W(ea, 0, yP0), f.W(a + da * pw / 2, 0, yP0 + sr), MM(50), MM(150)); }
+          if (ok.length === 1 && has('joists') && joistAt.length) {
+            const aj = a - pw / 2 - rw / 2;
+            for (const dd of [1, -1]) { const ed = dd * (sr + pw / 2 + MM(75)); if (Math.abs(ed) < ib - MM(100)) beams.add(f.W(aj, ed, yJ), f.W(aj, dd * MM(75), yJ + sr + MM(75)), MM(50), MM(150)); }
+          }
+        }
       }
     }
     const fr = spans(done.frame, 'frame', wi, f);

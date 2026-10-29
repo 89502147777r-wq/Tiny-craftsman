@@ -712,7 +712,7 @@ export default {
 "Консоль 3 м": "3 m cantilever",
 "Контробрешётка и обрешётка прибиты": "Counter-battens and battens nailed",
 "Коньковый прогон": "Ridge beam",
-"Коньковый прогон 150×200 на стойках 100×100 (через ≤ 3 м, на лагах), концы — на фронтонах. Дальше — стропила пальцем вдоль конька: верхом на прогон, низом на мауэрлат": "Ridge beam 150×200 on 100×100 posts (every ≤ 3 m, on the joists), its ends on the gables. Next — the rafters by dragging along the ridge: the top on the beam, the foot on the wall plate",
+"Коньковый прогон 150×200 на стойках (через ≤ 3 м; у короткого конька — одна в середине), стойки на лежне 150×100 поверх лаг, с подкосами под 45°; концы прогона — на фронтонах. Дальше — стропила пальцем вдоль конька: верхом на прогон, низом на мауэрлат": "Ridge beam 150×200 on posts (every ≤ 3 m; one in the middle under a short ridge), the posts on a 150×100 sill across the joists, braced by struts at 45°; the beam ends on the gables. Next — rafters by finger along the ridge: top on the beam, foot on the wall plate",
 "Коньковый прогон уже стоит — дальше «Стропила»": "The ridge beam is up — next “Rafters”",
 "Коньковый прогон — на мауэрлат: сначала этап 1": "The ridge beam goes on the wall plate: stage 1 first",
 "Коньковый прогон: тяните из лотка на дом — стойки на лаги через ≤ 3 м, прогон по коньку (концы на фронтонах)": "Ridge beam: drag from the tray onto the house — posts on the joists every ≤ 3 m, the beam along the ridge (ends on the gables)",
