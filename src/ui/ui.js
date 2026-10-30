@@ -108,7 +108,8 @@ export class UI {
     back.addEventListener('click', () => this.navBack());
     $('toolrow').prepend(back);
     this.lastTool = {};
-    this.groups = GROUPS.filter((g) => g.virt || this.groupTools(g.id).length);
+    // (the camera: its button on the top bar, by the menu)
+    this.groups = GROUPS.filter((g) => g.id !== 'camera' && (g.virt || this.groupTools(g.id).length));
     for (const g of this.groups) {
       const b = document.createElement('button');
       b.className = 'tool';
@@ -117,6 +118,17 @@ export class UI {
       b.addEventListener('click', () => this.openGroup(g.id));
       $('groups').appendChild(b);
     }
+    $('btn-cam').addEventListener('click', () => this.openGroup('camera'));
+    // «Готово»: the house lived in (the rooms behind the windows furnished) — a button of its own at
+    // the end of the row; on again: its own row (another interior, off)
+    const rb = document.createElement('button');
+    rb.className = 'tool'; rb.id = 'btn-ready';
+    rb.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.6L12 15l-1.8-4.4L5.5 9l4.7-1.4z"/><path d="M18 15l.8 2 2 .8-2 .7-.8 2-.8-2-2-.7 2-.8zM5 15.5l.6 1.4 1.4.6-1.4.6L5 19.5l-.6-1.4L3 17.5l1.4-.6z"/></svg><span>Готово</span>';
+    rb.addEventListener('click', () => {
+      if (!app.objects.all('interior').length) { app.wallTool.ext.ready(); this.refresh(); return; }
+      this.readyRow = true; this.navLevel = 'chips'; this.navPath = []; this.refresh();
+    });
+    $('groups').appendChild(rb);
     $('btn-undo').addEventListener('click', () => app.undo());
     $('btn-redo').addEventListener('click', () => app.redo());
     $('btn-level').addEventListener('click', () => { app.settings.level = !app.settings.level; app.applySettings(); });
@@ -247,6 +259,7 @@ export class UI {
     return this.groupOf(app.tool);
   }
   openGroup(gid) {
+    this.readyRow = false;
     const vg = GROUPS.find((g) => g.id === gid && g.virt);
     if (vg) {
       // the walls' tool with this kind, straight to its chips
@@ -272,6 +285,7 @@ export class UI {
     this.refresh();
   }
   navBack() {
+    if (this.readyRow) { this.readyRow = false; this.navLevel = 'groups'; this.navPath = []; this.refresh(); return; }
     if (this.virt && this.navLevel === 'chips' && this.navPath.length <= this.virt.virt.path.length) { this.virt = null; this.navLevel = 'groups'; this.navPath = []; }
     else if (this.navLevel === 'chips' && this.navPath.length) this.navPath.pop();
     else if (this.navLevel === 'chips' && this.groupTools(this.groupOf(this.app.tool)).length > 1) this.navLevel = 'tools';
@@ -296,6 +310,7 @@ export class UI {
     if (gid) this.lastTool[gid] = app.tool;
     const cg = this.curGroup();
     for (const b of $('groups').children) b.classList.toggle('active', b.dataset.gid === cg);
+    $('btn-ready')?.classList.toggle('active', app.objects.all('interior').length > 0);
     // (the tool changed by itself — a shortcut, the fan: its group, from the top)
     if (this._navTool !== app.tool) { if (this._navTool !== undefined && this.navLevel !== 'groups') { this.navPath = []; this.navLevel = this.groupTools(gid).length > 1 ? 'tools' : this.chips().length ? 'chips' : 'groups'; } this._navTool = app.tool; }
     const lv = this.navLevel;
@@ -406,6 +421,11 @@ export class UI {
     const C = (label, on, fn, cls = '') => ({ label, on, fn, cls });
     // a group of chips: opens its own row (and does what `self` does: selects it); `crumb` — its name on the path
     const G = (id, label, kids, crumb = null, self = null) => ({ id, label, kids, crumb: crumb || label.replace(/^\S+ · /, ''), on: self ? !!self.on : false, fn: self?.fn, cls: self?.cls || '' });
+    // «Готово» on: another interior, or none
+    if (this.readyRow) {
+      const ew = app.wallTool.ext, done = () => { this.readyRow = false; this.navLevel = 'groups'; this.refresh(); };
+      return app.objects.all('interior').length ? [C('🎲 Другой интерьер', false, () => { ew.reroll(); this.refresh(); }), C('✕ Убрать интерьер', false, () => { ew.ready(); done(); }, 'warn')] : [C('✨ Готово', false, () => { ew.ready(); this.refresh(); })];
+    }
     if (t === 'camera') {
       const b = app.settings.backdrop, st = app.settings;
       const out = [
@@ -613,7 +633,7 @@ export class UI {
         ], null, C('', has('proof', 'roof', 'rwin')))),
         hid(G('blind', 'Отмостка', [...blind, del()], null, C('', has('blind'), () => lay({ wallKind: 'blind' })))),
         hid(G('pool', 'Бассейн', [(() => { const [nk, nw] = wt.pool.next(); return C(`➜ ${nw}`, false, () => { if (nk === 'concrete') { app.setTool?.('hose'); app.ui.toast(nw); } else if (nk) plset({ poolLayer: nk }); else app.ui.toast(nw); }, 'next'); })(), ...pool, del()], null, C('', has('pool'), () => lay({ wallKind: 'pool' })))),
-        hid(G('ext', 'Экстерьер', [(() => { const [nk, nw] = ew.next(); return C(`➜ ${nw}`, false, () => { if (nk) eset({ extWhat: 'porch', porchLayer: nk }); else app.ui.toast(nw); }, 'next'); })(), G('porch', 'Крыльцо', porch, null, C('', has('ext') && ew.what === 'porch', () => eset({ extWhat: 'porch' }))), C('Козырёк над входом', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' })), C('✨ Готово', app.objects.all('interior').length > 0, () => ew.ready()), ...(app.objects.all('interior').length ? [C('🎲 Другой интерьер', false, () => ew.reroll())] : []), G('flights', 'Освещение фасада', [...Object.entries(FLIGHTS).map(([q, F]) => C(F.name, has('ext') && ew.what === 'light' && ew.lightKind === q, () => eset({ extWhat: 'light', flKind: q }))), ...Object.entries(FLIGHT_TEMPS).map(([q, [n]]) => C('◐ ' + n, ew.lightTemp === q, () => eset({ extWhat: 'light', flTemp: q })))], null, C('', has('ext') && ew.what === 'light', () => eset({ extWhat: 'light' }))), del()], null, C('', has('ext'), () => lay({ wallKind: 'ext' })))),
+        hid(G('ext', 'Экстерьер', [G('flights', 'Освещение фасада', [...Object.entries(FLIGHTS).map(([q, F]) => C(F.name, has('ext') && ew.what === 'light' && ew.lightKind === q, () => eset({ extWhat: 'light', flKind: q }))), ...Object.entries(FLIGHT_TEMPS).map(([q, [n]]) => C('◐ ' + n, ew.lightTemp === q, () => eset({ extWhat: 'light', flTemp: q })))], null, C('', has('ext') && ew.what === 'light', () => eset({ extWhat: 'light' }))), G('canopies', 'Козырьки', [C('Стеклянный над входом', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' }))], null, C('', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' }))), del()], null, C('', has('ext'), () => lay({ wallKind: 'ext' })))),
         hid(G('land', 'Благоустройство', [(() => { const [nk, nw] = lw.next(); return C(`➜ ${nw}`, false, () => { if (!nk) app.ui.toast(nw); else if (isLawn) gset({ lawnLayer: nk }); else if (isFence) fset({ fenceLayer: nk }); else lset({ pathLayer: nk }); }, 'next'); })(), G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('fence', 'Забор', fence, null, C('', has('land') && isFence, () => fset({}))), G('plants', 'Растения', Object.entries(PLANTS).filter(([, P]) => !P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }))), G('lights', 'Освещение', Object.entries(PLANTS).filter(([, P]) => P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !!PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'bollard' }))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
@@ -698,6 +718,7 @@ export class UI {
     const app = this.app;
     document.querySelectorAll('[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === app.tool));
     $('btn-level').classList.toggle('on', !!app.settings.level);
+    $('btn-cam').classList.toggle('on', app.tool === 'camera');
     $('btn-undo').disabled = !app.journal.canUndo && !app.busy();
     $('btn-redo').disabled = !app.journal.canRedo;
     let hint = '';

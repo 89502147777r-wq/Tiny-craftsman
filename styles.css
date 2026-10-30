@@ -42,26 +42,28 @@ button { font: inherit; color: inherit; }
 #ui > * { pointer-events: auto; }
 
 .top {
-  position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: flex-start;
+  position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: center;
   padding: calc(var(--safe-t) + 3px) calc(var(--safe-r) + 8px) 0 calc(var(--safe-l) + 10px);
   pointer-events: none;
 }
 .top > * { pointer-events: auto; }
-.title { display: grid; text-shadow: 0 1px 6px rgba(0,0,0,.6); }
-.title .logo { height: 16px; width: auto; display: block; margin-bottom: 3px; filter: drop-shadow(0 1px 4px rgba(0,0,0,.6)); }
+.title { display: grid; align-content: center; min-height: 32px; flex: 0 1 auto; min-width: 0; text-shadow: 0 1px 6px rgba(0,0,0,.6); }   /* (its lines on the middle of the buttons' row on the right: the sum, undo, the menu) */
+.title .logo { height: 16px; width: auto; display: block; margin-bottom: 2px; filter: drop-shadow(0 1px 4px rgba(0,0,0,.6)); }
 .title span { color: var(--ink-dim); font-size: 10px; line-height: 1.2; }
 .title em { font-style: normal; color: var(--accent); }
-.top-actions { display: flex; gap: 5px; }
+.top-actions { display: flex; gap: 4px; align-items: center; }
+.top-actions .icon { width: 32px; height: 32px; }
 
 .icon {
   width: 34px; height: 34px; border-radius: 11px; border: 1px solid var(--line); background: var(--glass);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); display: grid; place-items: center; padding: 0;
 }
 .icon:disabled { opacity: .35; }
+.icon.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
 .stats-btn {
-  position: absolute; left: calc(var(--safe-l) + 10px); top: calc(var(--safe-t) + 33px); width: 26px; height: 26px; padding: 0;
+  position: absolute; left: calc(var(--safe-l) + 10px); top: calc(var(--safe-t) + 42px); width: 26px; height: 26px; padding: 0;
   border-radius: 50%; border: 1px solid var(--line); background: var(--glass); color: inherit; display: grid; place-items: center;
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); pointer-events: auto; z-index: 2;
 }
@@ -71,7 +73,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .hints-btn { left: calc(var(--safe-l) + 41px); }
 #ui.no-hints .hint { display: none !important; }
 .chip {
-  position: absolute; left: calc(var(--safe-l) + 10px); top: calc(var(--safe-t) + 63px);
+  position: absolute; left: calc(var(--safe-l) + 10px); top: calc(var(--safe-t) + 72px);
   background: var(--glass); border: 1px solid var(--line); border-radius: 11px; padding: 4px 8px; display: grid; gap: 1px; font-size: 11px !important;
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); font-size: 12px; pointer-events: none !important;
 }
@@ -108,6 +110,8 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   align-content: center; gap: 3px; font-size: 10.5px; color: var(--ink-dim); padding: 0;
 }
 .tool svg { width: 24px; height: 24px; }
+#groups .tool { width: auto; min-width: 58px; padding: 0 6px; }   /* (a long name — «Благоустройство» — its button wider, not over the next) */
+#groups .tool span { max-width: 88px; line-height: 1.15; text-align: center; }
 .tool.active { background: var(--accent); color: var(--accent-ink); }
 .tool.toggle.on { color: var(--accent); background: rgba(240,166,58,.14); }
 
@@ -318,7 +322,7 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .wall-del.active { outline: 2px solid #ff9b86; background: rgba(255, 120, 100, .25); }
 
 /* ---- the budget: the money in the top bar, the «−$…» popups ------------------------------------ */
-#money { align-self: center; font-weight: 800; font-size: 14px; color: #9fe39a; letter-spacing: .02em; padding: 7px 11px; border-radius: 11px; border: 1px solid var(--line); background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+#money { align-self: center; white-space: nowrap; font-weight: 800; font-size: 13px; color: #9fe39a; letter-spacing: .02em; padding: 7px 9px; border-radius: 11px; border: 1px solid var(--line); background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 #money[hidden] { display: none; }
 #money.neg { color: #ff6a5a; }
 #pops { position: fixed; inset: 0; pointer-events: none; z-index: 40; }

@@ -535,6 +535,38 @@ console.log('—', sec());
   });
   check('openings: the door, gate and window models all load; every kind is made of them and fits small and big openings', op.kits === op.want && !op.bad.length && op.built > 40, JSON.stringify({ ...op, bad: op.bad.slice(0, 6) }));
   check('openings: a model\'s frame keeps its width when stretched (9-slice), a door\'s handle stays at hand height', op.band === 0 && Math.abs(op.hold[0] - op.hold[1]) < 5, JSON.stringify({ band: op.band, hold: op.hold }));
+  // «Готово» on a house of blocks 8 × 7 m (walls 3 m), an inner wall with a doorway under its lintel,
+  // windows and a door round it: two rooms, parted by that wall, its doorway open, the ceiling at the
+  // top of the walls (not up under the roof), clear of the walls
+  const plan = await page.evaluate(async () => {
+    const tc = window.__tc, S = 1 / 1000 / (9000 / 860), M = (v) => v * S, g0 = tc.terrain.heightAt(0, 0);
+    const blocks = [];
+    const wall = (x0, z0, x1, z1, skip = () => false) => {
+      const L = Math.hypot(x1 - x0, z1 - z0), n = Math.round(L / 600), yaw = Math.atan2(-(z1 - z0), x1 - x0);
+      for (let r = 0; r < 12; r++) for (let i = 0; i < n; i++) {
+        const f = (i + 0.5) / n, x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f;
+        if (skip(x, z, r)) continue;
+        blocks.push({ type: 'unit', kind: 'block', free: true, s: [M(L / n - 10), M(240), M(300)], p: [M(x), g0 + M(125 + r * 250), M(z)], q: [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)] });
+      }
+    };
+    wall(-4000, 3350, 4000, 3350); wall(-4000, -3350, 4000, -3350); wall(-3850, -3200, -3850, 3200); wall(3850, -3200, 3850, 3200);
+    wall(300, -3200, 300, 3200, (x, z, r) => Math.abs(z) < 600 && r < 9);   // (the inner wall: its doorway 1,7 m wide, the lintel over 2,25 m)
+    tc.journal.act('house', {}, tc.clock, () => {
+      for (const b of blocks) tc.objects.add(b);
+      for (const [key, x, z, yaw, w, h, y] of [['pvc2', -2000, 3350, 0, 1200, 1400, 900], ['pvc2', 2000, 3350, 0, 1200, 1400, 900], ['pano', -2000, -3350, Math.PI, 2400, 2100, 0], ['door1', 2000, -3350, Math.PI, 1000, 2100, 0], ['pvc1', -3850, 0, -Math.PI / 2, 900, 1400, 900]])
+        tc.objects.add({ type: 'window', key, w, h, t: 300, x: M(x), y: g0 + M(y), z: M(z), yaw });
+    });
+    for (let i = 0; i < 6; i++) tc.simulate(1 / 30);
+    const I = await import('/src/world/interior.js'), rooms = I.roomsOf(tc).filter((r) => Math.abs(r.o.x) < M(5000) && Math.abs(r.o.z) < M(5000));
+    const out = rooms.map((r) => {
+      const c = r.o.clone().addScaledVector(r.u, (r.a0 + r.a1) / 2).addScaledVector(r.n, -r.D / 2);
+      return { kind: r.kind, H: Math.round((r.ceil - r.floor) / S), W: Math.round((r.a1 - r.a0) / S), D: Math.round(r.D / S), cx: Math.round(c.x / S), doors: Object.values(r.walls).flatMap((w) => w.open.filter((q) => q[4]).map((q) => Math.round(q[1] - q[0]))) };
+    });
+    tc.undo(); for (let i = 0; i < 4; i++) tc.simulate(1 / 30);
+    return out;
+  });
+  const west = plan.find((r) => r.cx < 300), east = plan.find((r) => r.cx > 300);
+  check('«Готово»: the rooms of a house of blocks — parted by its inner wall (its doorway open), the ceiling at the top of the walls', plan.length === 2 && west && east && plan.every((r) => r.H >= 2800 && r.H <= 3100 && r.D < 7000 && r.W < 7000) && west.W + east.W < 7800 && plan.every((r) => r.doors.some((d) => d > 1400 && d < 2000)), JSON.stringify(plan));
   check('openings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
