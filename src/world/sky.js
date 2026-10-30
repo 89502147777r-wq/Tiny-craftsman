@@ -114,7 +114,9 @@ export class Sky {
       L.mast.visible = isPano(app.backdrop.mode);
     }
     const hq = app.settings.quality === 'high';
-    if (this.lamps[0].spot.castShadow !== hq) this.lamps[0].spot.castShadow = hq;
+    // (its shadow only while it is lit: an unlit lamp's shadow map is the whole site drawn again for nothing)
+    const cs = hq && this.lamps[0].spot.intensity > 0.01;
+    if (this.lamps[0].spot.castShadow !== cs) this.lamps[0].spot.castShadow = cs;
   }
 
   _lamps() {

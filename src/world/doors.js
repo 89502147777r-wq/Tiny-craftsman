@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { mats, box, glazing } from './windows.js';
 import { GARAGES, GARAGE_SIZE, buildGarage, garageKit } from './garage.js';
-import { hasKit, fitKit, kitMat, mergeParts } from './openingKits.js';
+import { wantKit, fitKit, kitMat, mergeParts } from './openingKits.js';
 
 // Doors, built to the opening like the windows (windows.js): the frame (коробка) round the
 // top and the sides, the leaf (полотно) in it with a 3 mm gap, its panels / grooves / glass,
@@ -34,7 +34,7 @@ export const isDoor = (key) => key in DOORS;
 // only, in our frame (leafKit); until the models come, drawn as below
 const KIT = { door1: 'd_steel_grey', door2: 'd_black', door3: 'd_oak', door4: 'd_white_glass', door6: 'd_wood_side', door7: 'd_steel_white', door10: 'g_wicket' };
 const LEAF_KIT = { door5: 'd_leaf_e', door8: 'd_leaf_a', door9: 'd_leaf_f' };
-export const doorKit = (key) => (hasKit(KIT[key]) ? KIT[key] : hasKit(LEAF_KIT[key]) ? LEAF_KIT[key] : garageKit(key));
+export const doorKit = (key) => (wantKit(KIT[key]) ? KIT[key] : wantKit(LEAF_KIT[key]) ? LEAF_KIT[key] : garageKit(key));
 
 const SIZES = { door1: [400, 9000, 900, 9000], door2: [400, 9000, 900, 9000], door3: [400, 9000, 900, 9000], door4: [400, 9000, 900, 9000], door5: [800, 9000, 900, 9000], door6: [1300, 9000, 1900, 9000], door7: [400, 9000, 900, 9000], door8: [400, 9000, 900, 9000], door9: [400, 9000, 900, 9000], door10: [400, 9000, 900, 9000], ...Object.fromEntries(Object.keys(GARAGES).map((k) => [k, GARAGE_SIZE])) };   // (made to any opening: the leaf, its panels, glass and handles follow it)
 export function doorFits(key, w, h) {
@@ -122,7 +122,7 @@ export function buildDoor(key, w, h, t = 300) {
     box(list, X1 + cw / 2 - 10, (Y1 + cw - 10) / 2, z, cw, Y1 + cw - 10, 10);
     box(list, 0, Y1 + cw / 2 - 10, z, X1 - X0 + 2 * cw - 20, cw, 10);
   }
-  const kit = KIT[key] && hasKit(KIT[key]) ? KIT[key] : null, leafKit = !kit && LEAF_KIT[key] && hasKit(LEAF_KIT[key]) ? LEAF_KIT[key] : null;
+  const kit = KIT[key] && wantKit(KIT[key]) ? KIT[key] : null, leafKit = !kit && LEAF_KIT[key] && wantKit(LEAF_KIT[key]) ? LEAF_KIT[key] : null;
   const kitParts = [];
   if (kit) {
     // the modelled door with its own frame, in the opening: its outer face where ours would be

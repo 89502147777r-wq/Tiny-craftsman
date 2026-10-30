@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
-import { hasKit, fitKit, kitMat, mergeParts } from './openingKits.js';
+import { wantKit, fitKit, kitMat, mergeParts } from './openingKits.js';
 
 // Windows, built to the opening they go into (a model of a fixed size would stretch its
 // profiles): the frame and the sashes swept along real cross-sections of the profiles
@@ -237,7 +237,7 @@ export function windowKit(key) {
   const P = WINDOWS[key];
   if (!P || P.corner) return null;
   const k = P.slide ? 'w_slide' : P.mat === 'alu' ? 'w_alu' : 'w_tilt';
-  return hasKit(k) ? k : null;
+  return wantKit(k) ? k : null;
 }
 // the modelled window over [X0, X1] × [Y0, Y1], its outer face at the drawn frame's (zF + 35):
 // one model a sash (a PVC window of three: three of them side by side, their frames together

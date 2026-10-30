@@ -23,11 +23,13 @@ export class RebarView {
     this.rods = new THREE.InstancedMesh(rodGeo, makeRebarMaterial(), this.max.rods);
     this.chairs = new THREE.InstancedMesh(makeChairGeometry(), new THREE.MeshStandardMaterial({ color: 0x505457, roughness: 0.55 }), this.max.chairs);
     this.frogs = new THREE.InstancedMesh(makeFrogGeometry(), new THREE.MeshStandardMaterial({ color: 0x5d4a3e, roughness: 0.6, metalness: 0.5 }), this.max.frogs);
-    this.ties = new THREE.InstancedMesh(new THREE.TorusGeometry(1, 0.28, 5, 10), new THREE.MeshStandardMaterial({ color: 0x2c2c2e, roughness: 0.45, metalness: 0.7 }), this.max.ties);
+    this.ties = new THREE.InstancedMesh(new THREE.TorusGeometry(1, 0.28, 3, 6), new THREE.MeshStandardMaterial({ color: 0x2c2c2e, roughness: 0.45, metalness: 0.7 }), this.max.ties);
     // plastic wheel spacers («звёздочки») clipped on the bars: dark grey plastic
     this.stars = new THREE.InstancedMesh(makeStarGeometry(), new THREE.MeshStandardMaterial({ color: 0x3b3e42, roughness: 0.5 }), this.max.stars);
+    // (the bars' own shadows: thin lines nobody sees — and the whole cage drawn again into the sun's
+    // map for them; the small things — wire ties, chairs, spacers — only near the camera: lod())
     for (const m of [this.rods, this.chairs, this.frogs, this.ties, this.stars]) {
-      m.castShadow = m.receiveShadow = true;
+      m.castShadow = false; m.receiveShadow = true;
       m.frustumCulled = false;
       m.count = 0;
       this.group.add(m);
@@ -38,6 +40,7 @@ export class RebarView {
     objects.on((id, rec) => { if (this._types.has(rec?.type) || this._known?.has(id)) this.dirty = true; });
   }
 
+  lod(dist) { const near = dist < 0.9; this.ties.visible = near; this.stars.visible = near; this.chairs.visible = dist < 1.6; this.frogs.visible = dist < 1.6; }
   update() {
     if (!this.dirty) return;
     this.dirty = false;
