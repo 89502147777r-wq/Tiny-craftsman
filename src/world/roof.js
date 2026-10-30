@@ -31,7 +31,9 @@ export const COP_COLOURS = {
 // ---- textures: drawn on a canvas, a normal map from the same height --------------------------
 const TEX = {};
 let seed = 1; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-export function canvas(n, m = n) { const cv = document.createElement('canvas'); cv.width = n; cv.height = m; return cv; }
+// (a canvas the textures are drawn on: kept in memory, not on the GPU — they are read back pixel by
+// pixel (the normal maps, the baked relief), a read off the GPU stalls it each time)
+export function canvas(n, m = n) { const cv = document.createElement('canvas'); cv.width = n; cv.height = m; const gc = cv.getContext.bind(cv); cv.getContext = (t, o) => gc(t, t === '2d' ? { willReadFrequently: true, ...o } : o); return cv; }
 export function asTex(cv, srgb = true) { const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
 // a normal map from a height canvas (its red channel)
 export function normalOf(hc, k = 2) {
