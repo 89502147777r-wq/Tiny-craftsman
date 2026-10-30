@@ -478,7 +478,7 @@ export class WallView {
       if (rec?.type === 'rail' || this._railIds?.has(id)) { this.railDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (rec?.type === 'stock' || this._stockIds?.has(id)) { this.dirty = true; return; }
-      if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; }
+      if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; if (rec?.type === 'unit' || !rec) this._byUnits = true; }
     });
   }
 
@@ -486,13 +486,19 @@ export class WallView {
     if (this._kitsAt !== kitsLoaded()) { this._kitsAt = kitsLoaded(); if (this._win) this._buildWindows(); }
     if (this.railDirty || this.liveRail !== this._liveRailAt) this._buildRails();
     if (this.blindStream !== this._streamAt) { this._streamAt = this.blindStream; setStream(this.stream, this.blindStream?.r, this.blindStream); }
-    if (!this.dirty) { if (this.fillDirty) this._buildFill(); if (this.roofDirty) this._buildRoofs(); if (this.facadeDirty) this._buildFacades(); if (this.proofDirty) this._buildProofs(); if (this.blindDirty) this._buildBlinds(); return; }
+    // (blocks being laid one after another: the blocks themselves at once; what follows from them — the
+    // facade over the walls, the roofs on them, the fill, the blind area — when the hand rests: each
+    // block built them all again, a pause of its own on a phone)
+    const app = this.app, laying = !!app && (performance.now() - (app.lastInput || -1e9) < 900 || !!app.wallTool?.busy);
+    if (this._late && !laying && !this.dirty) { this._late = false; this.facadeDirty = this.roofDirty = this.fillDirty = this.blindDirty = true; this._faces = null; }
+    if (!this.dirty) { if (this.fillDirty && !this._late) this._buildFill(); if (this.roofDirty && !this._late) this._buildRoofs(); if (this.facadeDirty && !this._late) this._buildFacades(); if (this.proofDirty) this._buildProofs(); if (this.blindDirty && !this._late) this._buildBlinds(); return; }
     this.dirty = false;
+    const late = this._byUnits && laying; this._byUnits = false;
+    if (late) this._late = true;
     const O = this.objects, walls = O.all('wall'), m = new THREE.Matrix4(), c = new THREE.Color();
     this._known = new Set([...walls, ...O.all('unit'), ...O.all('bed'), ...O.all('opening'), ...O.all('belt'), ...O.all('window'), ...O.all('roof')].map((r) => r.id));
     this._buildWindows();
-    this._buildRoofs();
-    this._buildFacades();
+    if (!late) { this._buildRoofs(); this._buildFacades(); }
     if (this.proofDirty) this._buildProofs();
     let nb = 0, nk = 0, nm = 0, nl = 0, nf = 0, nw = 0, nu = 0, ncb = 0, nbb = 0;
     const c3 = new THREE.Color();
@@ -769,7 +775,7 @@ export class WallView {
     }
     this.blocks.count = nb; this.bricks.count = nk; this.cinders.count = ncb; this.mortar.count = nm; this.lintels.count = nl; this.frames.count = nf; this.wood.count = nw; this.ublocks.count = nu; this.beltBoards.count = nbb; this.beltBoards.geometry.attributes.aBoard.needsUpdate = true;
     for (const im of [this.blocks, this.bricks, this.cinders, this.mortar, this.lintels, this.frames, this.wood, this.ublocks, this.beltBoards]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
-    this._buildFill();
+    if (!late) this._buildFill(); else this.fillDirty = true;
     for (const im of [this.blocks, this.bricks, this.cinders]) if (im.instanceColor) im.instanceColor.needsUpdate = true;
     this.bricks.geometry.attributes.aSkin.needsUpdate = true;
   }

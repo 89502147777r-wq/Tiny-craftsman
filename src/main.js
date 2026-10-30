@@ -215,6 +215,8 @@ async function main() {
     // (the hand-held sway runs only while drawn smoothly; the shadows are drawn again only when
     // something but the rain moves — else twice a second, for the sun)
     app.rig.live = recent || mv;
+    // (the hand off: the picture sharp again at once — coarser only while it works and the frames lag)
+    if (app.dprAuto && now - app.lastInput > 700) { app.dprAuto = 0; slowS = 0; resize(); }
     app.shadowLive = recent || (mv && moving(false));
     if (due) {
       const fd = (now - lastDraw) / 1000;
@@ -223,11 +225,12 @@ async function main() {
       if (fpsAcc > 1) {
         app.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0;
         // (the picture made coarser a step while the hand works and the frames come slower than
-        // 22 a second for 3 s running — the phone keeps up instead of freezing; down to 1:1)
+        // 20 a second for 2 s running — the phone keeps up instead of freezing; never under 1,5 ×:
+        // coarser, the joints of the masonry shimmer)
         if (recent && !app.dprOverride) {
-          slowS = app.fps < 22 ? slowS + 1 : 0;
+          slowS = app.fps < 20 ? slowS + 1 : 0;
           const cur = app.renderer.getPixelRatio();
-          if (slowS >= 3 && cur > 1.01) { app.dprAuto = Math.max(1, cur - 0.25); slowS = 0; resize(); }
+          if (slowS >= 2 && cur > 1.51) { app.dprAuto = Math.max(1.5, cur - 0.25); slowS = 0; resize(); }
         }
       }
     }
