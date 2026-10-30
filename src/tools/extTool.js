@@ -13,7 +13,7 @@ const NAME = Object.fromEntries(PORCH_LAYERS), ORDER = PORCH_LAYERS.map(([k]) =>
 
 export class ExtWork {
   constructor(app) { this.app = app; this.drag = null; }
-  get what() { const w = this.app.settings.extWhat; return w === 'canopy' || w === 'light' ? w : 'porch'; }
+  get what() { const w = this.app.settings.extWhat; return w === 'canopy' || w === 'porch' ? w : 'light'; }   // (the porch: off the menu for now)
   get lightKind() { return FLIGHTS[this.app.settings.flKind] ? this.app.settings.flKind : 'sconce'; }
   get lightTemp() { return FLIGHT_TEMPS[this.app.settings.flTemp] ? this.app.settings.flTemp : 'warm'; }
   // the house's surface under the finger: the point and its normal (the walls, the facades, the slabs, the roofs)

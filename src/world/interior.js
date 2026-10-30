@@ -39,74 +39,199 @@ function cast(objs, from, dir, far) {
   const shown = (o) => { for (let q = o; q; q = q.parent) if (!q.visible) return false; return true; };
   return _rc.intersectObjects(objs, false).find((h) => shown(h.object)) || null;
 }
-// the windows grouped into rooms: [{ wins, yaw, floor, ceil, a0, a1 (along the wall, m from o), D, o, u, n }]
+// The floor plan behind the windows: for each floor, the masonry at the height of a hand (the
+// blocks and bricks laid, the windows and doors in their openings) drawn into a grid in the house's
+// axes; what the outside can't reach from the grid's edge is inside — its rooms the masonry's own
+// (inner walls) or, a hall with no walls in it, rooms of our own: cut by plasterboard partitions,
+// each with its doorway, never across a window or a door, until each is a room's size and has a
+// blank wall to stand the furniture on. The height to the top of the walls (not to the roof: a
+// ceiling under the attic). Each room: its front the wall with the most glass, its openings on all
+// four walls (the furniture keeps clear of them).
+// → [{ wins, yaw, floor, ceil, o, u, n, a0, a1, D, walls: { F, B, L, R: { ext, open: [[s0, s1, y0, y1, door]] } }, kind, seed }]
 export function roomsOf(app) {
-  const wins = app.objects.all('window').filter((w) => !w.corner && !(isDoor(w.key)));
+  const all = app.objects.all('window').filter((w) => !w.corner), wins = all.filter((w) => !isDoor(w.key));
+  if (!wins.length) return [];
   const objs = solids(app), t = app.terrain, rooms = [];
-  // (the big glazing first: its room is the one the others may open into)
-  wins.sort((p, q) => !!(WINDOWS[p.key] || {}).sill - !!(WINDOWS[q.key] || {}).sill);
-  const inRoom = (r, p) => { const v = p.clone().sub(r.o), a = v.dot(r.u), d = -v.dot(r.n); return a > r.a0 && a < r.a1 && d > 0 && d < r.D; };
-  for (const w of wins) {
-    const out = new THREE.Vector3(Math.sin(w.yaw), 0, Math.cos(w.yaw)), along = new THREE.Vector3(out.z, 0, -out.x), half = MM((w.t || 300) / 2);
-    const inner = new THREE.Vector3(w.x, 0, w.z).addScaledVector(out, -half);
-    const K = WINDOWS[w.key] || {}, sill = K.sill ? MM(900) : 0;
-    // (the floor: the slab under a point inside, else the ground)
-    const probe = inner.clone().addScaledVector(out, -MM(600)); probe.y = w.y + MM(300);
+  // (each opening's floor: the slab under a point inside, else the ground; a door: its threshold)
+  const floorOf = (w) => {
+    if (isDoor(w.key)) return w.y;
+    const out = new THREE.Vector3(Math.sin(w.yaw), 0, Math.cos(w.yaw)), K = WINDOWS[w.key] || {}, sill = K.sill ? MM(900) : 0;
+    const probe = new THREE.Vector3(w.x, 0, w.z).addScaledVector(out, -MM((w.t || 300) / 2 + 600)); probe.y = w.y + MM(300);
     const down = cast(objs, probe, new THREE.Vector3(0, -1, 0), MM(1500));
-    let floor = down ? down.point.y : (t.inside(probe.x, probe.z) ? t.heightAt(probe.x, probe.z) : w.y - sill);
-    if (floor > w.y + MM(50) || floor < w.y - MM(1300)) floor = w.y - sill;
-    // (a room already there — the window on its side wall: the corner room with windows on two walls)
-    const r1 = rooms.find((r) => Math.abs(r.floor - floor) < MM(300) && inRoom(r, probe.clone().setY(0)));
-    if (r1) { r1.wins.push(w); continue; }
-    const mid = inner.clone().addScaledVector(out, -MM(200)); mid.y = floor + MM(1200);
-    // (the house's own walls, slab and ceiling where the rays find them; where not, the room's shell)
-    const up = cast(objs, mid.clone(), new THREE.Vector3(0, 1, 0), MM(4000)), ceil = up ? Math.max(floor + MM(2300), up.point.y) : floor + MM(2800);
-    const back = cast(objs, mid.clone(), out.clone().negate(), MM(7500)), D = back ? Math.max(MM(1500), back.distance) : MM(4200);
-    const side = (s) => cast(objs, mid.clone().addScaledVector(out, -MM(400)), along.clone().multiplyScalar(s), MM(7500));
-    const hL = side(-1), hR = side(1);
-    const aL = -Math.max(MM(w.w / 2 + 300), hL ? hL.distance : MM(2000)), aR = Math.max(MM(w.w / 2 + 300), hR ? hR.distance : MM(2000));
-    const sh = { L: !hL, R: !hR, B: !back, C: !up, F: !down };
-    // (a room already on this wall, level with it and overlapping: the window joins it)
-    const r0 = rooms.find((r) => Math.abs(Math.atan2(Math.sin(r.yaw - w.yaw), Math.cos(r.yaw - w.yaw))) < 0.05 && Math.abs(r.floor - floor) < MM(300) && Math.abs(new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.n)) < MM(200) && (() => { const a = new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.u); return a + aL < r.a1 - MM(100) && a + aR > r.a0 + MM(100); })());
-    if (r0) {
-      const a = new THREE.Vector3(w.x, 0, w.z).sub(r0.o).dot(r0.u);
-      if (a + aL < r0.a0) { r0.a0 = a + aL; r0.sh.L = sh.L; }
-      if (a + aR > r0.a1) { r0.a1 = a + aR; r0.sh.R = sh.R; }
-      r0.wins.push(w); if (D > r0.D) { r0.D = D; r0.sh.B = sh.B; } continue;
+    let f = down ? down.point.y : (t.inside(probe.x, probe.z) ? t.heightAt(probe.x, probe.z) : w.y - sill);
+    if (f > w.y + MM(50) || f < w.y - MM(1300)) f = w.y - sill;
+    return f;
+  };
+  const fl = new Map(all.map((w) => [w, floorOf(w)]));
+  const levels = [];
+  for (const w of wins) { const f = fl.get(w); if (!levels.some((q) => Math.abs(q - f) < MM(400))) levels.push(f); }
+  levels.sort((p, q) => p - q);
+  // the house's axes: along the walls of the first window
+  const th = wins[0].yaw, ex = new THREE.Vector3(Math.cos(th), 0, -Math.sin(th)), ez = new THREE.Vector3(Math.sin(th), 0, Math.cos(th));
+  const X = (x, z) => x * ex.x + z * ex.z, Z = (x, z) => x * ez.x + z * ez.z, W = (a, b) => new THREE.Vector3(a * ex.x + b * ez.x, 0, a * ex.z + b * ez.z);
+  const units = app.objects.all('unit');
+  for (const floor of levels) {
+    const ops = all.filter((w) => Math.abs(fl.get(w) - floor) < MM(400) || (isDoor(w.key) && Math.abs(w.y - floor) < MM(400)));
+    const ys = floor + MM(1200);
+    // (the masonry round: the courses through the height of a hand; the top of the walls)
+    const near = (x, z) => ops.some((w) => Math.hypot(w.x - x, w.z - z) < MM(16000));
+    const us = units.filter((u) => u.p && u.s && Math.abs(u.p[1] - ys) < u.s[1] / 2 + MM(5) && near(u.p[0], u.p[2]));
+    if (!us.length) continue;
+    let top = floor + MM(2700);
+    { const tops = units.filter((u) => u.p && u.s && near(u.p[0], u.p[2]) && u.p[1] > floor && u.p[1] < floor + MM(4500)).map((u) => u.p[1] + u.s[1] / 2); if (tops.length) top = Math.max(...tops); }
+    // the grid (50 mm), its bounds round the masonry
+    const c = MM(50), pts = [...us.map((u) => [X(u.p[0], u.p[2]), Z(u.p[0], u.p[2])]), ...ops.map((w) => [X(w.x, w.z), Z(w.x, w.z)])];
+    const gx0 = Math.min(...pts.map((q) => q[0])) - MM(800), gz0 = Math.min(...pts.map((q) => q[1])) - MM(800);
+    const nx = Math.ceil((Math.max(...pts.map((q) => q[0])) + MM(800) - gx0) / c), nz = Math.ceil((Math.max(...pts.map((q) => q[1])) + MM(800) - gz0) / c);
+    if (nx * nz > 600 * 600) continue;
+    // (the masonry at a hand's height and over the doors: a doorway in an inner wall, under its lintel,
+    // parts two rooms; g12 — at a hand's height only: the doorways open in it)
+    const g = new Uint8Array(nx * nz), g12 = new Uint8Array(nx * nz);   // g: 1 masonry, 2 outside, 3+ rooms
+    // a rectangle (its middle, its yaw, its size) filled — a little bigger: the joints closed
+    const fill = (cx, cz, yaw, sw, sd, both = true) => {
+      const ca = Math.cos(yaw - th), sa = Math.sin(yaw - th), hx = sw / 2 + MM(30), hz = sd / 2 + MM(30);
+      const R = Math.abs(ca) * hx + Math.abs(sa) * hz, Rz = Math.abs(sa) * hx + Math.abs(ca) * hz, X0 = X(cx, cz), Z0 = Z(cx, cz);
+      for (let i = Math.max(0, Math.floor((X0 - R - gx0) / c)); i <= Math.min(nx - 1, Math.ceil((X0 + R - gx0) / c)); i++) for (let k = Math.max(0, Math.floor((Z0 - Rz - gz0) / c)); k <= Math.min(nz - 1, Math.ceil((Z0 + Rz - gz0) / c)); k++) {
+        const px = gx0 + (i + 0.5) * c - X0, pz = gz0 + (k + 0.5) * c - Z0, lx = px * ca - pz * sa, lz = px * sa + pz * ca;
+        if (Math.abs(lx) <= hx && Math.abs(lz) <= hz) { g[i + k * nx] = 1; if (both) g12[i + k * nx] = 1; }
+      }
+    };
+    for (const u of us) { const q = u.q || [0, 0, 0, 1], yaw = 2 * Math.atan2(q[1], q[3]); fill(u.p[0], u.p[2], yaw, u.s[0], u.s[2]); }
+    const y2 = floor + MM(2350);
+    if (y2 < top - MM(60)) for (const u of units) if (u.p && u.s && Math.abs(u.p[1] - y2) < u.s[1] / 2 + MM(5) && !(Math.abs(u.p[1] - ys) < u.s[1] / 2 + MM(5)) && near(u.p[0], u.p[2])) { const q = u.q || [0, 0, 0, 1]; fill(u.p[0], u.p[2], 2 * Math.atan2(q[1], q[3]), u.s[0], u.s[2], false); }
+    for (const w of ops) fill(w.x, w.z, w.yaw, MM(w.w), MM(w.t || 300));
+    const cellAt = (G2, xx, zz) => { const i = Math.floor((xx - gx0) / c), k = Math.floor((zz - gz0) / c); return i >= 0 && k >= 0 && i < nx && k < nz ? G2[i + k * nx] : 0; };
+    // the outside: from the edge
+    const st = [];
+    for (let i = 0; i < nx; i++) for (const k of [0, nz - 1]) st.push(i + k * nx);
+    for (let k = 0; k < nz; k++) for (const i of [0, nx - 1]) st.push(i + k * nx);
+    const flood = (seed, v) => { const q = Array.isArray(seed) ? seed : [seed]; let n = 0, i0 = 1e9, i1 = -1, k0 = 1e9, k1 = -1; while (q.length) { const id = q.pop(); if (g[id] !== 0) continue; g[id] = v; n++; const i = id % nx, k = (id - i) / nx; i0 = Math.min(i0, i); i1 = Math.max(i1, i); k0 = Math.min(k0, k); k1 = Math.max(k1, k); if (i > 0) q.push(id - 1); if (i < nx - 1) q.push(id + 1); if (k > 0) q.push(id - nx); if (k < nz - 1) q.push(id + nx); } return { n, i0, i1, k0, k1 }; };
+    flood(st, 2);
+    // the rooms the masonry closes (a hall, or rooms with walls of their own)
+    const halls = [];
+    for (let id = 0, v = 3; id < g.length; id++) if (g[id] === 0) { const r = flood(id, v++); if (r.n * c * c > MM(1000) * MM(1000) * 3) halls.push(r); }
+    for (const h of halls) {
+      // its faces: the edges of the cells, put right by a look along the floor at them
+      let x0 = gx0 + h.i0 * c, x1 = gx0 + (h.i1 + 1) * c, z0 = gz0 + h.k0 * c, z1 = gz0 + (h.k1 + 1) * c;
+      const mid = W((x0 + x1) / 2, (z0 + z1) / 2); mid.y = ys;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const dir = W(dx, dz), far = dx ? (x1 - x0) / 2 : (z1 - z0) / 2, ds = [];
+        for (const f of [-0.3, 0, 0.3]) { const o = mid.clone().add(W(dz ? f * (x1 - x0) : 0, dx ? f * (z1 - z0) : 0)); const hit = cast(objs, o, dir, far + MM(400)); if (hit) ds.push(hit.distance); }
+        if (!ds.length) continue;
+        ds.sort((p, q) => p - q); const d = ds[Math.floor(ds.length / 2)];
+        if (Math.abs(d - far) > MM(250)) continue;
+        if (dx > 0) x1 = (x0 + x1) / 2 + d; else if (dx < 0) x0 = (x0 + x1) / 2 - d; else if (dz > 0) z1 = (z0 + z1) / 2 + d; else z0 = (z0 + z1) / 2 - d;
+      }
+      // the openings on its walls: [side, from, to (along the wall, house axes), y0, y1, door, w]
+      const on = [];
+      for (const w of ops) {
+        const px = X(w.x, w.z), pz = Z(w.x, w.z), hw = MM(w.w) / 2, y0 = w.y - floor, y1 = y0 + MM(w.h), door = isDoor(w.key), tol = MM((w.t || 300) / 2 + 250);
+        if (Math.abs(pz - z1) < tol && px > x0 && px < x1) on.push(['+z', px - hw, px + hw, y0, y1, door, w]);
+        else if (Math.abs(pz - z0) < tol && px > x0 && px < x1) on.push(['-z', px - hw, px + hw, y0, y1, door, w]);
+        else if (Math.abs(px - x1) < tol && pz > z0 && pz < z1) on.push(['+x', pz - hw, pz + hw, y0, y1, door, w]);
+        else if (Math.abs(px - x0) < tol && pz > z0 && pz < z1) on.push(['-x', pz - hw, pz + hw, y0, y1, door, w]);
+      }
+      // cut into rooms: [x0, x1, z0, z1, parts: { side: 'ext' | partition }]
+      const leaves = [], parts = [];
+      const split = (R, depth = 0) => {
+        const [a0, a1, b0, b1] = R, wX = a1 - a0, wZ = b1 - b0, area = wX * wZ / MM(1000) / MM(1000);
+        const touch = { '+z': Math.abs(b1 - z1) < 1e-6, '-z': Math.abs(b0 - z0) < 1e-6, '+x': Math.abs(a1 - x1) < 1e-6, '-x': Math.abs(a0 - x0) < 1e-6 };
+        const opsIn = (side, lo, hi) => (touch[side] ? on.filter((o) => o[0] === side && o[2] > lo && o[1] < hi) : []);
+        const sides = { '+z': opsIn('+z', a0, a1), '-z': opsIn('-z', a0, a1), '+x': opsIn('+x', b0, b1), '-x': opsIn('-x', b0, b1) };
+        // (the partitions already cut, as blank walls: a room needs one without windows)
+        const blank = Object.values(sides).some((v) => !v.length);
+        if ((area <= 26 && blank) || area < 9 || depth > 4) { leaves.push(R); return; }
+        let best = null;
+        for (const ax of ['x', 'z']) {
+          const L = ax === 'x' ? wX : wZ, lo = ax === 'x' ? a0 : b0;
+          if (L < MM(5400)) continue;
+          for (let tt = lo + MM(2600); tt <= lo + L - MM(2600); tt += MM(100)) {
+            // (not across an opening: the partition meets the outer wall clear of it)
+            const meets = (sd) => (sd === '+z' ? Math.abs(b1 - z1) < 1e-6 : sd === '-z' ? Math.abs(b0 - z0) < 1e-6 : sd === '+x' ? Math.abs(a1 - x1) < 1e-6 : Math.abs(a0 - x0) < 1e-6);
+            const hitsOp = on.some((o) => (ax === 'x' ? o[0][1] === 'z' : o[0][1] === 'x') && meets(o[0]) && tt > o[1] - MM(150) && tt < o[2] + MM(150));
+            if (hitsOp) continue;
+            const A = ax === 'x' ? [a0, tt, b0, b1] : [a0, a1, b0, tt], B = ax === 'x' ? [tt, a1, b0, b1] : [a0, a1, tt, b1];
+            const glass = (Rr) => on.filter((o) => !o[5] && ((o[0][1] === 'z' && o[1] < Rr[1] && o[2] > Rr[0] && (o[0] === '+z' ? Math.abs(Rr[3] - z1) < 1e-6 : Math.abs(Rr[2] - z0) < 1e-6)) || (o[0][1] === 'x' && o[1] < Rr[3] && o[2] > Rr[2] && (o[0] === '+x' ? Math.abs(Rr[1] - x1) < 1e-6 : Math.abs(Rr[0] - x0) < 1e-6)))).length;
+            const opp = ax === 'x' ? sides['+x'].length && sides['-x'].length : sides['+z'].length && sides['-z'].length;
+            const score = Math.abs((tt - lo) / L - 0.5) + (glass(A) && glass(B) ? 0 : 2) + (L >= Math.max(wX, wZ) ? 0 : 0.3) - (opp ? 0.6 : 0);
+            if (!best || score < best.score) best = { score, ax, tt, A, B };
+          }
+        }
+        if (!best) { leaves.push(R); return; }
+        // the partition, its doorway near one end (the middle of the wall left for the furniture)
+        const len = best.ax === 'x' ? wZ : wX, s0 = best.ax === 'x' ? b0 : a0, dw = MM(900), dp = s0 + Math.min(MM(500), len * 0.15);
+        parts.push({ ax: best.ax, at: best.tt, from: s0, to: s0 + len, door: [dp, dp + dw] });
+        split(best.A, depth + 1); split(best.B, depth + 1);
+      };
+      split([x0, x1, z0, z1]);
+      for (const [a0, a1, b0, b1] of leaves) {
+        // each wall of the room: the house's own (outside) or a partition; its openings (doors of the partitions too)
+        const wallOf = (side) => {
+          const ax = side[1] === 'z' ? 'z' : 'x', at = side === '+z' ? b1 : side === '-z' ? b0 : side === '+x' ? a1 : a0, lo = ax === 'z' ? a0 : b0, hi = ax === 'z' ? a1 : b1;
+          const pt = parts.find((q) => q.ax === (ax === 'z' ? 'z' : 'x') && Math.abs(q.at - at) < MM(5) && q.from < hi - MM(5) && q.to > lo + MM(5));
+          const open = pt ? [[pt.door[0], pt.door[1], 0, MM(2100), true]].filter((d) => d[1] > lo && d[0] < hi)
+            : on.filter((o) => o[0] === side && o[2] > lo && o[1] < hi).map((o) => [Math.max(lo, o[1]), Math.min(hi, o[2]), o[3], o[4], o[5], o[6]]);
+          if (!pt) {
+            // (a doorway in the masonry: open at a hand's height, closed over the doors — the lintel)
+            const dir = side[0] === '+' ? 1 : -1;
+            let run = null;
+            const runs = [];
+            for (let v = lo + MM(25); v <= hi; v += MM(50)) {
+              const at2 = at + dir * MM(120), xx = ax === 'z' ? v : at2, zz = ax === 'z' ? at2 : v;
+              const gap = cellAt(g, xx, zz) === 1 && cellAt(g12, xx, zz) !== 1;
+              if (gap && !run) run = [v, v]; else if (gap) run[1] = v; else if (run) { runs.push(run); run = null; }
+            }
+            if (run) runs.push(run);
+            for (const [s0, s1] of runs) if (s1 - s0 > MM(450)) open.push([s0 - MM(25), s1 + MM(25), 0, Math.min(MM(2100), top - floor - MM(300)), true]);
+          }
+          return { ext: !pt, open, lo, hi };
+        };
+        const walls = { '+z': wallOf('+z'), '-z': wallOf('-z'), '+x': wallOf('+x'), '-x': wallOf('-x') };
+        const glassOn = (k) => walls[k].ext ? walls[k].open.filter((o) => !o[4]).reduce((sum, o) => sum + (o[1] - o[0]) * (o[3] - o[2]), 0) : 0;
+        const front = Object.keys(walls).sort((p, q) => glassOn(q) - glassOn(p))[0];
+        if (!glassOn(front)) continue;   // (no window: nothing of it is seen)
+        // the room's own frame: o on its front wall's inner face, u along it, n out through it
+        const nW = W(front === '+x' ? 1 : front === '-x' ? -1 : 0, front === '+z' ? 1 : front === '-z' ? -1 : 0), u = new THREE.Vector3(nW.z, 0, -nW.x);
+        const corners = [W(a0, b0), W(a1, b0), W(a0, b1), W(a1, b1)], o = corners.reduce((m, q) => (q.dot(nW) > m.dot(nW) + 1e-9 ? q : m)).clone();
+        const A = corners.map((q) => q.clone().sub(o).dot(u)), Dd = corners.map((q) => -q.clone().sub(o).dot(nW));
+        const ra0 = Math.min(...A), ra1 = Math.max(...A), D = Math.max(...Dd);
+        // (its walls in its own frame: F the front, B the back, L at a0, R at a1; openings along them in a / d)
+        const toRoom = (k) => {
+          const wl = walls[k], n2 = W(k === '+x' ? 1 : k === '-x' ? -1 : 0, k === '+z' ? 1 : k === '-z' ? -1 : 0);
+          const role = n2.dot(nW) > 0.5 ? 'F' : n2.dot(nW) < -0.5 ? 'B' : n2.dot(u) > 0 ? 'R' : 'L';
+          const along = (v) => { const P = k[1] === 'z' ? W(v, k === '+z' ? b1 : b0) : W(k === '+x' ? a1 : a0, v), q = P.sub(o); return role === 'F' || role === 'B' ? q.dot(u) : -q.dot(nW); };
+          return [role, { ext: wl.ext, open: wl.open.map((q) => { const s0 = along(q[0]), s1 = along(q[1]); return [Math.min(s0, s1) / S, Math.max(s0, s1) / S, q[2] / S, q[3] / S, q[4]]; }) }];
+        };
+        const rw = Object.fromEntries(Object.keys(walls).map(toRoom));
+        const fw = walls[front].open.filter((q) => !q[4] && q[5]).map((q) => q[5]);
+        const rwins = Object.values(walls).flatMap((wl) => (wl.ext ? wl.open.filter((q) => !q[4] && q[5]).map((q) => q[5]) : []));
+        let ceil = top; const upHit = cast(objs, W((a0 + a1) / 2, (b0 + b1) / 2).setY(floor + MM(1200)), new THREE.Vector3(0, 1, 0), MM(4000)); if (upHit && upHit.point.y < ceil) ceil = upHit.point.y;
+        ceil = Math.min(floor + MM(3300), Math.max(floor + MM(2400), ceil));
+        rooms.push({ wins: rwins, fwins: fw, yaw: Math.atan2(nW.x, nW.z), floor, ceil, D, o, u, n: nW, a0: ra0, a1: ra1, walls: rw, big: fw.some((w) => !(WINDOWS[w.key] || {}).sill), glass: glassOn(front), door: Object.values(walls).some((wl) => wl.ext && wl.open.some((q) => q[4])) });
+      }
     }
-    rooms.push({ wins: [w], yaw: w.yaw, floor, ceil, D, o: inner.clone(), u: along, n: out, a0: aL, a1: aR, big: !K.sill, sh });
   }
-  // (rooms do not run into each other: the big glazing's room first, the next one stops at its wall —
-  // short of it, or narrower beside it, whichever leaves more of the room)
-  rooms.sort((p, q) => q.big - p.big);
-  for (let i = 1; i < rooms.length; i++) {
-    const r = rooms[i];
-    for (const q of rooms.slice(0, i)) {
-      if (Math.abs(q.floor - r.floor) > MM(1500)) continue;
-      const pts = [[q.a0, 0], [q.a1, 0], [q.a0, q.D], [q.a1, q.D]].map(([a, d]) => q.o.clone().addScaledVector(q.u, a).addScaledVector(q.n, -d).sub(r.o)), A = pts.map((p) => p.dot(r.u)), Dd = pts.map((p) => -p.dot(r.n));
-      const qa0 = Math.min(...A), qa1 = Math.max(...A), qd0 = Math.min(...Dd), qd1 = Math.max(...Dd), m = MM(150);
-      if (qa1 <= r.a0 + m || qa0 >= r.a1 - m || qd1 <= m || qd0 >= r.D - m) continue;
-      const wa = r.wins.map((w) => new THREE.Vector3(w.x, 0, w.z).sub(r.o).dot(r.u)), wl = Math.min(...r.wins.map((w, k) => wa[k] - MM(w.w / 2))), wr = Math.max(...r.wins.map((w, k) => wa[k] + MM(w.w / 2)));
-      const opts = [];
-      if (qd0 - MM(100) > MM(1800)) opts.push(() => { r.D = qd0 - MM(100); r.sh.B = true; }, (r.a1 - r.a0) * (qd0 - MM(100)));
-      if (qa0 - MM(100) > wr + MM(200)) opts.push(() => { r.a1 = qa0 - MM(100); r.sh.R = true; }, (qa0 - MM(100) - r.a0) * r.D);
-      if (qa1 + MM(100) < wl - MM(200)) opts.push(() => { r.a0 = qa1 + MM(100); r.sh.L = true; }, (r.a1 - qa1 - MM(100)) * r.D);
-      let best = -1; for (let k = 0; k < opts.length; k += 2) if (best < 0 || opts[k + 1] > opts[best + 1]) best = k;
-      if (best >= 0) opts[best](); else { r.D = Math.max(MM(1200), Math.min(r.D, qd0 - MM(100))); r.sh.B = true; }
-    }
+  // (a window with no masonry round it — a wall not laid of blocks: the room behind it a box of our own)
+  for (const w of wins) {
+    if (rooms.some((r) => r.wins.includes(w))) continue;
+    const floor = fl.get(w), nW = new THREE.Vector3(Math.sin(w.yaw), 0, Math.cos(w.yaw)), u = new THREE.Vector3(nW.z, 0, -nW.x);
+    const o = new THREE.Vector3(w.x, 0, w.z).addScaledVector(nW, -MM((w.t || 300) / 2)), hw = w.w / 2, y0 = (w.y - floor) / S;
+    const a0 = MM(-hw - 1500), a1 = MM(hw + 1500), D = MM(4200), part = (L) => ({ ext: false, open: [], len: L });
+    rooms.push({ wins: [w], fwins: [w], yaw: w.yaw, floor, ceil: floor + MM(2800), D, o, u, n: nW, a0, a1, walls: { F: { ext: true, open: [[-hw, hw, y0, y0 + w.h, false]] }, B: part(), L: part(), R: part() }, big: !(WINDOWS[w.key] || {}).sill, glass: w.w * w.h, door: false });
   }
-  // (each room its kind: on the ground floor the living room behind the big glazing, the kitchen behind
-  // the next window; upstairs the largest a bedroom, then by the dice — a child's room, a bedroom, a study)
-  const levels = [...new Set(rooms.map((r) => Math.round(r.floor / MM(1500))))].sort((p, q) => p - q);
+  // (each room its kind: on the ground floor the living room behind the most glass, the kitchen by
+  // the entrance or next to it; upstairs the largest a bedroom, then by the dice — a child's room, a
+  // bedroom, a study)
+  const lvls = [...new Set(rooms.map((r) => Math.round(r.floor / MM(1500))))].sort((p, q) => p - q);
   const hs = houseSeed(rooms);
-  for (const lv of levels) {
-    const on = rooms.filter((r) => Math.round(r.floor / MM(1500)) === lv).sort((p, q) => (q.a1 - q.a0) * q.D - (p.a1 - p.a0) * p.D);
-    let kitchen = false, living = false, k = 0;
+  for (const lv of lvls) {
+    const on = rooms.filter((r) => Math.round(r.floor / MM(1500)) === lv).sort((p, q) => q.glass * (q.a1 - q.a0) * q.D - p.glass * (p.a1 - p.a0) * p.D);
+    let kitchen = false, k = 0;
     const cycle = ['kids', 'bed', 'study', 'kids', 'bed'];
     on.forEach((r, i) => {
-      r.lv = levels.indexOf(lv); r.seed = mix(hs, Math.round(r.o.x * 1e4), Math.round(r.o.z * 1e4), r.lv * 7919);
-      if (r.lv === 0 && r.big && !living) { r.kind = 'living'; living = true; return; }
-      if (r.lv === 0 && !kitchen) { r.kind = 'kitchen'; kitchen = true; return; }
+      r.lv = lvls.indexOf(lv); r.seed = mix(hs, Math.round(r.o.x * 1e4), Math.round(r.o.z * 1e4), r.lv * 7919);
+      if (r.lv === 0 && i === 0) { r.kind = 'living'; return; }
+      if (r.lv === 0 && !kitchen && (r.door || i === on.length - 1 || i === 1)) { r.kind = 'kitchen'; kitchen = true; return; }
       if (r.lv > 0 && i === 0) { r.kind = r.big && rnd1(r.seed) < 0.3 ? 'living' : 'bed'; return; }
       r.kind = cycle[(k++ + (hs % 5)) % cycle.length];
     });
@@ -151,28 +276,47 @@ export function buildRoom(r) {
   const M = (o, g = 0.55) => glow(std(o), g);
   const box = (m, a0, a1, d0, d1, y0, y1, par = G) => { const o = new THREE.Mesh(new THREE.BoxGeometry(MM(Math.max(1, a1 - a0)), MM(Math.max(1, y1 - y0)), MM(Math.max(1, d1 - d0))), m); o.position.set(MM((a0 + a1) / 2), MM((y0 + y1) / 2), -MM((d0 + d1) / 2)); o.castShadow = o.receiveShadow = true; par.add(o); return o; };
   const wood = (name, tint, rep = 1) => { const t = tex('deck/' + name, 'col.jpg', true).clone(); t.needsUpdate = true; t.repeat.set(rep, rep); return M({ map: t, color: tint, roughness: 0.6 }, 0.5); };
-  const mir = rnd() < 0.5, A = (a) => (mir ? A0 + A1 - a : a), side = (rot) => (mir ? -rot : rot);
+  // the openings on each wall of the room (F the front, B the back, L at A0, R at A1): [s0, s1, y0, y1, door] mm
+  const OW = { F: [], B: [], L: [], R: [], ...Object.fromEntries(Object.entries(r.walls || {}).map(([k, v]) => [k, v.open])) };
+  const EXT = { F: true, B: !r.walls || r.walls.B?.ext, L: !r.walls || r.walls.L?.ext, R: !r.walls || r.walls.R?.ext };
+  const opLen = (k) => OW[k].reduce((m, q) => m + q[1] - q[0], 0);
+  // (the furniture on the side walls goes on the left: mirrored so the left is the one with fewer openings)
+  const mir = opLen('L') === opLen('R') ? rnd() < 0.5 : opLen('L') > opLen('R'), A = (a) => (mir ? A0 + A1 - a : a), side = (rot) => (mir ? -rot : rot);
   // the shell: the floor in the style's wood, the walls painted, the ceiling white
   const wallCol = kids ? pick(KIDS.walls) : pick(Y.walls), [fl, ft] = pick(Y.floor);
   const mWall = M({ color: wallCol }, 1.0), mCeil = M({ color: 0xf6f4f0 }, 1.25);
   const ftx = tex('deck/' + fl, 'col.jpg', true).clone(); ftx.needsUpdate = true; ftx.repeat.set(Math.max(1, W / 1500), Math.max(1, D / 1500));
   const mFloor = M({ map: ftx, color: ft, roughness: 0.55 }, 0.75);
-  const sh = r.sh || { L: 1, R: 1, B: 1, C: 1 };
-  box(mFloor, A0, A1, 0, D, 0, 12); if (sh.C) box(mCeil, A0, A1, 0, D, H, H + 20);
-  if (sh.B) box(mWall, A0, A1, D, D + 20, 0, H); if (sh.L) box(mWall, A0 - 20, A0, 0, D, 0, H); if (sh.R) box(mWall, A1, A1 + 20, 0, D, 0, H);
-  // (the walls' inner faces a hair in front of the house's own, so a finish shows on them whichever is there)
-  const backFace = (m, a0, a1, y0 = 0, y1 = H) => box(m, a0, a1, D - 8, D - 2, y0, y1);
-  const leftFace = (m, d0, d1, y0 = 0, y1 = H) => { const a = mir ? A1 : A0; return box(m, mir ? a - 8 : a + 2, mir ? a - 2 : a + 8, d0, d1, y0, y1); };
-  backFace(mWall, A0, A1); leftFace(mWall, 0, D); { const a = mir ? A0 : A1; box(mWall, mir ? a + 2 : a - 8, mir ? a + 8 : a - 2, 0, D, 0, H); }
-  box(M({ color: 0xf4f2ee }, 0.6), A0, A1, D - 18, D - 6, 0, 70);   // (the skirting)
+  box(mFloor, A0, A1, 0, D, 0, 12); box(mCeil, A0, A1, 0, D, H, H + 20);
+  // a panel on a wall over [s0, s1] × [y0, y1] (along it; up), at `off` in from its face, `th` thick —
+  // in pieces round the wall's openings (a window, a door, a partition's doorway stay open)
+  const panel = (wall, m, s0, s1, y0, y1, off = 2, th = 6) => {
+    const holes = OW[wall].filter((q) => q[1] > s0 && q[0] < s1 && q[3] > y0 && q[2] < y1).sort((p, q) => p[0] - q[0]);
+    const rect = (a, b, c, d) => {
+      if (b - a < 2 || d - c < 2) return;
+      if (wall === 'B') box(m, a, b, D - off - th, D - off, c, d); else if (wall === 'F') box(m, a, b, off, off + th, c, d);
+      else if (wall === 'L') box(m, A0 + off, A0 + off + th, a, b, c, d); else box(m, A1 - off - th, A1 - off, a, b, c, d);
+    };
+    let x = s0;
+    for (const q of holes) { rect(x, Math.max(x, q[0]), y0, y1); rect(Math.max(s0, q[0]), Math.min(s1, q[1]), y0, Math.max(y0, q[2])); rect(Math.max(s0, q[0]), Math.min(s1, q[1]), Math.min(y1, q[3]), y1); x = Math.max(x, q[1]); }
+    rect(x, s1, y0, y1);
+  };
+  const span = (wall) => (wall === 'F' || wall === 'B' ? [A0, A1] : [0, D]);
+  // the walls: the house's own painted (a hair in front of its face, whichever finish is on it), the
+  // partitions of plasterboard (half of each here, the other half the next room's)
+  for (const k of ['F', 'B', 'L', 'R']) { const [s0, s1] = span(k); if (EXT[k]) panel(k, mWall, s0, s1, 0, H); else panel(k, mWall, s0, s1, 0, H, 0, 50); }
+  const mSkirt = M({ color: 0xf4f2ee }, 0.6);
+  for (const k of ['F', 'B', 'L', 'R']) { const [s0, s1] = span(k); panel(k, mSkirt, s0, s1, 0, 70, EXT[k] ? 8 : 50, 12); }   // (the skirting)
+  // (an accent over the back wall, the left one: in pieces round their openings)
+  const backFace = (m, a0, a1, y0 = 0, y1 = H) => panel('B', m, a0, a1, y0, y1, 8, 6);
 
   // an accent wall: slats, a paper, a paint, mouldings, brick or concrete — on the back wall over a0..a1
   const accent = (a0, a1, kind = kids ? pick(['paper', 'paper', 'paint']) : pick(Y.accent)) => {
     if (kind === 'slats') {
       const [wn, wt] = Y.slat, m = wood(wn, wt, 0.3), n = Math.floor((a1 - a0) / 60), g = new THREE.BoxGeometry(MM(40), MM(H - 90), MM(20));
       const im = new THREE.InstancedMesh(g, m, n), o = new THREE.Object3D();
-      box(M({ color: 0x1d1d1d }, 0.2), a0, a1, D - 10, D - 7, 0, H);
-      for (let i = 0; i < n; i++) { o.position.set(MM(a0 + 30 + i * 60), MM((H - 90) / 2 + 80), -MM(D - 19)); o.updateMatrix(); im.setMatrixAt(i, o.matrix); }
+      panel('B', M({ color: 0x1d1d1d }, 0.2), a0, a1, 0, H, 7, 3);
+      for (let i = 0; i < n; i++) { const x = a0 + 30 + i * 60; if (OW.B.some((q) => x > q[0] - 30 && x < q[1] + 30)) { o.position.set(0, -1, 0); o.scale.setScalar(1e-4); o.updateMatrix(); im.setMatrixAt(i, o.matrix); o.scale.setScalar(1); continue; } o.position.set(MM(a0 + 30 + i * 60), MM((H - 90) / 2 + 80), -MM(D - 19)); o.updateMatrix(); im.setMatrixAt(i, o.matrix); }
       im.castShadow = im.receiveShadow = true; G.add(im);
     } else if (kind === 'paper') {
       const t = kids ? wallpaper(pick(KID_PAPERS), pick(KIDS.walls), pick(KIDS.inks), sd) : wallpaper(pick(Y.paper), pick(Y.walls), pick(Y.art), sd);
@@ -181,7 +325,7 @@ export function buildRoom(r) {
       backFace(M({ color: pick(Y.paint) }, 0.9), a0, a1);
       const mm = M({ color: 0xf4f1ea }, 0.8), n = Math.max(1, Math.round((a1 - a0) / 1100)), w = (a1 - a0) / n;
       for (let i = 0; i < n; i++) for (const [y0, y1] of [[300, 1000], [1250, H - 350]]) {
-        const x0 = a0 + i * w + 150, x1 = a0 + (i + 1) * w - 150; if (y1 - y0 < 300) continue;
+        const x0 = a0 + i * w + 150, x1 = a0 + (i + 1) * w - 150; if (y1 - y0 < 300 || OW.B.some((q) => q[1] > x0 && q[0] < x1 && q[3] > y0 && q[2] < y1)) continue;
         box(mm, x0, x1, D - 30, D - 8, y0, y0 + 30); box(mm, x0, x1, D - 30, D - 8, y1 - 30, y1); box(mm, x0, x0 + 30, D - 30, D - 8, y0, y1); box(mm, x1 - 30, x1, D - 30, D - 8, y0, y1);
       }
       box(mm, a0, a1, D - 40, D - 8, H - 80, H);
@@ -198,7 +342,9 @@ export function buildRoom(r) {
     const n = wide ? pick([1, 2, 3]) : 1, w = wide && n === 1 ? pick([900, 1200]) : pick([450, 600]), h = n === 1 && wide ? w * 0.7 : w * 1.3, gap = 120;
     const frame = M({ color: pick([0x1d1d1d, 0xf4f2ee, 0xb08a62, 0xc9a86a]), roughness: 0.5 }, 0.4);
     for (let i = 0; i < n; i++) {
-      const x = a + (i - (n - 1) / 2) * (w + gap), kind = kids ? pick(KID_ARTS) : pick(ARTS), t = artwork(kind, kids ? pick(KIDS.inks) : pick(Y.art), sd + i * 101, 256, Math.round(256 * h / w));
+      const x = a + (i - (n - 1) / 2) * (w + gap);
+      if (OW.B.some((q) => q[1] > x - w / 2 && q[0] < x + w / 2 && q[3] > y && q[2] < y + h) || x - w / 2 < A0 || x + w / 2 > A1) continue;
+      const kind = kids ? pick(KID_ARTS) : pick(ARTS), t = artwork(kind, kids ? pick(KIDS.inks) : pick(Y.art), sd + i * 101, 256, Math.round(256 * h / w));
       box(frame, x - w / 2, x + w / 2, D - 34, D - 8, y, y + h);
       box(M({ map: t, roughness: 0.8 }, 0.5), x - w / 2 + 25, x + w / 2 - 25, D - 36, D - 34, y + 25, y + h - 25);
     }
@@ -222,8 +368,36 @@ export function buildRoom(r) {
   // the furniture: a model (furniture.js) in its real size; at (a, d) on the floor (or at y), turned
   // by rot (0: facing the window, π/2: facing along +a); its footprint returned
   const dims = (key, rot = 0) => { const [w, h, d] = FURN[key].s.map((v) => v * 1000), q = Math.abs(Math.sin(rot)) > 0.5; return { w: q ? d : w, dep: q ? w : d, h, W: w, Dp: d }; };
+  // (a piece is not stood in front of a window lower than it, nor of a door, nor in the way in from a
+  // door; moved along its wall to the nearest free place, else left out)
+  const placed = [];   // (the pieces stood so far: [x0, x1, z0, z1, y0, y1])
+  const blocked = (a, d, f, y, solid = true) => {
+    const x0 = a - f.w / 2, x1 = a + f.w / 2, z0 = d - f.dep / 2, z1 = d + f.dep / 2, h = y + f.h;
+    if (x0 < A0 - 5 || x1 > A1 + 5 || z0 < -5 || z1 > D + 5) return true;
+    if (solid && placed.some((p) => x1 > p[0] + 20 && x0 < p[1] - 20 && z1 > p[2] + 20 && z0 < p[3] - 20 && h > p[4] && y < p[5])) return true;
+    if (y > 1900) return false;
+    const hit = (k, s0, s1) => OW[k].some((q) => q[1] > s0 && q[0] < s1 && (q[4] || q[2] < h + 50));
+    if ((z1 > D - 300 && hit('B', x0, x1)) || (z0 < 300 && hit('F', x0, x1)) || (x0 < A0 + 300 && hit('L', z0, z1)) || (x1 > A1 - 300 && hit('R', z0, z1))) return true;
+    const way = 900, ov = (p0, p1, q0, q1) => p1 > q0 && p0 < q1;
+    for (const q of OW.B) if (q[4] && ov(x0, x1, q[0], q[1]) && z1 > D - way) return true;
+    for (const q of OW.F) if (q[4] && ov(x0, x1, q[0], q[1]) && z0 < way) return true;
+    for (const q of OW.L) if (q[4] && ov(z0, z1, q[0], q[1]) && x0 < A0 + way) return true;
+    for (const q of OW.R) if (q[4] && ov(z0, z1, q[0], q[1]) && x1 > A1 - way) return true;
+    return false;
+  };
   const put = (key, a, d, rot = 0, y = 0) => {
     if (!key || !FURN[key]) return null;
+    // (chairs go under their table, the small things on others: not kept apart)
+    const solid = ![].concat(FURN[key].c).some((c) => ['dchair', 'barstool', 'ochair', 'kidchair', 'toy', 'vase', 'pend'].includes(c)) && y < 300;
+    { const f = dims(key, rot);
+      if (blocked(a, d, f, y, solid)) {
+        // (along the wall it stands at: the nearest free place)
+        const byAB = Math.min(d, D - d) <= Math.min(a - A0, A1 - a);
+        let ok = false;
+        for (let k = 1; k <= 30 && !ok; k++) for (const sg of [1, -1]) { const s2 = sg * k * 100; if (byAB ? !blocked(a + s2, d, f, y, solid) : !blocked(a, d + s2, f, y, solid)) { if (byAB) a += s2; else d += s2; ok = true; break; } }
+        if (!ok) return null;
+      }
+      if (solid) placed.push([a - f.w / 2, a + f.w / 2, d - f.dep / 2, d + f.dep / 2, y, y + f.h]); }
     const holder = new THREE.Group(); holder.name = 'F:' + key; holder.position.set(MM(a), MM(y + 12), -MM(d)); holder.rotation.y = rot; G.add(holder);
     loadModel('interior/' + key).then(({ scene }) => {
       scene.scale.setScalar(MM(1000));
@@ -239,7 +413,7 @@ export function buildRoom(r) {
     }).catch(() => {});
     return { ...dims(key, rot), a, d };
   };
-  const cand = (cat) => Object.keys(FURN).filter((k) => [].concat(FURN[k].c).includes(cat)), choose = (cat, fit) => {
+  const cand = (cat) => Object.keys(FURN).filter((k) => [].concat(FURN[k].c).includes(cat) && !(cat === 'floorlamp' && FURN[k].s[0] > 0.8)), choose = (cat, fit) => {
     let L = cand(cat).filter((k) => (FURN[k].st || []).includes(kids ? 'kids' : st)); if (!L.length) L = cand(cat);
     if (fit) { const F = L.filter((k) => fit(dims(k))); if (F.length) L = F; }
     return L.length ? pick(L) : null;
@@ -258,6 +432,7 @@ export function buildRoom(r) {
   const tv = (a0, a1, d, far) => {
     // a flat TV on the side wall over its unit: 55″
     const x = far ? (mir ? A0 + 30 : A1 - 30) : (mir ? A1 - 30 : A0 + 30), w = 1230, s = mir !== !!far ? -1 : 1;
+    if (OW[x < (A0 + A1) / 2 ? 'L' : 'R'].some((q) => q[1] > d - w / 2 && q[0] < d + w / 2 && q[3] > 1050 && q[2] < 1750)) return null;
     const o = box(tvMat, x - 15 * s, x + 15 * s, d - w / 2, d + w / 2, 1050, 1750); void a0; void a1; return o;
   };
   const tvMat = std({ color: 0x0b0c0f, roughness: 0.15, metalness: 0.3, emissive: 0x24344d, emissiveIntensity: 0 }); tvMat.userData.tv = 1;
@@ -279,13 +454,13 @@ export function buildRoom(r) {
         const sd2 = choose('side'); if (sd2 && c + so.w / 2 + 350 < a1 - 100) put(sd2, A(c + so.w / 2 + 320), D - 300, 0);
         pendant(A(c), dct);
       }
-      if (D > 3000) { const tu = onSide('tvunit', D * 0.45, (f) => f.w < D * 0.8); if (tu) tv(0, 0, D * 0.45, false); }
+      if (D > 3000) { const tu = onSide('tvunit', D * 0.45, (f) => f.w < D * 0.8); if (tu) tv(0, 0, tu.d, false); }
       const pl = choose('plant'); if (pl) put(pl, A(a1 - 400), D - 400);
       const fd = choose('floordecor'); if (fd && D > 3200) put(fd, A(a0 + 500), D * 0.35, side(Math.PI / 4));
     } else {
       // the sofa across the room facing the TV wall: the TV unit, slats or a paper behind it
       const tu = onSide('tvunit', D * 0.55, (f) => f.w < D * 0.8);
-      if (tu) tv(0, 0, D * 0.55, false);
+      if (tu) tv(0, 0, tu.d, false);
       const so = choose('sofa', (f) => f.w < D - 1200), sf = so && dims(so, Math.PI / 2), ax = a0 + (tu ? tu.dep : 450) + 2700;
       if (so && ax + sf.w / 2 < a1 - 200) {
         put(so, A(ax), D * 0.55, side(-Math.PI / 2));
@@ -303,18 +478,31 @@ export function buildRoom(r) {
   const kitchen = (a0, a1) => {
     const front = M({ color: pick(Y.kit), roughness: 0.45 }, 0.55), top = M({ color: Y.top, roughness: 0.35 }, 0.5), plinth = M({ color: 0x1c1c1c }, 0.2);
     const handle = M({ color: pick([0x1a1a1a, 0xb8955a, 0xb9bcbf]), metalness: 0.7, roughness: 0.3 }, 0.2);
-    const k1 = a1 - 200, k0 = Math.max(a0 + 200, k1 - 3800), fr = choose('fridge'), ff = fr && dims(fr);
+    // (the run of units on the back wall: in its longest stretch clear of a door and of a low window)
+    let k1 = a1 - 200, k0 = Math.max(a0 + 200, k1 - 3800);
+    { const um = (x) => (mir ? A0 + A1 - x : x), lo = Math.min(um(a0 + 200), um(a1 - 200)), hi = Math.max(um(a0 + 200), um(a1 - 200));
+      const cut = OW.B.filter((q) => q[4] || q[2] < 950).sort((p, q) => p[0] - q[0]); let best = [0, 0], x = lo;
+      for (const q of cut) { if (q[0] - x > best[1] - best[0]) best = [x, Math.min(hi, q[0])]; x = Math.max(x, q[1]); }
+      if (hi - x > best[1] - best[0]) best = [x, hi];
+      const [p0, p1] = [Math.max(lo, best[0]), Math.min(hi, best[1])];
+      if (p1 - p0 < 1500) { k0 = k1 = null; } else { const u0 = um(p0), u1 = um(p1); k1 = Math.max(u0, u1); k0 = Math.max(Math.min(u0, u1), k1 - 3800); } }
+    const upper = k0 != null && !OW.B.some((q) => { const x0 = Math.min(A(k0), A(k1)), x1 = Math.max(A(k0), A(k1)); return q[1] > x0 && q[0] < x1 && q[3] > 900; });
+    const fr = k0 != null ? choose('fridge') : null, ff = fr && dims(fr);
     let x1 = k1; if (fr) { put(fr, A(k1 - ff.w / 2), D - ff.dep / 2 - 20, 0); x1 = k1 - ff.w - 20; }
+    if (k0 != null) {
     box(front, A(k0) < A(x1) ? A(k0) : A(x1), A(k0) < A(x1) ? A(x1) : A(k0), D - 600, D, 100, 870); box(top, Math.min(A(k0), A(x1)), Math.max(A(k0), A(x1)), D - 620, D, 870, 910); box(plinth, Math.min(A(k0), A(x1)), Math.max(A(k0), A(x1)), D - 580, D, 0, 100);
+    placed.push([Math.min(A(k0), A(x1)), Math.max(A(k0), A(x1)), D - 620, D, 0, 910]);
     for (let x = k0 + 300; x < x1; x += 600) box(handle, A(x) - 120, A(x) + 120, D - 622, D - 602, 780, 800);
     // the splashback, then wall units or open shelves
-    box(M({ color: pick([0xf2f0eb, 0xdedbd5, 0x9fb3b0, 0x2b2d2f, 0xd9c7b0]), roughness: 0.2 }, 0.6), Math.min(A(k0), A(x1)), Math.max(A(k0), A(x1)), D - 10, D - 4, 910, 1500);
-    if (rnd() < 0.6) box(front, Math.min(A(k0), A(x1)), Math.max(A(k0), A(x1)), D - 350, D, 1500, 2200);
+    if (upper) box(M({ color: pick([0xf2f0eb, 0xdedbd5, 0x9fb3b0, 0x2b2d2f, 0xd9c7b0]), roughness: 0.2 }, 0.6), Math.min(A(k0), A(x1)), Math.max(A(k0), A(x1)), D - 10, D - 4, 910, 1500);
+    if (!upper) { /* (a window over the run: no wall units) */ } else if (rnd() < 0.6) box(front, Math.min(A(k0), A(x1)), Math.max(A(k0), A(x1)), D - 350, D, 1500, 2200);
     else for (const y of [1600, 1950]) { box(M({ color: 0x8a6d50 }, 0.4), Math.min(A(k0), A(x1)), Math.max(A(k0), A(x1)), D - 260, D, y, y + 35); const v = choose('vase'); if (v) put(v, A(k0 + 300 + rnd() * 600), D - 130, 0, y + 35); }
     box(M({ color: 0xb9bcbf, metalness: 0.7, roughness: 0.3 }, 0.2), A((k0 + x1) / 2) - 300, A((k0 + x1) / 2) + 300, D - 560, D - 540, 920, 940);
+    }
     // the table and its chairs (or a set), lamps over it; or an island with stools in a deep room
     const td = Math.max(1100, Math.min(D - 1900, D * 0.45)), ta = Math.max(a0 + 1000, Math.min(a1 - 1000, (a0 + a1) / 2));
     if (D > 4800 && rnd() < 0.4) {
+      placed.push([A(ta) - 1050, A(ta) + 1050, td - 480, td + 480, 0, 920]);
       box(front, A(ta) - 1000, A(ta) + 1000, td - 450, td + 450, 100, 880); box(top, A(ta) - 1050, A(ta) + 1050, td - 480, td + 480, 880, 920);
       const bs = choose('barstool'); if (bs) for (const k of [-1, 0, 1]) put(bs, A(ta + k * 650), td - 700, 0);
       for (const k of [-1, 0, 1]) pendant(A(ta + k * 650), td);
@@ -341,7 +529,7 @@ export function buildRoom(r) {
       if (b.h < 1400) art(cA, Math.max(b.h, 900) + 250, true);
       rug(A(cA), D - b.dep * 0.6, Math.min(W - 400, b.w + 1000), Math.min(2200, b.dep));
       const ns = !kidsBed || cat === 'kidbed' ? choose('nightstand') : null;
-      if (ns) for (const s of [-1, 1]) { const x = cA + s * (b.w / 2 + 320); if (x < A0 + 250 || x > A1 - 250) continue; const n = put(ns, A(x), D - dims(ns).dep / 2 - 30, 0); tableLamp(A(x), D - 200, n.h); }
+      if (ns) for (const s of [-1, 1]) { const x = cA + s * (b.w / 2 + 320); if (x < A0 + 250 || x > A1 - 250) continue; const n = put(ns, A(x), D - dims(ns).dep / 2 - 30, 0); if (n) tableLamp(n.a, D - 200, n.h); }
     }
     // the wardrobe on a side wall, a dresser or a desk on the other
     if (D > 3200) onSide('wardrobe', Math.min(D - 700, D * 0.55), (f) => f.w < D * 0.6, 30, rnd() < 0.5);

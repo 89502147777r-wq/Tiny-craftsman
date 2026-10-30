@@ -1610,5 +1610,9 @@ export default {
 "Калитка, к секционным воротам": "Wicket door, to match the sectional door",
 "Гаражные подъёмные, белые": "Up-and-over garage door, white",
 "Гаражные секционные, антрацит с остеклением": "Sectional garage door, anthracite with glazing",
+"Козырьки": "Canopies",
+"Стеклянный над входом": "Glass, over the entrance",
+"✕ Убрать интерьер": "✕ Remove the interior",
+"Готово": "Done",
 "🛒 Купить поддон": "🛒 Buy a pallet"
 };
