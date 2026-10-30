@@ -170,6 +170,39 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 гидроцилиндры), барабан автобетоносмесителя со спиралью и полосами, лоток, бак, лестница; арматура периодического
 профиля (карта нормалей рисуется кодом), пластиковые стульчики, «лягушки», вязальная проволока, кладочная сетка.
 
+## Гараж — машина, верстак, стеллажи, инструмент (кнопка «Готово», комната с гаражными воротами)
+
+Обработаны glTF-Transform (упрощение, WebP ≤ 512 px, meshopt, реальный размер).
+
+| Файл | Модель | Автор | Лицензия | Источник |
+|---|---|---|---|---|
+| `assets/models/interior/g_car_covered.glb` | Covered Car | Poly Haven | CC0 | https://polyhaven.com/a/covered_car |
+| `assets/models/interior/g_bench.glb` | Wooden Table 03 | Poly Haven | CC0 | https://polyhaven.com/a/WoodenTable_03 |
+| `assets/models/interior/g_chest.glb` | Metal Tool Chest | Poly Haven | CC0 | https://polyhaven.com/a/metal_tool_chest |
+| `assets/models/interior/g_cart.glb` | Tool Cart | Poly Haven | CC0 | https://polyhaven.com/a/tool_cart |
+| `assets/models/interior/g_rack1.glb` | Steel Frame Shelves 01 | Poly Haven | CC0 | https://polyhaven.com/a/steel_frame_shelves_01 |
+| `assets/models/interior/g_rack2.glb` | Steel Frame Shelves 02 | Poly Haven | CC0 | https://polyhaven.com/a/steel_frame_shelves_02 |
+| `assets/models/interior/g_rack_worn.glb` | Worn Metal Rack | Poly Haven | CC0 | https://polyhaven.com/a/worn_metal_rack |
+| `assets/models/interior/g_tyre.glb` | Old Tyre | Poly Haven | CC0 | https://polyhaven.com/a/old_tyre |
+| `assets/models/interior/g_jerry.glb` | Metal Jerrycan | Poly Haven | CC0 | https://polyhaven.com/a/metal_jerrycan |
+| `assets/models/interior/g_jerry_p.glb` | Plastic Jerrycan | Poly Haven | CC0 | https://polyhaven.com/a/plastic_jerrycan |
+| `assets/models/interior/g_ladder.glb` | Ladder Sectioned 01 | Poly Haven | CC0 | https://polyhaven.com/a/ladder_sectioned_01 |
+| `assets/models/interior/g_vice.glb` | Bench Vice 01 | Poly Haven | CC0 | https://polyhaven.com/a/bench_vice_01 |
+| `assets/models/interior/g_gen.glb` | Portable Generator | Poly Haven | CC0 | https://polyhaven.com/a/portable_generator |
+| `assets/models/interior/g_crate_p.glb` | Plastic Crate 01 | Poly Haven | CC0 | https://polyhaven.com/a/plastic_crate_01 |
+| `assets/models/interior/g_crate_w.glb` | Wooden Crate 01 | Poly Haven | CC0 | https://polyhaven.com/a/wooden_crate_01 |
+| `assets/models/interior/g_box.glb` | Cardboard Box 01 | Poly Haven | CC0 | https://polyhaven.com/a/cardboard_box_01 |
+| `assets/models/interior/g_tube.glb` | Mounted Fluorescent Lights | Poly Haven | CC0 | https://polyhaven.com/a/mounted_fluorescent_lights |
+| `assets/models/interior/g_broom.glb` | Plastic Broom | Poly Haven | CC0 | https://polyhaven.com/a/plastic_broom |
+| `assets/models/interior/g_pump.glb` | Tire Pump | Poly Haven | CC0 | https://polyhaven.com/a/tire_pump |
+| `assets/models/interior/g_toolbox.glb` | Metal Toolbox | Poly Haven | CC0 | https://polyhaven.com/a/metal_toolbox |
+| `assets/models/interior/g_hose.glb` | Garden Hose Wall Mounted 01 | Poly Haven | CC0 | https://polyhaven.com/a/garden_hose_wall_mounted_01 |
+| `assets/models/interior/g_spray.glb` | Spray Paint Bottles | Poly Haven | CC0 | https://polyhaven.com/a/spray_paint_bottles |
+| `assets/models/interior/g_drill.glb` | Drill 01 | Poly Haven | CC0 | https://polyhaven.com/a/Drill_01 |
+| `assets/models/interior/g_car_e30.glb` | Low Poly Car - BMW E30 1985 White | roh3d | CC BY 4.0 | https://sketchfab.com/3d-models/9dea494b447e442fafbddfc7eccbf158 |
+| `assets/models/interior/g_bike.glb` | Bicycle | longtail | CC BY 4.0 | https://sketchfab.com/3d-models/25aa85eeba944baea33ce5cde985ca49 |
+| `assets/models/interior/g_mower.glb` | Lawn Mower | sixpence | CC BY 4.0 | https://sketchfab.com/3d-models/0b63793c9cc44cd589938f940f9a0df6 |
+
 ## Интерьер — мебель и предметы (кнопка «Готово»)
 
 Модели уменьшены для телефона (упрощена геометрия, текстуры WebP ≤ 512 px, meshopt), повёрнуты и приведены к реальным размерам. Обои и картины рисуются в игре процедурно.

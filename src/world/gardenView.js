@@ -26,6 +26,16 @@ function tex(folder, file, srgb) {
   return (TEX[key] = t);
 }
 function dispose(g) { g?.traverse((o) => { if (o.isMesh || o.isLine) o.geometry?.dispose(); }); }
+// the rooms taken down whole: their geometry (not the furniture's — the models' own, shared), their
+// materials, the textures drawn for them (papers, pictures, rugs, the floors' copies)
+function disposeRooms(g) {
+  const mats = new Set();
+  g?.traverse((o) => { if (!(o.isMesh || o.isInstancedMesh)) return; if (!o.userData.shared) o.geometry?.dispose(); for (const m of [].concat(o.material || [])) mats.add(m); });
+  for (const m of mats) {
+    for (const k of ['map', 'emissiveMap', 'normalMap', 'roughnessMap']) { const t = m[k]; if (t && (t.isCanvasTexture || t.userData?.own)) t.dispose(); }
+    m.dispose();
+  }
+}
 
 // ---- the geometry ------------------------------------------------------------------------------
 // prisms over footprints (world [x, z] polygons, convex): the top at yT (a number or per corner), the
@@ -114,7 +124,9 @@ export class GardenView {
     this.dirty = true;
     // («Готово»: the rooms behind the windows, made again a moment after the house changes)
     this.interior = null; this._intT = 0.2;
-    objects.on(() => { this._intT = 0.4; });
+    // (only what the rooms are made of: the windows and doors, the masonry, the slabs, the roofs — and
+    // built anew only when these have changed: the money, a lawn, a light leave the rooms as they are)
+    objects.on((id, rec) => { if (!rec || ['window', 'unit', 'interior', 'belt', 'wall', 'opening', 'roof', 'proof', 'slab'].includes(rec.type)) this._intT = Math.max(this._intT, 0.6); });
     objects.on((id, rec) => { if (rec?.type === 'path' || rec?.type === 'lawn' || rec?.type === 'fence' || rec?.type === 'plant' || rec?.type === 'porch' || rec?.type === 'canopy' || rec?.type === 'flight' || this.parts.has('X' + id) || this.parts.has('P' + id) || this.parts.has('R' + id) || this.parts.has('C' + id) || this.parts.has(id) || this.parts.has('L' + id) || this.parts.has('F' + id)) this.dirty = true; });
     this.liveLawn = null;   // a lawn being drawn: { poly, g }
   }
@@ -241,7 +253,23 @@ export class GardenView {
   // then), lit at dusk
   _interiorFrame(app, dt) {
     const rec = this.objects.all('interior')[0], on = !!rec;
-    if (this._intT > 0) { this._intT -= dt || 0.016; if (this._intT <= 0 || !on) { this._intT = 0; if (this.interior) { this.group.remove(this.interior); dispose(this.interior); this.interior = null; } if (on) { app.wallView.group.updateMatrixWorld(true); this.interior = buildInterior(app, rec.seed || 0); this.group.add(this.interior); } } }
+    if (this._intT > 0) {
+      this._intT -= dt || 0.016;
+      if (this._intT <= 0 || !on) {
+        this._intT = 0;
+        // (the house as the rooms see it: if it is as it was, they stay)
+        const O = this.objects, sig = on ? JSON.stringify([rec.seed, O.all('window').map((w) => [w.id, w.key, w.x, w.y, w.z, w.w, w.h, w.yaw]), O.all('unit').length, O.all('belt').length, O.all('proof').length]) : '';
+        if (sig !== this._intSig || !on) {
+          this._intSig = sig;
+          if (this.interior) { this.group.remove(this.interior); disposeRooms(this.interior); this.interior = null; }
+          if (on) {
+            app.wallView.group.updateMatrixWorld(true); this.interior = buildInterior(app, rec.seed || 0); this.group.add(this.interior);
+            // (its shaders made ready in the background as the furniture comes in — not at the first look in)
+            clearTimeout(this._warmT); this._warmT = setTimeout(() => app.warmUp?.(), 1500); setTimeout(() => app.warmUp?.(), 5000);
+          }
+        }
+      }
+    }
     // (a lived-in house's glass: clear double glazing, the rooms seen through it; a house being built: the
     // solar-control glass that mirrors the site)
     const gl = winMats().glass, lived = !!this.interior;

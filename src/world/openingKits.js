@@ -104,12 +104,27 @@ function prepare(name, gltf) {
   kits.set(name, { name, parts, box, ...KITS[name] });
 }
 
-// load them all (once); each listener is told when the last one is in
+// a kit is loaded when it is first wanted (an opening of it built, or chosen to be): → whether it is in
+// (the openings are built anew of it when it comes — kitsLoaded() changes); the others never loaded:
+// their textures would take the phone's memory for nothing
+const loadingK = new Map();
+function loadOne(n) {
+  return new Promise((res) => loader.load(`assets/models/openings/${KITS[n].file || n}.glb`, (g) => { try { prepare(n, g); } catch (e) { console.warn('kit', n, e); } res(); }, undefined, () => res()))
+    .then(() => { for (const f of waiters) f(n); });
+}
+export function wantKit(n) {
+  if (!n || !KITS[n]) return false;
+  if (kits.has(n)) return true;
+  if (!loadingK.has(n)) loadingK.set(n, loadOne(n));
+  return false;
+}
+// the kits asked for so far, all in
+export const kitsPending = () => Promise.all([...loadingK.values()]);
+// all of them (the tests)
 export function loadKits() {
   if (loading) return loading;
-  loading = Promise.all(Object.keys(KITS).map((n) => new Promise((res) => loader.load(`assets/models/openings/${KITS[n].file || n}.glb`, (g) => { try { prepare(n, g); } catch (e) { console.warn('kit', n, e); } res(); }, undefined, () => res()))))
-    .then(() => { for (const f of waiters) f(); });
-  return loading;
+  for (const n of Object.keys(KITS)) wantKit(n);
+  return (loading = kitsPending());
 }
 
 // one axis cut into nine: [b0, b1] (the model) onto [t0, t1], the bands m at the ends kept

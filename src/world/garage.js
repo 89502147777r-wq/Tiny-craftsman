@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { hasKit, fitKit, kitMat, mergeParts, kitSize } from './openingKits.js';
+import { wantKit, fitKit, kitMat, mergeParts, kitSize } from './openingKits.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { canvas, normalOf } from './roof.js';
@@ -31,7 +31,7 @@ export const GARAGES = {
 // the models of their outer face (openingKits.js): the panels of a sectional door, a roller
 // door's curtain — the tracks, the shaft and springs, the guides and the box stay drawn
 const KIT = { gar1: 'g_sect', gar2: 'g_roll', gar5: 'g_white', gar6: 'g_modern' };
-export const garageKit = (key) => (hasKit(KIT[key]) ? KIT[key] : null);
+export const garageKit = (key) => (wantKit(KIT[key]) ? KIT[key] : null);
 export const GARAGE_SIZE = [1800, 6000, 1200, 3500];   // w from…to, h from…to (mm) (low ones: a shed, a store for the mower, a carport for a quad)
 
 const M = {};
@@ -205,7 +205,7 @@ function swing(G, w, h, t) {
 export function buildGarage(key, w, h, t = 300, wood = null) {
   const P = GARAGES[key], MM = mats(wood);
   const G = { panel: [], panelIn: [], groove: [], galv: [], spring: [], rubber: [], alu: [], aluDark: [], iron: [], frame: [], wood: [], ledge: [], clad: [], kit: [] };
-  const kit = hasKit(KIT[key]) ? KIT[key] : null;
+  const kit = wantKit(KIT[key]) ? KIT[key] : null;
   (P.kind === 'roller' ? roller : P.kind === 'swing' ? swing : sectional)(G, w, h, t, !!P.flush, kit);
   const g = new THREE.Group();
   const by = new Map();

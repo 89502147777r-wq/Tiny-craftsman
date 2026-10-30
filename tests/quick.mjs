@@ -553,19 +553,22 @@ console.log('—', sec());
     wall(300, -3200, 300, 3200, (x, z, r) => Math.abs(z) < 600 && r < 9);   // (the inner wall: its doorway 1,7 m wide, the lintel over 2,25 m)
     tc.journal.act('house', {}, tc.clock, () => {
       for (const b of blocks) tc.objects.add(b);
-      for (const [key, x, z, yaw, w, h, y] of [['pvc2', -2000, 3350, 0, 1200, 1400, 900], ['pvc2', 2000, 3350, 0, 1200, 1400, 900], ['pano', -2000, -3350, Math.PI, 2400, 2100, 0], ['door1', 2000, -3350, Math.PI, 1000, 2100, 0], ['pvc1', -3850, 0, -Math.PI / 2, 900, 1400, 900]])
+      for (const [key, x, z, yaw, w, h, y] of [['pvc2', -2000, 3350, 0, 1200, 1400, 900], ['pvc2', 2000, 3350, 0, 1200, 1400, 900], ['pano', -2000, -3350, Math.PI, 2400, 2100, 0], ['gar1', 2075, -3350, Math.PI, 2500, 2100, 0], ['pvc1', -3850, 0, -Math.PI / 2, 900, 1400, 900]])
         tc.objects.add({ type: 'window', key, w, h, t: 300, x: M(x), y: g0 + M(y), z: M(z), yaw });
     });
     for (let i = 0; i < 6; i++) tc.simulate(1 / 30);
     const I = await import('/src/world/interior.js'), rooms = I.roomsOf(tc).filter((r) => Math.abs(r.o.x) < M(5000) && Math.abs(r.o.z) < M(5000));
+    const G = I.buildInterior(tc, 1), pieces = []; G.traverse((o) => { if (o.name?.startsWith('F:')) pieces.push(o.name.slice(2)); });
     const out = rooms.map((r) => {
       const c = r.o.clone().addScaledVector(r.u, (r.a0 + r.a1) / 2).addScaledVector(r.n, -r.D / 2);
-      return { kind: r.kind, H: Math.round((r.ceil - r.floor) / S), W: Math.round((r.a1 - r.a0) / S), D: Math.round(r.D / S), cx: Math.round(c.x / S), doors: Object.values(r.walls).flatMap((w) => w.open.filter((q) => q[4]).map((q) => Math.round(q[1] - q[0]))) };
+      return { kind: r.kind, car: r.kind === 'garage' ? pieces.filter((k) => k.startsWith('g_car')).length : undefined, gar: r.kind === 'garage' ? pieces.filter((k) => k.startsWith('g_')).length : undefined, H: Math.round((r.ceil - r.floor) / S), W: Math.round((r.a1 - r.a0) / S), D: Math.round(r.D / S), cx: Math.round(c.x / S), doors: Object.values(r.walls).flatMap((w) => w.open.filter((q) => q[4]).map((q) => Math.round(q[1] - q[0]))) };
     });
     tc.undo(); for (let i = 0; i < 4; i++) tc.simulate(1 / 30);
     return out;
   });
   const west = plan.find((r) => r.cx < 300), east = plan.find((r) => r.cx > 300);
+  const gar = plan.find((r) => r.kind === 'garage');
+  check('«Готово»: a room with a garage door is the garage — a car in it, the bench, the racks, the tyres…', gar && gar.cx > 300 && gar.car === 1 && gar.gar >= 8, JSON.stringify(gar));
   check('«Готово»: the rooms of a house of blocks — parted by its inner wall (its doorway open), the ceiling at the top of the walls', plan.length === 2 && west && east && plan.every((r) => r.H >= 2800 && r.H <= 3100 && r.D < 7000 && r.W < 7000) && west.W + east.W < 7800 && plan.every((r) => r.doors.some((d) => d > 1400 && d < 2000)), JSON.stringify(plan));
   check('openings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();

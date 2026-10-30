@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
-import { isDoor } from './doors.js';
+import { isDoor, DOORS } from './doors.js';
 import { WINDOWS } from './windows.js';
 import { loadModel } from './machines/models.js';
 import { FURN } from './furniture.js';
@@ -111,17 +112,8 @@ export function roomsOf(app) {
     const halls = [];
     for (let id = 0, v = 3; id < g.length; id++) if (g[id] === 0) { const r = flood(id, v++); if (r.n * c * c > MM(1000) * MM(1000) * 3) halls.push(r); }
     for (const h of halls) {
-      // its faces: the edges of the cells, put right by a look along the floor at them
-      let x0 = gx0 + h.i0 * c, x1 = gx0 + (h.i1 + 1) * c, z0 = gz0 + h.k0 * c, z1 = gz0 + (h.k1 + 1) * c;
-      const mid = W((x0 + x1) / 2, (z0 + z1) / 2); mid.y = ys;
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const dir = W(dx, dz), far = dx ? (x1 - x0) / 2 : (z1 - z0) / 2, ds = [];
-        for (const f of [-0.3, 0, 0.3]) { const o = mid.clone().add(W(dz ? f * (x1 - x0) : 0, dx ? f * (z1 - z0) : 0)); const hit = cast(objs, o, dir, far + MM(400)); if (hit) ds.push(hit.distance); }
-        if (!ds.length) continue;
-        ds.sort((p, q) => p - q); const d = ds[Math.floor(ds.length / 2)];
-        if (Math.abs(d - far) > MM(250)) continue;
-        if (dx > 0) x1 = (x0 + x1) / 2 + d; else if (dx < 0) x0 = (x0 + x1) / 2 - d; else if (dz > 0) z1 = (z0 + z1) / 2 + d; else z0 = (z0 + z1) / 2 - d;
-      }
+      // its faces: the edges of its cells (the masonry drawn a little fat: they stand a hair in front of it)
+      const x0 = gx0 + h.i0 * c, x1 = gx0 + (h.i1 + 1) * c, z0 = gz0 + h.k0 * c, z1 = gz0 + (h.k1 + 1) * c;
       // the openings on its walls: [side, from, to (along the wall, house axes), y0, y1, door, w]
       const on = [];
       for (const w of ops) {
@@ -188,8 +180,10 @@ export function roomsOf(app) {
         };
         const walls = { '+z': wallOf('+z'), '-z': wallOf('-z'), '+x': wallOf('+x'), '-x': wallOf('-x') };
         const glassOn = (k) => walls[k].ext ? walls[k].open.filter((o) => !o[4]).reduce((sum, o) => sum + (o[1] - o[0]) * (o[3] - o[2]), 0) : 0;
-        const front = Object.keys(walls).sort((p, q) => glassOn(q) - glassOn(p))[0];
-        if (!glassOn(front)) continue;   // (no window: nothing of it is seen)
+        // (a room with a garage door in its wall is the garage: its front that wall, the car facing it)
+        const gWall = Object.keys(walls).find((k) => walls[k].ext && walls[k].open.some((q) => q[5] && DOORS[q[5].key]?.garage));
+        const front = gWall || Object.keys(walls).sort((p, q) => glassOn(q) - glassOn(p))[0];
+        if (!gWall && !glassOn(front)) continue;   // (no window: nothing of it is seen)
         // the room's own frame: o on its front wall's inner face, u along it, n out through it
         const nW = W(front === '+x' ? 1 : front === '-x' ? -1 : 0, front === '+z' ? 1 : front === '-z' ? -1 : 0), u = new THREE.Vector3(nW.z, 0, -nW.x);
         const corners = [W(a0, b0), W(a1, b0), W(a0, b1), W(a1, b1)], o = corners.reduce((m, q) => (q.dot(nW) > m.dot(nW) + 1e-9 ? q : m)).clone();
@@ -207,7 +201,7 @@ export function roomsOf(app) {
         const rwins = Object.values(walls).flatMap((wl) => (wl.ext ? wl.open.filter((q) => !q[4] && q[5]).map((q) => q[5]) : []));
         let ceil = top; const upHit = cast(objs, W((a0 + a1) / 2, (b0 + b1) / 2).setY(floor + MM(1200)), new THREE.Vector3(0, 1, 0), MM(4000)); if (upHit && upHit.point.y < ceil) ceil = upHit.point.y;
         ceil = Math.min(floor + MM(3300), Math.max(floor + MM(2400), ceil));
-        rooms.push({ wins: rwins, fwins: fw, yaw: Math.atan2(nW.x, nW.z), floor, ceil, D, o, u, n: nW, a0: ra0, a1: ra1, walls: rw, big: fw.some((w) => !(WINDOWS[w.key] || {}).sill), glass: glassOn(front), door: Object.values(walls).some((wl) => wl.ext && wl.open.some((q) => q[4])) });
+        rooms.push({ garage: !!gWall, wins: rwins, fwins: fw, yaw: Math.atan2(nW.x, nW.z), floor, ceil, D, o, u, n: nW, a0: ra0, a1: ra1, walls: rw, big: fw.some((w) => !(WINDOWS[w.key] || {}).sill), glass: glassOn(front), door: Object.values(walls).some((wl) => wl.ext && wl.open.some((q) => q[4])) });
       }
     }
   }
@@ -225,12 +219,13 @@ export function roomsOf(app) {
   const lvls = [...new Set(rooms.map((r) => Math.round(r.floor / MM(1500))))].sort((p, q) => p - q);
   const hs = houseSeed(rooms);
   for (const lv of lvls) {
-    const on = rooms.filter((r) => Math.round(r.floor / MM(1500)) === lv).sort((p, q) => q.glass * (q.a1 - q.a0) * q.D - p.glass * (p.a1 - p.a0) * p.D);
+    const on = rooms.filter((r) => Math.round(r.floor / MM(1500)) === lv).sort((p, q) => !!p.garage - !!q.garage || 0).sort((p, q) => q.glass * (q.a1 - q.a0) * q.D - p.glass * (p.a1 - p.a0) * p.D);
     let kitchen = false, k = 0;
     const cycle = ['kids', 'bed', 'study', 'kids', 'bed'];
     on.forEach((r, i) => {
       r.lv = lvls.indexOf(lv); r.seed = mix(hs, Math.round(r.o.x * 1e4), Math.round(r.o.z * 1e4), r.lv * 7919);
-      if (r.lv === 0 && i === 0) { r.kind = 'living'; return; }
+      if (r.garage) { r.kind = 'garage'; return; }
+      if (r.lv === 0 && !on.slice(0, i).some((q) => !q.garage)) { r.kind = 'living'; return; }
       if (r.lv === 0 && !kitchen && (r.door || i === on.length - 1 || i === 1)) { r.kind = 'kitchen'; kitchen = true; return; }
       if (r.lv > 0 && i === 0) { r.kind = r.big && rnd1(r.seed) < 0.3 ? 'living' : 'bed'; return; }
       r.kind = cycle[(k++ + (hs % 5)) % cycle.length];
@@ -274,8 +269,8 @@ export function buildRoom(r) {
   // (each material of the room glows a little of its own colour at night when its lamps are on)
   const glow = (m, g) => { m.emissive = m.emissive || new THREE.Color(); m.emissive.copy(WARM); if (m.map) m.emissiveMap = m.map; m.userData.glow = g; mats.push(m); return m; };
   const M = (o, g = 0.55) => glow(std(o), g);
-  const box = (m, a0, a1, d0, d1, y0, y1, par = G) => { const o = new THREE.Mesh(new THREE.BoxGeometry(MM(Math.max(1, a1 - a0)), MM(Math.max(1, y1 - y0)), MM(Math.max(1, d1 - d0))), m); o.position.set(MM((a0 + a1) / 2), MM((y0 + y1) / 2), -MM((d0 + d1) / 2)); o.castShadow = o.receiveShadow = true; par.add(o); return o; };
-  const wood = (name, tint, rep = 1) => { const t = tex('deck/' + name, 'col.jpg', true).clone(); t.needsUpdate = true; t.repeat.set(rep, rep); return M({ map: t, color: tint, roughness: 0.6 }, 0.5); };
+  const box = (m, a0, a1, d0, d1, y0, y1, par = G) => { const o = new THREE.Mesh(new THREE.BoxGeometry(MM(Math.max(1, a1 - a0)), MM(Math.max(1, y1 - y0)), MM(Math.max(1, d1 - d0))), m); o.position.set(MM((a0 + a1) / 2), MM((y0 + y1) / 2), -MM((d0 + d1) / 2)); o.receiveShadow = true; o.userData.merge = 1; par.add(o); return o; };
+  const wood = (name, tint, rep = 1) => { const t = tex('deck/' + name, 'col.jpg', true).clone(); t.needsUpdate = true; t.userData.own = 1; t.repeat.set(rep, rep); return M({ map: t, color: tint, roughness: 0.6 }, 0.5); };
   // the openings on each wall of the room (F the front, B the back, L at A0, R at A1): [s0, s1, y0, y1, door] mm
   const OW = { F: [], B: [], L: [], R: [], ...Object.fromEntries(Object.entries(r.walls || {}).map(([k, v]) => [k, v.open])) };
   const EXT = { F: true, B: !r.walls || r.walls.B?.ext, L: !r.walls || r.walls.L?.ext, R: !r.walls || r.walls.R?.ext };
@@ -284,9 +279,12 @@ export function buildRoom(r) {
   const mir = opLen('L') === opLen('R') ? rnd() < 0.5 : opLen('L') > opLen('R'), A = (a) => (mir ? A0 + A1 - a : a), side = (rot) => (mir ? -rot : rot);
   // the shell: the floor in the style's wood, the walls painted, the ceiling white
   const wallCol = kids ? pick(KIDS.walls) : pick(Y.walls), [fl, ft] = pick(Y.floor);
-  const mWall = M({ color: wallCol }, 1.0), mCeil = M({ color: 0xf6f4f0 }, 1.25);
-  const ftx = tex('deck/' + fl, 'col.jpg', true).clone(); ftx.needsUpdate = true; ftx.repeat.set(Math.max(1, W / 1500), Math.max(1, D / 1500));
-  const mFloor = M({ map: ftx, color: ft, roughness: 0.55 }, 0.75);
+  const gar = r.kind === 'garage';
+  const mWall = M({ color: gar ? pick([0xdcdcd8, 0xe6e4df, 0xcfd2d4]) : wallCol }, 1.0), mCeil = M({ color: 0xf6f4f0 }, 1.25);
+  const ftx = tex('deck/' + fl, 'col.jpg', true).clone(); ftx.needsUpdate = true; ftx.userData.own = 1; ftx.repeat.set(Math.max(1, W / 1500), Math.max(1, D / 1500));
+  // (the garage's floor: a grey epoxy over the screed, a little shine, the dust of tyres)
+  const mFloor = gar ? M({ map: canvasTex(256, 256, (g) => { g.fillStyle = '#9a9c9e'; g.fillRect(0, 0, 256, 256); for (let k = 0; k < 2500; k++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '30,30,30'},${Math.random() * 0.05})`; g.fillRect(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 4, 1 + Math.random() * 4); } }, true), color: 0xc8cacc, roughness: 0.35 }, 0.6) : M({ map: ftx, color: ft, roughness: 0.55 }, 0.75);
+  if (gar) mFloor.map.repeat.set(Math.max(1, W / 2000), Math.max(1, D / 2000));
   box(mFloor, A0, A1, 0, D, 0, 12); box(mCeil, A0, A1, 0, D, H, H + 20);
   // a panel on a wall over [s0, s1] × [y0, y1] (along it; up), at `off` in from its face, `th` thick —
   // in pieces round the wall's openings (a window, a door, a partition's doorway stay open)
@@ -388,9 +386,10 @@ export function buildRoom(r) {
   const put = (key, a, d, rot = 0, y = 0) => {
     if (!key || !FURN[key]) return null;
     // (chairs go under their table, the small things on others: not kept apart)
-    const solid = ![].concat(FURN[key].c).some((c) => ['dchair', 'barstool', 'ochair', 'kidchair', 'toy', 'vase', 'pend'].includes(c)) && y < 300;
+    const solid = ![].concat(FURN[key].c).some((c) => ['dchair', 'barstool', 'ochair', 'kidchair', 'toy', 'vase', 'pend', 'gsmall', 'tube'].includes(c)) && y < 300;
+    const drive = [].concat(FURN[key].c).includes('car');   // (the car stands in the way in: the garage door's)
     { const f = dims(key, rot);
-      if (blocked(a, d, f, y, solid)) {
+      if (!drive && blocked(a, d, f, y, solid)) {
         // (along the wall it stands at: the nearest free place)
         const byAB = Math.min(d, D - d) <= Math.min(a - A0, A1 - a);
         let ok = false;
@@ -403,7 +402,7 @@ export function buildRoom(r) {
       scene.scale.setScalar(MM(1000));
       const cache = new Map();
       scene.traverse((o) => {
-        if (!o.isMesh) return; o.userData.room = 1;
+        if (!o.isMesh) return; o.userData.room = 1; o.userData.shared = 1; o.castShadow = false; o.receiveShadow = true;   // (its geometry the model's own, shared)
         const one = (m) => { if (!cache.has(m)) { const c = m.clone(); glow(c, 0.45); if (c.transparent && c.opacity > 0.9) c.transparent = false; cache.set(m, c); } return cache.get(m); };
         o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
         if (FURN[key].tint) o.material.color?.multiply(new THREE.Color(FURN[key].tint));
@@ -556,7 +555,55 @@ export function buildRoom(r) {
     const pl = choose('plant'); if (pl) put(pl, A(A0 + 350), 400);
     pendant(A(cA), D * 0.5);
   };
-  if (r.kind === 'living') { if (W > 6800) { const L1 = A0 + Math.min(5200, W * 0.56); living(A0, L1); kitchen(L1, A1); } else living(A0, A1); }
+  // the garage: the car in the middle facing its door; along one side the bench with its pegboard and
+  // tools, along the other the tool chest and cart, the tyres, the ladder, the bike, the mower, the cans;
+  // the racks of boxes on the back wall; tube lights under the ceiling
+  const garage = () => {
+    const car = choose('car'), cf = car && dims(car);
+    if (car && W > cf.w + 1000 && D > cf.dep + 800) put(car, A(cA), Math.max(cf.dep / 2 + 350, Math.min(D / 2, D - cf.dep / 2 - 900)), 0);
+    // the bench: a drawer cabinet with a worktop, the pegboard over it, the vice, the drill and the paints on it
+    const bn = onSide('bench', Math.min(D - 800, D * 0.62), null, 30, false);
+    if (bn) {
+      const wa = mir ? A1 : A0, s2 = mir ? -1 : 1, d0 = bn.d - 650, d1 = bn.d + 650;
+      const peg = canvasTex(256, 160, (g) => { g.fillStyle = '#c9a77c'; g.fillRect(0, 0, 256, 160); g.fillStyle = 'rgba(40,28,15,0.55)'; for (let y = 6; y < 160; y += 12) for (let x = 6; x < 256; x += 12) { g.beginPath(); g.arc(x, y, 1.6, 0, 7); g.fill(); } }, true);
+      box(M({ map: peg, roughness: 0.8 }, 0.6), mir ? wa - 20 : wa + 4, mir ? wa - 4 : wa + 20, d0, d1, bn.h + 250, bn.h + 1050);
+      // (the tools hung on it: wrenches, a saw, a hammer — dark shapes on hooks)
+      const steel = M({ color: 0x5c6064, metalness: 0.7, roughness: 0.4 }, 0.3), grip = M({ color: pick([0xc0392b, 0x2c6fb7, 0xe0a526]), roughness: 0.6 }, 0.3);
+      for (let k = 0; k < 7; k++) { const d = d0 + 120 + k * 160, h0 = bn.h + 420 + (k % 3) * 120; box(steel, mir ? wa - 40 : wa + 20, mir ? wa - 20 : wa + 40, d - 12, d + 12, h0, h0 + 260 - (k % 2) * 80); box(grip, mir ? wa - 44 : wa + 18, mir ? wa - 18 : wa + 44, d - 18, d + 18, h0, h0 + 90); }
+      box(M({ color: 0x7a5c3e, roughness: 0.7 }, 0.4), mir ? wa - bn.w - 40 : wa + 10, mir ? wa - 10 : wa + bn.w + 40, d0 + 100, d1 - 100, bn.h, bn.h + 40);   // (the worktop)
+      const ax = A(A0 + bn.w / 2 + 30);
+      const v = choose('vice'); if (v) put(v, ax, bn.d - 420, side(Math.PI / 2), bn.h + 40);
+      for (const [cat, dd] of [['gdrill', 0], ['spray', 250], ['gtoolbox', -150]]) { const k = choose(cat); if (k) put(k, ax, bn.d + dd, side(Math.PI / 2 * (rnd() < 0.5 ? 1 : -1)), bn.h + 40); }
+    }
+    // the racks on the back wall, boxes and crates on their shelves
+    const nR = Math.max(1, Math.min(3, Math.floor((W - 800) / 1200)));
+    for (let k = 0; k < nR; k++) {
+      const rk = back('grack', nR === 1 ? cA : A0 + 700 + k * (W - 1400) / (nR - 1));
+      if (!rk) continue;
+      for (const f of [0.03, 0.42, 0.62, 0.82]) { const c2 = choose(pick(['gbox', 'gcrate', 'gbox'])); if (c2 && rnd() < 0.8) put(c2, rk.a + (rnd() - 0.5) * Math.max(0, rk.w - 450), rk.d, (rnd() - 0.5) * 0.3, rk.h * f); }
+    }
+    // along the other side: what stands on the floor of a garage
+    let d = 450;
+    for (const cat of ['gchest', 'tyres', 'ladder', 'bike', 'mower', 'gcart', 'jerry', 'gen', 'broom', 'pump']) {
+      if (d > D - 500) break;
+      if (cat === 'tyres') {
+        // (a stack of four, lying)
+        const t = choose('tyre'); if (!t) continue; const tf = dims(t);
+        const x = mir ? A0 + tf.w / 2 + 60 : A1 - tf.w / 2 - 60;
+        for (let k = 0; k < 4; k++) { const hd = new THREE.Group(); hd.position.set(MM(x), MM(12 + tf.Dp / 2 + k * tf.Dp), -MM(d + tf.h / 2)); hd.rotation.x = Math.PI / 2; G.add(hd); loadModel('interior/' + t).then(({ scene }) => { scene.scale.setScalar(MM(1000)); scene.position.y = -MM(tf.h / 2); scene.traverse((o) => { if (o.isMesh) { o.userData.room = 1; o.userData.shared = 1; o.castShadow = false; o.material = glow(o.material.clone(), 0.4); } }); hd.add(scene); }).catch(() => {}); }
+        placed.push([x - tf.w / 2, x + tf.w / 2, d, d + tf.h, 0, 4 * tf.Dp]); d += tf.h + 250; continue;
+      }
+      const k = choose(cat); if (!k) continue;
+      const f = dims(k, Math.PI / 2), at = d + f.dep / 2;
+      const q = onSide(k, at, null, 40, true);
+      if (q) d = q.d + q.dep / 2 + 200;
+    }
+    const hr = choose('hose'); if (hr) put(hr, A(A1 - 400), D - 160, 0, 1200);
+    // the lights: tube fittings on the ceiling, their tubes glowing at night
+    for (const dd of [D * 0.3, D * 0.7]) { const tl = choose('tube'); if (tl) put(tl, A(cA), dd, Math.PI / 2, H - 60); const b = new THREE.Mesh(new THREE.BoxGeometry(MM(1200), MM(25), MM(60)), lampMat); b.rotation.y = Math.PI / 2; b.position.set(MM(A(cA)), MM(H - 40), -MM(dd)); G.add(b); lamps.push(b); }
+  };
+  if (r.kind === 'garage') garage();
+  else if (r.kind === 'living') { if (W > 6800) { const L1 = A0 + Math.min(5200, W * 0.56); living(A0, L1); kitchen(L1, A1); } else living(A0, A1); }
   else if (r.kind === 'kitchen') kitchen(A0, A1);
   else if (r.kind === 'bed' || r.kind === 'kids') bed();
   else study();
@@ -565,7 +612,7 @@ export function buildRoom(r) {
   G.updateMatrixWorld(true);
   const how = r.kind === 'kitchen' || r.kind === 'study' ? pick(['roman', 'venetian', 'sheer']) : st === 'minimal' ? pick(['venetian', 'sheer']) : pick(['sheer', 'sheer', 'heavy', 'roman']);
   const cc = kids ? pick(KIDS.fab) : pick(Y.curtain), mSheer = glow(new THREE.MeshStandardMaterial({ color: 0xf6f3ee, roughness: 0.9, transparent: true, opacity: 0.78, side: THREE.DoubleSide }), 1.5), mHeavy = M({ color: cc, side: THREE.DoubleSide, roughness: 0.95 }, 1.0);
-  for (const w of r.wins) {
+  for (const w of gar ? [] : r.wins) {
     const half = w.w / 2, y0 = (w.y - r.floor) / S, y1 = y0 + w.h, out = new THREE.Vector3(Math.sin(w.yaw), 0, Math.cos(w.yaw));
     const Wn = new THREE.Group(); Wn.position.set(w.x, r.floor, w.z).addScaledVector(out, -MM((w.t || 300) / 2)); Wn.rotation.y = w.yaw;
     if (how === 'roman' || how === 'venetian') {
@@ -576,14 +623,26 @@ export function buildRoom(r) {
       const heavy = how === 'heavy', cw = Math.min(heavy ? 600 : 750, half * (0.45 + 0.25 * rnd())), hh = H - 60, g = new THREE.PlaneGeometry(MM(cw), MM(hh), 14, 1), p = g.attributes.position;
       for (let i = 0; i < p.count; i++) p.setZ(i, MM(heavy ? 45 : 30) * Math.sin(p.getX(i) / MM(cw) * Math.PI * (heavy ? 5 : 7)));
       g.computeVertexNormals();
-      const c = new THREE.Mesh(g, heavy ? mHeavy : mSheer); c.position.set(MM(s * (half + cw / 2 - 150)), MM(hh / 2), -MM(140)); c.castShadow = true; Wn.add(c);
+      const c = new THREE.Mesh(g, heavy ? mHeavy : mSheer); c.position.set(MM(s * (half + cw / 2 - 150)), MM(hh / 2), -MM(140)); c.userData.merge = 1; Wn.add(c);
       if (heavy && rnd() < 0.6) { const c2 = new THREE.Mesh(g, mSheer); c2.position.set(MM(s * (half * 0.5)), MM(hh / 2), -MM(90)); c2.scale.x = half / cw * 1.0; Wn.add(c2); }
     }
     // the rail
     box(M({ color: 0x2a2a2a, metalness: 0.5 }, 0.2), -half - 300, half + 300, 160, 180, H - 60, H - 40, Wn);
     G.attach(Wn);
   }
-  G.traverse((o) => { if (o.isMesh || o.isInstancedMesh) o.userData.room = 1; });
+  // (the boxes and the curtains of one material: one mesh — a room is drawn in a few dozen calls, not
+  // hundreds; none of it casts a shadow: the house's own walls do)
+  G.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(G.matrixWorld).invert(), byMat = new Map(), gone = [];
+  G.traverse((o) => { if (!o.isMesh || !o.userData.merge || o.userData.shared) return; const g2 = o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld)); (byMat.get(o.material) || byMat.set(o.material, []).get(o.material)).push(g2); gone.push(o); });
+  for (const o of gone) { o.parent.remove(o); o.geometry.dispose(); }
+  for (const [m, list] of byMat) {
+    const ok = list.every((g2) => !!g2.index) || list.every((g2) => !g2.index);
+    const geo = ok ? mergeGeometries(list, false) : null;
+    if (geo) { const ms = new THREE.Mesh(geo, m); ms.receiveShadow = true; G.add(ms); for (const g2 of list) g2.dispose(); }
+    else for (const g2 of list) { const ms = new THREE.Mesh(g2, m); ms.receiveShadow = true; G.add(ms); }
+  }
+  G.traverse((o) => { if (o.isMesh || o.isInstancedMesh) { o.userData.room = 1; if (!o.userData.shared) o.castShadow = false; } });
   // at night: lit or not (most rooms are), how bright
   G.userData.lit = rnd() < 0.7; G.userData.bright = 0.7 + 0.5 * rnd();
   G.userData.mats = mats; G.userData.lamps = lamps; G.userData.lampMat = lampMat; G.userData.tv = tvMat; G.userData.tvOn = r.kind === 'living' && rnd() < 0.5;
