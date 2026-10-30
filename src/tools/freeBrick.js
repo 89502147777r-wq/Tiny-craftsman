@@ -376,11 +376,14 @@ function edgeNear(t, p) {
 // and a head joint only where a neighbour of the course is there — nothing at free ends
 export function mortarOf(units) {
   const out = [], list = units.filter((u) => u.free && u.p && u.s && u.q && u.kind !== 'prop').map(boxOf);
-  const cell = 0.07, grid = new Map(), key = (x, z) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;   // (a cell longer than a block: the neighbours are in the 3 × 3 round it)
+  // (a cell longer than a block: the neighbours are in the 3 × 3 round it — and by the height too,
+  // a course of its own: the courses over and under were most of the pairs looked at, each block of a
+  // tall wall tried against hundreds)
+  const cell = 0.07, cy = 0.03, grid = new Map(), gk = (gx, gy, gz) => ((gx + 4096) * 8192 + (gz + 4096)) * 512 + (gy + 256);
   // (a long one — a lintel — in every cell along it: the units at its ends find it)
   list.forEach((b, i) => {
     const R = Math.max(b.hl, b.hw);
-    for (let gx = Math.floor((b.x - R) / cell); gx <= Math.floor((b.x + R) / cell); gx++) for (let gz = Math.floor((b.z - R) / cell); gz <= Math.floor((b.z + R) / cell); gz++) { const k = `${gx},${gz}`; (grid.get(k) || grid.set(k, []).get(k)).push(i); }
+    for (let gx = Math.floor((b.x - R) / cell); gx <= Math.floor((b.x + R) / cell); gx++) for (let gz = Math.floor((b.z - R) / cell); gz <= Math.floor((b.z + R) / cell); gz++) for (let gy = Math.floor(b.bot / cy); gy <= Math.floor(b.top / cy); gy++) { const k = gk(gx, gy, gz); (grid.get(k) || grid.set(k, []).get(k)).push(i); }
   });
   const done = new Set();
   // the half size of a box along a direction
@@ -403,8 +406,8 @@ export function mortarOf(units) {
     // the vertical joints to the neighbours of the course (each pair once): end to end, the
     // two leaves side by side, a header against a stretcher, a corner — wherever two faces
     // of the course face each other a joint apart, over the length they share
-    const cx = Math.floor(b.x / cell), cz = Math.floor(b.z / cell);
-    for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gz = cz - 1; gz <= cz + 1; gz++) for (const j of grid.get(`${gx},${gz}`) || []) {
+    const cx = Math.floor(b.x / cell), cz = Math.floor(b.z / cell), ym = Math.floor((b.bot + b.top) / 2 / cy);
+    for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gz = cz - 1; gz <= cz + 1; gz++) for (const j of grid.get(gk(gx, ym, gz)) || []) {
       if (j === i || done.has(i < j ? i * 100003 + j : j * 100003 + i)) continue;
       done.add(i < j ? i * 100003 + j : j * 100003 + i);
       const o = list[j];
