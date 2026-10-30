@@ -328,7 +328,12 @@ export class UI {
       // diagnostics for reports from phones: which soil shader runs, GPU errors
       const a = this.app, gl = a.renderer.getContext();
       const which = a.terrain.mesh.material === a.fallbackMat ? 'простой' : a.lightMat && a.terrain.mesh.material === a.lightMat ? 'упрощённый' : 'полный';
-      $('diag').textContent = `Диагностика: грунт — ${which}; GPU — ${gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS)} текстур` + (a.shaderErrors.length ? `; ошибка: ${a.shaderErrors[0].slice(0, 300)}` : '');
+      const R = a.renderer, fi = a.frameInfo || {};
+      // (in the language of the page, not through the dictionary: its numbers change each time)
+      const en = LANG === 'en', which2 = en ? { 'простой': 'plain', 'упрощённый': 'light', 'полный': 'full' }[which] : which, mln = fi.tris != null ? (fi.tris / 1e6).toFixed(2) : '—';
+      const el = $('diag'); el.dataset.notr = '';
+      el.textContent = (en ? `Diagnostics: ground — ${which2}; GPU — ${gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS)} textures; fps ${a.fps || '—'}; draw calls ${fi.calls ?? '—'}; triangles ${mln} M; shaders ${R.info.programs?.length ?? '—'}; textures ${R.info.memory.textures}; geometries ${R.info.memory.geometries}; resolution ×${R.getPixelRatio().toFixed(2)}`
+        : `Диагностика: грунт — ${which2}; GPU — ${gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS)} текстур; кадров/с ${a.fps || '—'}; вызовов ${fi.calls ?? '—'}; треугольников ${mln} млн; шейдеров ${R.info.programs?.length ?? '—'}; текстур ${R.info.memory.textures}; геометрий ${R.info.memory.geometries}; разрешение ×${R.getPixelRatio().toFixed(2)}`) + (a.shaderErrors.length ? (en ? '; error: ' : '; ошибка: ') + a.shaderErrors[0].slice(0, 300) : '');
     }
   }
 

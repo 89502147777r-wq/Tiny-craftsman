@@ -267,7 +267,9 @@ export function buildRoom(r) {
   const kids = r.kind === 'kids', st = r.style = r.style || pick(Object.keys(STYLES)), Y = STYLES[st];
   const mats = [], lamps = [];
   // (each material of the room glows a little of its own colour at night when its lamps are on)
-  const glow = (m, g) => { m.emissive = m.emissive || new THREE.Color(); m.emissive.copy(WARM); if (m.map) m.emissiveMap = m.map; m.userData.glow = g; mats.push(m); return m; };
+  // (the glow a colour, not the material's texture again: an emissive map would make each of them a
+  // shader of its own to build — a stall on a phone for each)
+  const glow = (m, g) => { m.emissive = m.emissive || new THREE.Color(); m.emissive.copy(WARM); m.emissiveMap = null; m.userData.glow = g; mats.push(m); return m; };
   const M = (o, g = 0.55) => glow(std(o), g);
   const box = (m, a0, a1, d0, d1, y0, y1, par = G) => { const o = new THREE.Mesh(new THREE.BoxGeometry(MM(Math.max(1, a1 - a0)), MM(Math.max(1, y1 - y0)), MM(Math.max(1, d1 - d0))), m); o.position.set(MM((a0 + a1) / 2), MM((y0 + y1) / 2), -MM((d0 + d1) / 2)); o.receiveShadow = true; o.userData.merge = 1; par.add(o); return o; };
   const wood = (name, tint, rep = 1) => { const t = tex('deck/' + name, 'col.jpg', true).clone(); t.needsUpdate = true; t.userData.own = 1; t.repeat.set(rep, rep); return M({ map: t, color: tint, roughness: 0.6 }, 0.5); };
@@ -403,7 +405,9 @@ export function buildRoom(r) {
       const cache = new Map();
       scene.traverse((o) => {
         if (!o.isMesh) return; o.userData.room = 1; o.userData.shared = 1; o.castShadow = false; o.receiveShadow = true;   // (its geometry the model's own, shared)
-        const one = (m) => { if (!cache.has(m)) { const c = m.clone(); glow(c, 0.45); if (c.transparent && c.opacity > 0.9) c.transparent = false; cache.set(m, c); } return cache.get(m); };
+        // (a model's material in the few kinds the rooms use: its colour and relief maps kept, the
+        // others — roughness, metal, occlusion maps — left out: fewer textures, fewer shaders to build)
+        const one = (m) => { if (!cache.has(m)) { const c = m.clone(); c.roughnessMap = null; c.metalnessMap = null; c.aoMap = null; c.lightMap = null; c.emissiveMap = null; glow(c, 0.45); if (c.transparent && c.opacity > 0.9) c.transparent = false; cache.set(m, c); } return cache.get(m); };
         o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
         if (FURN[key].tint) o.material.color?.multiply(new THREE.Color(FURN[key].tint));
       });

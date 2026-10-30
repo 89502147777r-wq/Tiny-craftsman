@@ -210,6 +210,7 @@ export function kitMat(src, hex, o = {}) {
     // (opaque, both its faces; a texture with holes in it — the slits of a door — cut, not blended)
     m.alphaTest = src.transparent && src.map ? 0.5 : 0;
     m.side = THREE.DoubleSide; m.transparent = false; m.depthWrite = true;
+    m.roughnessMap = null; m.metalnessMap = null; m.aoMap = null; m.emissiveMap = null;   // (fewer shaders to build, fewer textures)
     Object.assign(m, o);
     if (m.map) m.map.anisotropy = 4;
     TINT.set(key, m);

@@ -56,6 +56,7 @@ async function main() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   app.renderer = renderer;
+  renderer.info.autoReset = false;
   // shader problems on a device are shown on screen (so they can be reported) instead of
   // silently leaving an object undrawn; the soil then falls back to a plain material
   app.shaderErrors = [];
@@ -219,7 +220,16 @@ async function main() {
       const fd = (now - lastDraw) / 1000;
       lastDraw = now;
       fpsAcc += fd; fpsN++;
-      if (fpsAcc > 1) { app.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
+      if (fpsAcc > 1) {
+        app.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0;
+        // (the picture made coarser a step while the hand works and the frames come slower than
+        // 22 a second for 3 s running — the phone keeps up instead of freezing; down to 1:1)
+        if (recent && !app.dprOverride) {
+          slowS = app.fps < 22 ? slowS + 1 : 0;
+          const cur = app.renderer.getPixelRatio();
+          if (slowS >= 3 && cur > 1.01) { app.dprAuto = Math.max(1, cur - 0.25); slowS = 0; resize(); }
+        }
+      }
     }
     step(dt, now / 1000, due);
     requestAnimationFrame(frame);
@@ -246,6 +256,9 @@ async function main() {
   await Promise.race([kitsPending(), new Promise((r) => setTimeout(r, 6000))]);
   app.wallView.update?.();
   if (!app.filmMode) app.warmUp();
+  // (each shader built later — the rooms, a ghost, a tool — not checked: the check waits for the
+  // GPU to finish compiling it, a stall each time; the soil's, the one that may fail, is in by now)
+  setTimeout(() => { if (!params.has('debug') && !navigator.webdriver) renderer.debug.checkShaderErrors = false; }, 8000);
   document.getElementById('loading').classList.add('done');
   document.getElementById('ui').hidden = !!app.filmMode;
   app.ready = true;
@@ -278,7 +291,7 @@ function checkTerrainShader() {
   console.error(msg, app.shaderErrors[0]);
   setTimeout(() => app.ui?.toast(msg), 1500);
 }
-let shaderCheckT = 0;
+let shaderCheckT = 0, gpuCheckN = 0, slowS = 0;
 
 // Out of video memory (iPhones, in-app browsers): a buffer that did not fit is
 // silently not drawn. Step the quality down and upload the soil mesh again.
@@ -347,10 +360,14 @@ function step(dt, time, render = true) {
     sm.autoUpdate = false;
     shadowT += dt;
     if (app.shadowLive !== false || shadowT > 0.5) { sm.needsUpdate = true; shadowT = 0; }
+    app.renderer.info.reset();   // (the frame's own counts — all its passes — for the menu's diagnostics)
     app.pipeline.render(app.scene, app.camera, time);
     app.mirrors.render(app.scene);
+    const ri = app.renderer.info.render; app.frameInfo = { calls: ri.calls, tris: ri.triangles };
   }
-  if (render && (shaderCheckT += dt) > 1) { shaderCheckT = 0; checkTerrainShader(); checkGpuMemory(); }
+  // (the soil's shader looked at each second; the GPU's memory each 15 s: gl.getError() waits for the
+  // GPU to finish all it was given — once a second it was a stall of its own on a phone)
+  if (render && (shaderCheckT += dt) > 1) { shaderCheckT = 0; checkTerrainShader(); if ((gpuCheckN = (gpuCheckN + 1) % 15) === 0) checkGpuMemory(); }
   app.recorder.sample(app.clock, dt, trackRow);
   app.ui.tick(dt);
 }
@@ -428,7 +445,7 @@ function resize() {
   const [w, h] = viewportSize();
   const q = app.settings.quality;
   const dprCap = q === 'high' ? 2 : q === 'medium' ? 1.5 : 1.15;
-  app.renderer.setPixelRatio(app.dprOverride || Math.min(window.devicePixelRatio || 1, dprCap));
+  app.renderer.setPixelRatio(app.dprOverride || Math.min(window.devicePixelRatio || 1, dprCap, app.dprAuto || 9));
   app.renderer.setSize(w, h, false);
   app.camera.aspect = w / h;
   // portrait phones get a wider lens so the whole plot fits

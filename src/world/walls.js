@@ -439,6 +439,7 @@ export class WallView {
     // the windows set in the openings (windows.js), and the one in the hand
     this.windows = new THREE.Group(); this.group.add(this.windows);
     this._win = new Map();   // id → { key, group }
+    this._plateKey = new Map();   // proof id → what of it the walls follow
     this.liveWin = null;     // { key, w, h, t, x, y, z, yaw }
     // the flat roofs on the slabs (roof.js)
     this.roofs = new THREE.Group(); this.group.add(this.roofs);
@@ -466,7 +467,14 @@ export class WallView {
     objects.on((id, rec) => {
       if (rec?.type === 'pool' || this._poolIds?.has(id)) { this.blindDirty = true; return; }
       if (rec?.type === 'blind' || this._blindIds?.has(id)) { this.blindDirty = true; this.proofDirty = true; this.fillDirty = true; return; }
-      if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) { this.proofDirty = true; if (rec?.type === 'proof' || !rec) { this.dirty = true; this._faces = null; this.facadeDirty = true; } return; }   // (the nuts on the studs follow the wall plate)
+      if (rec?.type === 'proof' || rec?.type === 'rwin' || this._proofIds?.has(id)) {
+        this.proofDirty = true;
+        // (the walls built again only when the wall plate moved — the nuts on the studs follow it — or a
+        // roof came or went; a sheet laid, a batten, the membrane: the roof only)
+        const key = rec?.type === 'proof' ? JSON.stringify([rec.po, rec.wings?.length, rec.done?.plate, rec.done?.studs]) : null;
+        if (rec?.type === 'proof' ? this._plateKey.get(id) !== key : !rec) { this._plateKey.set(id, key); this.dirty = true; this._faces = null; this.facadeDirty = true; }
+        return;
+      }
       if (rec?.type === 'rail' || this._railIds?.has(id)) { this.railDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (rec?.type === 'stock' || this._stockIds?.has(id)) { this.dirty = true; return; }
