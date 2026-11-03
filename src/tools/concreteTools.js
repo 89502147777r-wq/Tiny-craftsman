@@ -9,7 +9,7 @@ import { BlindChannel } from './blindPour.js';
 import { BLIND, layerSet } from '../world/blind.js';
 import { BIT, dab } from '../world/bitumen.js';
 import { LANG } from '../i18n/i18n.js';
-import { isV2, pegXZ, HOLE } from '../world/fence2.js';
+import { isV2, pegXZ, HOLE, HOLE_R, gOf, pourSpot } from '../world/fence2.js';
 import { COL_SECS, secOf, colTop, colBot, axisAt, fillOf, formOn, cageOn, castDone } from '../world/columns.js';
 
 // the concrete cast in place on the walls: a run of U-blocks or a ring beam (or a column's formwork)
@@ -25,7 +25,7 @@ class PostChannel {
   constructor(app, t) {
     const r = app.objects.get(t.id), q = r.pegs[t.i], a = (q.post?.a || 60) / 1000;
     this.app = app; this.t = t;
-    this.area = Math.PI * (HOLE.r / 1000) ** 2 - (q.post?.sh === 'rd' ? Math.PI * a * a / 4 : a * a);   // m²
+    this.area = Math.PI * (HOLE_R / 1000) ** 2 - (q.post?.sh === 'rd' ? Math.PI * a * a / 4 : a * a);   // m² (the hole as bored, less the post)
     this.cap = HOLE.depth;
     this.h = [(q.fill || 0) * this.cap]; this.h0 = this.h[0];
   }
@@ -35,7 +35,8 @@ class PostChannel {
   pour(i, l) { this.h[0] = Math.min(this.cap, this.h[0] + l / this.area); }
   step() { return 0; }
   show() { this.app.gardenView.setAnim('F' + this.t.id, { pour: { i: this.t.i, f: this.h[0] / this.cap } }); }
-  point() { const r = this.app.objects.get(this.t.id), [x, z] = pegXZ(r, r.pegs[this.t.i].s); return new THREE.Vector3(x, this.t.g - MM_(HOLE.depth - this.h[0]), z); }
+  // (into the gap between the post and the hole's wall, on the side the camera looks from)
+  point() { const r = this.app.objects.get(this.t.id), q = r.pegs[this.t.i], [x, z] = pourSpot(r, q, this.app.camera.position); return new THREE.Vector3(x, this.t.g - MM_(HOLE.depth - this.h[0]), z); }
   write(app) {
     app.gardenView.setAnim('F' + this.t.id, null);
     const hose = app.concreteTools?.hose; if (hose && hose.ch === this) hose._colPour = true;
@@ -44,8 +45,8 @@ class PostChannel {
     app.objects.update(r.id, { pegs: r.pegs.map((p, k) => (k === this.t.i ? { ...p, fill: f, ...(p.pourT == null ? { pourT: +app.clock.toFixed(3) } : {}) } : p)) });
     if (full) {
       // (the hole closed: the ground round the collar made good)
-      const [x, z] = pegXZ(r, q.s), R = MM_(HOLE.r + 40);
-      app.terrain.levelTo((wx, wz) => Math.hypot(wx - x, wz - z) < R, r.g, [x - R, z - R, x + R, z + R]);
+      const [x, z] = pegXZ(r, q.s), R = MM_(HOLE_R + 60);
+      app.terrain.levelTo((wx, wz) => Math.hypot(wx - x, wz - z) < R, gOf(r, q), [x - R, z - R, x + R, z + R]);
       const left = r.pegs.filter((p, k) => p.post && !(p.fill >= 1) && k !== this.t.i).length;
       app.ui?.toast(LANG === 'en' ? `The post is concreted${left ? ` — ${left} more to do` : ' — all of them. Next «4 · Rails» (Fence)'}` : `Столб забетонирован${left ? ` — осталось ещё ${left}` : ' — все. Дальше «4 · Прожилины» (Забор)'}`);
     } else app.ui?.toast(LANG === 'en' ? `The hole is ${Math.round(f * 100)} % full — pour on` : `Яма залита на ${Math.round(f * 100)} % — лейте дальше`);
@@ -179,8 +180,8 @@ class ConcreteTool {
       if (!isV2(r)) continue;
       r.pegs.forEach((q, i) => {
         if (!q.hole) return;
-        const [x, z] = pegXZ(r, q.s), top = r.g + (q.post ? MM_(q.post.h) : MM_(100));
-        a.set(x, r.g - MM_(200), z); b.set(x, top, z);
+        const [x, z] = pegXZ(r, q.s), g = gOf(r, q), top = g + (q.post ? MM_(q.post.h) : MM_(100));
+        a.set(x, g - MM_(200), z); b.set(x, top, z);
         const d2 = ray.distanceSqToSegment(a, b, pr, ps), d = Math.sqrt(d2), reach = MM_(Math.max(160, (q.post?.a || 60)));
         if (d < reach && pr.distanceTo(ray.origin) < bd) { bd = pr.distanceTo(ray.origin); best = { r, q, i, x, z }; }
       });
@@ -189,8 +190,9 @@ class ConcreteTool {
     const { r, q, i, x, z } = best;
     const why = !q.post ? 'Сначала столб в яму («Забор» → «3 · Столбы»)' : q.fill >= 1 ? 'Этот столб уже забетонирован' : null;
     if (why) { if (!this._bSaid) { this._bSaid = true; app.ui?.toast(why); } return null; }
-    this._uHit = new THREE.Vector3(x, r.g, z);
-    return { type: 'fpost', id: r.id, i, g: r.g };
+    const [px, pz] = pourSpot(r, q, app.camera.position);   // (the hose / the bucket over the gap, not over the post)
+    this._uHit = new THREE.Vector3(px, gOf(r, q), pz);
+    return { type: 'fpost', id: r.id, i, g: gOf(r, q) };
   }
   _uBegin(e, type) {
     const u = this._uAt(e);

@@ -188,19 +188,19 @@ export function fenceFill(r, U, opt = null) {
   const G = new THREE.Group(), kind = kindOf(r), col = colOf(r), B = opt ? opt.bays : baysOf(r).filter((b) => b.gate < 0), H = opt?.H || r.H, m = fillMat(kind, col), rail = metal((FENCE_COLS[col] || FENCE_COLS.anth)[2]);
   const L = { rails: [], fill: [], wire: [] };
   let ord = 0;
-  const P0 = opt ? opt.off0 : FENCE.post / 2, PA = opt ? opt.pa : FENCE.post, o = (b) => (!opt || opt.fresh.has(b.mid) ? ord++ : -1);
+  const SD = opt?.side || 1, P0 = (opt ? opt.off0 : FENCE.post / 2) * SD, PA = opt ? opt.pa : FENCE.post, o = (b) => (!opt || opt.fresh.has(b.mid) ? ord++ : -1);
   for (const b of B) {
     const yaw = yawOf(b.a, b.b), cx = (b.a[0] + b.b[0]) / 2, cz = (b.a[1] + b.b[1]) / 2, ux = (b.b[0] - b.a[0]) / b.L, uz = (b.b[1] - b.a[1]) / b.L, nx = -uz, nz = ux;
     const span = (len, y, M) => { M.multiply(new THREE.Matrix4().makeScale(len, 1, 1)); return M; };
     const inner = b.L - MM(PA);
     if (kind === 'slat') {
-      const rows = Math.floor((H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)), off = MM(P0 + FENCE.slatT / 2);
+      const rows = Math.floor((H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)), off = MM(P0 + SD * FENCE.slatT / 2);
       for (let k = 0; k < rows; k++) L.fill.push([span(b.L + MM(PA), 0, at(cx + nx * off, r.g + MM(FENCE.gap + k * (FENCE.slat + FENCE.slatGap) + FENCE.slat / 2), cz + nz * off, yaw)), o(b)]);
     } else if (kind === 'picket') {
       // two rails 40 × 20 on the posts' face, the pickets 120 wide 30 apart screwed to them
       const off = MM(FENCE.post / 2 + 10);
       if (!opt) for (const y of [300, H - 300]) L.rails.push([span(b.L + MM(FENCE.post), 0, at(cx + nx * off, r.g + MM(y), cz + nz * off, yaw)), o(b)]);
-      const n = Math.floor((b.L / S - PA) / 150), po = MM(P0 + (opt ? 4 : 24));
+      const n = Math.floor((b.L / S - PA) / 150), po = MM(P0 + SD * (opt ? 4 : 24));
       for (let k = 0; k < n; k++) { const s = -inner / 2 + (inner - (n - 1) * MM(150)) / 2 + k * MM(150); L.fill.push([at(cx + ux * s + nx * po, r.g + MM(100 + (H - 100) / 2), cz + uz * s + nz * po, yaw), o(b)]); }
     } else if (kind === 'louvre') {
       // the blades 100 deep at 45°, every 70 between two U-channels on the posts
