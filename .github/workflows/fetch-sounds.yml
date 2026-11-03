@@ -1,0 +1,27 @@
+# One-off (removed after use): checks the repository secret FREESOUND_API_KEY with a test search
+# (the key is never printed) and commits the answer's status and a few results to this branch.
+name: Check Freesound key
+on:
+  push:
+    branches: [fetch-sounds]
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test search
+        env:
+          KEY: ${{ secrets.FREESOUND_API_KEY }}
+        run: |
+          mkdir -p incoming
+          if [ -z "$KEY" ]; then echo "NO_KEY" > incoming/check.txt; else
+            code=$(curl -s -o incoming/search.json -w "%{http_code}" "https://freesound.org/apiv2/search/text/?query=shovel%20dig%20soil&filter=license:%22Creative%20Commons%200%22&fields=id,name,license,username,duration&page_size=5&token=$KEY")
+            echo "HTTP $code" > incoming/check.txt
+          fi
+          cat incoming/check.txt
+      - name: Commit
+        run: |
+          git config user.name "github-actions"; git config user.email "github-actions@users.noreply.github.com"
+          git add incoming; git commit -m "Freesound key check" || true; git push
