@@ -581,7 +581,7 @@ console.log('—', sec());
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const c = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, col = wt.col, o = {};
-    const e = (p) => { const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
+    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };   // (the camera's matrices as a drawn frame has them)
     const run = () => { for (let i = 0; i < 4000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
     const G = (x, z) => new V(x, tc.terrain.heightAt(x, z), z), cols = () => tc.objects.all('column');
     tc.rig.setState({ target: [0, 0.05, 0], yaw: 0.5, pitch: 0.7, dist: 1.4 }); tc.simulate(0.05);
@@ -612,6 +612,22 @@ console.log('—', sec());
     Object.assign(tc.settings, { wallKind: 'slab', slabCant: 0 });
     wt.carry = { kind: 'slab', tray: true, snap: null }; wt._carryMove(tp, e(tp)); wt._carryDrop(); run();
     o.slab = tc.objects.all('belt').filter((b) => b.kind === 'slab').map((b) => b.piles).join();
+    // either order: a pile's cage first (bored, lowered in), the formwork round it after
+    tc.setTool('column'); Object.assign(tc.settings, { colType: 'pile', colA: 300, colStage: 'cage', colN: 2 });
+    const p4 = G(0.3, -0.25); col.down(p4, e(p4)); col.move(p4, e(p4)); col.up(); run();
+    const r4 = cols().at(-1); o.cageFirst = `${r4.stage}${r4.cage}`;
+    tc.settings.colStage = 'form'; { const m = new V(r4.x, r4.y0 + r4.h / 2, r4.z); col.down(G(r4.x, r4.z), e(m)); col.move(G(r4.x, r4.z), e(m)); col.up(); run(); }
+    o.formAfter = tc.objects.get(r4.id).stage;
+    // the sliders: the picked column (no concrete) takes the size and the height
+    col.select(tc.objects.get(r4.id), false); Object.assign(tc.settings, { colA: 400, colN: 4 }); col.preview(); o.preview = wt.col.V.patch.get(r4.id)?.a; col.restyle();
+    o.resized = `${tc.objects.get(r4.id).a},${tc.objects.get(r4.id).n}`;
+    // a cage tied into the cage of a foundation not cast yet (its feet down to the bottom bars)
+    const g5 = tc.terrain.heightAt(-0.3, -0.3), M5 = 1 / 1000 / 10.4651;
+    tc.objects.add({ type: 'cage', outlineId: 999, bars: [[-0.4, g5 - 200 * M5, -0.3, -0.2, g5 - 200 * M5, -0.3, 12 * M5], [-0.4, g5 + 100 * M5, -0.3, -0.2, g5 + 100 * M5, -0.3, 12 * M5]], chairs: [], frogs: [], ties: [] });
+    Object.assign(tc.settings, { colType: 'sq', colA: 250, colStage: 'cage', colN: 4 }); { const p = G(-0.3, -0.3); col.down(p, e(p)); col.move(p, e(p)); col.up(); run(); }
+    const r5 = cols().at(-1); o.tied = r5.anc; o.tiedStage = `${r5.stage}${r5.cage}`;
+    tc.settings.colStage = 'form'; { const m = new V(r5.x, r5.y0 + r5.h / 2, r5.z); col.down(G(r5.x, r5.z), e(m)); col.move(G(r5.x, r5.z), e(m)); col.up(); run(); }
+    o.tiedNoForm = tc.objects.get(r5.id).stage === 0;
     tc.setTool('black'); Object.assign(tc.settings, { matMode: 'deliver', delivery: 1 }); const bl = tc.materialTools.black;
     bl.down(G(0.35, -0.3)); for (let i = 0; i < 400 && bl.busy; i++) tc.simulate(0.1);
     o.black = +(tc.terrain.materialVolumes()[4] * 10.47 ** 3).toFixed(2);
@@ -621,6 +637,7 @@ console.log('—', sec());
   check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
   check('columns: three piles bored, their two-half formwork set; a column not on the bare soil; the cages carried in', c.formed === '2false,2false,2false' && c.sqOnSoil && c.caged, JSON.stringify(c));
   check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3', JSON.stringify(c));
+  check('columns: either order (a cage first, the formwork round it), tied into a foundation cage (no formwork till it is cast), the sliders resize the picked one', c.cageFirst === '0true' && c.formAfter === 2 && c.preview === 400 && c.resized === '400,4' && c.tied > 250 && c.tied < 450 && c.tiedStage === '0true' && c.tiedNoForm, JSON.stringify(c));
   check('black topsoil: delivered (1 m³), the soil shader builds', Math.abs(c.black - 1) < 0.05 && c.shader === 0, JSON.stringify(c));
   check('columns: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
@@ -632,7 +649,7 @@ console.log('—', sec());
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const f = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, fw = wt.fence, o = {}, F2 = await import('/src/world/fence2.js');
-    const e = (p) => { const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
+    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };   // (the camera's matrices as a drawn frame has them)
     const run = () => { for (let i = 0; i < 4000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
     const G = (x, z) => new V(x, tc.terrain.heightAt(x, z), z), sAt = (s) => { const [x, z] = F2.pegXZ(fw.rec, s); return new V(x, fw.rec.g, z); }, at = (i) => sAt(fw.rec.pegs[i].s);
     tc.rig.setState({ target: [0, 0.05, 0.1], yaw: 0.2, pitch: 0.75, dist: 1.5 }); tc.simulate(0.05);

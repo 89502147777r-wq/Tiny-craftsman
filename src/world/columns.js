@@ -34,6 +34,18 @@ export const COL_SECS = {
   p400: { name: 'Свая Ø400', round: true, pile: true, a: 400, bars: 6, d: 14 },
   r300: { name: 'Круглая колонна Ø300', round: true, a: 300, bars: 6, d: 12 },
 };
+// the kinds by the slider (the record: sec = 'sq' / 'rd' / 'pile', a = the size, mm); the old records'
+// fixed sections above still read. The bars by the size: 4 (square up to 300) … 8, Ø12 … 16
+export const COL_TYPES = { sq: { min: 150, max: 500, def: 250 }, rd: { min: 200, max: 500, def: 300 }, pile: { min: 200, max: 600, def: 300 } };
+const reinf = (round, a) => ({ bars: round ? (a <= 300 ? 6 : 8) : (a <= 300 ? 4 : 8), d: a <= 250 ? 12 : a <= 350 ? 14 : 16 });
+export function secOf(r) {
+  const o = COL_SECS[r?.sec];
+  if (o) return r.a && r.a !== o.a ? { ...o, a: r.a, ...reinf(o.round, r.a), name: o.name.replace(/\d+( × \d+)?$/, o.round ? `${r.a}` : `${r.a} × ${r.a}`) } : o;
+  const t = r?.sec === 'rd' ? 'rd' : r?.sec === 'pile' ? 'pile' : 'sq', a = r?.a || COL_TYPES[t].def;
+  return { name: t === 'sq' ? `Колонна ${a} × ${a}` : t === 'rd' ? `Круглая колонна Ø${a}` : `Свая Ø${a}`, round: t !== 'sq', pile: t === 'pile', a, ...reinf(t !== 'sq', a), type: t };
+}
+// the kind of a record: sq / rd / pile
+export const typeOf = (r) => secOf(r).type || (secOf(r).pile ? 'pile' : secOf(r).round ? 'rd' : 'sq');
 // the courses the height goes by: a course = the unit + its bed; the first bed thicker
 export const COURSES = {
   block: { name: 'газоблок', H: 250, bed: 3, bed0: 20 },
@@ -94,15 +106,22 @@ function rod(a, b, r, seg = 6) {
 // the cage: the bars along the axis (the starter bars on past the top: r.starter mm, 500 when
 // nothing is on it yet), the stirrups every 200, the plastic spacer wheels (the cover) on the bars
 export function cageParts(r) {
-  const sec = COL_SECS[r.sec] || COL_SECS.sq250, half = MM(sec.a / 2 - COVER - sec.d / 2), d = MM(sec.d), y0 = colBot(r) + MM(50), y1 = colTop(r);
+  const sec = secOf(r), half = MM(sec.a / 2 - COVER - sec.d / 2), d = MM(sec.d), y0 = r.anc ? r.y0 - MM(r.anc) : colBot(r) + MM(50), y1 = colTop(r);
   const ax = new THREE.Vector3(r.tilt[0], 1, r.tilt[1]).normalize(), st = MM(r.starter ?? STARTER) * ax.y;   // (the bars on along the axis)
   const offs = sec.round ? Array.from({ length: sec.bars }, (_, k) => [Math.cos(k / sec.bars * Math.PI * 2) * half, Math.sin(k / sec.bars * Math.PI * 2) * half])
     : sec.bars === 8 ? [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]].map(([a, b]) => [a * half, b * half]) : [[-half, -half], [half, -half], [half, half], [-half, half]];
   const gs = [], pl = [];
   for (const [ox, oz] of offs) { const [a0, b0] = axisAt(r, y0), [a1, b1] = axisAt(r, y1 + st); gs.push(rod([a0 + ox, y0, b0 + oz], [a1 + ox, y1 + st, b1 + oz], d / 2)); }
+  // (tied into the foundation's cage: each bar's foot bent out 250 mm along its bottom bars — the «лапки» —
+  // and wired to them)
+  if (r.anc) for (const [ox, oz] of offs) {
+    const L = Math.hypot(ox, oz) || 1, [a0, b0] = axisAt(r, y0), fx = a0 + ox, fz = b0 + oz;
+    gs.push(rod([fx, y0, fz], [fx + ox / L * MM(250), y0, fz + oz / L * MM(250)], d / 2));
+    for (const k of [0.3, 0.8]) { const t = new THREE.TorusGeometry(MM(7), MM(1.6), 3, 8); t.rotateX(Math.PI / 2); t.translate(fx + ox / L * MM(250) * k, y0 + MM(6), fz + oz / L * MM(250) * k); t.deleteAttribute('uv'); gs.push(t); }
+  }
   // the stirrups (square / round), every 200 mm up the axis — the last 100 under the top
   const sh = half + d / 2 + MM(3);
-  for (let y = y0 + MM(50); y < y1 - MM(60); y += MM(STEP) * ax.y) {
+  for (let y = Math.max(y0 + MM(50), r.anc ? r.y0 - MM(r.anc - 100) : -Infinity); y < y1 - MM(60); y += MM(STEP) * ax.y) {
     const [cx, cz] = axisAt(r, y);
     if (sec.round) { const t = new THREE.TorusGeometry(sh, MM(3), 4, 18); t.rotateX(Math.PI / 2); t.translate(cx, y, cz); t.deleteAttribute('uv'); gs.push(t); }
     else { const c = [[-sh, -sh], [sh, -sh], [sh, sh], [-sh, sh]]; for (let k = 0; k < 4; k++) { const p = c[k], q = c[(k + 1) % 4]; gs.push(rod([cx + p[0], y, cz + p[1]], [cx + q[0], y, cz + q[1]], MM(3), 4)); } }
@@ -125,7 +144,7 @@ export const cageGeo = (r) => cageParts(r).rebar;
 
 // the concrete in it up to the level fill (0…1 of the height), the time it was poured
 export function concreteGeo(r, fill, pourT) {
-  const sec = COL_SECS[r.sec] || COL_SECS.sq250, y0 = colBot(r), y1 = y0 + (colTop(r) - y0) * Math.max(0.001, fill);
+  const sec = secOf(r), y0 = colBot(r), y1 = y0 + (colTop(r) - y0) * Math.max(0.001, fill);
   const g = shear(r, y0, y1, MM(sec.a / 2), sec.round, 24), n = g.attributes.position.count;
   g.setAttribute('aPour', new THREE.Float32BufferAttribute(new Float32Array(n).fill(pourT ?? -1e9), 1));
   g.setAttribute('aSm', new THREE.Float32BufferAttribute(new Float32Array(n).fill(0.55), 1));
@@ -163,7 +182,7 @@ function arcShell(r, y0, y1, rad, a0, a1, seg = 14) {
 // piece: { dir: [dx, dz] (it comes in / goes off that way), drop (it comes down from above),
 //          ply / steel / wood / shell / bolt: [geometries] }
 export function formPieces(r) {
-  const sec = COL_SECS[r.sec] || COL_SECS.sq250, a = MM(sec.a / 2), y0 = r.y0, y1 = colTop(r) + MM(sec.round ? 20 : 30), H = y1 - y0;
+  const sec = secOf(r), a = MM(sec.a / 2), y0 = r.y0, y1 = colTop(r) + MM(sec.round ? 20 : 30), H = y1 - y0;
   const pieces = [], piece = (o) => { const p = { ply: [], steel: [], wood: [], shell: [], bolt: [], dir: [0, 0], drop: false, ...o }; pieces.push(p); return p; };
   if (sec.round) {
     const t = MM(3), R = a + t, fl = MM(40), ft = MM(8);
@@ -245,6 +264,7 @@ export class ColumnView {
     this.items = new Map();   // id → { key, g }
     this.live = new Map();    // id → { fill } (a pour in progress)
     this.ghost = null;
+    this.patch = new Map();   // id → { a, h, n, tilt … } (the sliders being moved: shown, not saved yet)
   }
   setConcreteUniforms(u) { if (!this.concMat) this.concMat = makeCastConcreteMaterial(u); }
   // the formwork as pieces, each its own group (the fitting animation moves them one by one)
@@ -272,7 +292,7 @@ export class ColumnView {
     if (only === 'cage') return this.cageGroup(r);
     if (only === 'form') return this.formGroup(r);
     const g = new THREE.Group(), add = (geo, m, shadow = true) => { if (!geo) return; const o = new THREE.Mesh(geo, m); o.castShadow = shadow; o.receiveShadow = true; o.userData.uOwner = r.id ?? null; g.add(o); return o; };
-    const sec = COL_SECS[r.sec] || COL_SECS.sq250;
+    const sec = secOf(r);
     // a pile's hole while it is empty: the dark hole and the spoil round it
     if (sec.pile && (r.stage ?? 0) < 3) {
       const [x, z] = axisAt(r, r.y0);
@@ -295,10 +315,11 @@ export class ColumnView {
     // the starter bars of a column with a slab / masonry on it: into that, not out through it
     const v = objects.ver ?? 0;
     if (this._covV !== v || this._covO !== objects) { this._covV = v; this._covO = objects; this._cov = new Map(); for (const r of all) if (castDone(r)) this._cov.set(r.id, covered(r, objects)); }
-    for (const r of all) {
+    for (const r0 of all) {
+      const r = this.patch.has(r0.id) ? { ...r0, ...this.patch.get(r0.id) } : r0;
       const lv = this.live.get(r.id), fill = lv ? lv.fill : fillOf(r), st = this._cov.get(r.id) ? 150 : STARTER;
       // (the concrete's level apart: while it is poured only the concrete is made again)
-      const key = JSON.stringify([r.x, r.z, r.y0, r.h, r.dep, r.sec, r.tilt, r.stage, cageOn(r), r.pourT, fill > 0, st]), fk = Math.round(fill * 200);
+      const key = JSON.stringify([r.x, r.z, r.y0, r.h, r.dep, r.sec, r.a, r.anc, r.tilt, r.stage, cageOn(r), r.pourT, fill > 0, st]), fk = Math.round(fill * 200);
       seen.add(r.id);
       const it = this.items.get(r.id);
       if (it && it.key === key) { if (it.fk !== fk) { it.fk = fk; this._setConcrete(it, { ...r, pourT: r.pourT ?? lv?.t }, fill); } continue; }
@@ -317,7 +338,7 @@ export class ColumnView {
     if (!r) return;
     const mat = new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe0453a, transparent: true, opacity: what === 'cage' ? 0.85 : 0.42, depthWrite: false });
     this.ghost = what === 'cage' ? this.cageGroup(r, mat) : what === 'form' ? this.formGroup(r, mat) : new THREE.Group();
-    const sec = COL_SECS[r.sec] || COL_SECS.sq250;
+    const sec = secOf(r);
     if (what !== 'cage') {
       // the column inside: its body faint, the axis and the starter bars' direction
       const m = new THREE.Mesh(shear(r, colBot(r), colTop(r), MM(sec.a / 2), sec.round, 20), new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe0453a, transparent: true, opacity: 0.18, depthWrite: false }));
@@ -336,7 +357,7 @@ export class ColumnView {
 
 // a slab cast on the column's top, or masonry laid on it
 function covered(r, objects) {
-  const top = colTop(r), [x, z] = axisAt(r, top), near = MM((COL_SECS[r.sec]?.a || 250) / 2);
+  const top = colTop(r), [x, z] = axisAt(r, top), near = MM(secOf(r).a / 2);
   for (const b of objects.all('belt')) if (b.kind === 'slab' && Math.abs(b.top - top) < MM(40) && b.fill > 0.05 && beltContains(b, x, z)) return true;
   for (const u of objects.all('unit')) if (u.p && u.s && Math.abs(u.p[1] - u.s[1] / 2 - top) < MM(40) && Math.abs(u.p[0] - x) < u.s[0] / 2 + near && Math.abs(u.p[2] - z) < u.s[0] / 2 + near) return true;
   return false;

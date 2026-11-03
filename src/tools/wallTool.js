@@ -6,7 +6,7 @@ import { placeUnit, freeTops, topAt, beltTopAt, boxOf, dims } from './freeBrick.
 import { placeLintel, placeProp, placeLintelForm, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds, rle } from './belt.js';
-import { COL_SECS, castDone } from '../world/columns.js';
+import { COL_SECS, secOf, castDone } from '../world/columns.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
 import { PALLETS } from '../core/budget.js';
 import { findOpenings, findCorners, openingAt } from './windowFit.js';
@@ -1108,7 +1108,7 @@ export class WallTool {
     if (!this.tray) return;
     // «Колонны и сваи»: the tray holds the formwork / the cage of the section chosen
     if (this.app.tool === 'column') {
-      const L = this.col.stage, round = COL_SECS[this.col.sec]?.round;
+      const L = this.col.stage, round = this.col.spec.round;
       if (this.delBtn) this.delBtn.hidden = true;
       if (this.rowBtn) this.rowBtn.hidden = true;
       if (this.cordBtn) this.cordBtn.hidden = true;

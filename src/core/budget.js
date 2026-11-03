@@ -226,7 +226,7 @@ export class Budget {
       if (!cg(b) && cg(a)) add(P.rebar * hm * 4.6 + P.wire6 * hm * 5, `Арматура колонны · ${(hm * 4.6).toFixed(0)} м + хомуты`);
       if (s0 < 2 && s1 >= 2) add(P.board * hm * 1.2, `Опалубка колонны · ${(hm * 1.2).toFixed(1)} м²`);
       const df = fl(a) - fl(b);
-      if (df > 0.001) { const r = a.sec?.startsWith('p') || a.sec?.startsWith('r') ? +a.sec.slice(1) / 2000 : +a.sec.slice(2) / 1000; const sq = a.sec?.startsWith('sq'); const v = (sq ? r * r : Math.PI * r * r) * ((a.h + (a.dep || 0)) * M1) * df; add(P.concrete * v, `Бетон ${v.toFixed(2)} м³`); }
+      if (df > 0.001) { const side = (a.a || +(String(a.sec).match(/\d+/)?.[0] || 250)) / 1000, sq = String(a.sec).startsWith('sq'), v = (sq ? side * side : Math.PI * side * side / 4) * ((a.h + (a.dep || 0)) * M1) * df; add(P.concrete * v, `Бетон ${v.toFixed(2)} м³`); }
     } else if (type === 'pool') {
       // the coats (cells 100 × 100, a coat each pass), the mosaic sheets (316 × 316), the stones, the embeds, the water
       const chars = (arr, f) => (arr || []).reduce((n, q) => n + (typeof q === 'string' ? [...q].reduce((m, c) => m + f(c), 0) : Array.isArray(q) ? q.length : 0), 0);
