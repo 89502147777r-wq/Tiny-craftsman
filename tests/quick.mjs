@@ -631,6 +631,9 @@ console.log('—', sec());
     // a square column's cage on the bare soil: its hole bored first (1,2 m), the cage lowered into it
     Object.assign(tc.settings, { colType: 'sq', colA: 250, colStage: 'cage', colN: 4 }); { const p = G(0.35, 0.3); col.down(p, e(p)); col.move(p, e(p)); col.up(); run(); }
     const r6 = cols().at(-1); o.boredCage = `${r6.bored}|${Math.round(r6.dep * 10465)}|${r6.cage}`;
+    // a leaning pile: the stream lands straight under the opening at the top (on the inner face of its low side)
+    { const CT = await import('/src/tools/concreteTools.js'), M7 = 1 / 1000 / 10.4651, r7 = { x: 0, z: 0, y0: 0, h: 2800 * M7, dep: 2000 * M7, tilt: [0.27, 0], sec: 'pile', a: 300 }, q = CT.columnLanding(r7, -2000 * M7);
+      o.landing = Math.abs(q.x - 0.27 * r7.h) < 1e-9 && Math.abs(q.z) < 1e-9 && q.y > 0 && q.y < r7.h; }
     tc.setTool('black'); Object.assign(tc.settings, { matMode: 'deliver', delivery: 1 }); const bl = tc.materialTools.black;
     bl.down(G(0.35, -0.3)); for (let i = 0; i < 400 && bl.busy; i++) tc.simulate(0.1);
     o.black = +(tc.terrain.materialVolumes()[4] * 10.47 ** 3).toFixed(2);
@@ -640,7 +643,7 @@ console.log('—', sec());
   check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
   check('columns: three piles bored, their two-half formwork set; a column not on the bare soil; the cages carried in', c.formed === '2false,2false,2false' && c.sqOnSoil && c.caged, JSON.stringify(c));
   check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3', JSON.stringify(c));
-  check('columns: either order (a cage first, the formwork round it), tied into a foundation cage (no formwork till it is cast), the sliders resize the picked one', c.cageFirst === '0true' && c.formAfter === 2 && c.preview === 400 && c.resized === '400,4' && c.tied > 250 && c.tied < 450 && c.tiedStage === '0true' && c.tiedNoForm && c.boredCage === 'true|1200|true', JSON.stringify(c));
+  check('columns: either order (a cage first, the formwork round it), tied into a foundation cage (no formwork till it is cast), the sliders resize the picked one', c.cageFirst === '0true' && c.formAfter === 2 && c.preview === 400 && c.resized === '400,4' && c.tied > 250 && c.tied < 450 && c.tiedStage === '0true' && c.tiedNoForm && c.boredCage === 'true|1200|true' && c.landing, JSON.stringify(c));
   check('black topsoil: delivered (1 m³), the soil shader builds', Math.abs(c.black - 1) < 0.05 && c.shader === 0, JSON.stringify(c));
   check('columns: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
@@ -671,7 +674,8 @@ console.log('—', sec());
     Object.assign(tc.settings, { f2Layer: 'posts', postSh: 'rd', postA: 80, fenceH: 1800 });
     for (let i = 0; i < fw.rec.pegs.length; i++) { const p = at(i); fw.down(p, e(p)); fw.up(); run(); }
     o.posts = fw.rec.pegs.map((q) => (q.post ? q.post.sh + q.post.a : '-')).join();
-    tc.setTool('pail'); { const pail = tc.concreteTools.pail, p = at(0), top = new V(p.x, p.y + 0.05, p.z); pail.down(top, e(top)); tc.simulate(8); pail.up(); tc.simulate(2); o.pail = fw.rec.pegs[0].fill; }
+    // (the middle post: always on the phone's screen — the end ones may be off its edge)
+    tc.setTool('pail'); { const pail = tc.concreteTools.pail, p = at(2), top = new V(p.x, p.y + 0.05, p.z); pail.down(top, e(top)); tc.simulate(8); pail.up(); tc.simulate(2); o.pail = fw.rec.pegs[2].fill; }
     tc.setTool('hose'); tc.settings.pump = 1; const hose = tc.concreteTools.hose;
     for (let i = 0; i < fw.rec.pegs.length; i++) { const p = at(i), top = new V(p.x, p.y + 0.06, p.z); hose.down(top, e(top)); for (let k = 0; k < 40 && !hose.ch?.full; k++) { hose.move(top, e(top)); tc.simulate(0.25); } hose.up(); tc.simulate(1); }
     o.conc = fw.rec.pegs.every((q) => q.fill === 1);
