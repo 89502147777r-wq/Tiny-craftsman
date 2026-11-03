@@ -454,3 +454,7 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | `assets/sounds/` — wood_crack | Dead tree cracking & falling to ground in forest #2 | ozymandias37 | CC0 | https://freesound.org/people/ozymandias37/sounds/867720/ |
 | `assets/sounds/` — truck_tip | Hydraulic Dump Truck Dumping Dirt | MillennialGhost | CC0 | https://freesound.org/people/MillennialGhost/sounds/872390/ |
 | `assets/sounds/` — gravel_pour | Tractor Dumping Cobblestones – Stone Drop 02 | ReflektWave | CC BY 4.0 | https://freesound.org/people/ReflektWave/sounds/876047/ |
+| `assets/sounds/` — fabric | R24-18-Tent or Tarp Whoosh.wav | craigsmith | CC0 | https://freesound.org/people/craigsmith/sounds/481896/ |
+| `assets/sounds/` — fabric | crumple plastic | florianreichelt | CC0 | https://freesound.org/people/florianreichelt/sounds/447396/ |
+| `assets/sounds/` — cord | Rope Tightening.wav | EugeneEverett | CC0 | https://freesound.org/people/EugeneEverett/sounds/596513/ |
+| `assets/sounds/` — water_pour | pouring water on grass - 1 | FOSSarts | CC0 | https://freesound.org/people/FOSSarts/sounds/763461/ |

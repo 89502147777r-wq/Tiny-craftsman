@@ -41,7 +41,8 @@ export class Sfx {
   }
   _ready(name) { const b = this.buf.get(name); return Array.isArray(b) && b.length ? b : null; }
   _gainAt(at, range = 1) {
-    if (!at || !this.ear) return 1;
+    if (Array.isArray(at)) at = { x: at[0], y: at[1], z: at[2] };
+    if (!at || !this.ear || !Number.isFinite(at.x) || !Number.isFinite(at.y) || !Number.isFinite(at.z)) return 1;
     const d = Math.hypot(at.x - this.ear.x, at.y - this.ear.y, at.z - this.ear.z) * KT;   // (m)
     return 1 / (1 + Math.max(0, d - 3) / (12 * range));
   }
@@ -109,6 +110,9 @@ export class Sfx {
     const tool = !['loader', 'truck', 'excavator', 'engine'].includes(name);
     this.loop('eng-' + id, name, vol * (tool ? 1.6 : 1.4), tool ? 1 : 0.82 + rpm * 0.5, null, true);
   }
+  // a few sounds one after another (a piece of work done at a touch: the boards nailed, the bars tied):
+  // list of names, gap s between them
+  seq(list, gap = 0.2, opt = {}) { list.forEach((n, i) => setTimeout(() => this.play(n, { ...opt, gap: 0 }), i * gap * 1000 * (0.8 + Math.random() * 0.4))); }
   stab() { this.play('tap'); }
   thud() { this.play('block'); return true; }
   cash() { this.play('cash'); }

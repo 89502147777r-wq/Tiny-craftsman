@@ -127,7 +127,7 @@ export class FenceWork {
     if (app.physJob?.fit) app.physJob.finish();
     if (app.physJob) return true;
     if (L === 'line') {
-      if (this.cord) { this.drag = { L: 'cord', trail: [[p.x, p.z]] }; app.ui?.showMeasure?.(EN() ? 'Pull the string with your finger' : 'Тяните шнур пальцем'); return true; }
+      if (this.cord) { app.sfx?.play?.('stake'); this.drag = { L: 'cord', trail: [[p.x, p.z]] }; app.ui?.showMeasure?.(EN() ? 'Pull the string with your finger' : 'Тяните шнур пальцем'); return true; }
       const P = this.pick(p, e, (q, r) => !q.hole && !!legBounds(r, q.s));
       if (!P) { this.toast(this.fences.length ? 'Колышек двигают пальцем вдоль шнура (кроме углов и концов); новая разметка — кнопка «Шнур» справа' : 'Включите «Шнур» справа и тяните разметку пальцем'); return true; }
       app.journal.begin('fence-peg', {}, app.clock);
@@ -177,6 +177,7 @@ export class FenceWork {
   }
   up() {
     const app = this.app, d = this.drag;
+    if (this.drag && (this.drag.L === 'cord' || this.drag.L === 'rect')) this.app.sfx?.play?.('cord');
     this.drag = null;
     app.ui?.hideMeasure?.();
     if (!d) return;

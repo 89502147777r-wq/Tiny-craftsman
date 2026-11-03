@@ -226,7 +226,7 @@ export class LandWork {
   // ---- 4 · the geotextile: rolled out from the start to the end -------------------------------
   _geo(r) {
     const app = this.app, v = this.view, L = lengthOf(r) / S;
-    const steps = [[Math.max(1.6, L / 1000 * 0.35), (u) => { const s = -200 + (L + 400) * u; v.setAnim(r.id, { geo: s, roll: u < 1 ? Math.max(0, Math.min(L, s)) : null }); }]];
+    const steps = [[Math.max(1.6, L / 1000 * 0.35), (u) => { const s = -200 + (L + 400) * u; v.setAnim(r.id, { geo: s, roll: u < 1 ? Math.max(0, Math.min(L, s)) : null }); app.sfx?.loop?.('geo-roll', 'fabric', u < 1 ? 0.6 : 0, 1, null, true); }]];
     new FitJob(app, { steps, parts: [], onAbort: () => v.setAnim(r.id, null), commit: () => {
       this._save('path-geo', () => app.objects.update(r.id, { done: { ...(r.done || {}), ...(app.objects.get(r.id).done || {}), geo: 1 } }));
       v.setAnim(r.id, null);
@@ -328,7 +328,7 @@ export class LandWork {
   // ---- 8 · the joints: sand brushed in, the plate over the pavers on a mat ----------------------
   _joint(r) {
     const app = this.app, v = this.view, L = lengthOf(r) / S;
-    const steps = [[Math.max(1.5, L / 1000 * 0.25), (u) => v.setAnim(r.id, { joint: -100 + (L + 200) * u })], this._plate(r, r.g, 1)];
+    const steps = [[Math.max(1.5, L / 1000 * 0.25), (u) => { v.setAnim(r.id, { joint: -100 + (L + 200) * u }); app.sfx?.loop?.('joint', 'rake_loop', u < 1 ? 0.5 : 0, 1.3, null, true); }], this._plate(r, r.g, 1)];
     new FitJob(app, { steps, parts: [], onAbort: () => { v.setAnim(r.id, null); app.concreteGear.set(null); }, commit: () => {
       this._save('path-joint', () => app.objects.update(r.id, { done: { ...(app.objects.get(r.id).done || {}), joint: 1 } }));
       v.setAnim(r.id, null);
@@ -711,7 +711,7 @@ export class LandWork {
     const hit = gates.findIndex((q) => Math.abs(q.s - s) < q.w / 2 + 100);
     if (hit >= 0) {
       if (!gates[hit].hung && !(r.done || {}).fill) { this.toast('Створки повесят с заполнением забора («4 · Заполнение»)'); return; }
-      const open = !gates[hit].open;
+      const open = !gates[hit].open; app.sfx?.play?.(open ? 'gate_open' : 'gate_latch');
       this._save('gate-open', () => app.objects.update(r.id, { gates: gates.map((q, i) => (i === hit ? { ...q, open } : q)) }));
       this.toast(open ? `${GATES[gates[hit].type].name}: открыто` : `${GATES[gates[hit].type].name}: закрыто`);
       return;

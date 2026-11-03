@@ -121,6 +121,7 @@ export class PoolWork {
 
   update(dt) {
     const d = this.drag; if (!d || d.L !== 'water') return;
+    this.app.sfx?.loop?.('pool-water', this.app.settings.poolWater === 'drain' ? 'pump' : 'water', 0.6, 1, null, true);   // (the hose running into the bowl, or the pump drawing it off)
     const r = d.live, max = waterMax(r), drain = this.app.settings.poolWater === 'drain';
     const lv = Math.max(0, Math.min(max, (r.water || 0) + (drain ? -DRAIN : FILL) * dt));
     if (lv !== r.water) { r.water = lv; this._live(r); }
@@ -563,13 +564,14 @@ export class PoolWork {
         bed.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(upv.clone().cross(n).normalize(), upv, n));   // (right-handed: x = y × z)
         const w = along.length(), h = this._w(r, e.f.P(a0, b1)).distanceTo(this._w(r, e.f.P(a0, b0)));
         bed.visible = false; parts.push(bed);
-        steps.push([0.55, (u) => {
+        steps.push([0.55, (u, job) => {
+          if (!job._tr) { job._tr = 1; app.sfx?.play?.('trowel_tap'); }
           bed.visible = true; bed.scale.set(w * Math.max(0.02, u), h, 1);
           bed.position.copy(this._w(r, e.f.P(a0 + (a1 - a0) * u / 2, (b0 + b1) / 2))).addScaledVector(n, MM(4));
           app.handTools.set('notch', this._w(r, e.f.P(a0 + (a1 - a0) * u, b0 + 20)).addScaledVector(n, MM(5)), n, upv, 0);
         }]);
       }
-      steps.push([(one ? 0.35 : 0.1) * T, (u) => { g.visible = true; g.position.copy(n).multiplyScalar(MM(one ? 25 : 10) * (1 - u)); if (one) app.handTools.hide(); }]);
+      steps.push([(one ? 0.35 : 0.1) * T, (u) => { g.visible = true; g.position.copy(n).multiplyScalar(MM(one ? 25 : 10) * (1 - u)); if (one) app.handTools.hide(); if (u >= 1) app.sfx?.play?.('tile', { gap: 0.08 }); }]);
       if (one) steps.push([0.4, (u) => { app.handTools.set('notch', mid.clone().addScaledVector(along, (u - 0.5) * 0.8).addScaledVector(n, MM(6)), n, upv, 0); }]);
     }
     new FitJob(app, { steps, parts, commit: save });

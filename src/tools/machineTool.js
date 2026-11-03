@@ -129,7 +129,7 @@ export class MachineTool {
     if (this.rect && p) { this.rect.b = [p.x, p.z]; this._rectDraw(); const w = Math.abs(this.rect.b[0] - this.rect.a[0]) * MODEL_SCALE, h = Math.abs(this.rect.b[1] - this.rect.a[1]) * MODEL_SCALE; this.app.ui?.showMeasure?.(`${w.toFixed(1)} × ${h.toFixed(1)} м = ${(w * h).toFixed(1)} м²`.replace(/\./g, LANGX() ? '.' : ',')); return; }
     if (this.state === 'work' && this.finger) this._add(p);
   }
-  up() { this.finger = false; if (this.rect) { const r = this.rect; this.rect = null; this.app.ui?.hideMeasure?.(); this._areaStart(r); } }
+  up() { this.finger = false; if (this.rect) { this.app.sfx?.play?.('cord'); const r = this.rect; this.rect = null; this.app.ui?.hideMeasure?.(); this._areaStart(r); } }
   interrupt() { this.finger = false; if (this.rect) { this.rect = null; this._rectDraw(); this.app.ui?.hideMeasure?.(); } }
 
   // ---- «Погрузчик в самосвал»: an area set out by a string on pegs; in it the loader cuts the heaps and
@@ -638,7 +638,8 @@ export class MachineTool {
       if (kind === 'excavator') { this.excMode = 'dig'; this.view = 'back'; }
       if (kind === 'truck') this._exitSigns(true);
       app.rig.goal.dist = R(kind === 'truck' ? 14 : 10); app.rig.goal.pitch = 0.5;
-      app.sfx.scrapeStart(); app.sfx.scrapeLevel(0.15);
+      app.sfx.play('car_door', { vol: 0.8 });
+      app.sfx.scrapeStart('screed'); app.sfx.scrapeLevel(0.15);
       app.ui?.toast(kind === 'excavator' ? 'Вы в экскаваторе. Копание: левый джойстик — поворот башни и рукоять, правый — стрела и ковш. Кнопка «Ход» — ехать на гусеницах' : kind === 'truck' ? 'Вы в самосвале: левый джойстик — газ и руль, правый вверх/вниз — кузов. Вывоз грунта — выезжайте за край участка (стрелка «Вывоз»)' : 'Вы в погрузчике: левый джойстик — езда, правый: вверх/вниз — стрела, влево/вправо — ковш');
       app.ui?.refresh();
     });
@@ -648,7 +649,7 @@ export class MachineTool {
     if (this.state !== 'drive') return;
     this._commitDrive();
     this.state = 'idle'; this.stick = { l: [0, 0], r: [0, 0] };
-    app.sfx.scrapeStop();
+    app.sfx.scrapeStop(); app.sfx.play('car_door', { vol: 0.8 });
     if (app.rig.shakeKeep != null) { app.rig.shake = app.rig.shakeKeep; app.rig.shakeKeep = null; }
     this._fov(null); this._mirrors(null); this._exitSigns(false);
     app.rig.goal.dist = R(16); app.rig.goal.pitch = 0.6;

@@ -3,7 +3,7 @@ import { MODEL_SCALE } from '../config.js';
 import { FitJob, bring, wait, drill, drive, hammer, part, at } from './fitJob.js';
 import { buildFacade, epsTrim, epsOn, W, epsDowels, woolDowels, FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
 // what each layer of the facade sounds like going on
-const FACADE_SND = { eps: 'plank', glue: 'trowel_tap', mesh: 'tap', base: 'trowel_tap', plaster: 'trowel_tap', paint: 'tap', pan: 'sheet', vp: 'sheet', mb: 'stone', brick: 'brick', tile: 'tile' };
+const FACADE_SND = { eps: 'plank', mw: 'plank', glue: 'trowel_tap', mesh: 'tap', emb: 'trowel_tap', pl: 'trowel_tap', fl: 'trowel_tap', pan: 'sheet', vp: 'sheet', mb: 'fabric', br: 'metal_hit', rl: 'metal_hit' };
 
 // The facade done by hand (facade.js), on the outside of the walls:
 //   eps  – the boards carried from the tray, one by one, staggered, cut at the openings and
@@ -110,6 +110,8 @@ export class FacadeWork {
   move(p, e) {
     const d = this.drag;
     if (!d) return;
+    // (the float, the brush, the roller going over the wall)
+    { const L = this.layer, snd = { glue: 'plaster', emb: 'trowel', pl: 'plaster', fl: 'plaster', mb: 'fabric' }[L]; if (snd) this.app.sfx?.loop?.('facade-work', snd, 0.55, 1, null, true); }
     const h = this._hit(e, d.off, d.F);
     if (!h) return;
     const L = this.layer;
@@ -501,7 +503,7 @@ export class FacadeWork {
     const { a, y } = h, R = MM(250), save = (patch, nm) => {
       const rec = { ...r, ...patch }; delete rec.id;
       const empty = !rec.eps?.length && !rec.pan?.length && !rec.mesh?.length && !rec.br?.length && !rec.mw?.length && !rec.mb?.length && !rec.rl?.length && !rec.vp?.length && !cellsOf(rec.glue).size && !cellsOf(rec.emb).size && !Object.values(rec.pl || {}).some((x) => x?.length);
-      app.journal.act('facade-remove', {}, app.clock, () => { if (empty) app.objects.remove(id); else app.objects.update(id, rec); });
+      app.sfx?.seq?.(['debris']); app.journal.act('facade-remove', {}, app.clock, () => { if (empty) app.objects.remove(id); else app.objects.update(id, rec); });
       app.ui.toast(`Сняли ${nm}`);
     };
     const near = (set) => { const out = new Set(); for (const k of set) { const [i, j] = cij(k); if (Math.hypot((i + 0.5) * CELL - a, (j + 0.5) * CELL - y) < R) out.add(k); } return out; };

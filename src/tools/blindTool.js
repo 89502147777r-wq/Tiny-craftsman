@@ -143,6 +143,7 @@ export class BlindWork {
   move(p, e) {
     const d = this.drag; if (!d) return;
     const h = this._at(e, d.r, d.y); if (!h) return;
+    this.app.sfx?.loop?.('blind-work', d.L === 'sand' || d.L === 'grav' ? 'rake_loop' : d.L === 'geo' || d.L === 'mem' ? 'fabric' : 'trowel', 0.5, 1, null, true);
     if (d.rake) { this.app.rakeTool.move(new THREE.Vector3(h.q.x, 0, h.q.z)); return; }
     if (d.rule) {
       const da = h.a - d.a, dd = h.d - d.d, L = Math.hypot(da, dd), step = this.app.terrain.cell * 0.7;
@@ -390,7 +391,7 @@ export class BlindWork {
       // (the ground under the strip levelled to the sheet: what is poured on lies on it)
       const P = planOf(d.r), cs = [...d.cells].map((k) => P.cells.get(k)), pts = cs.map((c) => P.W2(c.a, c.d)), pad = P.C;
       const box = [Math.min(...pts.map((q) => q[0])) - pad, Math.min(...pts.map((q) => q[1])) - pad, Math.max(...pts.map((q) => q[0])) + pad, Math.max(...pts.map((q) => q[1])) + pad];
-      app.journal.act('blind-geo', {}, app.clock, () => { app.objects.update(d.r.id, patch); app.terrain.levelTo((x, z) => d.cells.has(P.cellAt(...P.frame(x, z))), d.r.g + MM(7), box, MM(100)); });   // (a thin crust of concrete run out of the forms: broken off under the strip)
+      app.sfx?.seq?.(['turf']); app.journal.act('blind-geo', {}, app.clock, () => { app.objects.update(d.r.id, patch); app.terrain.levelTo((x, z) => d.cells.has(P.cellAt(...P.frame(x, z))), d.r.g + MM(7), box, MM(100)); });   // (a thin crust of concrete run out of the forms: broken off under the strip)
     } else if (L === 'fin' && (patch.finKind || d.r.finKind) === 'tile') {
       // (the paving laid as on site: fitJob.js — then saved)
       const r = d.r, col = patch.finCol || r.finCol || this.col;
@@ -480,7 +481,7 @@ export class BlindWork {
     if (L === 'form') {
       const n = planOf(P.rec).segs.reduce((s, sg) => s + sg.s1 - sg.s0, 0) / S / 1000;
       // (the boards of this house set again: the old ones off; another house: an area of its own)
-      let id = null; app.journal.act('blind-form', {}, app.clock, () => {
+      let id = null; app.sfx?.seq?.(['plank','hammer_nail','hammer_nail']); app.journal.act('blind-form', {}, app.clock, () => {
         if (P.old != null) app.objects.remove(P.old);
         const o = app.objects.add({ type: 'blind', ...P.rec }); id = o?.id ?? o;
         // (the areas beside it that are not concreted yet give up their half of the ground between)
@@ -550,7 +551,7 @@ export class BlindWork {
       app.ui.toast(`Сняли ${nm}`);
       return;
     }
-    app.journal.act('blind-remove', {}, app.clock, () => app.objects.remove(id));
+    app.sfx?.seq?.(['debris']); app.journal.act('blind-remove', {}, app.clock, () => app.objects.remove(id));
     app.ui.toast('Опалубку отмостки сняли');
   }
 }

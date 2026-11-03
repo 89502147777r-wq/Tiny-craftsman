@@ -345,6 +345,7 @@ export class HoseTool extends ConcreteTool {
 
   work(dt) {
     const app = this.app, t = app.terrain;
+    app.sfx?.engine?.('pump', 0.5); app.sfx?.loop?.('hose-flow', 'concrete', 0.55, 1, null, true);   // (the pump labouring, the concrete slopping out of the hose)
     const vol = real(app.settings.pump || PUMP[1]) * dt;
     // the stream lands under the hose and spreads from there: the mound under the
     // hose flows out fast (it is pushed by the stream), the rest creeps
@@ -441,6 +442,7 @@ export class PailTool extends ConcreteTool {
 
   work(dt) {
     const app = this.app, ch = this.ch;
+    app.sfx?.loop?.('pail-flow', 'concrete', 0.45, 1.1, null, true);
     // tipping: on until it runs, then further as it empties
     // (where the channel is full already it is held back: lead it on along the run)
     const brim = ch.h[this.i] >= (ch.brim ? ch.brim(this.i) : ch.cap) - 2;

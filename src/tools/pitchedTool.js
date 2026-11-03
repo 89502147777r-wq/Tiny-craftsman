@@ -375,7 +375,7 @@ export class PitchedWork {
     this._ghost = null;   // (the piece goes down onto the battens, then it is part of the roof)
     const m = g.mesh, n = g.n, [xa, xb, ta, tb] = g.slot, xm = (xa + xb) / 2;
     const at = (x, t) => { const [a, dd] = g.P.at(Math.max(g.P.xa(t) + MM(100), Math.min(g.P.xb(t) - MM(100), x)), t); return new THREE.Vector3(...g.f.W(a, dd, g.f.top(a, dd) + MM(40))); };
-    const steps = [[0.3, (u) => { m.position.copy(n).multiplyScalar(MM(80) * (1 - u) * (1 - u)); }]];
+    const steps = [[0.3, (u) => { m.position.copy(n).multiplyScalar(MM(80) * (1 - u) * (1 - u)); if (u >= 1) app.sfx?.play?.(kind === 'shingle' ? 'tap' : kind === 'tile' || kind === 'clay' ? 'tile' : 'sheet', { gap: 0.1 }); }]];
     if (kind === 'shingle') for (const t of [ta + (tb - ta) * 0.3, ta + (tb - ta) * 0.7]) steps.push(hammer(app, at(xm, t), n, 2, 0.12));
     else for (const t of [ta + MM(90), (ta + tb) / 2, tb - MM(120)]) if (t > ta && t < tb) steps.push(drive(app, at(xm, t), n, null, 0.22));
     app.scene.remove(m);
@@ -694,7 +694,7 @@ export class PitchedWork {
     if (!P) { app.ui.toast(this.why || (this.stage === 'plate' ? 'Мауэрлат — на верх стен' : 'Конёк и планки — на крышу с покрытием')); this.why = null; return; }
     if (P.rec) {
       // (a new roof: on the building it was carried to — the others keep theirs)
-      let id = null; app.journal.act('proof-plate', {}, app.clock, () => { id = app.objects.add({ type: 'proof', ...P.rec }); id = id?.id ?? id; });
+      let id = null; app.sfx?.seq?.(['plank','hammer_nail','hammer_nail']); app.journal.act('proof-plate', {}, app.clock, () => { id = app.objects.add({ type: 'proof', ...P.rec }); id = id?.id ?? id; });
       if (id != null) this.sel = id;
       const n = P.rec.wings.length, t = ROOF_TYPES[P.rec.style].toLowerCase();
       const studs = app.objects.all('belt').some((b) => b.studs?.length);
@@ -731,15 +731,15 @@ export class PitchedWork {
     // (the covering laid by hand: the last piece off, while nothing over it is on)
     if (r.sheets?.length && !r.done?.trim && !r.done?.gutter) {
       const done = { ...r.done }; delete done.cover;
-      app.journal.act('proof-remove', {}, app.clock, () => app.objects.update(id, { sheets: r.sheets.slice(0, -1), done }));
+      app.sfx?.seq?.(['crowbar','sheet']); app.journal.act('proof-remove', {}, app.clock, () => app.objects.update(id, { sheets: r.sheets.slice(0, -1), done }));
       app.ui.toast('Сняли последний лист покрытия'); return;
     }
     const order = STAGES.flatMap((q) => (q[0] === 'frame' ? [['hips', 'Диагональные стропила'], q] : [q]));
     for (const [k, nm] of order.reverse()) {
       const v = r.done?.[k]; if (!v) continue;
-      if (k === 'plate') { app.journal.act('proof-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Сняли мауэрлат — крыши нет'); return; }
+      if (k === 'plate') { app.sfx?.seq?.(['crowbar','sheet']); app.journal.act('proof-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Сняли мауэрлат — крыши нет'); return; }
       const nv = v === true || v.length <= 1 ? undefined : v.slice(0, -1), done = { ...r.done }; if (nv) done[k] = nv; else delete done[k];
-      app.journal.act('proof-remove', {}, app.clock, () => app.objects.update(id, { done }));
+      app.sfx?.seq?.(['crowbar','sheet']); app.journal.act('proof-remove', {}, app.clock, () => app.objects.update(id, { done }));
       app.ui.toast(`Сняли: ${nm.toLowerCase()}`);
       return;
     }
@@ -803,7 +803,7 @@ export class RoofWindowWork {
     if (!P) { app.ui.toast('Окно — на скат крыши или на плоскую кровлю'); return; }
     if (P.why) { app.ui.toast(P.why); return; }
     const { why, ...rec } = P; void why;
-    app.journal.act('rwin', {}, app.clock, () => app.objects.add({ type: 'rwin', key: this.key, col: this.col, wtype: this.type, ...rec }));
+    app.sfx?.seq?.(['glass','screwdriver']); app.journal.act('rwin', {}, app.clock, () => app.objects.add({ type: 'rwin', key: this.key, col: this.col, wtype: this.type, ...rec }));
     app.ui.toast(P.flat ? `${RWIN_TYPES[this.type][0]} ${RWIN[this.key][0]} на плоскую кровлю: стакан 150 мм, мембрана заведена на него, рама и стеклопакет` : `${RWIN_TYPES[this.type][0]} окно ${RWIN[this.key][0]}: между стропилами, сверху и снизу ригели, вокруг — оклад, кровля подрезана`);
   }
   status() { return this.place ? (this.place.why ? 'Красный — ' + this.place.why : 'Отпустите') : 'Окно в крышу: тяните из лотка на скат (встанет между стропилами) или на плоскую кровлю'; }

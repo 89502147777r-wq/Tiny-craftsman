@@ -102,7 +102,7 @@ export class PathWork {
     if (app.physJob?.fit) app.physJob.finish();
     if (app.physJob) return true;
     if (L === 'set') {
-      if (this.cord) { this.drag = { L: 'cord', trail: [[p.x, p.z]] }; app.ui?.showMeasure?.(EN() ? 'Pull the string along the path' : 'Тяните шнур вдоль будущей дорожки'); return true; }
+      if (this.cord) { app.sfx?.play?.('stake'); this.drag = { L: 'cord', trail: [[p.x, p.z]] }; app.ui?.showMeasure?.(EN() ? 'Pull the string along the path' : 'Тяните шнур вдоль будущей дорожки'); return true; }
       // (a corner's peg: dragged to a new place, the line after it — before the trough is dug)
       const V = this._corner(p, e);
       if (!V) { this.toast(this.paths.length ? 'Колышек на углу двигают пальцем; новая разметка — «Шнур» справа' : 'Включите «Шнур» справа и тяните пальцем — где пройдёт дорожка'); return true; }
@@ -170,11 +170,13 @@ export class PathWork {
       const r = app.objects.get(d.id), L = lengthOf(r) / S;
       d.s1 = Math.max(0, Math.min(L, chainOf(r, p.x, p.z) / S));
       this.view.setAnim(r.id, { geo: [d.s0, d.s1], roll: d.s1, rolled: Math.abs(d.s1 - d.s0) });
+      app.sfx?.loop?.('geo-roll', 'fabric', 0.6, 1, null, true);
       app.ui?.showMeasure?.(EN() ? `Geotextile ${f1(Math.abs(d.s1 - d.s0) / 1000)} m` : `Геотекстиль ${f1(Math.abs(d.s1 - d.s0) / 1000)} м`);
     } else if (d.L === 'pave') this._paveMove(p);
   }
   up() {
     const app = this.app, d = this.drag;
+    if (this.drag && (this.drag.L === 'cord' || this.drag.L === 'rect')) this.app.sfx?.play?.('cord');
     this.drag = null;
     app.ui?.hideMeasure?.();
     if (!d) return;

@@ -277,7 +277,7 @@ export class ColumnWork {
     for (const c of G.children) {
       c.visible = false;
       const [dx, dz] = c.userData.dir, drop = c.userData.drop;
-      steps.push([drop ? 0.45 : 0.4, (u) => { const k = 1 - ease(u); c.visible = true; c.position.set(dx * far * k, drop ? MM(700) * k : 0, dz * far * k); }]);
+      steps.push([drop ? 0.45 : 0.4, (u) => { const k = 1 - ease(u); c.visible = true; c.position.set(dx * far * k, drop ? MM(700) * k : 0, dz * far * k); if (u >= 1) app.sfx?.play?.('plank', { gap: 0.1 }); }]);
     }
     const side = (y) => { const [x, z] = axisAt(r, y); return new THREE.Vector3(x + MM(sec.a / 2 + (sec.round ? 70 : 90)), y, z); };
     if (sec.round) steps.push(...[0.3, 0.7].map((k) => drive(app, side(r.y0 + r.h * k), new THREE.Vector3(1, 0, 0), null, 0.35)));
@@ -307,7 +307,7 @@ export class ColumnWork {
   // foundation's cage)
   _lower(r, g, steps) {
     const app = this.app, sec = secOf(r), lift = colTop(r) - colBot(r) + MM(800 + (r.anc || 0)), [tx, tz] = axisAt(r, colTop(r));
-    steps.push([0.25, (u) => { g.position.y = lift; g.visible = u > 0; }], [1.1, (u) => { g.position.y = lift * (1 - ease(u)); }]);
+    steps.push([0.25, (u) => { g.position.y = lift; g.visible = u > 0; }], [1.1, (u) => { g.position.y = lift * (1 - ease(u)); if (u >= 1) app.sfx?.play?.('rebar'); }]);
     if (r.anc) for (const [ox, oz] of [[1, 1], [-1, -1]]) steps.push(hammer(app, new THREE.Vector3(r.x + ox * MM(sec.a / 2 + 60), r.y0 - MM(r.anc) + MM(10), r.z + oz * MM(sec.a / 2 + 60)), new THREE.Vector3(0, 1, 0), 2, 0.16, null, new THREE.Vector3(1, 0, 0), 'hook'));
     else steps.push(...[0, 1].map((k) => hammer(app, new THREE.Vector3(tx + MM(k ? 60 : -60), colTop(r) + MM(120), tz + MM(sec.a / 2)), new THREE.Vector3(0, 0, 1), 2, 0.16, null, null, 'hook')));
     steps.push(wait(0.1));
@@ -343,7 +343,7 @@ export class ColumnWork {
     const steps = [];
     for (const c of [...pieces].sort((a, b) => b.userData.drop - a.userData.drop)) {
       const [dx, dz] = c.userData.dir, drop = c.userData.drop;
-      steps.push([drop ? 0.4 : 0.45, (u) => { const q = u * u; c.position.set(dx * far * q, drop ? MM(600) * q : -MM(60) * q, dz * far * q); if (u >= 1) c.visible = false; }]);
+      steps.push([drop ? 0.4 : 0.45, (u, job) => { const q = u * u; if (u > 0 && !job['_cs' + dx + dz]) { job['_cs' + dx + dz] = 1; app.sfx?.play?.('crowbar', { vol: 0.6, gap: 0.15 }); } c.position.set(dx * far * q, drop ? MM(600) * q : -MM(60) * q, dz * far * q); if (u >= 1) { c.visible = false; app.sfx?.play?.('plank', { gap: 0.1 }); } }]);
     }
     new FitJob(app, { parts: [G], steps, commit: () => this.toast(sec.pile ? 'Опалубку сняли — свая готова: на неё можно лить ростверк или перекрытие, класть кладку' : 'Опалубку сняли — колонна готова: на неё — перекрытие или кладка, выпуски уйдут в них') });
   }

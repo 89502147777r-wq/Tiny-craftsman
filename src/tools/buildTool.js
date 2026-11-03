@@ -152,11 +152,11 @@ export class BuildTool {
       for (const pc of ps.filter((q) => q.k === 'stake')) {
         const m = mk(pc), top = pc.p.clone().setY(pc.p.y + pc.s.y), y0 = pc.p.y;
         if (one) steps.push([0.15, () => { m.visible = true; m.position.y = y0 + MM(150); }], hammer(app, top.clone().setY(top.y + MM(150)), up, 3, 0.16, (k) => { m.position.y = y0 + MM(150) * (1 - k / 3); }, n));
-        else steps.push([0.09 * T, (u) => { m.visible = true; m.position.y = y0 + MM(80) * (1 - u); }]);
+        else steps.push([0.09 * T, (u) => { m.visible = true; m.position.y = y0 + MM(80) * (1 - u); if (u >= 1) app.sfx?.play?.('plank', { vol: 0.5, gap: 0.12 }); }]);
       }
       for (const pc of ps.filter((q) => q.k === 'board')) {
         const m = mk(pc), p0 = pc.p.clone();
-        steps.push([(one ? 0.25 : 0.09) * T, (u) => { m.visible = true; m.position.copy(p0).addScaledVector(n, -MM(one ? 200 : 60) * (1 - u)); }]);
+        steps.push([(one ? 0.25 : 0.09) * T, (u) => { m.visible = true; m.position.copy(p0).addScaledVector(n, -MM(one ? 200 : 60) * (1 - u)); if (u >= 1) app.sfx?.play?.('plank', { vol: 0.6, gap: 0.12 }); }]);
         if (one) { const at = p0.clone().addScaledVector(n, -MM(14)); steps.push(hammer(app, at, n.clone().negate(), 2, 0.14)); }
       }
       for (const pc of ps.filter((q) => q.k === 'brace')) { const m = mk(pc); steps.push([(one ? 0.2 : 0.06) * T, () => { m.visible = true; }]); }
@@ -273,7 +273,7 @@ export class BuildTool {
     for (let k = 0; k < n; k++) {
       const tt = ties[Math.floor(k * ties.length / n)], p = new THREE.Vector3(tt[0], tt[1], tt[2]);
       const m = new THREE.Mesh(geo, mat); m.position.copy(p); m.rotation.set(Math.PI / 2, 0, tt[4] || 0.785); m.scale.setScalar(tt[3] || MM(7)); m.visible = false; m.userData.keepGeo = true; parts.push(m);
-      steps.push([0.13, (u) => { app.handTools.set('hook', p.clone().add(new THREE.Vector3(0, MM(6), 0)), up, null, u * 40); if (u >= 1) m.visible = true; }]);
+      steps.push([0.13, (u) => { app.handTools.set('hook', p.clone().add(new THREE.Vector3(0, MM(6), 0)), up, null, u * 40); if (u >= 1) { m.visible = true; app.sfx?.play?.('wire', { vol: 0.5, gap: 0.08, at: p }); } }]);
     }
     new FitJob(app, { steps, parts, commit: () => {
       app.journal.act('rebar-tie', { id: cage.id }, app.clock, () => app.objects.update(cage.id, { tied: true }));
