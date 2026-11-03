@@ -24,7 +24,7 @@ function groundCells(t, r, c) {
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
       const i = iz * t.nx + ix; if (seen.has(i)) continue;
       const x = t.toWorldX(ix), z = t.toWorldZ(iz), a = x * u[0] + z * u[1], b = x * n[0] + z * n[1];
-      if (Math.abs(a - q.a) > H + 1e-9 || Math.abs(b - q.b) > H + 1e-9) continue;
+      if (Math.abs(a - q.a) > H + 1e-9 || Math.abs(b - q.b) > H + 1e-9 || (q.clip && !inPoly(r.poly, x, z))) continue;
       seen.add(i); out.push({ i, a, b, x, z });
     }
   }

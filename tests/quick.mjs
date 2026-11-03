@@ -808,12 +808,18 @@ console.log('—', sec());
       const hs = []; for (let x = 0.24; x <= 0.38; x += 0.02) for (let z = 0.0; z <= 0.1; z += 0.02) hs.push(t.heightAt(x, z));
       o.byHand = { grass: !!r().done.grass, bump: Math.round((Math.max(...hs) - Math.min(...hs)) / M), black: lw.soilOn(r()) };
       tc.settings.lawnLayer = 'water'; { const p = G(0.25, 0.0); wt.down(p, e(p)); wt.up(); run(); } o.byHand.water = !!r().done.water; }
+    // a triangle: its slanted sides cut along the string (no steps of whole 100 mm squares) — the cells' area is the triangle's
+    { const L = await import('/src/world/lawn.js'), poly = [[-0.4, -0.35], [-0.1, -0.35], [-0.4, -0.12]], r3 = { poly, g: tc.terrain.heightAt(-0.3, -0.3), u: [1, 0] };
+      const c = L.cellsOf(tc, r3), C = 100 / 1000 / 10.4651, ar = (P) => { let a = 0; for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; a += p[0] * q[1] - q[0] * p[1]; } return Math.abs(a) / 2; };
+      const got = c.reduce((s2, q) => s2 + (q.clip ? ar(q.clip) : C * C), 0), want = L.areaOf(poly);
+      o.tri = { ratio: +(got / want).toFixed(3), clipped: c.filter((q) => q.clip).length, outside: c.filter((q) => q.clip && q.clip.some(([a, b]) => b > -0.35 - 1e-6 && a > -0.4 - 1e-6 && (a + 0.4) / 0.3 + (b + 0.35) / 0.23 > 1 + 1e-3)).length }; }
     tc.renderer.render(tc.scene, tc.camera);
     return o;
   });
   check('lawn: 4 stages (no rake, no roller); a rectangle by the string, a corner peg dragged, a new peg put in a string', o.chips === '1 · Разметка|2 · Чернозём|3 · Газон|4 · Полив' && o.cord && o.poly === 4 && o.poly2 === 5, JSON.stringify(o));
   check('lawn: the black topsoil tipped in heaps and raked level (a pit filled), the turf, the sprinkler', o.soil && o.pitFilled && o.top === 4 && o.grass && o.water, JSON.stringify(o));
   check('lawn: black topsoil tipped by hand in a heap — «Газон» rakes it level first, the turf and the sprinkler go on it', o.second && o.byHand?.grass && o.byHand.bump < 60 && o.byHand.water, JSON.stringify(o.byHand));
+  check('lawn: a triangle — the slanted side cut along the string, not in steps of squares', o.tri && Math.abs(o.tri.ratio - 1) < 0.01 && o.tri.clipped > 10 && o.tri.outside === 0, JSON.stringify(o.tri));
   check('lawn: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
@@ -849,6 +855,55 @@ console.log('—', sec());
   check('plants: 4 groups, ≥ 15 kinds; lights: 4 groups, ≥ 15 kinds', o.groups === 'Деревья|Кустарники|Цветы и клумбы|В кашпо' && o.lgroups === 'У дорожки|Подсветка|Декоративные|Фонарные столбы' && o.plants >= 15 && o.lights >= 15, JSON.stringify(o));
   check('plants: every kind planted or set (a pot with no hole), every model loads, a lamp has its lens', o.n === o.want && o.potLevel && !o.bad.length && o.lens, JSON.stringify(o));
   check('plants: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2i. Machines («Техника»): the loader in an area into the truck; the excavator digs and tips; the truck out to the tip ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {}, M = 1 / 10.4651;
+    const G = (x, z) => new V(x, t.heightAt(x, z), z), frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
+    tc.setTool('machine'); tc.ui.navPath = ['machines']; tc.ui.refresh();
+    o.chips = tc.ui.navNodes().list.map((c) => c.label).join('|');
+    await mt.ensure(); frames(5);
+    // a heap and a pit in the area
+    const g0 = t.heightAt(0.0, 0.15);
+    t.deposit(-0.05, 0.12, 1.2 / 1146, 0.8 * M, 0, 0); for (let i = 0; i < 40000 && t.active; i++) t.relax(1);
+    t.scoop(0.12, 0.22, 0.25 * M, g0 - 0.15 * M, g0 + 1, () => true, 3); t._touch(0, 0, t.rx, t.rz);
+    o.bumpBefore = Math.round((t.heightAt(-0.05, 0.12) - g0) / M * 1000);
+    mt.down(G(-0.25, -0.05)); mt.move(G(0.25, 0.35)); mt.up();
+    o.area = !!mt.area; o.state = mt.state;
+    let k = 0; for (; k < 90000 && (mt.state !== 'idle' || mt.area); k++) { tc.simulate(1 / 30); if (k % 300 === 0) await new Promise((r) => setTimeout(r, 0)); }
+    o.steps = k; o.hauled = +((mt.recOf('truck')?.hauled || 0) + (mt.recOf('truck')?.load || 0) * 3).toFixed(2);
+    const hs = []; for (let x = -0.2; x <= 0.2; x += 0.02) for (let z = 0.0; z <= 0.3; z += 0.02) hs.push(t.heightAt(x, z)); hs.sort((a, b) => a - b);
+    o.spread = Math.round((hs[Math.floor(hs.length * 0.95)] - hs[Math.floor(hs.length * 0.05)]) / M * 1000);
+    o.pit = Math.round((t.heightAt(0.12, 0.22) - g0) / M * 1000);
+    // the excavator: in, the boom down into the ground, the bucket curled in — it fills; up, opened — empty
+    mt.enter('excavator'); for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
+    o.exc = mt.driving && mt.drv === 'excavator'; const E = mt.exc;
+    o.btns = [...document.querySelectorAll('#mbtns button')].map((b) => b.textContent).join('|');
+    mt.joystick('r', 0, 1); mt.joystick('l', 0, -1); frames(60); mt.joystick('l', 0, 0); frames(30);
+    const teeth = E.teethWorld(new V()); o.teethLow = teeth.y < t.heightAt(teeth.x, teeth.z) + 0.3 * M;
+    mt.joystick('l', 0, 1); mt.joystick('r', -1, 0); frames(60); mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(5);
+    o.full = +E.load.toFixed(2);
+    mt.joystick('r', 0, -1); frames(60); mt.joystick('r', 1, 0); frames(70); mt.joystick('r', 0, 0); frames(30);
+    o.after = +E.load.toFixed(2);
+    mt.setExcMode('drive'); const x0 = E.x, z0 = E.z; mt.joystick('l', 0, -1); frames(45); mt.joystick('l', 0, 0); frames(5); o.drove = Math.hypot(E.x - x0, E.z - z0) > 0.3 * M;
+    mt.exit(); frames(5);
+    // the truck: loaded, driven out past the plot's edge — to the tip, back empty
+    mt.enter('truck'); for (let i = 0; i < 200 && !(mt.driving && mt.drv === 'truck'); i++) await new Promise((r) => setTimeout(r, 50));
+    const T = mt.truck, h0 = mt.recOf('truck')?.hauled || 0; T.load = 0.6; o.signs = !!mt._signs?.visible;
+    mt.joystick('l', 0, -1); for (let i = 0; i < 2400 && T.load > 0.01; i++) tc.simulate(1 / 30); mt.joystick('l', 0, 0);
+    o.tip = T.load < 0.01 && (mt.recOf('truck')?.hauled || 0) > h0 + 0.5;
+    mt.exit();
+    return o;
+  });
+  check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
+  check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
+  check('machines: the excavator — the boom down, the bucket curled in fills it, opened it is empty; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.after < 0.05 && o.drove, JSON.stringify(o));
+  check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty', o.signs && o.tip, JSON.stringify(o));
+  check('machines: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 

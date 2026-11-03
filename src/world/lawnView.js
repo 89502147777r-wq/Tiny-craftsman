@@ -24,8 +24,14 @@ function cellGeo(app, r, cells, lift) {
   const RL = LAWN.roll[0], RW = LAWN.roll[1], du = LAWN.cell / RL, dv = LAWN.cell / RW;
   for (const c of cells) {
     const a0 = c.a - C / 2, a1 = c.a + C / 2, b0 = c.b - C / 2, b1 = c.b + C / 2;
-    const q = [[a0, b0, -0.5, -0.5], [a1, b0, 0.5, -0.5], [a1, b1, 0.5, 0.5], [a0, b1, -0.5, 0.5]];
-    for (const k of [0, 2, 1, 0, 3, 2]) {
+    let q = [[a0, b0, -0.5, -0.5], [a1, b0, 0.5, -0.5], [a1, b1, 0.5, 0.5], [a0, b1, -0.5, 0.5]], order = [0, 2, 1, 0, 3, 2];
+    // (a cell on a slanted side: only its part inside the outline, cut to it)
+    if (c.clip) {
+      q = c.clip.map(([a, b]) => [a, b, (a - c.a) / C, (b - c.b) / C]);
+      // (each triangle turned as the whole cells' are: clockwise in the lawn's frame)
+      order = []; for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(q.map((p) => new THREE.Vector2(p[0], p[1])), [])) { const A = q[i], B = q[j], K = q[k], cw = (B[0] - A[0]) * (K[1] - A[1]) - (B[1] - A[1]) * (K[0] - A[0]) < 0; order.push(...(cw ? [i, j, k] : [i, k, j])); }
+    }
+    for (const k of order) {
       const [a, b, su, sv] = q[k], [x, z] = frameW(r, a, b);
       pos.push(x, h(a, b) + lift, z); uv.push(x / MM(1200), z / MM(1200)); aA.push(a / S);
       aRoll.push(c.roll); aU.push(Math.max(0, Math.min(1, c.ru + su * du))); aV.push(Math.max(0, Math.min(1, c.rv + sv * dv)));
