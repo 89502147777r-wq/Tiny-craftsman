@@ -179,16 +179,18 @@ class ConcreteTool {
     for (const r of app.objects.all('fence')) {
       if (!isV2(r)) continue;
       r.pegs.forEach((q, i) => {
-        if (!q.hole) return;
+        if (!q.hole || q.hole === 'anchor') return;   // (a post on anchors: no concrete)
         const [x, z] = pegXZ(r, q.s), g = gOf(r, q), top = g + (q.post ? MM_(q.post.h) : MM_(100));
         a.set(x, g - MM_(200), z); b.set(x, top, z);
-        const d2 = ray.distanceSqToSegment(a, b, pr, ps), d = Math.sqrt(d2), reach = MM_(Math.max(160, (q.post?.a || 60)));
+        const d2 = ray.distanceSqToSegment(a, b, pr, ps), d = Math.sqrt(Math.max(0, d2)),   // (dead on: a rounding below 0 — its root NaN missed the post)
+          reach = MM_(Math.max(160, (q.post?.a || 60)));
         if (d < reach && pr.distanceTo(ray.origin) < bd) { bd = pr.distanceTo(ray.origin); best = { r, q, i, x, z }; }
       });
     }
     if (!best) return null;
     const { r, q, i, x, z } = best;
-    const why = !q.post ? 'Сначала столб в яму («Забор» → «3 · Столбы»)' : q.fill >= 1 ? 'Этот столб уже забетонирован' : null;
+    const tc = app.terrain, cast = tc.inside(x, z) && tc.conc[tc.index(x, z)] > 1e-6;   // (the strip foundation poured round it)
+    const why = !q.post ? 'Сначала столб в яму («Забор» → «3 · Столбы»)' : q.fill >= 1 || cast ? 'Этот столб уже забетонирован' : null;
     if (why) { if (!this._bSaid) { this._bSaid = true; app.ui?.toast(why); } return null; }
     const [px, pz] = pourSpot(r, q, app.camera.position);   // (the hose / the bucket over the gap, not over the post)
     this._uHit = new THREE.Vector3(px, gOf(r, q), pz);
@@ -294,7 +296,15 @@ export class HoseTool extends ConcreteTool {
     // (what is under the hose looked for again at most every 50 ms: a ray through all the
     // masonry of a house at each move of the finger held the stream back)
     const now = performance.now();
-    if (now - (this._uAtT || 0) > 50) { this._uAtT = now; this.uT = this._uAt(e, true); this._uLast = this.uT ? this._uHit.clone() : null; }
+    if (now - (this._uAtT || 0) > 50) {
+      this._uAtT = now;
+      // (pouring into a column / a post's hole: a finger that slips a little off it keeps the hose on it —
+      // the stream does not jump onto the ground beside it; only well away, or onto another, it moves)
+      const keep = this.uT && (this.uT.type === 'column' || this.uT.type === 'fpost') ? { t: this.uT, h: this._uHit.clone() } : null;
+      const nu = this._uAt(e, true);
+      if (!nu && keep) { const sp = this.app.wallTool._screen(keep.h); if (sp.front && Math.hypot(sp.x - e.clientX, sp.y - e.clientY) < 80) { this._uHit = keep.h; } else this.uT = null; } else this.uT = nu;
+      this._uLast = this.uT ? this._uHit.clone() : null;
+    }
     else if (this.uT && this._uLast && this.uT.type !== 'column' && this.uT.type !== 'fpost') {
       // (in between: the same thing, the point on its top plane under the finger; a column / a post's
       // hole: the hose stays over its opening)

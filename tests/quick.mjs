@@ -581,7 +581,7 @@ console.log('—', sec());
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const c = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, col = wt.col, o = {};
-    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };   // (the camera's matrices as a drawn frame has them)
+    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); tc.camera.updateProjectionMatrix(); wt._rc = null; const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };   // (the camera's matrices as a drawn frame has them)
     const run = () => { for (let i = 0; i < 4000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
     const G = (x, z) => new V(x, tc.terrain.heightAt(x, z), z), cols = () => tc.objects.all('column');
     tc.rig.setState({ target: [0, 0.05, 0], yaw: 0.5, pitch: 0.7, dist: 1.4 }); tc.simulate(0.05);
@@ -600,7 +600,7 @@ console.log('—', sec());
     pail.down(top0, e(top0)); tc.simulate(8); pail.up(); tc.simulate(2);
     o.pail = tc.objects.get(r0.id).fill;
     tc.setTool('hose'); const hose = tc.concreteTools.hose;
-    for (const r of cols()) { const top = new V(r.x, r.y0 + r.h, r.z); hose.down(top, e(top)); for (let i = 0; i < 80 && !hose.ch?.full; i++) { hose.move(top, e(top)); tc.simulate(0.25); } hose.up(); tc.simulate(1); }
+    for (const r of cols()) { const top = new V(r.x, r.y0 + r.h, r.z); hose.down(top, e(top)); for (let i = 0; i < 80 && !hose.ch?.full; i++) { hose.move(top, e(top)); tc.simulate(0.25); } hose.up(); for (let k = 0; k < 40 && hose.state !== 'idle'; k++) tc.simulate(0.25); tc.simulate(0.1); }   // (the pour done before the next post is touched)
     o.cast = cols().map((r) => r.stage).join();
     tc.setTool('column'); tc.settings.colStage = 'strip'; tc.clock += 1e6; tc.simulate(0.05);
     for (const r of cols()) { const m = new V(r.x, r.y0 + r.h / 2, r.z); col.down(G(r.x, r.z), e(m)); col.up(); run(); }
@@ -658,7 +658,7 @@ console.log('—', sec());
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const f = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, fw = wt.fence, o = {}, F2 = await import('/src/world/fence2.js');
-    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };   // (the camera's matrices as a drawn frame has them)
+    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); tc.camera.updateProjectionMatrix(); wt._rc = null; const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };   // (the camera's matrices as a drawn frame has them)
     const run = () => { for (let i = 0; i < 4000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
     const G = (x, z) => new V(x, tc.terrain.heightAt(x, z), z), sAt = (s) => { const [x, z] = F2.pegXZ(fw.rec, s); return new V(x, fw.rec.g, z); }, at = (i) => sAt(fw.rec.pegs[i].s);
     tc.rig.setState({ target: [0, 0.05, 0.1], yaw: 0.2, pitch: 0.75, dist: 1.5 }); tc.simulate(0.05);
@@ -677,10 +677,13 @@ console.log('—', sec());
     Object.assign(tc.settings, { f2Layer: 'posts', postSh: 'rd', postA: 80, fenceH: 1800 });
     for (let i = 0; i < fw.rec.pegs.length; i++) { const p = at(i); fw.down(p, e(p)); fw.up(); run(); }
     o.posts = fw.rec.pegs.map((q) => (q.post ? q.post.sh + q.post.a : '-')).join();
-    // (the middle post: always on the phone's screen — the end ones may be off its edge)
+    // (the camera back: all the posts on the phone's screen — a hose aimed off its edge floods the plot)
+    tc.rig.setState({ target: [0, 0.05, 0.15], yaw: 0, pitch: 0.95, dist: 2.3 }); for (let k = 0; k < 12; k++) tc.simulate(0.25);   // (and settled there)
+    o.onScreen = fw.rec.pegs.every((q) => { const [x, z] = F2.pegXZ(fw.rec, q.s), sp = e(new V(x, fw.rec.g, z)); return sp.clientX > 10 && sp.clientX < innerWidth - 10; });
     tc.setTool('pail'); { const pail = tc.concreteTools.pail, p = at(2), top = new V(p.x, p.y + 0.05, p.z); pail.down(top, e(top)); tc.simulate(8); pail.up(); tc.simulate(2); o.pail = fw.rec.pegs[2].fill; }
     tc.setTool('hose'); tc.settings.pump = 1; const hose = tc.concreteTools.hose;
-    for (let i = 0; i < fw.rec.pegs.length; i++) { const p = at(i), top = new V(p.x, p.y + 0.06, p.z); hose.down(top, e(top)); for (let k = 0; k < 40 && !hose.ch?.full; k++) { hose.move(top, e(top)); tc.simulate(0.25); } hose.up(); tc.simulate(1); }
+    // (a drawn frame between one press and the next, as between a real finger's touches)
+    for (let i = 0; i < fw.rec.pegs.length; i++) { const p = at(i), top = new V(p.x, p.y + 0.06, p.z); await new Promise((r) => requestAnimationFrame(() => r())); hose.down(top, e(top)); for (let k = 0; k < 40 && !hose.ch?.full; k++) { hose.move(top, e(top)); tc.simulate(0.25); } hose.up(); for (let k = 0; k < 40 && hose.state !== 'idle'; k++) tc.simulate(0.25); tc.simulate(0.1); }   // (the pour done before the next post is touched)
     o.conc = fw.rec.pegs.every((q) => q.fill === 1);
     tc.ui.openGroup('fenceG'); Object.assign(tc.settings, { f2Layer: 'rails', railSec: 'r4020', railL: 4000 }); tc.ui.refresh();
     o.tray = document.getElementById('wall-tray').hidden ? '' : document.getElementById('wall-tray-label').textContent;
@@ -699,11 +702,34 @@ console.log('—', sec());
     o.gates = fw.rec.gates.map((q) => `${q.type}:${q.w}`).join();
     tc.renderer.render(tc.scene, tc.camera);
     tc.undo(); o.undo = fw.rec.gates.length === 0;
+    // a fence on brick pillars laid on a strip: the pegs set on the pillars, no holes; the rails between them on
+    // the embedded plates; corrugated sheet (its colour) in the bay
+    { const M = 1 / 1000 / 10.4651, zP = -0.25, g2 = tc.terrain.heightAt(-0.1, zP);
+      for (const x of [-0.2, -0.2 + 2000 * M]) for (let k = 0; k < 16; k++) for (const dz of [-62, 62]) tc.objects.add({ type: 'unit', kind: 'brick', free: true, p: [x, g2 + (12 + 77 * k + 32) * M, zP + dz * M], s: [250 * M, 65 * M, 120 * M], q: [0, 0, 0, 1] });
+      tc.ui.openGroup('fenceG'); Object.assign(tc.settings, { f2Layer: 'line', fenceStep: 2000 }); fw.cord = true;
+      const L2 = []; for (let k = 0; k <= 10; k++) L2.push(G(-0.2 - 300 * M + (2600 * M) * k / 10, zP));
+      fw.down(L2[0], e(L2[0])); for (const p of L2) fw.move(p, e(p)); fw.up(); fw.cord = false;
+      const r2 = fw.rec; o.pillarPegs = r2.pegs.filter((q) => q.pillar).length;
+      tc.settings.f2Layer = 'holes'; { const q = r2.pegs.find((x) => x.pillar), [x, z] = F2.pegXZ(r2, q.s), p = new V(x, r2.g, z); fw.down(p, e(new V(x, r2.g + 0.02, z))); fw.up(); run(); o.noHole = !fw.rec.pegs.find((x) => x.pillar).hole; }
+      Object.assign(tc.settings, { f2Layer: 'rails', railSec: 'r4020', railL: 6000 });
+      { const pa = r2.pegs.filter((q) => q.pillar), mid = (pa[0].s + pa[1].s) / 2; for (let k = 0; k < 2; k++) { const p = sAt(mid); fw.trayDown(p, e(p)); fw.move(p, e(p)); fw.up(); run(); } }
+      o.inline = fw.rec.rails.map((q) => `${q.inline ? 'in' : 'face'}:${q.ea}-${q.eb}@${q.y}`).join();
+      Object.assign(tc.settings, { f2Layer: 'fill', fenceKind: 'prof', fenceCol: 'wine' });
+      { const pa = fw.rec.pegs.filter((q) => q.pillar), p = sAt((pa[0].s + pa[1].s) / 2); fw.down(p, e(p)); fw.up(); run(); }
+      o.prof = `${fw.rec.kind}:${fw.rec.col}:${(fw.rec.filled || []).length}`;
+      tc.renderer.render(tc.scene, tc.camera);
+      // a post on the strip's concrete: four anchor holes, the post on its plate — standing, no concrete
+      const xc = 0.25, zc = -0.3; tc.terrain.depositConc(xc, zc, 0.00004, 0.02); for (let k = 0; k < 20; k++) tc.simulate(0.1); tc.terrain.flushOverflow?.();
+      tc.settings.f2Layer = 'line'; fw.cord = true; const L3 = [G(xc, zc), G(xc + 0.1, zc), G(xc + 0.2, zc)]; fw.down(L3[0], e(L3[0])); for (const p of L3) fw.move(p, e(p)); fw.up(); fw.cord = false;
+      const r3 = fw.rec; tc.settings.f2Layer = 'holes'; { const [x, z] = F2.pegXZ(r3, 0), p = new V(x, r3.g, z); fw.down(p, e(new V(x, r3.g + 0.02, z))); fw.up(); run(); }
+      tc.settings.f2Layer = 'posts'; { const [x, z] = F2.pegXZ(fw.rec, 0), p = new V(x, fw.rec.g, z); fw.down(p, e(p)); fw.up(); run(); }
+      o.anchor = `${fw.rec.pegs[0].hole}:${!!fw.rec.pegs[0].post}:${fw.fixed(fw.rec, fw.rec.pegs[0])}`; }
     return o;
   });
   check('fence: its own group (6 stages), not under «Благоустройство»; the string with pegs every 2 m, a peg moved for a wicket', f.chips === '1 · Разметка|2 · Ямы|3 · Столбы|4 · Прожилины|5 · Наполнение|6 · Ворота и калитки|Удалить' && !f.inLand && f.ui && f.pegs === '0,2000,4000,6000,7953' && f.moved === 5000, JSON.stringify(f));
   check('fence: holes one by one, round posts Ø80 in each, concrete by the bucket and the hose', f.holes === '11111' && f.posts === 'rd80,rd80,rd80,rd80,rd80' && f.pail > 0.3 && f.pail < 1 && f.conc, JSON.stringify(f));
   check('fence: rails welded post to post (two rows), the railed bays filled, a wicket in the bay left (a gate too wide refused), undo', f.tray === 'Прожилина' && f.rails === '0-4000@300,0-4000@1500,5000-7953@300,5000-7953@1500' && f.otherSide === -1 && f.postG && f.fillTabs && f.filled === 3 && f.swingRefused && f.gates === 'wicket:1000' && f.undo, JSON.stringify(f));
+  check('fence: on brick pillars (the pegs set on them, no holes, the rails between them on the plates), corrugated sheet in its colour; a post anchored on the strip\'s concrete', f.pillarPegs === 2 && f.noHole && /^in:pillar-pillar@300,in:pillar-pillar@\d+$/.test(f.inline) && f.prof === 'prof:wine:1' && f.anchor === 'anchor:true:true', JSON.stringify(f));
   check('fence: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

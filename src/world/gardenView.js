@@ -4,7 +4,7 @@ import { PATH, TOPS, paversOf, kerbsOf, paveQuads, kerbOuter, bandQuads, legsOf,
 import { lawnUniforms, buildLawn, lawnLine, lawnGhost, turfRoll, roller, sprinkler } from './lawnView.js';
 import { frameW } from './lawn.js';
 import { fenceString, fencePosts, fenceFill, fenceUniforms, auger, fenceGates } from './fence.js';
-import { isV2, stringAndPegs, postsAndConcrete, railsAndWelds, bays2, postA, pegXZ, RAIL_SECS } from './fence2.js';
+import { isV2, railRows, stringAndPegs, postsAndConcrete, railsAndWelds, bays2, postA, pegXZ, RAIL_SECS } from './fence2.js';
 import { PLANTS, plantBody, rootBall, mulchDisc, mulchStrip, spotsOf } from './plants.js';
 import { buildLight, lightLevel } from './facadeLights.js';
 import { buildInterior, interiorLight } from './interior.js';
@@ -321,17 +321,17 @@ export class GardenView {
   // and the welds, the filled bays, the gates
   _buildFence2(r, e) {
     const a = this.anim['F' + r.id] || {}, P = r.pegs || [], base = JSON.stringify([r.pts, r.g]);
-    this._part(e, 'string', base + JSON.stringify([P.map((q) => [q.s, q.hole ? 1 : 0]), a.hidePeg ?? -1]), () => stringAndPegs(r, a.hidePeg ?? -1));
+    this._part(e, 'string', base + JSON.stringify([P.map((q) => [q.s, q.hole ? 1 : 0, q.pillar ? 1 : 0]), a.hidePeg ?? -1]), () => stringAndPegs(r, a.hidePeg ?? -1));
     const pour = a.pour ? [a.pour.i, Math.round(a.pour.f * 60)] : 0;
-    this._part(e, 'posts', P.some((q) => q.post || q.fill) || a.pour ? base + JSON.stringify([P.map((q) => [q.s, q.post, q.fill, q.pourT != null, q.g]), pour]) : null, () => postsAndConcrete(r, a.pour));
+    this._part(e, 'posts', P.some((q) => q.post || q.fill) || a.pour ? base + JSON.stringify([P.map((q) => [q.s, q.post, q.fill, q.pourT != null, q.g, q.hole]), pour]) : null, () => postsAndConcrete(r, a.pour));
     this._part(e, 'rails', (r.rails || []).length ? base + JSON.stringify([r.rails, postA(r), P.map((q) => [q.s, q.post?.a])]) : null, () => railsAndWelds(r));
     // (the bays filled, and those going in now: their pieces counted in one by one)
     const fresh = a.fresh || [], B = bays2(r).filter((b) => b.gate < 0 && (b.filled || fresh.some((m) => Math.abs(m - b.mid) < 2)));
-    this._part(e, 'fill', B.length ? base + JSON.stringify([B.map((b) => b.mid), fresh, r.kind, r.col, postA(r), P.map((q) => [q.s, q.post?.h]), (r.rails || [])[0]?.side || 1]) : null, () => {
-      const pa = postA(r), rd = Math.max(...(r.rails || []).map((q) => (RAIL_SECS[q.sec] || RAIL_SECS.r4020).d), 20);
+    this._part(e, 'fill', B.length ? base + JSON.stringify([B.map((b) => b.mid), fresh, r.kind, r.col, postA(r), P.map((q) => [q.s, q.post?.h, q.pillar?.w]), (r.rails || [])[0]?.side || 1, (r.rails || []).some((q) => q.inline)]) : null, () => {
+      const inline = (r.rails || []).some((q) => q.inline), pa = Math.max(postA(r), ...(inline ? P.map((q) => q.pillar?.w || 0) : [0])), rd = Math.max(...(r.rails || []).map((q) => (RAIL_SECS[q.sec] || RAIL_SECS.r4020).d), 20);
       const bays = B.map((b) => { const [ax, az] = pegXZ(r, b.a.s), [bx, bz] = pegXZ(r, b.b.s); return { a: [ax, az, 0, b.a.s], b: [bx, bz, 0, b.b.s], L: Math.hypot(bx - ax, bz - az), mid: b.mid, gate: -1 }; });
       const H = Math.min(...B.map((b) => Math.min(b.a.post?.h || r.H, b.b.post?.h || r.H)));
-      return fenceFill({ ...r, H }, e.U, { bays, fresh: new Set(fresh.length ? bays.filter((b) => fresh.some((m) => Math.abs(m - b.mid) < 2)).map((b) => b.mid) : []), off0: pa / 2 + rd, pa, H, side: (r.rails || [])[0]?.side || 1 });
+      return fenceFill({ ...r, H }, e.U, { bays, fresh: new Set(fresh.length ? bays.filter((b) => fresh.some((m) => Math.abs(m - b.mid) < 2)).map((b) => b.mid) : []), off0: inline ? rd / 2 : pa / 2 + rd, pa, H, inline, side: (r.rails || [])[0]?.side || 1, rows: railRows(H) });
     });
     const gk = JSON.stringify((r.gates || []).map((q) => [q.s, q.w, q.type]));
     this._part(e, 'gates', (r.gates || []).length ? base + gk + '|' + r.kind + '|' + r.col + '|' + r.H : null, () => { const G = new THREE.Group(); e.gl = fenceGates(r); for (const q of e.gl) G.add(q.group); return G; });
