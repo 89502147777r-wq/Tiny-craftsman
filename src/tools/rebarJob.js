@@ -44,7 +44,7 @@ export class RebarJob {
     else if (rec.type === 'mesh') this._mesh();
     else this._cage();
     this.end = Math.max(...this.pieces.map((p) => p.at)) + 0.6;
-    app.sfx?.stab?.();
+    app.sfx?.play?.('rebar');
     this._show();
   }
 

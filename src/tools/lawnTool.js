@@ -118,6 +118,7 @@ export class LawnWork {
       this.view.setLiveLawn(null);
       const poly = rectOf(d.a, d.b);
       if (!poly || areaOf(poly) < MM(1000) * MM(1000)) { this.toast('Место под газон мало — растяните шнур шире (от 1 м²)'); return; }
+      app.sfx?.play?.('stake');
       const rec = { type: 'lawn', v: 2, poly, g: +this.land._groundIn(poly).toFixed(6), u: mainDir(poly), how: this.how, done: {} };
       this._save('lawn-area', () => { this.land.lsel = app.objects.add(rec).id; });
       this.toast(EN() ? `Lawn ${f1(areaOf(poly) / S / S / 1e6)} m²: four pegs and the string. Drag a peg; a touch on the string — a new peg. Next «2 · Black topsoil»` : `Газон ${f1(areaOf(poly) / S / S / 1e6)} м²: четыре колышка и шнур. Колышек тяните; тап по шнуру — новый колышек. Дальше «2 · Чернозём»`);
@@ -214,7 +215,7 @@ export class LawnWork {
       for (const q of cells) { const d = Math.hypot(q.x - H.x, q.z - H.z); if (d >= H.R) continue; const top = r.g + H.h * want * (1 - (d / H.R) ** 2); const h = t.hAt(q.i); if (h < top) t._push(q.i, top - h, M_BLACK); }
       t._touch(...box);
       if (Math.random() < 0.7) app.particles?.emit(new THREE.Vector3(H.x, r.g + H.h + MM(300), H.z), new THREE.Vector3((Math.random() - 0.5) * 0.1, -0.2, (Math.random() - 0.5) * 0.1), 0, MM(30), 0, 0, M_BLACK);   // (no clods left lying: raked away)
-      if (Math.random() < 0.2) app.sfx?.pour?.(0.35);
+      if (Math.random() < 0.2) app.sfx?.pour?.(0.35, 'soil_pour');
     }]);
     steps.push(...rake);
     new FitJob(app, {
@@ -244,7 +245,7 @@ export class LawnWork {
           const dt = Math.max(0, (u - last) * 5); last = u;
           sprinklerRun(kit, dt, u < 0.95, R, gy);
           this.view.setAnim(key, { water: u, wet: Math.min(1, u * 2.5) });
-          if (Math.random() < 0.15) app.sfx?.pour?.(0.18);
+          app.sfx?.loop?.('lawn-water', 'sprinkler', u < 1 ? 0.7 : 0, 1, null, true);
         }],
         [0.8, (u) => { const dt = 0.016; sprinklerRun(kit, dt, false, R, gy); this.view.setAnim(key, { water: 1, wet: 1 - u * 0.3 }); }],
       ],

@@ -151,7 +151,7 @@ export class ExtWork {
       const front = -200 + (D1 + 400) * u;
       for (const c of cells) if (c[3] < front) { const want = Math.max(y, r.g - MM(PORCH.dig) * Math.min(1, (front - c[3]) / 350)); t.scoop(c[1], c[2], MM(40), want, r.g, () => true, c[0]); }
       if (rr() < 0.4) { const [x, z] = PW(r, (rr() - 0.5) * r.W, Math.max(0, front - 200)); app.particles?.emit(new THREE.Vector3(x, r.g, z), new THREE.Vector3((rr() - 0.5) * 0.1, 0.18, (rr() - 0.5) * 0.1), 0, MM(30), 0, 0, 0); }
-      if (rr() < 0.12) app.sfx?.stab?.();
+      if (rr() < 0.12) app.sfx?.play?.('shovel_dig');
       if (u >= 1) { t.levelTo((x, z) => inPorch(r, x, z, 150), y, cells.box); this._done(r, 'dig'); }
     }]];
     this._job(steps, r, `Крыльцо ${(r.W / 1000).toFixed(1)} × ${((r.D + r.n * r.run) / 1000).toFixed(1)} м: площадка и ${r.n} ступ. по ${r.rise} мм; котлован 300 мм вынут. Дальше «2 · Щебень»`.replace(/(\d)\.(\d)/g, '$1,$2'));
@@ -168,7 +168,7 @@ export class ExtWork {
       const k = Math.floor(u * 4), f = u * 4 - k, a = (k % 2 ? -1 : 1) * r.W / 4, d = (k % 2 ? 1 - f : f) * (D1 - 200) + 100, [x, z] = PW(r, a, d);
       app.concreteGear.plateOn = u < 1; app.concreteGear.set(u < 1 ? 'plate' : null, new THREE.Vector3(x, y, z), Math.atan2(r.nrm[0] * (k % 2 ? -1 : 1), r.nrm[1] * (k % 2 ? -1 : 1)), u === 0);
       for (const c of cells) if (Math.hypot(c[1] - x, c[2] - z) < MM(300)) t.comp[c[0]] = 1;
-      if (Math.random() < 0.1) app.sfx?.stab?.();
+      app.sfx?.engine?.('compactor', u < 1 ? 0.6 : 0);
     }]];
     steps.push([0, () => { this._done(r, 'grav'); }]);
     this._job(steps, r, 'Щебень 150 мм утрамбован виброплитой. Дальше «3 · Опалубка»', () => app.concreteGear.set(null));
@@ -177,7 +177,7 @@ export class ExtWork {
   _form(r) {
     const app = this.app;
     app.journal.begin('porch-form', {}, app.clock);
-    const steps = [[2.2, (u, job) => { this.view.setAnim('R' + r.id, { form: u }); const k = Math.floor(u * 10); if (k !== job._k) { job._k = k; app.sfx?.stab?.(); } }], [0, () => this._done(r, 'form')]];
+    const steps = [[2.2, (u, job) => { this.view.setAnim('R' + r.id, { form: u }); const k = Math.floor(u * 10); if (k !== job._k) { job._k = k; app.sfx?.play?.('hammer_nail'); } }], [0, () => this._done(r, 'form')]];
     this._job(steps, r, 'Опалубка: боковые щиты по профилю ступеней, доска на каждый подступенок, колья и распорки. Дальше «4 · Бетон»');
   }
   // 4 · the concrete: from the bottom up, the hose moving over the forms
@@ -190,7 +190,7 @@ export class ExtWork {
       // (the hose over the block being filled: the highest still open)
       const open = B.filter((b) => b[4] > fill - 1), b = open.at(-1) || B[0], [x, z] = PW(r, Math.sin(u * 30) * r.W * 0.35, (b[2] + b[3]) / 2);
       gear.set(u < 1 ? 'hose' : null, new THREE.Vector3(x, r.g + MM(Math.min(fill, b[4])), z), 0, u === 0);
-      if (Math.random() < 0.25) app.sfx?.pour?.(0.4);
+      if (Math.random() < 0.25) app.sfx?.pour?.(0.4, 'concrete_splat');
     }], [0, () => this._done(r, 'conc')]];
     this._job(steps, r, `Бетон В25 залит: ${this._vol(r).toFixed(2).replace('.', ',')} м³, ступени выровнены кельмой. Дальше «5 · Распалубка» (когда бетон наберёт прочность)`, () => gear.set(null));
   }
@@ -199,7 +199,7 @@ export class ExtWork {
   _strip(r) {
     const app = this.app;
     app.journal.begin('porch-strip', {}, app.clock);
-    const steps = [[1.6, (u, job) => { this.view.setAnim('R' + r.id, { form: 1 - u, strip: true }); const k = Math.floor(u * 8); if (k !== job._k) { job._k = k; app.sfx?.stab?.(); } }], [0, () => this._done(r, 'strip')]];
+    const steps = [[1.6, (u, job) => { this.view.setAnim('R' + r.id, { form: 1 - u, strip: true }); const k = Math.floor(u * 8); if (k !== job._k) { job._k = k; app.sfx?.play?.(k % 3 ? 'plank' : 'crowbar'); } }], [0, () => this._done(r, 'strip')]];
     this._job(steps, r, 'Опалубку сняли. Дальше «6 · Облицовка»');
   }
   // 6 · the tiles, from the bottom step up to the landing
@@ -207,7 +207,7 @@ export class ExtWork {
     const app = this.app, n = blocksOf(r).length, tile = this.tile;
     app.journal.begin('porch-tile', {}, app.clock);
     if (r.tile !== tile) app.objects.update(r.id, { tile });
-    const steps = [[Math.max(2, n * 0.7), (u, job) => { this.view.setAnim('R' + r.id, { tile: u * (n + 0.999) }); const k = Math.floor(u * n * 4); if (k !== job._k) { job._k = k; app.sfx?.stab?.(); } }], [0, () => this._done(r, 'tile')]];
+    const steps = [[Math.max(2, n * 0.7), (u, job) => { this.view.setAnim('R' + r.id, { tile: u * (n + 0.999) }); const k = Math.floor(u * n * 4); if (k !== job._k) { job._k = k; app.sfx?.play?.('tile'); } }], [0, () => this._done(r, 'tile')]];
     this._job(steps, r, `Облицовка «${PORCH_TILES[tile][0]}» на клею, на ступенях — противоскользящая полоса${r.n > 3 ? '; поручни из нержавейки с двух сторон' : ''}. Крыльцо готово`);
   }
   // the canopy over a door: the anchors drilled, the brackets bolted, the glass laid on

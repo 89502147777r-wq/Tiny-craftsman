@@ -69,6 +69,8 @@ export class Sky {
     this._puddlesUpdate(dt);
     if ((this._scanT -= dt) <= 0) { this._scanT = 1; this._wetScan(); }
     app.sfx?.rain?.(this.rain);
+    // (outdoors: the birds by day, the crickets by night — quiet in the rain — and the wind)
+    if (app.backdrop?.mode !== 'workshop') app.sfx?.ambience?.((1 - this.night) * (1 - this.rain * 0.8), this.night * (1 - this.rain), 0.12 + this.rain * 0.5); else app.sfx?.ambience?.(0, 0, 0);
     WATER.rain = this.rain;   // (the water out of the downpipes)
   }
 

@@ -42,7 +42,7 @@ export class PoolWork {
   // formwork board by board (view.reveal = { id, u }); then done()
   _grow(view, id, dur, done = null) {
     const app = this.app, mark = () => { view.dirty = true; app.poolView.dirty = true; };
-    new FitJob(app, { steps: [[dur, (u) => { view.reveal = { id, u }; mark(); if (u < 1 && Math.random() < 0.12) app.sfx?.stab?.(); }]], parts: [], cleanup: () => { view.reveal = null; mark(); }, commit: done });
+    new FitJob(app, { steps: [[dur, (u) => { view.reveal = { id, u }; mark(); if (u < 1 && Math.random() < 0.12) app.sfx?.play?.(view === app.rebarView ? 'rebar' : 'hammer_nail', { gap: 0.25 }); }]], parts: [], cleanup: () => { view.reveal = null; mark(); }, commit: done });
   }
   // a smooth way round: points [s, t] (mm, the pool's frame), the way's length; at(d) → { s, t, yaw }
   // (yaw: the heading in the world, as the plate takes it)
@@ -215,7 +215,7 @@ export class PoolWork {
         // (the soil thrown out of it as it goes down)
         if (p < 1 && rr() < 0.5) { const out = new THREE.Vector3(-r.u[1], 0, r.u[0]).multiplyScalar(rr() < 0.5 ? 1 : -1); app.particles?.emit(new THREE.Vector3(b.x + (rr() - 0.5) * b.R, b.yT, b.z + (rr() - 0.5) * b.R), new THREE.Vector3(out.x * (0.08 + rr() * 0.06), 0.2 + rr() * 0.15, out.z * (0.08 + rr() * 0.06)), 0, MM(30 + rr() * 50), 0, 0, 0); }
       }
-      if (rr() < 0.15) app.sfx?.stab?.();
+      if (rr() < 0.15) app.sfx?.play?.('shovel_dig');
     }]);
     steps.push([0, () => { sh.root.visible = vis; }]);
     // (the loose topsoil round the edge taken off with it: it would slide in off the walls)
@@ -261,7 +261,7 @@ export class PoolWork {
         if (!heaps[h]) heaps[h] = t.heapStart(hx, hz, vol / nH, Math.tan(39 * Math.PI / 180));
         t.heapTo(heaps[h], vol / nH * u, M_G20);
         if (Math.random() < 0.7) app.particles?.emit(new THREE.Vector3(hx, y0 + MM(1200), hz), new THREE.Vector3((Math.random() - 0.5) * 0.02, -0.15, (Math.random() - 0.5) * 0.02), 0, MM(20 + Math.random() * 25), 0, 0, 3);
-        if (u < 1 && Math.random() < 0.25) app.sfx?.pour?.(0.4);
+        if (u < 1 && Math.random() < 0.25) app.sfx?.pour?.(0.4, 'gravel_pour');
       }]);
     }
     // (the rake: across the pit, lane after lane; behind it the stone lies level at 200 mm)
@@ -305,7 +305,7 @@ export class PoolWork {
         const sw = Math.sin(u * Math.PI * 7) * (t1 - t0) * 0.38, [x, z] = PW(r, Math.max(s0, Math.min(s1, front - 300)), (t0 + t1) / 2 + sw);
         app.concreteGear.set('hose', new THREE.Vector3(x, y0 + MM(POOL.gravel) + lean, z));
         if (u >= 1) { for (const [i] of list) { t.conc[i] = lean; t.cTime[i] = app.clock; t.cSm[i] = 0.6; t.cBase[i] = 0; } t._touch(ix0, iz0, ix1, iz1); app.concreteGear.set(null); }
-        if (Math.random() < 0.2) app.sfx?.pour?.(0.4);
+        if (Math.random() < 0.2) app.sfx?.pour?.(0.4, 'concrete_splat');
       }]);
     }
     new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); app.concreteGear.set(null); rk.setPose({ pos: rpos, dir: rdir, lift: rlift }, true); rk.root.visible = rvis; }, commit: () => {
@@ -392,7 +392,7 @@ export class PoolWork {
         t._touch(ix0, iz0, ix1, iz1);
         const q = ring.at(Math.min(ring.total, front)), [x, z] = PW(r, q.s, q.t);
         if (u < 1 && Math.random() < 0.9) app.particles?.emit(new THREE.Vector3(x, r.g + MM(500), z), new THREE.Vector3(0, -0.15, 0), 0, MM(18 + Math.random() * 20), 0, 0, 1);
-        if (Math.random() < 0.15) app.sfx?.pour?.(0.4);
+        if (Math.random() < 0.15) app.sfx?.pour?.(0.4, 'gravel_pour');
       }]);
       steps.push([ring.total / 1000 * 0.05, (u) => {
         // (the plate round it after, heading the way it goes, turning at the corners; the sand
@@ -431,7 +431,7 @@ export class PoolWork {
       steps.push([0.9, (u) => { for (const i of cells) { const h = t.hAt(i), want = ys + (yc - ys) * u; if (h < want) { t.conc[i] += want - h; t.cTime[i] = app.clock; t.cSm[i] = 0.8; } } t._touch(ix0, iz0, ix1, iz1); }]);
     } else {
       // (the joists go up side by side — drawn by the pool's view from the record)
-      steps.push([2.4, (u) => { app.poolView.deckLive = { id: r.id, sides: 0, base: +u.toFixed(3) }; app.poolView.dirty = true; if (Math.random() < 0.1) app.sfx?.stab?.(); }]);
+      steps.push([2.4, (u) => { app.poolView.deckLive = { id: r.id, sides: 0, base: +u.toFixed(3) }; app.poolView.dirty = true; if (Math.random() < 0.1) app.sfx?.play?.('hammer_nail'); }]);
     }
     const cleanup = () => { app.poolView.deckLive = null; app.poolView.dirty = true; };
     // (the record first: the view draws the joists from it while they go up)
@@ -448,7 +448,7 @@ export class PoolWork {
     if (!r.base) { this.toast('Сначала «14 · Основание площадки»'); return; }
     if (r.deck) { this.toast('Площадка уже уложена'); return; }
     const D = DECKS[r.base.key], steps = [], cleanup = () => { app.poolView.deckLive = null; app.poolView.dirty = true; };
-    steps.push([3.6, (u) => { app.poolView.deckLive = { id: r.id, sides: +(4 * u).toFixed(3), base: 1 }; app.poolView.dirty = true; if (Math.random() < 0.12) app.sfx?.stab?.(); }]);
+    steps.push([3.6, (u) => { app.poolView.deckLive = { id: r.id, sides: +(4 * u).toFixed(3), base: 1 }; app.poolView.dirty = true; if (Math.random() < 0.12) app.sfx?.play?.('screwdriver', { vol: 0.5, gap: 0.6 }); }]);
     new FitJob(app, { steps, parts: [], cleanup, onAbort: cleanup, commit: () => {
       this._save('pool-deck', () => app.objects.update(r.id, { deck: true }));
       this.toast(`Площадка: ${D.name}${D.base === 'joists' ? ' — доски на скрытом крепеже, зазор 6 мм' : ' — на клею, шов 3 мм'}. Бассейн с площадкой готов`);
@@ -471,7 +471,7 @@ export class PoolWork {
       this.toast(todo.some((b) => b.part === 'wall') ? 'Щиты, ригели и стяжки сняли — чаша готова. Пазухи можно засыпать; внутри — «9 · Гидроизоляция»' : 'Доски днища сняли');
     };
     const v = app.wallView, mark = () => { v.dirty = true; app.poolView.dirty = true; };
-    const steps = todo.map((b) => [b.part === 'wall' ? 1.8 : 0.9, (u) => { v.reveal = { id: b.id, u: Math.max(0, 0.84 * (1 - u)) }; mark(); if (Math.random() < 0.1) app.sfx?.stab?.(); }]);
+    const steps = todo.map((b) => [b.part === 'wall' ? 1.8 : 0.9, (u) => { v.reveal = { id: b.id, u: Math.max(0, 0.84 * (1 - u)) }; mark(); if (Math.random() < 0.1) app.sfx?.play?.(b.part === 'wall' ? 'plank' : 'rebar'); }]);
     new FitJob(app, { steps, parts: [], cleanup: () => { v.reveal = null; mark(); }, commit: save });
   }
 
@@ -517,7 +517,7 @@ export class PoolWork {
       if (ok < n * 0.8) { if (!d.said) { d.said = true; this.toast('Мозаика — по гидроизоляции в 2 слоя: сначала «9 · Гидроизоляция» здесь'); } continue; }
       str[j * ni + i] = letter; changed = true;
     }
-    if (changed) { r.tile[f.k] = str.join(''); for (let k = 0; k < 5; k++) if (r.tile[k] == null) r.tile[k] = ''; this._live(r); this.app.sfx?.stab?.(); }
+    if (changed) { r.tile[f.k] = str.join(''); for (let k = 0; k < 5; k++) if (r.tile[k] == null) r.tile[k] = ''; this._live(r); this.app.sfx?.play?.('tile'); }
   }
   _cope(e) {
     const d = this.drag, r = d.live, ray = this._rayOf(e); if (!ray) return;
@@ -535,7 +535,7 @@ export class PoolWork {
       }
       r.cope[sd.side] = str.join('');
     }
-    if (changed) { this._live(r); this.app.sfx?.stab?.(); }
+    if (changed) { this._live(r); this.app.sfx?.play?.('tile'); }
   }
   // world point / normal of the bowl's frame (mm: s, t, y over the slab)
   _w(r, p) { const [x, z] = PW(r, p[0], p[1]); return new THREE.Vector3(x, floorTopY(r) + MM(p[2]), z); }

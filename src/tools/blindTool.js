@@ -137,7 +137,7 @@ export class BlindWork {
       this._dab(h.a, h.d);
     }
     this._show();
-    app.sfx?.stab?.();
+    app.sfx?.play?.(L === 'sand' || L === 'grav' ? 'gravel_dig' : L === 'geo' || L === 'mem' ? 'tap' : 'trowel_tap');
     return true;
   }
   move(p, e) {

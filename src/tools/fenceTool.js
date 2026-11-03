@@ -186,7 +186,7 @@ export class FenceWork {
       if (!pts) { this.toast('Шнур короче метра — тяните длиннее'); return; }
       const rec = { type: 'fence', v: 2, pts, g: +this._groundOf(pts).toFixed(6), step: this.step, H: this.H, kind: this.kind, col: this.col, pegs: this._onPillars(pts, pegsFor(pts, this.step)), rails: [], filled: [], gates: [], done: {} };
       rec.pegs = this.withPillars(rec);
-      this._save('fence-line', () => { this.sel = app.objects.add(rec).id; });
+      this._save('fence-line', () => { this.sel = app.objects.add(rec).id; }); app.sfx?.play?.('stake');
       const len = legs({ pts }).reduce((a, g) => a + g.L, 0);
       this.toast(EN() ? `String ${m1(len)} m pulled, ${rec.pegs.length} pegs every ${m1(this.step)} m. Leave room for a gate: drag a peg along the string («Шнур» off). Next «2 · Holes»`
         : `Шнур ${m1(len)} м натянут, ${rec.pegs.length} колышков через ${m1(this.step)} м. Место под ворота — сдвиньте колышки вдоль шнура (выключите «Шнур»). Дальше «2 · Ямы»`);
@@ -310,7 +310,7 @@ export class FenceWork {
       steps: [
         [0.3, (u) => { G.position.y = lift; G.visible = u > 0; }],
         [1.0, (u) => { G.position.y = lift * (1 - ease(u)); G.rotation.z = 0.06 * (1 - u) * Math.sin(u * 9); }],
-        [0.15, (u) => { G.position.y = MM(15) * Math.sin(u * Math.PI); G.rotation.z = 0; if (u >= 1) app.sfx?.stab?.(); }],
+        [0.15, (u) => { G.position.y = MM(15) * Math.sin(u * Math.PI); G.rotation.z = 0; if (u >= 1) app.sfx?.play?.('pipe'); }],
         [0.6, (u) => app.handTools.set('level', new THREE.Vector3(x, gOf(r, q) + MM(900), z + MM(post.a / 2 + 4)), new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0), u)],
       ],
       commit: () => {
@@ -407,7 +407,7 @@ export class FenceWork {
     const hot = [], cool = (dt) => { for (const b of hot) b.material.emissiveIntensity = Math.max(0, b.material.emissiveIntensity - dt * 0.9); };
     let last = 0;
     const tick = (u, dur) => { const dt = Math.max(0, (u - last) * dur); last = u >= 1 ? 0 : u; return dt; };
-    const steps = [[0.7, (u) => { R.position.y = Y0 + MM(400) * (1 - ease(u)); if (u >= 1) app.sfx?.stab?.(); }]];
+    const steps = [[0.7, (u) => { R.position.y = Y0 + MM(400) * (1 - ease(u)); if (u >= 1) app.sfx?.play?.('pipe'); }]];
     for (const sp of spots) {
       const [x, z, ux, uz] = pegXZ(r, sp.s ?? q.a + 1), nx = -uz * (q.side || 1), nz = ux * (q.side || 1), yaw = Math.atan2(-uz, ux);
       const pos = sp.pos || new THREE.Vector3(x + nx * MM(pa / 2 + (sp.joint ? sec.d : sec.d * 0.35)), y + MM(sp.dy), z + nz * MM(pa / 2 + (sp.joint ? sec.d : sec.d * 0.35)));
@@ -419,7 +419,7 @@ export class FenceWork {
         // (the electrode along the seam, held at 60° to it, the holder from outside and above)
         const along = sp.joint ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(ux, 0, uz), at = pos.clone().addScaledVector(along, MM(sp.len) * (u - 0.5));
         kit.position.copy(at); kit.rotation.set(0, yaw, 0); kit.userData.holder.rotation.set(-0.5, 0, 0.35);
-        welderArc(kit, u < 0.95 ? 1 : 0, dt);
+        welderArc(kit, u < 0.95 ? 1 : 0, dt); app.sfx?.engine?.('welder', u < 0.95 ? 0.7 : 0);
         b.scale.x = Math.max(0.001, Math.min(1, u * 1.05)); b.visible = true;
         if (!hot.includes(b)) hot.push(b);
         cool(dt * 0.3);
@@ -453,7 +453,7 @@ export class FenceWork {
       steps: [[Math.max(2.5, Math.min(14, n * (kind === 'mesh' || kind === 'chain' ? 0.45 : 0.06))), (u, job) => {
         const k = u * (n + 1);
         this.view.setAnim(key, { fresh, fill: u >= 1 ? 1e9 : k });
-        if (Math.floor(k) !== job._k) { job._k = Math.floor(k); app.sfx?.stab?.(); }
+        if (Math.floor(k) !== job._k) { job._k = Math.floor(k); app.sfx?.play?.(kind === 'mesh' || kind === 'chain' ? 'wire' : kind === 'prof' ? 'sheet' : 'hammer_nail'); }
       }]],
       onAbort: () => { app.journal.cancel(); this.view.setAnim(key, null); },
       commit: () => {
@@ -495,6 +495,7 @@ export class FenceWork {
       if (rs.length) {
         const q = rs.reduce((b, o) => (Math.abs(o.y - y) < Math.abs(b.y - y) ? o : b));
         if ((r.filled || []).some((m) => m > q.a && m < q.b)) { this.toast('На этой прожилине держатся секции — сначала снимите их'); return; }
+        app.sfx?.play?.('grinder', { vol: 0.7 });
         done('fence-rail-remove', { rails: r.rails.filter((o) => o !== q) }, `Прожилину срезали болгаркой (${m1(q.b - q.a)} м)`);
         return;
       }
@@ -521,6 +522,7 @@ export class FenceWork {
       this.lastGate = [r.id, hit];
       const open = !gates[hit].open;
       this._save('gate-open', () => app.objects.update(r.id, { gates: gates.map((q, i) => (i === hit ? { ...q, open } : q)) }));
+      app.sfx?.play?.(open ? 'gate_open' : 'gate_latch');
       this.toast(open ? `${GATES[gates[hit].type].name}: открыто` : `${GATES[gates[hit].type].name}: закрыто`);
       return;
     }
@@ -537,7 +539,7 @@ export class FenceWork {
     app.objects.update(r.id, { gates: [...gates, rec] });
     new FitJob(app, {
       parts: [],
-      steps: [[1.0, (u, job) => { this.view.setAnim(key, { gate: gi, gu: u, gopen: 0 }); if (u > 0.9 && !job._g) { job._g = 1; app.sfx?.stab?.(); } }],
+      steps: [[1.0, (u, job) => { this.view.setAnim(key, { gate: gi, gu: u, gopen: 0 }); if (u > 0.9 && !job._g) { job._g = 1; app.sfx?.play?.('gate_latch'); } }],
         [1.6, (u) => this.view.setAnim(key, { gate: gi, gu: 1, gopen: Math.sin(Math.PI * u) })]],
       onAbort: () => { app.journal.cancel(); this.view.setAnim(key, null); },
       commit: () => { app.journal.commit(app.clock); this.view.setAnim(key, null); this.toast(EN() ? `${T.name}, ${m1(b.L)} m: hung on the posts and tried. Tap it — open or close` : `${T.name}, ${m1(b.L)} м: ${T.gate ? 'навешены на столбы и опробованы' : 'навешена на столбы и опробована'}. Коснитесь — открыть или закрыть`); },

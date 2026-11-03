@@ -917,6 +917,32 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2j. Sounds: every sound the code asks for is in the library, every file of it is there and decodes ----
+{
+  const fs = await import('fs'), path = await import('path');
+  const lib = await import(path.resolve('src/audio/sounds.js')), names = new Set(Object.keys(lib.SOUNDS));
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.js') ? [path.join(d, e.name)] : []));
+  const asked = new Set(), missing = new Set();
+  for (const f of walk('src')) { const t = fs.readFileSync(f, 'utf8'); for (const m of t.matchAll(/sfx\??\.(?:play\??\.?\(|pour\??\.?\([^,)]*,\s*|scrapeStart\??\.?\()\s*'([a-z_]+)'/g)) asked.add(m[1]); for (const m of t.matchAll(/\?\s*'([a-z_]+)'\s*:\s*'([a-z_]+)'/g)) if (/sfx/.test(t.slice(Math.max(0, m.index - 120), m.index))) { asked.add(m[1]); asked.add(m[2]); } }
+  const eng = fs.readFileSync('src/audio/sfx.js', 'utf8').match(/const ENGINES = \{([^}]*)\}/)[1]; for (const m of eng.matchAll(/:\s*'([a-z_]+)'/g)) asked.add(m[1]);
+  for (const n of ['tap', 'cash', 'block', 'rain', 'thunder', 'birds', 'crickets', 'wind', 'soil_pour', 'drill', 'screwdriver', 'engine']) asked.add(n);
+  asked.delete('engine');
+  for (const n of asked) if (!names.has(n)) missing.add(n);
+  const files = Object.values(lib.SOUNDS).flatMap((S) => S.f), absent = files.filter((f) => !fs.existsSync(`assets/sounds/${f}.mp3`));
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'] });
+  const o = await page.evaluate(async () => {
+    const s = window.__tc.sfx; s.unlock(); const L = (await import('/src/audio/sounds.js')).SOUNDS;
+    const got = await Promise.all(Object.keys(L).map(async (n) => [n, (await s._load(n))?.length || 0, L[n].f.length]));
+    const bad = got.filter(([, a, b]) => a !== b).map(([n, a, b]) => `${n}:${a}/${b}`);
+    const src = s.play('brick'); s.loop('t', 'loader', 0.5); const looping = s.loops.has('t'); s.loop('t', 'loader', 0);
+    return { n: got.length, bad, played: !!src, looping };
+  });
+  check('sounds: every sound asked for is in the library (no synthesised buzz left), its files there', !missing.size && !absent.length && asked.size > 50, JSON.stringify({ asked: asked.size, missing: [...missing], absent: absent.slice(0, 5) }));
+  check('sounds: every file decodes in the browser; a one-shot plays, a loop runs', o.n >= 85 && !o.bad.length && o.played && o.looping, JSON.stringify(o));
+  check('sounds: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 3. WebKit (Safari's engine), if installed ------------------------------------------------------
 if (process.env.WEBKIT) {
   try {

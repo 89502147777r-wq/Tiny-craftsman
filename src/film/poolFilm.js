@@ -269,7 +269,7 @@ function* pour(d, app, pw, part, start, then) {
     app.concreteGear.set('hose', new V(hx, hy, hz));
     const bb = belt(), mean = lv.reduce((a, v) => a + v, 0) / lv.length / Hmm;
     app.objects.update(bb.id, { lv: lv.map((v) => Math.round(v)), fill: +mean.toFixed(3), pourT: app.clock, wetT: app.clock });
-    if (Math.random() < 0.3) app.sfx?.pour?.(0.5);
+    if (Math.random() < 0.3) app.sfx?.pour?.(0.5, 'concrete_splat');
     return false;
   });
   yield d.sec(1.3);

@@ -256,7 +256,7 @@ export class WallTool {
       app.settings.wallKind = w.kind;
       this.lastWall = w.id; this._focus(w);
       loadPhysics().catch(() => {});
-      app.sfx?.stab?.();
+      app.sfx?.play?.(w.kind === 'brick' ? 'brick' : 'block', { vol: 0.45 });
       this._carryMove(p, e);
       return true;
     }
@@ -695,7 +695,7 @@ export class WallTool {
     const r = O.get(id);
     this.palletDrag = { id, dx: r.x - p.x, dz: r.z - p.z, x0: r.x, z0: r.z, yaw0: r.yaw || 0 };
     O.update(id, { lift: 150 });
-    app.sfx?.stab?.();
+    app.sfx?.play?.('plank', { vol: 0.6 });
     app.ui.toast('Пустой поддон — несите его, вторым пальцем поворачивайте; отпустите на землю или на другой пустой поддон, в стопку');
   }
   // carried: held a little off the ground; over another empty pallet (a stack) it is lifted onto it
@@ -747,7 +747,7 @@ export class WallTool {
       const n = (on.e || 1) + (r.e || 1);
       if (n > 12) { O.update(r.id, { x: d.x0, z: d.z0, yaw: d.yaw0 }); app.journal.commit(app.clock); app.ui.toast('Стопка уже 12 поддонов — выше не складывают, начните новую'); return; }
       O.update(on.id, { e: n }); O.remove(r.id);
-      app.journal.commit(app.clock); app.sfx?.thud?.() || app.sfx?.stab?.();
+      app.journal.commit(app.clock); app.sfx?.play?.('plank');
       app.ui.toast(`Поддон в стопку — в ней ${n}`);
       return;
     }
@@ -1203,7 +1203,7 @@ export class WallTool {
       wd.position.copy(L(x, -6, 0)); wd.rotation.y = r.yaw; wd.visible = false; parts.push(wd);
       steps.push([0.15, () => { wd.visible = true; }]);
     }
-    steps.push([0.65, (u) => { holder.visible = true; holder.position.copy(nz).multiplyScalar(MM(450) * (1 - u * u * (3 - 2 * u))); }]);
+    steps.push([0.65, (u) => { holder.visible = true; holder.position.copy(nz).multiplyScalar(MM(450) * (1 - u * u * (3 - 2 * u))); if (u >= 1) app.sfx?.play?.(/door|gar|portal/.test(r.key || '') ? 'door' : 'glass'); }]);
     steps.push([0.45, () => app.handTools.set('level', L(0, r.h + 2, 0), new THREE.Vector3(0, 1, 0), nz, 0)]);
     // the anchors through the jambs: from inside the frame into the reveals
     for (const [sx, y] of [[-1, 0.25], [-1, 0.75], [1, 0.25], [1, 0.75]]) {
@@ -1216,6 +1216,7 @@ export class WallTool {
     const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.02), tube = new THREE.TubeGeometry(curve, 120, MM(14), 6, false);
     const foam = new THREE.Mesh(tube, new THREE.MeshStandardMaterial({ color: 0xe3c56a, roughness: 0.9 })); foam.geometry.setDrawRange(0, 0); parts.push(foam);
     const total = tube.index ? tube.index.count : tube.attributes.position.count;
+    steps.push([0, () => app.sfx?.play?.('foam')]);
     steps.push([1.3, (u) => { foam.geometry.setDrawRange(0, Math.floor(total * u / 6) * 6); app.handTools.set('foam', curve.getPoint(Math.min(1, u)).addScaledVector(nz, MM(30)), nz, ax, 0); }]);
     new FitJob(app, { steps, parts, commit: save });
   }
@@ -1558,7 +1559,7 @@ class LayJob {
     this.phase = 'drop';
     this.done = false;
     this.from = new THREE.Vector3(); this.fromQ = new THREE.Quaternion();
-    app.sfx?.stab?.();
+    app.sfx?.play?.(unit.lintel ? 'stone' : unit.kind === 'brick' ? 'brick' : unit.kind === 'prop' ? 'plank' : 'block', { at: p0 });
     this._show();
   }
 
@@ -1586,7 +1587,7 @@ class LayJob {
       g.set('mallet', top, 0);
       if (this.tapT > (this.taps + 1) * TP) {
         this.taps++;
-        this.app.sfx?.stab?.();
+        this.app.sfx?.play?.('mallet');
         this.from.lerp(this.target.p, this.fast ? 1 : 0.6); this.fromQ.slerp(this.target.q, this.fast ? 1 : 0.6);
         ep.moveTo(this.body, this.from, this.fromQ);
         if (this.taps >= (this.fast ? 1 : 3)) {

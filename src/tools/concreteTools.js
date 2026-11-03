@@ -206,7 +206,7 @@ class ConcreteTool {
     const ch = makeChannel(this.app, u);
     this.uw = { ch, top: topOf(u), i: ch.at(this._uHit.x, this._uHit.z) };
     this.uw.last = this.uw.i;
-    this.app.sfx.scrapeStart();
+    this.app.sfx.scrapeStart(type === 'vibrate' ? 'vibrator' : type === 'trowel' ? 'trowel' : type === 'screed' ? 'screed' : 'concrete');
     return true;
   }
   // the sample under the finger (on this run), or null
@@ -285,7 +285,7 @@ export class HoseTool extends ConcreteTool {
     this.begin('concrete-pour', { rate: this.app.settings.pump }, p);
     this.poured = 0; this.ch = null; this.brimSaid = false;
     this.warned = false;
-    this.app.sfx.scrapeStart();
+    this.app.sfx.scrapeStart('concrete'); this.app.sfx.engine('pump', 0.5);
     this.app.sfx.scrapeLevel(0.25);
     this.gear.set('hose', this._tip(p), 0, true);
     return true;
@@ -527,7 +527,7 @@ export class ScreedTool extends ConcreteTool {
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('screed', {}, p);
     this.stroke = { width: 2.0 / MODEL_SCALE, band: this.app.terrain.cell * 2.5, L: this.levelAt(p), moved: 0 };
-    this.app.sfx.scrapeStart();
+    this.app.sfx.scrapeStart('screed');
     this.gear.set('screed', new THREE.Vector3(p.x, this.stroke.L, p.z), Math.atan2(this.dir.x, this.dir.y), true);
     return true;
   }
@@ -582,7 +582,7 @@ export class VibratorTool extends ConcreteTool {
     if (this._uBegin(e, 'u-vibrate')) { if (this.uw) this.gear.set('vibro', this.uw.ch.point(this.uw.i), 0, true); return true; }
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('vibrate', {}, p);
-    this.app.sfx.scrapeStart();
+    this.app.sfx.scrapeStart('vibrator');
     this.gear.set('vibro', this._at(p), 0, true);
     return true;
   }
@@ -626,7 +626,7 @@ export class TrowelTool extends ConcreteTool {
     }
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('trowel', {}, p);
-    this.app.sfx.scrapeStart();
+    this.app.sfx.scrapeStart('trowel');
     this.gear.set('trowel', this._at(p), Math.atan2(this.dir.x, this.dir.y), true);
     this.touched = false;
     return true;
@@ -705,7 +705,7 @@ export class BitumenTool extends ConcreteTool {
     if (!W && !this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('bitumen', {}, W ? W.p : p);
     this.coated = 0; this.touched = new Set(); this.wallAt = W ? W.p : null;
-    this.app.sfx.scrapeStart();
+    this.app.sfx.scrapeStart('paint');
     if (W) { this.gear.set('brush', W.p, 0, true); this._dabs(W.p, W.p); return true; }
     this.gear.set('brush', this._at(p), 0, true);
     this._paint(p);
@@ -753,7 +753,7 @@ export class PlateTool extends ConcreteTool {
     if (this.state !== 'idle') return true;
     if (!this.app.terrain.inside(p.x, p.z)) return false;
     this.begin('compact', {}, p);
-    this.app.sfx.scrapeStart();
+    this.app.sfx.scrapeStart('compactor');
     this.app.sfx.scrapeLevel(0.5);
     this.gear.set('plate', this._at(p), Math.atan2(this.dir.x, this.dir.y), true);
     return true;
@@ -834,8 +834,9 @@ export class BreakerTool extends ConcreteTool {
     this.jab = 0;
     const r = t.chipConc(p.x, p.z, MM(170), MM(25), MM(400), this.ok);
     this.got += r.got; this.thick += r.thick;
+    app.sfx.engine('breaker', 0.8);
     if (r.got > 0) {
-      app.sfx.stab();
+      if (Math.random() < 0.3) app.sfx.play('debris', { vol: 0.25, gap: 0.8 });
       const q = this._at(p), V = THREE.Vector3;
       for (let k = 0; k < 3; k++) app.particles.emit(q.clone().add(new V(0, MM(10), 0)), new V((Math.random() - 0.5) * 0.25, 0.25 + Math.random() * 0.2, (Math.random() - 0.5) * 0.25), 0, MM(14), 0, 0, 3);   // (chips fly up; they are carried off — nothing left on the ground)
     }

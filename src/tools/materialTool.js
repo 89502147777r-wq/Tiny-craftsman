@@ -49,7 +49,8 @@ export class MaterialTool {
       this.spread = 0.004 * K;
       this.state = 'bucket';
     }
-    app.sfx.pour(0.8);
+    app.sfx.pour(0.8, this.mat === 1 ? 'sand_pour' : this.mat === 2 || this.mat === 3 ? 'gravel_pour' : 'soil_pour');
+    if (this.mode === 'deliver') app.sfx.play('truck_tip', { vol: 0.6, gap: 4 });
     return true;
   }
 

@@ -258,7 +258,7 @@ export class ColumnWork {
         auger.position.set(ax, rec.y0 - dep, az);
         auger.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(rec.tilt[0], 1, rec.tilt[1]).normalize());
         auger.children[0].rotation.y = u * 60;
-        app.sfx?.engine?.('fit-drill', u < 0.95 ? 0.22 : 0, 7);
+        app.sfx?.engine?.('col-auger', u < 0.95 ? 0.5 : 0); app.sfx?.engine?.('col-bore', u < 0.95 ? 0.4 : 0);
         if (Math.random() < 0.6) app.particles?.emit(new THREE.Vector3(rec.x, rec.y0 + MM(40), rec.z), new THREE.Vector3((Math.random() - 0.5) * 0.12, 0.08, (Math.random() - 0.5) * 0.12), 0, MM(18 + Math.random() * 20), 0.8, 0, 2);
       }]);
       steps.push([0.5, (u) => { const dep = rec.dep * (1 - u), [ax, az] = axisAt(rec, rec.y0 - dep); auger.position.set(ax, rec.y0 - dep, az); if (u >= 1) auger.visible = false; }]);

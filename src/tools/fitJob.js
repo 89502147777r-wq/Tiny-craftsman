@@ -86,7 +86,7 @@ export function hammer(app, p, n, taps = 2, per = 0.2, onTap = null, up = null, 
     const t = u * taps, f = t - Math.floor(t), sw = f < 0.7 ? Math.sin(f / 0.7 * Math.PI / 2) : Math.cos((f - 0.7) / 0.3 * Math.PI / 2);
     app.handTools.set(tool, p, n, up, u >= 1 ? 0 : sw * 0.6);
     const k = Math.min(taps, Math.floor(t + 0.3));
-    while (done < k) { done++; app.sfx?.stab?.(); onTap?.(done); }
+    while (done < k) { done++; app.sfx?.play?.(tool === 'mallet' ? 'mallet' : 'hammer_nail'); onTap?.(done); }
   }];
 }
 
