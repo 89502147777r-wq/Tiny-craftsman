@@ -1,0 +1,43 @@
+# Downloads CC-licensed models from Sketchfab (the token is the repository secret SKETCHFAB_TOKEN,
+# never printed) and pushes the raw .glb files to the branch `sketchfab-raw`, to be checked, made
+# light for phones and credited (CREDITS.md) before any goes into assets/.
+name: Fetch Sketchfab models
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: 'uid:name pairs, space-separated'
+        required: true
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download
+        env:
+          TOKEN: ${{ secrets.SKETCHFAB_TOKEN }}
+          MODELS: ${{ github.event.inputs.models }}
+        run: |
+          set -e
+          mkdir -p raw
+          for pair in $MODELS; do
+            uid="${pair%%:*}"; name="${pair##*:}"
+            case "$uid$name" in *[!A-Za-z0-9_-]*) echo "bad input"; exit 1;; esac
+            curl -sf -H "Authorization: Token $TOKEN" "https://api.sketchfab.com/v3/models/$uid/download" -o dl.json
+            url=$(python3 -c "import json; d=json.load(open('dl.json')); print(d['glb']['url'])")
+            curl -sfL "$url" -o "raw/$name.glb"
+            curl -sf "https://api.sketchfab.com/v3/models/$uid" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['name'], '|', d['user']['username'], '|', d['license']['label'], '|', d['viewerUrl'])" > "raw/$name.txt"
+            rm dl.json
+            ls -la raw
+          done
+      - name: Push to sketchfab-raw
+        run: |
+          git config user.name "github-actions"; git config user.email "actions@users.noreply.github.com"
+          git fetch origin sketchfab-raw || true
+          git checkout -B sketchfab-raw
+          git rm -rq --cached . >/dev/null
+          git add -f raw
+          git commit -qm "raw models from Sketchfab" 
+          git push -f origin sketchfab-raw
