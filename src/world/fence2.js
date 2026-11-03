@@ -55,8 +55,8 @@ export const postA = (r) => Math.max(40, ...(r.pegs || []).map((q) => q.post?.a 
 export function bays2(r) {
   const P = (r.pegs || []), out = [];
   for (let i = 1; i < P.length; i++) {
-    const a = P[i - 1], b = P[i], mid = (a.s + b.s) / 2, h = Math.min(a.post?.h || r.H, b.post?.h || r.H);
-    const railed = !!(a.post && b.post) && railRows(h).every((y) => (r.rails || []).some((q) => Math.abs(q.y - y) < 5 && q.a <= a.s + 1 && q.b >= b.s - 1));
+    const a = P[i - 1], b = P[i], mid = (a.s + b.s) / 2, h = Math.min(a.post?.h || a.pillar?.h || r.H, b.post?.h || b.pillar?.h || r.H);
+    const railed = !!((a.post || a.pillar) && (b.post || b.pillar)) && railRows(h).every((y) => (r.rails || []).some((q) => Math.abs(q.y - y) < 5 && q.a <= a.s + 1 && q.b >= b.s - 1));
     const gi = (r.gates || []).findIndex((q) => Math.abs(q.s - mid) < 2);
     out.push({ i, a, b, mid, L: b.s - a.s, railed, gate: gi, filled: (r.filled || []).some((m) => Math.abs(m - mid) < 2) });
   }
@@ -82,7 +82,7 @@ export function stringAndPegs(r, hide = -1) {
   const peg = new THREE.BoxGeometry(MM(36), MM(400), MM(36)); peg.translate(0, MM(180), 0);
   const tip = new THREE.ConeGeometry(MM(25), MM(90), 4); tip.rotateX(Math.PI); tip.rotateY(Math.PI / 4); tip.translate(0, MM(-55), 0);
   const tape = new THREE.BoxGeometry(MM(40), MM(40), MM(40)); tape.translate(0, MM(340), 0);
-  const pegs = (r.pegs || []).map((q, i) => [q, i]).filter(([q, i]) => !q.hole && i !== hide);
+  const pegs = (r.pegs || []).map((q, i) => [q, i]).filter(([q, i]) => !q.hole && !q.pillar && i !== hide);
   if (pegs.length) {
     const P = new THREE.InstancedMesh(mergeGeometries([peg.toNonIndexed(), tip.toNonIndexed()]), pegM(), pegs.length);
     const T = new THREE.InstancedMesh(tape, tapeM(), pegs.length), m = new THREE.Matrix4();
@@ -95,7 +95,13 @@ export function stringAndPegs(r, hide = -1) {
 export function postsAndConcrete(r, live = null) {
   const G = new THREE.Group();
   (r.pegs || []).forEach((q, i) => {
-    const [x, z, ux, uz] = pegXZ(r, q.s), yaw = Math.atan2(-uz, ux), g = gOf(r, q), bot = g - MM(HOLE.depth - 100);
+    const [x, z, ux, uz] = pegXZ(r, q.s), yaw = Math.atan2(-uz, ux), g = gOf(r, q), anchor = q.hole === 'anchor', bot = anchor ? g + MM(10) : g - MM(HOLE.depth - 100);
+    if (q.post && anchor) {
+      // (on concrete: the base plate 200 × 200 × 10 on four anchors, two gussets to the post)
+      const pl = new THREE.Mesh(new THREE.BoxGeometry(MM(200), MM(10), MM(200)), steelM()); pl.position.set(x, g + MM(5), z); pl.rotation.y = yaw; pl.castShadow = true; G.add(pl);
+      for (const [ax, az] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { const n = new THREE.Mesh(new THREE.CylinderGeometry(MM(12), MM(12), MM(14), 6), steelM()); n.position.set(x + (ax * Math.cos(yaw) + az * Math.sin(yaw)) * MM(70), g + MM(17), z + (-ax * Math.sin(yaw) + az * Math.cos(yaw)) * MM(70)); G.add(n); }
+      for (const sx of [1, -1]) { const gu = new THREE.Mesh(new THREE.BoxGeometry(MM(6), MM(80), MM(70)), steelM()); gu.position.set(x + Math.cos(yaw) * sx * MM(q.post.a / 2 + 3), g + MM(50), z - Math.sin(yaw) * sx * MM(q.post.a / 2 + 3)); gu.rotation.y = yaw; G.add(gu); }
+    }
     if (q.post) {
       const a = MM(q.post.a), top = g + MM(q.post.h), L = top - bot;
       const geo = q.post.sh === 'rd' ? new THREE.CylinderGeometry(a / 2, a / 2, L, 16) : new THREE.BoxGeometry(a, L, a);
@@ -104,7 +110,7 @@ export function postsAndConcrete(r, live = null) {
       const cap = q.post.sh === 'rd' ? new THREE.CylinderGeometry(a / 2 + MM(3), a / 2 + MM(3), MM(5), 16) : new THREE.BoxGeometry(a + MM(6), MM(5), a + MM(6));
       const c = new THREE.Mesh(cap, steelM()); c.position.set(x, top + MM(2.5), z); c.rotation.y = yaw; G.add(c);
     }
-    const f = live && live.i === i ? live.f : q.fill || 0;
+    const f = anchor ? 0 : live && live.i === i ? live.f : q.fill || 0;
     if (f > 0) {
       // the concrete fills the hole wall to wall round the post, up to its level; full: level with the
       // ground and a collar sloped off round the post (the rain runs away from it)
@@ -118,30 +124,51 @@ export function postsAndConcrete(r, live = null) {
 }
 // the rails on the posts' face (the side the string is pulled to the right of), the welds at the posts
 // and at the joints between rails
+// where a rail lies: on the posts' face (the side it was put against), from the first post's far edge to
+// the last's; inline (between brick pillars — or a pillar and a post): on the line, from face to face,
+// on the embedded plates in the masonry
+export function railPlace(r, q) {
+  const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, sd = q.side || 1, [ax, az, ux, uz] = pegXZ(r, q.a + 0.5), [bx, bz] = pegXZ(r, q.b - 0.5);
+  const nx = -uz * sd, nz = ux * sd, yaw = Math.atan2(-uz, ux), y = r.g + MM(q.y), D = Math.hypot(bx - ax, bz - az);
+  if (q.inline) {
+    const ha = MM(q.ha || 30), hb = MM(q.hb || 30), mid = (ha + D - hb) / 2;
+    return { sec, L: Math.max(MM(50), D - ha - hb), cx: ax + ux * mid, cz: az + uz * mid, y, yaw, ux, uz, nx, nz, off: 0, ends: [[ax + ux * ha, az + uz * ha, q.ea], [bx - ux * hb, bz - uz * hb, q.eb]] };
+  }
+  const pa = postA(r), off = MM(pa / 2 + sec.d / 2);
+  return { sec, L: D + MM(pa), cx: (ax + bx) / 2 + nx * off, cz: (az + bz) / 2 + nz * off, y, yaw, ux, uz, nx, nz, off, pa };
+}
 export function railsAndWelds(r) {
-  const G = new THREE.Group(), list = r.rails || [], pa = postA(r), parts = [], welds = [];
+  const G = new THREE.Group(), list = r.rails || [], parts = [], welds = [], plates = [];
   for (const q of list) {
-    const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, off = MM(pa / 2 + sec.d / 2), y = r.g + MM(q.y), sd = q.side || 1;
-    // (along each leg it crosses: a rail is laid within one leg; on the side of the string it was put against)
-    const [ax, az, ux, uz] = pegXZ(r, q.a + 0.5), [bx, bz] = pegXZ(r, q.b - 0.5), nx = -uz * sd, nz = ux * sd;
-    const L = Math.hypot(bx - ax, bz - az) + MM(pa), cx = (ax + bx) / 2 + nx * off, cz = (az + bz) / 2 + nz * off;
-    const g = new THREE.BoxGeometry(L, MM(sec.h), MM(sec.d));
-    g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(cx, y, cz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-uz, ux)), new THREE.Vector3(1, 1, 1)));
+    const R = railPlace(r, q), { sec, y, yaw, nx, nz } = R;
+    const g = new THREE.BoxGeometry(R.L, MM(sec.h), MM(sec.d));
+    g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(R.cx, y, R.cz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw), new THREE.Vector3(1, 1, 1)));
     parts.push(g);
+    if (q.inline) {
+      // each end on its plate: an embedded plate 120 × 120 × 8 in the pillar's face (a post: its own side), a
+      // bead round the rail's end
+      for (const [ex, ez, kind] of R.ends) {
+        const rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        if (kind === 'pillar') { const pl = new THREE.BoxGeometry(MM(8), MM(120), MM(120)); pl.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(ex, y, ez), rot, new THREE.Vector3(1, 1, 1))); pl.deleteAttribute('uv'); plates.push(pl); }
+        const b = new THREE.BoxGeometry(MM(10), MM(sec.h + 6), MM(sec.d + 6)); b.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(ex - R.ux * MM(kind === 'pillar' ? -8 : -2), y, ez - R.uz * MM(kind === 'pillar' ? -8 : -2)), rot, new THREE.Vector3(1, 1, 1))); b.deleteAttribute('uv'); welds.push(b);
+      }
+      continue;
+    }
     // a weld at every post it crosses: a bead along its top and its bottom edge at the post's face
     for (const p of r.pegs || []) if (p.post && p.s >= q.a - 1 && p.s <= q.b + 1) {
       const [px, pz] = pegXZ(r, p.s);
-      for (const dy of [sec.h / 2, -sec.h / 2]) welds.push(bead(px + nx * MM(pa / 2 + sec.d * 0.35), y + MM(dy), pz + nz * MM(pa / 2 + sec.d * 0.35), Math.atan2(-uz, ux), MM(Math.min(p.post.a, 60) * 0.8)));
+      for (const dy of [sec.h / 2, -sec.h / 2]) welds.push(bead(px + nx * MM(R.pa / 2 + sec.d * 0.35), y + MM(dy), pz + nz * MM(R.pa / 2 + sec.d * 0.35), yaw, MM(Math.min(p.post.a, 60) * 0.8)));
     }
   }
   // the joints: a rail starting where another ends on the same row — a bead round the butt
-  for (const q of list) for (const o of list) if (o !== q && Math.abs(o.y - q.y) < 5 && Math.abs(o.b - q.a) < 2) {
-    const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, [x, z, ux, uz] = pegXZ(r, q.a), nx = -uz * (q.side || 1), nz = ux * (q.side || 1);
+  for (const q of list) for (const o of list) if (o !== q && !q.inline && !o.inline && Math.abs(o.y - q.y) < 5 && Math.abs(o.b - q.a) < 2) {
+    const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, pa = postA(r), [x, z, ux, uz] = pegXZ(r, q.a), nx = -uz * (q.side || 1), nz = ux * (q.side || 1);
     const b = new THREE.BoxGeometry(MM(10), MM(sec.h + 6), MM(sec.d + 6)); b.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(x + nx * MM(pa / 2 + sec.d / 2), r.g + MM(q.y), z + nz * MM(pa / 2 + sec.d / 2)), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-uz, ux)), new THREE.Vector3(1, 1, 1)));
     b.deleteAttribute('uv'); welds.push(b);
   }
   if (parts.length) { const o = new THREE.Mesh(mergeGeometries(parts), steelM()); o.castShadow = true; o.receiveShadow = true; G.add(o); }
   if (welds.length) G.add(new THREE.Mesh(mergeGeometries(welds), weldM()));
+  if (plates.length) G.add(new THREE.Mesh(mergeGeometries(plates), M('plate', () => std({ color: 0x6f6a64, roughness: 0.55, metalness: 0.6 }))));
   return G;
 }
 // a weld bead: a short rippled seam (a row of squashed beads)
@@ -154,17 +181,15 @@ function bead(x, y, z, yaw, len) {
 }
 // a rail carried by the finger (green: it goes there; red: not), or laid by the animation
 export function railMesh(r, q, ok = true, ghost = true) {
-  const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, pa = postA(r), off = MM(pa / 2 + sec.d / 2), sd = q.side || 1;
-  const [ax, az, ux, uz] = pegXZ(r, q.a + 0.5), [bx, bz] = pegXZ(r, q.b - 0.5), nx = -uz * sd, nz = ux * sd;
-  const L = Math.max(MM(100), Math.hypot(bx - ax, bz - az) + MM(pa));
-  const o = new THREE.Mesh(new THREE.BoxGeometry(L, MM(sec.h), MM(sec.d)), ghost ? new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe0453a, transparent: true, opacity: 0.6, depthWrite: false }) : steelM());
-  o.position.set((ax + bx) / 2 + nx * off, r.g + MM(q.y), (az + bz) / 2 + nz * off); o.rotation.y = Math.atan2(-uz, ux);
+  const R = railPlace(r, q);
+  const o = new THREE.Mesh(new THREE.BoxGeometry(Math.max(MM(100), R.L), MM(R.sec.h), MM(R.sec.d)), ghost ? new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe0453a, transparent: true, opacity: 0.6, depthWrite: false }) : steelM());
+  o.position.set(R.cx, R.y, R.cz); o.rotation.y = R.yaw;
   if (ghost) o.renderOrder = 6; else o.castShadow = true;
   return o;
 }
 // a post carried down into its hole by the animation
 export function postMesh(r, q, post) {
-  const g = gOf(r, q), a = MM(post.a), bot = g - MM(HOLE.depth - 100), top = g + MM(post.h), L = top - bot, G = new THREE.Group();
+  const g = gOf(r, q), a = MM(post.a), bot = q.hole === 'anchor' ? g + MM(10) : g - MM(HOLE.depth - 100), top = g + MM(post.h), L = top - bot, G = new THREE.Group();
   const o = new THREE.Mesh(post.sh === 'rd' ? new THREE.CylinderGeometry(a / 2, a / 2, L, 16) : new THREE.BoxGeometry(a, L, a), steelM()); o.position.y = (top + bot) / 2; o.castShadow = true; G.add(o);
   const [x, z, ux, uz] = pegXZ(r, q.s); G.position.set(x, 0, z); G.rotation.y = Math.atan2(-uz, ux);
   return G;

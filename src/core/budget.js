@@ -263,7 +263,7 @@ export class Budget {
       const rl = (L) => (L || []).reduce((s, q) => s + (q.b - q.a) / 1000, 0), dr = rl(a.rails) - rl(b?.rails);
       if (dr > 0) add(4.5 * dr, `Прожилины · ${dr.toFixed(1)} м`);
       const nf = (a.filled || []).length - (b?.filled || []).length;
-      if (nf > 0) { const k = kindOf(a), A = nf * (a.step || 2500) / 1000 * (a.H || 1800) / 1000; add({ slat: 42, picket: 28, louvre: 46, mesh: 25, chain: 6 }[k] * A, `${{ slat: 'Доска ДПК', picket: 'Евроштакетник', louvre: 'Жалюзи', mesh: '3D-панели', chain: 'Сетка-рабица' }[k]} · ${A.toFixed(1)} м²`); }
+      if (nf > 0) { const k = kindOf(a), A = nf * (a.step || 2500) / 1000 * (a.H || 1800) / 1000; add({ slat: 42, picket: 28, louvre: 46, mesh: 25, chain: 6, prof: 12 }[k] * A, `${{ slat: 'Доска ДПК', picket: 'Евроштакетник', louvre: 'Жалюзи', mesh: '3D-панели', chain: 'Сетка-рабица', prof: 'Профлист С20' }[k]} · ${A.toFixed(1)} м²`); }
       const nb = (b?.gates || []).length, na = (a.gates || []).length;
       for (let i = nb; i < na; i++) { const T = GATES[a.gates[i].type]; if (T) add({ swing: 1400, swingArch: 1650, slide: 2600, wicket: 450, wicketArch: 540, wicketIntercom: 980 }[a.gates[i].type] || 800, T.name); }
     } else if (type === 'fence' && a) {
@@ -273,7 +273,7 @@ export class Budget {
         const k = kindOf(a), Lm = fenceLength(a) * M1, A = Lm * a.H / 1000;
         if (k === 'mesh') add(P.fence.panel * Math.ceil(Lm / 2.5), `3D-панели · ${Math.ceil(Lm / 2.5)} шт`);
         else if (k === 'slat') { const m = Lm * Math.floor((a.H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)); add(P.fence.slatM * m, `Доска ДПК 140×20 · ${Math.round(m)} м`); }
-        else add({ picket: 28, louvre: 46, chain: 6 }[k] * A, `${{ picket: 'Евроштакетник', louvre: 'Жалюзи', chain: 'Сетка-рабица' }[k]} · ${A.toFixed(1)} м²`);
+        else add({ picket: 28, louvre: 46, chain: 6, prof: 12 }[k] * A, `${{ picket: 'Евроштакетник', louvre: 'Жалюзи', chain: 'Сетка-рабица', prof: 'Профлист С20' }[k]} · ${A.toFixed(1)} м²`);
       }
       // the gates: priced when they are put on the fence
       const nb = (b?.gates || []).length, na = (a.gates || []).length;

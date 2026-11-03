@@ -3,7 +3,8 @@ import { MODEL_SCALE } from '../config.js';
 import { FitJob, ease } from './fitJob.js';
 import { LANG } from '../i18n/i18n.js';
 import { FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES, fenceLine, sOf, legs } from '../world/fence.js';
-import { HOLE, RAIL_SECS, gOf, isV2, railRows, pegsFor, legBounds, pegXZ, bays2, railMesh, postMesh, earthAuger, welderKit, welderArc, hotBead, postA } from '../world/fence2.js';
+import { boxesNear } from './freeBrick.js';
+import { HOLE, RAIL_SECS, gOf, isV2, railRows, pegsFor, legBounds, pegXZ, bays2, railMesh, railPlace, postMesh, earthAuger, welderKit, welderArc, hotBead, postA } from '../world/fence2.js';
 
 // «Забор» (its own group on the top row; the fence by the post — fence2.js): the stages one after the
 // other, each a touch where it is done:
@@ -51,6 +52,45 @@ export class FenceWork {
     return hs.length ? hs[Math.floor(hs.length / 2)] : 0.1;
   }
 
+  // ---- what the fence stands in / on (the other work on the plot) ----
+  // the cast concrete at a peg (a strip foundation poured: a post's hole filled with it, or a post to anchor)
+  concAt(r, q) { const t = this.app.terrain, [x, z] = pegXZ(r, q.s); return t.inside(x, z) && t.conc[t.index(x, z)] > 1e-6; }
+  // a post that stands: concreted in its hole (by the hose / the bucket, or with the strip poured round it),
+  // or bolted to the concrete on its plate
+  fixed(r, q) { return !!q.post && (q.fill >= 1 || q.hole === 'anchor' || this.concAt(r, q)); }
+  // a brick (block) pillar laid at a point: the masonry within 380 mm of it, 600 mm tall at the least —
+  // { x, z, top, w (mm across) }
+  pillarAt(x, z) {
+    const B = boxesNear(this.app, x, z, MM(600)).filter((b) => b.kind !== 'lintel' && Math.hypot(b.x - x, b.z - z) < MM(380));
+    if (B.length < 4) return null;
+    const top = Math.max(...B.map((b) => b.top)), bot = Math.min(...B.map((b) => b.bot));
+    if (top - bot < MM(600)) return null;
+    const cx = B.reduce((s, b) => s + b.x, 0) / B.length, cz = B.reduce((s, b) => s + b.z, 0) / B.length;
+    const w = Math.max(...B.map((b) => (Math.hypot(b.x - cx, b.z - cz) + Math.max(b.hl, b.hw)) * 2)) / S;
+    return { x: cx, z: cz, top, w: Math.round(Math.min(640, Math.max(250, w))) };
+  }
+  // the pegs with the pillars laid on them since (a peg on a pillar: no hole, no post — the pillar holds the rails)
+  withPillars(r) {
+    return r.pegs.map((q) => {
+      if (q.hole || q.post) return q;
+      const [x, z] = pegXZ(r, q.s), P = this.pillarAt(x, z);
+      if (!P) { if (!q.pillar) return q; const { pillar, ...o } = q; void pillar; return o; }
+      return { ...q, pillar: { w: P.w, h: Math.round((P.top - gOf(r, q)) / S) } };
+    });
+  }
+  // the pegs of a new string set on the pillars along it (their middles; a pillar every so often: the step)
+  _onPillars(pts, pegs) {
+    const r = { pts };
+    return pegs.map((q) => {
+      const [x, z] = pegXZ(r, q.s), near = boxesNear(this.app, x, z, MM(800)).filter((b) => b.kind !== 'lintel' && Math.hypot(b.x - x, b.z - z) < MM(800));
+      if (near.length < 4) return q;
+      const cx = near.reduce((s, b) => s + b.x, 0) / near.length, cz = near.reduce((s, b) => s + b.z, 0) / near.length, P = this.pillarAt(cx, cz);
+      if (!P) return q;
+      const [s, off] = sOf(r, P.x, P.z);
+      return off < MM(400) ? { ...q, s: Math.round(s) } : q;
+    }).filter((q, i, a) => i === 0 || q.s - a[i - 1].s > 300);
+  }
+
   // the peg / the hole / the post under the finger (on the screen, else on the plot) of those `ok` lets
   pick(p, e, ok, px = 70) {
     let best = null, bd = Infinity;
@@ -89,11 +129,13 @@ export class FenceWork {
     if (L === 'holes') {
       const P = this.pick(p, e, (q) => !q.hole);
       if (!P) { this.toast(this.fences.length ? 'Коснитесь колышка — там пробурят яму' : 'Сначала «1 · Разметка»: натяните шнур'); return true; }
+      if (this.withPillars(P.r)[P.i].pillar) { this.toast('Здесь кирпичный столб — яма и труба не нужны: прожилины крепят к закладным пластинам в кладке'); return true; }
+      if (this.concAt(P.r, P.q)) { this._anchor(P.r, P.i); return true; }
       this._drill(P.r, P.i); return true;
     }
     if (L === 'posts') {
       const P = this.pick(p, e, (q) => q.hole && !q.post);
-      if (!P) { this.toast(this.fences.some((r) => r.pegs.some((q) => q.hole && !q.post)) ? 'Коснитесь ямы — в неё опустят столб' : 'Сначала «2 · Ямы»: пробурите яму'); return true; }
+      if (!P) { this.toast(this.fences.some((r) => r.pegs.some((q) => q.hole && !q.post)) ? 'Коснитесь ямы — в неё опустят столб' : 'Сначала «2 · Ямы»: пробурите яму (на бетоне ленты — анкеры)'); return true; }
       this._post(P.r, P.i); return true;
     }
     if (L === 'rails') { this.drag = { L: 'rail' }; this._railMove(p, e); return true; }
@@ -133,7 +175,8 @@ export class FenceWork {
       this.view.setLiveFence(null);
       const pts = fenceLine(d.trail);
       if (!pts) { this.toast('Шнур короче метра — тяните длиннее'); return; }
-      const rec = { type: 'fence', v: 2, pts, g: +this._groundOf(pts).toFixed(6), step: this.step, H: this.H, kind: this.kind, col: this.col, pegs: pegsFor(pts, this.step), rails: [], filled: [], gates: [], done: {} };
+      const rec = { type: 'fence', v: 2, pts, g: +this._groundOf(pts).toFixed(6), step: this.step, H: this.H, kind: this.kind, col: this.col, pegs: this._onPillars(pts, pegsFor(pts, this.step)), rails: [], filled: [], gates: [], done: {} };
+      rec.pegs = this.withPillars(rec);
       this._save('fence-line', () => { this.sel = app.objects.add(rec).id; });
       const len = legs({ pts }).reduce((a, g) => a + g.L, 0);
       this.toast(EN() ? `String ${m1(len)} m pulled, ${rec.pegs.length} pegs every ${m1(this.step)} m. Leave room for a gate: drag a peg along the string («Шнур» off). Next «2 · Holes»`
@@ -228,9 +271,30 @@ export class FenceWork {
     });
   }
 
+  // ---- on concrete (the strip cast already): no hole — four holes for the anchors of the post's base plate ----
+  _anchor(r, i) {
+    const app = this.app, q = r.pegs[i], [x, z, ux, uz] = pegXZ(r, q.s), t = app.terrain, g = t.heightAt(x, z), yaw = Math.atan2(-uz, ux), key = 'F' + r.id, steps = [];
+    for (const [ax, az] of [[1, 1], [1, -1], [-1, -1], [-1, 1]]) {
+      const pt = new THREE.Vector3(x + (ax * Math.cos(yaw) + az * Math.sin(yaw)) * MM(70), g, z + (-ax * Math.sin(yaw) + az * Math.cos(yaw)) * MM(70));
+      steps.push([0.4, (u) => { if (u > 0.05) this.view.setAnim(key, { hidePeg: i }); app.handTools.set('drill', pt.clone().add(new THREE.Vector3(0, MM(20) * (1 - Math.min(1, u * 4)) - MM(70) * Math.max(0, Math.min(1, (u - 0.25) / 0.6)), 0)), new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0), u * 90); app.sfx?.engine?.('fit-drill', u < 0.9 ? 0.18 : 0, 11); if (Math.random() < 0.3) app.particles?.emit(pt.clone().setY(g + MM(10)), new THREE.Vector3((Math.random() - 0.5) * 0.05, 0.05, (Math.random() - 0.5) * 0.05), 0, MM(4), 0, 0, 9); }]);
+    }
+    new FitJob(app, {
+      parts: [], steps,
+      onAbort: () => { this.view.setAnim(key, null); app.sfx?.engine?.('fit-drill', 0); },
+      commit: () => {
+        app.sfx?.engine?.('fit-drill', 0); this.view.setAnim(key, null);
+        const cur = app.objects.get(r.id);
+        this._save('fence-anchor', () => app.objects.update(r.id, { pegs: cur.pegs.map((p, k) => (k === i ? { ...p, hole: 'anchor', g: +g.toFixed(6) } : p)) }));
+        this.toast(EN() ? 'Concrete here (the strip): four holes Ø 12 drilled for the anchors of the post\'s base plate. Next «3 · Posts»' : 'Здесь бетон ленты: под опорную пластину столба просверлены 4 отверстия Ø 12 под анкеры. Дальше «3 · Столбы»');
+      },
+    });
+  }
+
   // ---- a post: carried over its hole, lowered in onto the gravel at the bottom, plumbed with the level ----
   _post(r, i) {
-    const app = this.app, q = r.pegs[i], post = { sh: this.postSh, a: this.postA, h: this.H }, G = postMesh(r, q, post), [x, z] = pegXZ(r, q.s);
+    // (a hole the strip's concrete has filled already: the post goes on top of it, on a plate with anchors)
+    const app = this.app, t0 = app.terrain, q0 = r.pegs[i], [x0, z0] = pegXZ(r, q0.s), onConc = q0.hole !== 'anchor' && this.concAt(r, q0);
+    const q = onConc ? { ...q0, hole: 'anchor', g: +t0.heightAt(x0, z0).toFixed(6) } : q0, post = { sh: this.postSh, a: this.postA, h: this.H }, G = postMesh(r, q, post), [x, z] = pegXZ(r, q.s);
     const lift = MM(post.h + 600);
     new FitJob(app, {
       parts: [G],
@@ -242,9 +306,10 @@ export class FenceWork {
       ],
       commit: () => {
         const cur = app.objects.get(r.id);
-        this._save('fence-post', () => app.objects.update(r.id, { pegs: cur.pegs.map((p, k) => (k === i ? { ...p, post } : p)) }));
+        this._save('fence-post', () => app.objects.update(r.id, { pegs: cur.pegs.map((p, k) => (k === i ? { ...p, ...(onConc ? { hole: 'anchor', g: q.g } : {}), post } : p)) }));
         const name = post.sh === 'rd' ? `Ø ${post.a}` : `${post.a} × ${post.a}`, pipe = m1(post.h + HOLE.depth - 100);
-        this.toast(EN() ? `Post ${name}: ${m1(post.h)} m above the ground (a ${pipe} m pipe, ${m1(HOLE.depth - 100)} m of it in the hole), set plumb. Concrete it: «Concrete» → the hose or the bucket` : `Столб ${name}: ${m1(post.h)} м над землёй (труба ${pipe} м, ${m1(HOLE.depth - 100)} м в яме), выставлен по уровню. Забетонируйте: «Бетон» → шланг или ведро`);
+        if (q.hole === 'anchor') this.toast(EN() ? `Post ${name}, ${m1(post.h)} m, on its base plate: the anchors driven and tightened, plumb — no concrete needed. Next «4 · Rails»` : `Столб ${name}, ${m1(post.h)} м, на опорной пластине: анкеры забиты и затянуты, по уровню — бетон не нужен. Дальше «4 · Прожилины»`);
+        else this.toast(EN() ? `Post ${name}: ${m1(post.h)} m above the ground (a ${pipe} m pipe, ${m1(HOLE.depth - 100)} m of it in the hole), set plumb. Concrete it: «Concrete» → the hose or the bucket — or pour the strip foundation round it` : `Столб ${name}: ${m1(post.h)} м над землёй (труба ${pipe} м, ${m1(HOLE.depth - 100)} м в яме), выставлен по уровню. Забетонируйте: «Бетон» → шланг или ведро — или залейте ленту фундамента вокруг`);
       },
     });
   }
@@ -253,31 +318,42 @@ export class FenceWork {
   plan(p) {
     const N = this.near(p);
     if (!N) return null;
-    const r = N.r, L = this.railL, sec = this.railSec, posts = r.pegs.filter((q) => q.post);
-    if (posts.length < 2) return { r, q: null, why: 'Нужны хотя бы два столба' };
+    const r = N.r, L = this.railL, sec = this.railSec, pegs = this.withPillars(r), sup = pegs.filter((q) => q.post || q.pillar);
+    if (sup.length < 2) return { r, q: null, why: 'Нужны хотя бы два столба (стальных или кирпичных)' };
     // (the leg the finger is over: the rail stays in it — round a corner it is cut and welded again)
-    const lb = legs(r).find((g) => N.s >= g.s0 - 1 && N.s <= g.s0 + g.L + 1) || legs(r)[0], inLeg = posts.filter((q) => q.s >= lb.s0 - 1 && q.s <= lb.s0 + lb.L + 1);
+    const lb = legs(r).find((g) => N.s >= g.s0 - 1 && N.s <= g.s0 + g.L + 1) || legs(r)[0], inLeg = sup.filter((q) => q.s >= lb.s0 - 1 && q.s <= lb.s0 + lb.L + 1);
     if (inLeg.length < 2) return { r, q: null, why: 'На этой стороне забора меньше двух столбов' };
-    // (from the post nearest the rail's start — the finger is at its middle — to the farthest post it
-    // reaches; past the leg's last post: back from it)
-    const want = N.s - L / 2, A = inLeg.reduce((x, y) => (Math.abs(y.s - want) < Math.abs(x.s - want) ? y : x));
-    const fwd = inLeg.filter((q) => q.s > A.s + 1 && q.s <= A.s + L + 1), back = inLeg.filter((q) => q.s < A.s - 1 && q.s >= A.s - L - 1);
-    const a = fwd.length ? A.s : back.length ? back[0].s : A.s, b = fwd.length ? fwd.at(-1).s : A.s;
-    if (b - a < 1) return { r, q: { a: A.s - 200, b: A.s + 200, y: 300, sec }, why: 'Прожилину кладут от столба к столбу — до соседнего столба дальше её длины' };
-    // (each peg in it must have its post, concreted)
-    const mid = r.pegs.filter((q) => q.s >= a - 1 && q.s <= b + 1);
-    const h = Math.min(...mid.map((q) => q.post?.h || r.H)), rows = railRows(h), taken = (y) => (r.rails || []).some((o) => Math.abs(o.y - y) < 5 && o.a < b - 1 && o.b > a + 1);
-    const y = rows.find((v) => !taken(v));
-    // (the side of the string the rail is put against: where the finger is; on the line itself — the side
-    // the rails of this fence are on)
     const [lx, lz, ux, uz] = pegXZ(r, N.s), side0 = (r.rails || [])[0]?.side || 1, cr = (p.x - lx) * -uz + (p.z - lz) * ux;
     const side = Math.abs(cr) > MM(60) ? Math.sign(cr) : side0;
-    const q = { a, b, y: y ?? rows.at(-1), sec, side };
+    let a, b, q;
+    if (inLeg.some((x) => x.pillar)) {
+      // brick pillars: a rail between two of them (or a pillar and a post) on the line, face to face, its ends
+      // welded to the plates embedded in the masonry — the bay under the finger
+      const A = [...inLeg].reverse().find((x) => x.s <= N.s + 1) || inLeg[0], B = inLeg.find((x) => x.s > A.s + 1) || null;
+      if (!B) return { r, q: null, why: 'Нет второго столба по эту сторону' };
+      a = A.s; b = B.s;
+      const end = (x) => (x.pillar ? [x.pillar.w / 2, 'pillar'] : [x.post.a / 2, 'post']), [ha, ea] = end(A), [hb, eb] = end(B);
+      q = { a, b, sec, side, inline: true, ha, hb, ea, eb };
+    } else {
+      // (from the post nearest the rail's start — the finger is at its middle — to the farthest post it
+      // reaches; past the leg's last post: back from it)
+      const want = N.s - L / 2, A = inLeg.reduce((x, y) => (Math.abs(y.s - want) < Math.abs(x.s - want) ? y : x));
+      const fwd = inLeg.filter((x) => x.s > A.s + 1 && x.s <= A.s + L + 1), back = inLeg.filter((x) => x.s < A.s - 1 && x.s >= A.s - L - 1);
+      a = fwd.length ? A.s : back.length ? back[0].s : A.s; b = fwd.length ? fwd.at(-1).s : A.s;
+      if (b - a < 1) return { r, q: { a: A.s - 200, b: A.s + 200, y: 300, sec }, why: 'Прожилину кладут от столба к столбу — до соседнего столба дальше её длины' };
+      q = { a, b, sec, side };
+    }
+    // (each peg in it: its post standing — concreted / anchored — or a pillar)
+    const mid = pegs.filter((x) => x.s >= a - 1 && x.s <= b + 1);
+    const h = Math.min(...mid.map((x) => x.post?.h || x.pillar?.h || r.H)), rows = railRows(h), taken = (y) => (r.rails || []).some((o) => Math.abs(o.y - y) < 5 && o.a < b - 1 && o.b > a + 1);
+    const y = rows.find((v) => !taken(v));
+    q.y = y ?? rows.at(-1);
     let why = null;
-    if (mid.some((m) => !m.post)) why = 'Между столбами пустая яма — сначала столб';
-    else if (mid.some((m) => !(m.fill >= 1))) why = 'Столбы ещё не забетонированы — «Бетон» → шланг или ведро';
+    if (mid.some((m) => !m.post && !m.pillar)) why = 'Между столбами пустая яма — сначала столб';
+    else if (mid.some((m) => m.post && !this.fixed(r, m))) why = 'Столбы ещё не забетонированы — «Бетон» → шланг или ведро (или лента фундамента вокруг них)';
     else if (y == null) why = 'Здесь все ряды прожилин уже есть';
-    return { r, q, why };
+    else if (q.inline && (b - a) - q.ha - q.hb > L + 1) why = 'Между столбами шире длины прожилины';
+    return { r, q, why, pegs };
   }
   _railMove(p, e) {
     const d = this.drag, now = performance.now();
@@ -304,17 +380,26 @@ export class FenceWork {
     const app = this.app, R = railMesh(r, q, true, false), kit = welderKit(), beads = new THREE.Group(), sec = RAIL_SECS[q.sec], pa = postA(r);
     const y = r.g + MM(q.y), Y0 = R.position.y;
     const spots = [];
-    for (const p of r.pegs) if (p.post && p.s >= q.a - 1 && p.s <= q.b + 1) for (const dy of [sec.h / 2, -sec.h / 2]) spots.push({ s: p.s, dy, len: Math.min(p.post.a, 60) * 0.8 });
-    const prev = (r.rails || []).find((o) => Math.abs(o.y - q.y) < 5 && (o.side || 1) === (q.side || 1) && (Math.abs(o.b - q.a) < 2 || Math.abs(o.a - q.b) < 2));
-    if (prev) spots.push({ s: Math.abs(prev.b - q.a) < 2 ? q.a : q.b, dy: 0, len: sec.h, joint: true });
+    let prev = null;
+    if (q.inline) {
+      // (between pillars: each end welded all round to its plate — a seam up each side of the pipe's butt)
+      for (const [ex, ez] of railPlace(r, q).ends) for (const side of [1, -1]) {
+        const [, , ux, uz] = pegXZ(r, q.a + 1), nx = -uz, nz = ux;
+        spots.push({ pos: new THREE.Vector3(ex + nx * side * MM(sec.d / 2 + 2), y, ez + nz * side * MM(sec.d / 2 + 2)), len: sec.h, joint: true });
+      }
+    } else {
+      for (const p of r.pegs) if (p.post && p.s >= q.a - 1 && p.s <= q.b + 1) for (const dy of [sec.h / 2, -sec.h / 2]) spots.push({ s: p.s, dy, len: Math.min(p.post.a, 60) * 0.8 });
+      prev = (r.rails || []).find((o) => !o.inline && Math.abs(o.y - q.y) < 5 && (o.side || 1) === (q.side || 1) && (Math.abs(o.b - q.a) < 2 || Math.abs(o.a - q.b) < 2));
+      if (prev) spots.push({ s: Math.abs(prev.b - q.a) < 2 ? q.a : q.b, dy: 0, len: sec.h, joint: true });
+    }
     kit.visible = false;
     const hot = [], cool = (dt) => { for (const b of hot) b.material.emissiveIntensity = Math.max(0, b.material.emissiveIntensity - dt * 0.9); };
     let last = 0;
     const tick = (u, dur) => { const dt = Math.max(0, (u - last) * dur); last = u >= 1 ? 0 : u; return dt; };
     const steps = [[0.7, (u) => { R.position.y = Y0 + MM(400) * (1 - ease(u)); if (u >= 1) app.sfx?.stab?.(); }]];
     for (const sp of spots) {
-      const [x, z, ux, uz] = pegXZ(r, sp.s), nx = -uz * (q.side || 1), nz = ux * (q.side || 1), yaw = Math.atan2(-uz, ux);
-      const pos = new THREE.Vector3(x + nx * MM(pa / 2 + (sp.joint ? sec.d : sec.d * 0.35)), y + MM(sp.dy), z + nz * MM(pa / 2 + (sp.joint ? sec.d : sec.d * 0.35)));
+      const [x, z, ux, uz] = pegXZ(r, sp.s ?? q.a + 1), nx = -uz * (q.side || 1), nz = ux * (q.side || 1), yaw = Math.atan2(-uz, ux);
+      const pos = sp.pos || new THREE.Vector3(x + nx * MM(pa / 2 + (sp.joint ? sec.d : sec.d * 0.35)), y + MM(sp.dy), z + nz * MM(pa / 2 + (sp.joint ? sec.d : sec.d * 0.35)));
       const b = hotBead(MM(sp.len), 0); b.position.copy(pos); b.rotation.y = sp.joint ? yaw + Math.PI / 2 : yaw; if (sp.joint) b.rotation.z = Math.PI / 2; b.scale.set(0.001, 1, 1); beads.add(b);
       const dur = sp.joint ? 1.1 : 0.8;
       steps.push([dur, (u) => {
@@ -337,8 +422,8 @@ export class FenceWork {
       commit: () => {
         app.sfx?.engine?.('fit-drill', 0);
         const cur = app.objects.get(r.id);
-        this._save('fence-rail', () => app.objects.update(r.id, { rails: [...(cur.rails || []), q] }));
-        this.toast(EN() ? `Rail ${sec.name}, ${m1(q.b - q.a)} m welded to ${spots.filter((s) => !s.joint).length / 2} posts${prev ? ' and to the rail before it' : ''}` : `Прожилина ${sec.name}, ${m1(q.b - q.a)} м приварена к ${spots.filter((s) => !s.joint).length / 2} столбам${prev ? ' и к соседней прожилине' : ''}`);
+        this._save('fence-rail', () => app.objects.update(r.id, { rails: [...(cur.rails || []), q], pegs: this.withPillars(cur) }));
+        this.toast(EN() ? `Rail ${sec.name}, ${m1(q.b - q.a)} m welded ${q.inline ? 'to the pillars\' embedded plates' : `to ${spots.filter((s) => !s.joint).length / 2} posts${prev ? ' and to the rail before it' : ''}`}` : `Прожилина ${sec.name}, ${m1(q.b - q.a)} м приварена ${q.inline ? 'к закладным пластинам столбов' : `к ${spots.filter((s) => !s.joint).length / 2} столбам${prev ? ' и к соседней прожилине' : ''}`}`);
       },
     });
   }
@@ -381,7 +466,8 @@ export class FenceWork {
     }
     const b = bays2(r).find((q) => s >= q.a.s && s <= q.b.s);
     if (!b) { this.toast('Коснитесь пролёта забора'); return; }
-    if (!(b.a.post && b.b.post) || !(b.a.fill >= 1 && b.b.fill >= 1)) { this.toast('Ворота вешают на забетонированные столбы с обеих сторон пролёта'); return; }
+    const P2 = this.withPillars(r), A2 = P2[b.i - 1], B2 = P2[b.i], holds = (x) => x.pillar || this.fixed(r, x);
+    if (!holds(A2) || !holds(B2)) { this.toast('Ворота вешают на стоящие столбы с обеих сторон пролёта: забетонированные, на анкерах или кирпичные'); return; }
     if (b.railed || (r.rails || []).some((q) => q.a < b.b.s - 1 && q.b > b.a.s + 1)) { this.toast('В этом пролёте прожилины — ворота и калитки ставят в пролёт без них (его оставляют при разметке)'); return; }
     const T = GATES[this.gateType], [lo, hi] = GATE_W[this.gateType];
     if (b.L < lo || b.L > hi) { this.toast(EN() ? `The bay is ${m1(b.L)} m: ${T.name} takes ${m1(lo)} … ${m1(hi)} m — move the pegs at the setting-out` : `Пролёт ${m1(b.L)} м: ${T.name.toLowerCase()} — от ${m1(lo)} до ${m1(hi)} м. Ширину задают колышками при разметке`); return; }
@@ -411,6 +497,6 @@ export class FenceWork {
 // the pieces of the fill in a bay (for the length of the animation)
 function piecesIn(kind, r, b) {
   const H = Math.min(b.a.post?.h || r.H, b.b.post?.h || r.H);
-  return kind === 'slat' ? Math.floor((H - 50) / 150) : kind === 'louvre' ? Math.floor((H - 100) / 70) : kind === 'picket' ? Math.floor(b.L / 150) : 1;
+  return kind === 'slat' ? Math.floor((H - 50) / 150) : kind === 'louvre' ? Math.floor((H - 100) / 70) : kind === 'picket' ? Math.floor(b.L / 150) : kind === 'prof' ? Math.ceil(b.L / 1100) : 1;
 }
 void FENCE_COLS;

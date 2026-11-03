@@ -23,6 +23,9 @@ export const FENCE_KINDS = {
   louvre: { name: 'Жалюзи', step: 2500, cols: ['anth', 'black', 'brown'] },
   mesh: { name: '3D-панели', step: 2560, cols: ['anth', 'green'] },
   chain: { name: 'Сетка-рабица', step: 2500, cols: ['galv', 'green'] },
+  // corrugated steel sheet C20 (trapezoid 20 mm deep, 137,5 pitch, 1150 wide — 1100 laid with the overlap),
+  // painted on its face, grey primer on its back, screwed to the rails on every other trough
+  prof: { name: 'Профлист С20', step: 2500, cols: ['grey7024', 'brown', 'green', 'wine', 'blue', 'ivory', 'white', 'galv'] },
 };
 export const FENCE_HEIGHTS = [1200, 1500, 1800, 2000];
 // the colours: the WPC boards' photographs; powder coats (RAL); galvanised
@@ -30,6 +33,7 @@ export const FENCE_COLS = {
   graphite: ['Графит', 'deck/graphite', 0xb8b8b8], teak: ['Тик', 'deck/teak', 0xd9c7b6], grey: ['Серый', 'deck/grey', 0xd8d8d8], walnut: ['Орех', 'deck/walnut', 0xffffff],
   anth: ['RAL 7016 графит', null, 0x383e42], green: ['RAL 6005 зелёный', null, 0x114232], brown: ['RAL 8017 шоколад', null, 0x45322e], white: ['RAL 9016 белый', null, 0xeef0ec],
   black: ['RAL 9005 чёрный', null, 0x151617], galv: ['Оцинковка', null, 0xa9adb0],
+  grey7024: ['RAL 7024 графит', null, 0x45494e], wine: ['RAL 3005 вишня', null, 0x5a1f26], blue: ['RAL 5005 синий', null, 0x1d3b70], ivory: ['RAL 1014 слоновая кость', null, 0xd9c49a],
 };
 // the gates and the wickets: the width, how they open, the shape of the top
 export const GATES = {
@@ -186,16 +190,18 @@ export function fencePosts(r, U) {
 // posts' size (mm), H }
 export function fenceFill(r, U, opt = null) {
   const G = new THREE.Group(), kind = kindOf(r), col = colOf(r), B = opt ? opt.bays : baysOf(r).filter((b) => b.gate < 0), H = opt?.H || r.H, m = fillMat(kind, col), rail = metal((FENCE_COLS[col] || FENCE_COLS.anth)[2]);
-  const L = { rails: [], fill: [], wire: [] };
+  const L = { rails: [], fill: [], wire: [], sheets: [] };
   let ord = 0;
   const SD = opt?.side || 1, P0 = (opt ? opt.off0 : FENCE.post / 2) * SD, PA = opt ? opt.pa : FENCE.post, o = (b) => (!opt || opt.fresh.has(b.mid) ? ord++ : -1);
+  // (from post to post over their faces; between brick pillars — inline — from face to face)
+  const SPAN = (b) => b.L + (opt?.inline ? -1 : 1) * MM(PA);
   for (const b of B) {
     const yaw = yawOf(b.a, b.b), cx = (b.a[0] + b.b[0]) / 2, cz = (b.a[1] + b.b[1]) / 2, ux = (b.b[0] - b.a[0]) / b.L, uz = (b.b[1] - b.a[1]) / b.L, nx = -uz, nz = ux;
     const span = (len, y, M) => { M.multiply(new THREE.Matrix4().makeScale(len, 1, 1)); return M; };
     const inner = b.L - MM(PA);
     if (kind === 'slat') {
       const rows = Math.floor((H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)), off = MM(P0 + SD * FENCE.slatT / 2);
-      for (let k = 0; k < rows; k++) L.fill.push([span(b.L + MM(PA), 0, at(cx + nx * off, r.g + MM(FENCE.gap + k * (FENCE.slat + FENCE.slatGap) + FENCE.slat / 2), cz + nz * off, yaw)), o(b)]);
+      for (let k = 0; k < rows; k++) L.fill.push([span(SPAN(b), 0, at(cx + nx * off, r.g + MM(FENCE.gap + k * (FENCE.slat + FENCE.slatGap) + FENCE.slat / 2), cz + nz * off, yaw)), o(b)]);
     } else if (kind === 'picket') {
       // two rails 40 × 20 on the posts' face, the pickets 120 wide 30 apart screwed to them
       const off = MM(FENCE.post / 2 + 10);
@@ -208,6 +214,10 @@ export function fenceFill(r, U, opt = null) {
       for (let k = 0; k < n; k++) { const M = at(cx, r.g + MM(FENCE.gap + 35 + k * 70), cz, yaw); M.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 4)); M.multiply(new THREE.Matrix4().makeScale(inner, 1, 1)); L.fill.push([M, o(b)]); }
     } else if (kind === 'mesh') {
       const M = at(cx, r.g + MM(FENCE.gap), cz, yaw); M.multiply(new THREE.Matrix4().makeScale(inner, 1, 1)); L.fill.push([M, o(b)]);
+    } else if (kind === 'prof') {
+      // the sheets over the bay from post to post (one wave over the next sheet), their back on the rails
+      const span = SPAN(b), n = Math.max(1, Math.ceil(span / MM(PROF.lay))), fresh = !opt || opt.fresh.has(b.mid), off = MM(P0);
+      for (let k = 0; k < n; k++) L.sheets.push({ x0: -span / 2 + k * MM(PROF.lay), w: Math.min(MM(PROF.w), span - k * MM(PROF.lay) + MM(PROF.w - PROF.lay)), cx: cx + nx * off, cz: cz + nz * off, yaw, sd: SD, ord: fresh ? ord++ : -1, rows: opt?.rows || [300, H - 300] });
     } else {
       // chain-link: three tension wires, the mesh stretched over them
       const k = o(b);
@@ -219,12 +229,94 @@ export function fenceFill(r, U, opt = null) {
   else if (kind === 'picket') { G.add(pieces(box(1, MM(20), MM(40)), rail, L.rails, U.fill)); G.add(pieces(box(MM(120), MM(H - 100), MM(8)), m, L.fill, U.fill)); }
   else if (kind === 'louvre') G.add(pieces(box(1, MM(100), MM(3)), m, L.fill, U.fill));
   else if (kind === 'mesh') G.add(meshPanel(H, m, L.fill, U.fill));
+  else if (kind === 'prof') G.add(profSheets(r.g, H, col, L.sheets, U.fill));
   else {
     // (the mesh's cells 55 mm: the texture repeated over the bay — the bays of a fence are near enough alike)
     const avg = B.length ? B.reduce((s, b) => s + b.L, 0) / B.length / S : 2500, t = chainTex().clone(); t.needsUpdate = true; t.repeat.set(avg / 55, (H - 40) / 55);
     const cm = m.clone(); cm.alphaMap = t;
     G.add(pieces(box(1, MM(4), MM(4)), metal(0x8e9396, 0.35), L.wire, U.fill)); G.add(chainPlane(H, cm, L.fill, U.fill));
   }
+  return G;
+}
+// ---- the corrugated sheet (профлист С20) ----
+export const PROF = { pitch: 137.5, depth: 20, bot: 75, top: 36.5, w: 1150, lay: 1100, t: 0.5 };
+// the profile across a sheet w wide (model units): [x, z] — the troughs on z = 0 (against the rails), the ribs
+// out at the depth
+function profPts(w) {
+  const P = MM(PROF.pitch), b = MM(PROF.bot), tp = MM(PROF.top), sl = (P - b - tp) / 2, d = MM(PROF.depth), out = [];
+  for (let x0 = 0; x0 < w - 1e-9; x0 += P) for (const [dx, z] of [[0, 0], [b, 0], [b + sl, d], [b + sl + tp, d]]) if (x0 + dx <= w + 1e-9) out.push([x0 + dx, z]);
+  const last = out.at(-1); if (last[0] < w - 1e-7) out.push([w, last[1]]);
+  return out;
+}
+// a sheet's surface from y0 to y1, x from x0 (model units, local: x along, z out): its painted face and,
+// a half millimetre behind it, the primed back (group 0 / 1), with uv along (for the tiny scratches)
+export function profGeo(x0, w, y0, y1, ord = 0) {
+  const pts = profPts(w), pos = [], nor = [], idx = [[], []], t = MM(PROF.t);
+  const push = (x, y, z, nx, nz) => { pos.push(x, y, z); nor.push(nx, 0, nz); return pos.length / 3 - 1; };
+  for (let i = 1; i < pts.length; i++) {
+    const [xa, za] = pts[i - 1], [xb, zb] = pts[i], dx = xb - xa, dz = zb - za, l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l;
+    // (the face looks out, +z; the back -z, half a millimetre behind)
+    const a = push(x0 + xa, y0, za, nx, nz), b = push(x0 + xb, y0, zb, nx, nz), c = push(x0 + xb, y1, zb, nx, nz), d = push(x0 + xa, y1, za, nx, nz);
+    idx[0].push(a, b, c, a, c, d);
+    const e = push(x0 + xa, y0, za - t, -nx, -nz), f = push(x0 + xb, y0, zb - t, -nx, -nz), g = push(x0 + xb, y1, zb - t, -nx, -nz), h = push(x0 + xa, y1, za - t, -nx, -nz);
+    idx[1].push(e, g, f, e, h, g);
+  }
+  const G = new THREE.BufferGeometry();
+  G.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); G.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  G.setAttribute('aOrd', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3).fill(ord), 1));
+  G.setIndex([...idx[0], ...idx[1]]); G.addGroup(0, idx[0].length, 0); G.addGroup(idx[0].length, idx[1].length, 1);
+  return G;
+}
+function profSheets(g, H, col, list, U) {
+  const C = FENCE_COLS[col] || FENCE_COLS.grey7024, G = new THREE.Group();
+  const face = counted(new THREE.MeshStandardMaterial({ color: C[2], roughness: col === 'galv' ? 0.32 : 0.42, metalness: col === 'galv' ? 0.85 : 0.35 }), U);
+  const back = counted(new THREE.MeshStandardMaterial({ color: 0x9da2a6, roughness: 0.6, metalness: 0.25 }), U);
+  const screw = counted(new THREE.MeshStandardMaterial({ color: C[2], roughness: 0.4, metalness: 0.4 }), U), washer = counted(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.8 }), U);
+  const sheets = [], heads = [], rings = [], y0 = MM(FENCE.gap), y1 = MM(H - 20), d = MM(PROF.depth);
+  for (const q of list) {
+    const geo = profGeo(q.x0, q.w, g + y0, g + y1, q.ord);
+    // (on the other side: turned round — the ribs still out, away from the rails)
+    if (q.sd < 0) { geo.applyMatrix4(new THREE.Matrix4().makeScale(-1, 1, 1)); const ix = geo.index.array; for (let i = 0; i < ix.length; i += 3) { const t2 = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t2; } const nr = geo.attributes.normal; for (let i = 0; i < nr.count; i++) nr.setX(i, -nr.getX(i)); }
+    geo.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(q.cx, 0, q.cz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), q.yaw + (q.sd < 0 ? Math.PI : 0)), new THREE.Vector3(1, 1, 1)));
+    sheets.push(geo);
+    // the self-tapping screws with their washers: through every other trough, on each rail
+    const P = MM(PROF.pitch);
+    for (const y of q.rows) for (let x = q.x0 + MM(PROF.bot) / 2; x < q.x0 + q.w; x += 2 * P) {
+      const h = new THREE.CylinderGeometry(MM(4.5), MM(4.5), MM(6), 6), w = new THREE.CylinderGeometry(MM(7), MM(7), MM(2), 10);
+      for (const [gg, z, list2] of [[h, MM(4), heads], [w, MM(1), rings]]) {
+        gg.rotateX(Math.PI / 2); gg.translate(q.sd < 0 ? -x : x, g + MM(y), z);
+        gg.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(q.cx, 0, q.cz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), q.yaw + (q.sd < 0 ? Math.PI : 0)), new THREE.Vector3(1, 1, 1)));
+        gg.deleteAttribute('uv'); gg.setAttribute('aOrd', new THREE.Float32BufferAttribute(new Float32Array(gg.attributes.position.count).fill(q.ord), 1));
+        list2.push(gg.toNonIndexed());
+      }
+    }
+  }
+  void d;
+  if (!sheets.length) return G;
+  const S1 = new THREE.Mesh(mergeIndexed(sheets), [face, back]); S1.castShadow = S1.receiveShadow = true; G.add(S1);
+  if (heads.length) { G.add(new THREE.Mesh(mergeFlat(heads), screw), new THREE.Mesh(mergeFlat(rings), washer)); }
+  return G;
+}
+// merge indexed geometries keeping their two groups (face / back) together
+function mergeIndexed(list) {
+  const pos = [], nor = [], ord = [], i0 = [], i1 = []; let base = 0;
+  for (const g of list) {
+    const p = g.attributes.position.array, n = g.attributes.normal.array, o = g.attributes.aOrd.array, ix = g.index.array, gr = g.groups;
+    for (let k = 0; k < p.length; k++) { pos.push(p[k]); nor.push(n[k]); }
+    for (let k = 0; k < o.length; k++) ord.push(o[k]);
+    for (let k = gr[0].start; k < gr[0].start + gr[0].count; k++) i0.push(ix[k] + base);
+    for (let k = gr[1].start; k < gr[1].start + gr[1].count; k++) i1.push(ix[k] + base);
+    base += p.length / 3;
+  }
+  const G = new THREE.BufferGeometry();
+  G.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); G.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); G.setAttribute('aOrd', new THREE.Float32BufferAttribute(ord, 1));
+  G.setIndex([...i0, ...i1]); G.addGroup(0, i0.length, 0); G.addGroup(i0.length, i1.length, 1);
+  return G;
+}
+function mergeFlat(list) {
+  const pos = [], nor = [], ord = [];
+  for (const g of list) { pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); ord.push(...g.attributes.aOrd.array); }
+  const G = new THREE.BufferGeometry(); G.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); G.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); G.setAttribute('aOrd', new THREE.Float32BufferAttribute(ord, 1));
   return G;
 }
 // a welded panel (unit length along x): wires Ø5 at 200 × 50, three V-folds — as one geometry, instanced per bay
@@ -248,7 +340,7 @@ function mergeBoxes(list) {
   return g;
 }
 // the number of pieces of the fill (for the animation's count)
-export const fillCount = (r) => { const k = kindOf(r), B = baysOf(r).filter((b) => b.gate < 0), H = r.H; return B.length * (k === 'slat' ? Math.floor((H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)) : k === 'louvre' ? Math.floor((H - 2 * FENCE.gap) / 70) : 1) + (k === 'picket' ? B.reduce((s, b) => s + 2 + Math.floor((b.L / S - FENCE.post) / 150), 0) - B.length : 0); };
+export const fillCount = (r) => { const k = kindOf(r), B = baysOf(r).filter((b) => b.gate < 0), H = r.H; return B.length * (k === 'slat' ? Math.floor((H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)) : k === 'louvre' ? Math.floor((H - 2 * FENCE.gap) / 70) : k === 'prof' ? 3 : 1) + (k === 'picket' ? B.reduce((s, b) => s + 2 + Math.floor((b.L / S - FENCE.post) / 150), 0) - B.length : 0); };
 
 // ---- the gates ----------------------------------------------------------------------------------------
 // a leaf (local: x along from its hinge 0 … w, y up from the ground, z across): a steel frame 60 × 40,
@@ -271,6 +363,11 @@ function leaf(kind, col, w, H, arch = 0, opts = {}) {
     for (let k = 0; k < nn; k++) { const x = x0 + (inner - (nn - 1) * 150) / 2 + k * 150, h = top(x) - y0 - t; add(box(MM(120), MM(h), MM(8)), fill, x, y0 + t / 2 + h / 2, 22); }
   } else if (kind === 'louvre') {
     for (let y = y0 + t / 2 + 40; y < Math.min(top(0), top(w)) - t / 2 - 30; y += 70) { const o = add(box(MM(inner), MM(100), MM(3)), fill, (x0 + x1) / 2, y); o.rotation.x = Math.PI / 4; }
+  } else if (kind === 'prof') {
+    const h0 = y0 + t / 2, h1 = Math.min(top(0), top(w)) - t / 2, geo = profGeo(MM(x0), MM(inner), MM(h0), MM(h1));
+    geo.deleteAttribute('aOrd');
+    const C = FENCE_COLS[col] || FENCE_COLS.grey7024, o = new THREE.Mesh(geo, [new THREE.MeshStandardMaterial({ color: C[2], roughness: 0.42, metalness: 0.35 }), new THREE.MeshStandardMaterial({ color: 0x9da2a6, roughness: 0.6, metalness: 0.25 })]);
+    o.position.z = MM(22); o.castShadow = true; G.add(o);
   } else if (kind === 'mesh') {
     for (let x = x0; x <= x1 + 1; x += 50 * 4) { const h = top(x) - y0 - t; add(box(MM(5), MM(h), MM(5)), fill, x, y0 + t / 2 + h / 2); }
     for (let y = y0 + t; y < Math.min(top(0), top(w)) - t; y += 200) add(box(MM(inner), MM(5), MM(5)), fill, (x0 + x1) / 2, y);
