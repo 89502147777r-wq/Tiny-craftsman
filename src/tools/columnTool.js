@@ -317,7 +317,7 @@ export class ColumnWork {
     const tail = EN() ? (alone ? (r.anc ? ` Its bars go ${r.anc} mm down into the foundation's cage, the feet bent out and wired to it. The formwork once the foundation is cast` : ' Next “Formwork” round it') : ' Next “Concrete” — the hose or the bucket')
       : (alone ? (r.anc ? ` Выпуски — на ${r.anc} мм в каркас фундамента, лапками по его нижним стержням, привязаны проволокой. Опалубку — после бетона фундамента` : ' Дальше «Опалубка» вокруг него') : ' Дальше «Бетон» — шланг или ведро');
     const hole = alone && (sec.pile || r.bored) ? (EN() ? `The hole Ø${holeR(r) * 2} bored ${Math.round(r.dep / S)} mm deep, the cage lowered into it. ` : `Яма Ø${holeR(r) * 2} на ${Math.round(r.dep / S)} мм пробурена, каркас опущен в неё. `) : '';
-    this.toast(hole + (EN() ? `Cage: ${sec.bars} × Ø${sec.d}, stirrups Ø6 every 200 mm, spacers — 30 mm cover; starter bars 500 mm on top.${tail}` : `Каркас: ${sec.bars} × Ø${sec.d}, хомуты Ø6 через 200 мм, фиксаторы — защитный слой 30 мм; сверху выпуски 500 мм.${tail}`));
+    this.toast(hole + (EN() ? `Cage: ${sec.bars} × Ø${sec.d}, stirrups Ø6 every 200 mm, spacers — 30 mm cover; starter bars 150 mm on top — into the slab's thickness, not out of it.${tail}` : `Каркас: ${sec.bars} × Ø${sec.d}, хомуты Ø6 через 200 мм, фиксаторы — защитный слой 30 мм; сверху выпуски 150 мм — в толщу перекрытия, не наружу.${tail}`));
   }
   // into a formwork / round nothing yet, on a column standing
   _cage(r) {

@@ -61,7 +61,10 @@ export const PILE_DEP = 2000;
 export const BORE_DEP = 1200;
 export const holeR = (r) => { const q = secOf(r); return q.round ? q.a / 2 : Math.round(q.a * 0.72); };   // mm
 export const bored = (r) => secOf(r).pile || !!r.bored;
-const STARTER = 500, COVER = 30, STEP = 200;
+// the starter bars on past the top: into the slab cast on it (200 thick) less its top cover (40) — they end
+// inside its concrete, never out through it; under masonry laid on it: cut off flush
+export const STARTER = 150;   // (+ the bar's own half: its end ≥ 40 mm under the slab's top)
+const COVER = 30, STEP = 200;
 export const courseH = (course, n) => { const c = COURSES[course] || COURSES.block; return c.bed0 + n * c.H + (n - 1) * c.bed; };   // mm
 // the axis at a height: the middle of the column's section at y (it leans by tilt)
 export const axisAt = (r, y) => [r.x + r.tilt[0] * (y - r.y0), r.z + r.tilt[1] * (y - r.y0)];
@@ -113,7 +116,7 @@ function rod(a, b, r, seg = 6) {
 // nothing is on it yet), the stirrups every 200, the plastic spacer wheels (the cover) on the bars
 export function cageParts(r) {
   const sec = secOf(r), half = MM(sec.a / 2 - COVER - sec.d / 2), d = MM(sec.d), y0 = r.anc ? r.y0 - MM(r.anc) : colBot(r) + MM(50), y1 = colTop(r);
-  const ax = new THREE.Vector3(r.tilt[0], 1, r.tilt[1]).normalize(), st = MM(r.starter ?? STARTER) * ax.y;   // (the bars on along the axis)
+  const ax = new THREE.Vector3(r.tilt[0], 1, r.tilt[1]).normalize(), st = MM(r.starter ?? STARTER) * ax.y;   // (the bars on along the axis; 0: cut flush)
   const offs = sec.round ? Array.from({ length: sec.bars }, (_, k) => [Math.cos(k / sec.bars * Math.PI * 2) * half, Math.sin(k / sec.bars * Math.PI * 2) * half])
     : sec.bars === 8 ? [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]].map(([a, b]) => [a * half, b * half]) : [[-half, -half], [half, -half], [half, half], [-half, half]];
   const gs = [], pl = [];
@@ -362,7 +365,7 @@ export class ColumnView {
     if (this._covV !== v || this._covO !== objects) { this._covV = v; this._covO = objects; this._cov = new Map(); for (const r of all) if (castDone(r)) this._cov.set(r.id, covered(r, objects)); }
     for (const r0 of all) {
       const r = this.patch.has(r0.id) ? { ...r0, ...this.patch.get(r0.id) } : r0;
-      const lv = this.live.get(r.id), fill = lv ? lv.fill : fillOf(r), st = this._cov.get(r.id) ? 150 : STARTER;
+      const lv = this.live.get(r.id), fill = lv ? lv.fill : fillOf(r), st = this._cov.get(r.id) === 'unit' ? 0 : STARTER;
       // (the concrete's level apart: while it is poured only the concrete is made again)
       const key = JSON.stringify([r.x, r.z, r.y0, r.h, r.dep, r.sec, r.a, r.anc, r.tilt, r.stage, cageOn(r), r.pourT, fill > 0, st]), fk = Math.round(fill * 200);
       seen.add(r.id);
@@ -403,8 +406,8 @@ export class ColumnView {
 // a slab cast on the column's top, or masonry laid on it
 function covered(r, objects) {
   const top = colTop(r), [x, z] = axisAt(r, top), near = MM(secOf(r).a / 2);
-  for (const b of objects.all('belt')) if (b.kind === 'slab' && Math.abs(b.top - top) < MM(40) && b.fill > 0.05 && beltContains(b, x, z)) return true;
-  for (const u of objects.all('unit')) if (u.p && u.s && Math.abs(u.p[1] - u.s[1] / 2 - top) < MM(40) && Math.abs(u.p[0] - x) < u.s[0] / 2 + near && Math.abs(u.p[2] - z) < u.s[0] / 2 + near) return true;
+  for (const b of objects.all('belt')) if (b.kind === 'slab' && Math.abs(b.top - top) < MM(40) && beltContains(b, x, z)) return 'slab';
+  for (const u of objects.all('unit')) if (u.p && u.s && Math.abs(u.p[1] - u.s[1] / 2 - top) < MM(40) && Math.abs(u.p[0] - x) < u.s[0] / 2 + near && Math.abs(u.p[2] - z) < u.s[0] / 2 + near) return 'unit';
   return false;
 }
 

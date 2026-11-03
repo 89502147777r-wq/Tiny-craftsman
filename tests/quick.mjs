@@ -612,6 +612,9 @@ console.log('—', sec());
     Object.assign(tc.settings, { wallKind: 'slab', slabCant: 0 });
     wt.carry = { kind: 'slab', tray: true, snap: null }; wt._carryMove(tp, e(tp)); wt._carryDrop(); run();
     o.slab = tc.objects.all('belt').filter((b) => b.kind === 'slab').map((b) => b.piles).join();
+    // the piles' starter bars end inside the slab cast on them (200 thick, 40 cover over them)
+    { const CM = await import('/src/world/columns.js'), T3 = await import('three'), sl = tc.objects.all('belt').find((b) => b.kind === 'slab'), bb = new T3.Box3();
+      o.starter = Math.max(...cols().slice(0, 3).map((r) => { const g = CM.cageParts({ ...r, starter: CM.STARTER }).rebar; g.computeBoundingBox(); return Math.round((g.boundingBox.max.y - (sl.top + sl.H)) * 10465); })); void bb; }
     // either order: a pile's cage first (bored, lowered in), the formwork round it after
     tc.setTool('column'); Object.assign(tc.settings, { colType: 'pile', colA: 300, colStage: 'cage', colN: 2 });
     const p4 = G(0.3, -0.25); col.down(p4, e(p4)); col.move(p4, e(p4)); col.up(); run();
@@ -642,7 +645,7 @@ console.log('—', sec());
   });
   check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
   check('columns: three piles bored, their two-half formwork set; a column not on the bare soil; the cages carried in', c.formed === '2false,2false,2false' && c.sqOnSoil && c.caged, JSON.stringify(c));
-  check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3', JSON.stringify(c));
+  check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3' && c.starter < -30, JSON.stringify(c));
   check('columns: either order (a cage first, the formwork round it), tied into a foundation cage (no formwork till it is cast), the sliders resize the picked one', c.cageFirst === '0true' && c.formAfter === 2 && c.preview === 400 && c.resized === '400,4' && c.tied > 250 && c.tied < 450 && c.tiedStage === '0true' && c.tiedNoForm && c.boredCage === 'true|1200|true' && c.landing, JSON.stringify(c));
   check('black topsoil: delivered (1 m³), the soil shader builds', Math.abs(c.black - 1) < 0.05 && c.shader === 0, JSON.stringify(c));
   check('columns: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
