@@ -56,6 +56,11 @@ class PostChannel {
 // concrete in it (mm from the bottom of the hole / the foot) rising by the litres poured in; it
 // keeps level whatever comes in (no flow along it). Written into the record: fill (0…1), the time
 // of the first concrete; full — cast (stage 3).
+export function columnLanding(r, level) {
+  const top = colTop(r), [x, z] = axisAt(r, top), t = Math.hypot(r.tilt[0], r.tilt[1]), R = secOf(r).a / 2 / 1000 / MODEL_SCALE * 0.9;
+  const yHit = t > 1e-6 ? top - R / t : -Infinity;
+  return new THREE.Vector3(x, Math.min(top, Math.max(level, yHit)), z);
+}
 class ColumnChannel {
   constructor(app, r) {
     const sec = secOf(r), a = sec.a / 1000;
@@ -71,7 +76,10 @@ class ColumnChannel {
   pour(i, l) { this.h[0] = Math.min(this.cap, this.h[0] + l / this.area); }
   step() { return 0; }
   show(view) { view.columns.live.set(this.r.id, { fill: this.h[0] / this.cap, t: this.r.pourT ?? this.t0 ?? (this.t0 = this.app.clock) }); }
-  point() { const y = colBot(this.r) + this.h[0] / 1000 / MODEL_SCALE, [x, z] = axisAt(this.r, y); return new THREE.Vector3(x, y, z); }
+  // where the stream lands: straight down from the middle of the opening at the top — on the concrete,
+  // or (a leaning column, its level far down) on the inner face of its low side, where the vertical
+  // from the opening leaves the section; from there the concrete runs down inside
+  point() { return columnLanding(this.r, colBot(this.r) + this.h[0] / 1000 / MODEL_SCALE); }
   write(app) {
     app.wallView.columns.live.delete(this.r.id);
     const hose = app.concreteTools?.hose; if (hose && hose.ch === this) hose._colPour = true;
@@ -285,8 +293,9 @@ export class HoseTool extends ConcreteTool {
     // masonry of a house at each move of the finger held the stream back)
     const now = performance.now();
     if (now - (this._uAtT || 0) > 50) { this._uAtT = now; this.uT = this._uAt(e, true); this._uLast = this.uT ? this._uHit.clone() : null; }
-    else if (this.uT && this._uLast) {
-      // (in between: the same thing, the point on its top plane under the finger)
+    else if (this.uT && this._uLast && this.uT.type !== 'column' && this.uT.type !== 'fpost') {
+      // (in between: the same thing, the point on its top plane under the finger; a column / a post's
+      // hole: the hose stays over its opening)
       _ray.setFromCamera(this.app.gestures.ndc(e.clientX, e.clientY), this.app.camera);
       const q = _ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -this._uLast.y), new THREE.Vector3());
       if (q) this._uHit = q;
