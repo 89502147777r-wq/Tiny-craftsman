@@ -19,6 +19,7 @@ import { FacadeWork } from './facadeTool.js';
 import { BlindWork } from './blindTool.js';
 import { PoolWork, isPoolBelt } from './poolTool.js';
 import { LandWork } from './landTool.js';
+import { FenceWork } from './fenceTool.js';
 import { ExtWork } from './extTool.js';
 import { ColumnWork } from './columnTool.js';
 import { PitchedWork, RoofWindowWork } from './pitchedTool.js';
@@ -68,6 +69,10 @@ export class WallTool {
     this.blind = new BlindWork(app);
     this.pool = new PoolWork(app);
     this.land = new LandWork(app);
+    this.fence = new FenceWork(app);
+    // «Шнур» (the fence's setting-out): on — the finger pulls a new string; off — the pegs are moved
+    this.cordBtn = typeof document !== 'undefined' ? document.getElementById('fence-cord') : null;
+    this.cordBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.fence.cord = !this.fence.cord; app.ui.toast(this.fence.cord ? 'Шнур: тяните пальцем разметку забора' : 'Шнур убран: колышки двигают пальцем вдоль шнура'); app.ui.refresh(); });
     this.ext = new ExtWork(app);
     this.col = new ColumnWork(app);
     this.proof = new PitchedWork(app);
@@ -90,7 +95,12 @@ export class WallTool {
         e.preventDefault(); e.stopPropagation();
         // «Колонны и сваи»: the formwork / the cage taken from the tray and carried to its place
         if (app.tool === 'column') {
-          if (this.col.trayDown(app.gestures.ground(e.clientX, e.clientY), e)) { try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ } this.tray.classList.add('active'); this._colTray = true; }
+          if (this.col.trayDown(app.gestures.ground(e.clientX, e.clientY), e)) { try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ } this.tray.classList.add('active'); this._colTray = this.col; }
+          return;
+        }
+        // «Забор → Прожилины»: a rail taken from the tray and carried onto the posts
+        if (app.tool === 'wall' && this.kind === 'fence') {
+          if (this.fence.trayDown(app.gestures.ground(e.clientX, e.clientY), e)) { try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ } this.tray.classList.add('active'); this._colTray = this.fence; }
           return;
         }
         if (app.physJob?.fit) app.physJob.finish();   // (the last piece's fitting: done at once)
@@ -112,21 +122,21 @@ export class WallTool {
         this._carryMove(g(e), e);
       });
       this.tray.addEventListener('pointermove', (e) => {
-        if (this._colTray) { e.preventDefault(); this.col.move(app.gestures.ground(e.clientX, e.clientY), e); app.ui?.moveMeasure?.(e.clientX, e.clientY); return; }
+        if (this._colTray) { e.preventDefault(); this._colTray.move(app.gestures.ground(e.clientX, e.clientY), e); app.ui?.moveMeasure?.(e.clientX, e.clientY); return; }
         if (this.carry?.tray) { e.preventDefault(); this._carryMove(g(e), e); }
       });
       this.tray.addEventListener('pointerup', (e) => {
-        if (this._colTray) { e.preventDefault(); this._colTray = false; this.tray.classList.remove('active'); this.col.up(); app.ui?.refresh(); return; }
+        if (this._colTray) { e.preventDefault(); const t = this._colTray; this._colTray = null; this.tray.classList.remove('active'); t.up(); app.ui?.refresh(); return; }
         if (this.carry?.tray) { e.preventDefault(); this.tray.classList.remove('active'); this._carryDrop(); }
       });
       this.tray.addEventListener('pointercancel', () => {
-        if (this._colTray) { this._colTray = false; this.tray.classList.remove('active'); this.col.interrupt(); return; }
+        if (this._colTray) { const t = this._colTray; this._colTray = null; this.tray.classList.remove('active'); t.interrupt(); return; }
         if (this.carry?.tray) { this.tray.classList.remove('active'); this._carryCancel(); }
       });
     }
   }
 
-  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || !!this.pool.drag || !!this.land.drag || !!this.ext.drag || !!this.col.drag; }
+  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || !!this.pool.drag || !!this.land.drag || !!this.ext.drag || !!this.col.drag || !!this.fence.drag; }
   // one finger works on the wall in every mode (the camera: two fingers)
   blocksOrbit() { return true; }
 
@@ -203,7 +213,7 @@ export class WallTool {
       return true;
     }
     // an empty pallet under the finger (the masonry tool): picked up, to be carried away and stacked
-    if (this.mode === 'lay' && !['roof', 'facade', 'blind', 'pool', 'land', 'ext', 'column', 'proof', 'window', 'door'].includes(this.kind)) {
+    if (this.mode === 'lay' && !['roof', 'facade', 'blind', 'pool', 'land', 'fence', 'ext', 'column', 'proof', 'window', 'door'].includes(this.kind)) {
       const em = this._emptyPalletAt(e, p);
       if (em) { this._palletPick(em, p); return true; }
     }
@@ -226,6 +236,7 @@ export class WallTool {
     if (this.mode === 'lay' && this.kind === 'blind') return this.blind.down(p, e);
     if (this.mode === 'lay' && this.kind === 'pool') return this.pool.down(p, e);
     if (this.mode === 'lay' && this.kind === 'land') return this.land.down(p, e);
+    if (this.mode === 'lay' && this.kind === 'fence') return this.fence.down(p, e);
     if (this.mode === 'lay' && this.kind === 'ext') return this.ext.down(p, e);
     if (this.mode === 'lay' && this.kind === 'column') return this.col.down(p, e);
     if (this.mode === 'lay' && this.kind === 'proof') return this.proof.down(p, e);
@@ -257,6 +268,7 @@ export class WallTool {
     if (this.pool.drag) { this.pool.move(p, e); return; }
     if (this.ext.drag) { this.ext.move(p, e); return; }
     if (this.land.drag) { this.land.move(p, e); return; }
+    if (this.fence.drag) { this.fence.move(p, e); return; }
     if (this.col.drag) { this.col.move(p, e); return; }
     if (this.proof.drag) { this.proof.move(p, e); return; }
     if (!this.drag) return;
@@ -303,6 +315,7 @@ export class WallTool {
     if (this.pool.drag) { this.pool.up(); return; }
     if (this.ext.drag) { this.ext.up(); return; }
     if (this.land.drag) { this.land.up(); return; }
+    if (this.fence.drag) { this.fence.up(); return; }
     if (this.col.drag) { this.col.up(); return; }
     if (this.proof.drag) { this.proof.up(); return; }
     this.drag = null;
@@ -338,7 +351,7 @@ export class WallTool {
     }
   }
 
-  interrupt() { this.pool.interrupt(); this.land.interrupt(); this.ext.interrupt(); this.col.interrupt(); this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
+  interrupt() { this.pool.interrupt(); this.land.interrupt(); this.fence.interrupt(); this.ext.interrupt(); this.col.interrupt(); this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
 
   update(dt) { if (this.rowJob) this._rowStep(); this.blind.update(dt); this.pool.update(dt); }
 
@@ -1098,6 +1111,7 @@ export class WallTool {
       const L = this.col.stage, round = COL_SECS[this.col.sec]?.round;
       if (this.delBtn) this.delBtn.hidden = true;
       if (this.rowBtn) this.rowBtn.hidden = true;
+      if (this.cordBtn) this.cordBtn.hidden = true;
       this.tray.hidden = L !== 'form' && L !== 'cage';
       this.tray.classList.remove('brick', 'cinder');
       this.tray.classList.toggle('col-form', L === 'form'); this.tray.classList.toggle('col-cage', L === 'cage'); this.tray.classList.toggle('col-round', !!round);
@@ -1107,7 +1121,20 @@ export class WallTool {
       this.tray.title = '';
       return;
     }
-    this.tray.classList.remove('col-form', 'col-cage', 'col-round');
+    this.tray.classList.remove('col-form', 'col-cage', 'col-round', 'fence-rail');
+    if (this.cordBtn) { this.cordBtn.hidden = !(this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'fence' && this.fence.L === 'line'); this.cordBtn.classList.toggle('active', !!this.fence.cord); }
+    // «Забор → Прожилины»: the tray holds a rail (a profile pipe)
+    if (this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'fence') {
+      if (this.rowBtn) this.rowBtn.hidden = true;
+      this.tray.hidden = this.fence.L !== 'rails';
+      this.tray.classList.remove('brick', 'cinder'); this.tray.classList.add('fence-rail');
+      const lab = document.getElementById('wall-tray-label'), sm = this.tray.querySelector('small');
+      if (lab) lab.textContent = 'Прожилина';
+      if (sm) sm.textContent = 'тяните на столбы';
+      this.tray.title = '';
+      if (this.delBtn) { this.delBtn.hidden = false; this.delBtn.classList.toggle('active', this.mode === 'delete'); }
+      return;
+    }
     { const sm = this.tray.querySelector('small'); if (sm && sm.textContent !== 'тяните на стену') sm.textContent = 'тяните на стену'; }
     const on = this.app.tool === 'wall' && this.mode === 'lay';
     if (this.delBtn) { this.delBtn.hidden = !(this.app.tool === 'wall' && (this.mode === 'lay' || this.mode === 'delete')); this.delBtn.classList.toggle('active', this.mode === 'delete'); }
@@ -1317,9 +1344,10 @@ export class WallTool {
       const nm = c.kind === 'block' ? 'Блок' : c.kind === 'ublock' ? 'U-блок' : c.kind === 'cinder' ? 'Шлакоблок' : 'Кирпич';
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform', 'studs', 'rail', 'pool', 'land', 'ext', 'column'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'blind', 'lform', 'studs', 'rail', 'pool', 'land', 'fence', 'ext', 'column'].includes(this.kind)) return {
       pool: this.pool.status(false),
       land: this.land.status(),
+      fence: this.fence.status(),
       ext: this.ext.status(),
       column: this.col.status(false),
       rail: 'Стеклянное ограждение: тяните из лотка к краю залитого перекрытия (консоль, балкон, проём лестницы или второго света) — встанет вдоль свободного края, высота 1,1 м',

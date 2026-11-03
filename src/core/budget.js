@@ -252,6 +252,20 @@ export class Budget {
       const d0 = b?.done || {}, d1 = a.done || {}, A = areaOf(a.poly) * M1 * M1;
       if (d1.soil && !d0.soil) add(P.lawn.soil * A * 0.1, `Плодородный грунт · ${(A * 0.1).toFixed(1)} м³`);
       if (d1.grass && !d0.grass) add((a.how === 'seed' ? P.lawn.seed : P.lawn.turf) * A, a.how === 'seed' ? `Семена газона · ${(A * 0.035).toFixed(1)} кг` : `Рулонный газон · ${A.toFixed(0)} м²`);
+    } else if (type === 'fence' && a && a.v === 2) {
+      // the fence by the post: each post with its length of pipe, the concrete in each hole as it goes in,
+      // the rails by the metre, the fill by the bays filled, the gates
+      const P0 = b?.pegs || [], P1 = a.pegs || [], pipe = (q) => (q.post ? (q.post.h + 900) / 1000 * (q.post.a / 60) * 9 : 0);
+      const np = P1.filter((q) => q.post).length - P0.filter((q) => q.post).length;
+      if (np > 0) add(P1.reduce((s, q) => s + pipe(q), 0) - P0.reduce((s, q) => s + pipe(q), 0), `Столбы из профтрубы · ${np} шт`);
+      const fl = (L) => L.reduce((s, q) => s + (q.fill || 0), 0), dv = (fl(P1) - fl(P0)) * Math.PI * 0.01;
+      if (dv > 0.0005) add(PRICE.concrete * dv, `Бетон ${dv.toFixed(2)} м³`);
+      const rl = (L) => (L || []).reduce((s, q) => s + (q.b - q.a) / 1000, 0), dr = rl(a.rails) - rl(b?.rails);
+      if (dr > 0) add(4.5 * dr, `Прожилины · ${dr.toFixed(1)} м`);
+      const nf = (a.filled || []).length - (b?.filled || []).length;
+      if (nf > 0) { const k = kindOf(a), A = nf * (a.step || 2500) / 1000 * (a.H || 1800) / 1000; add({ slat: 42, picket: 28, louvre: 46, mesh: 25, chain: 6 }[k] * A, `${{ slat: 'Доска ДПК', picket: 'Евроштакетник', louvre: 'Жалюзи', mesh: '3D-панели', chain: 'Сетка-рабица' }[k]} · ${A.toFixed(1)} м²`); }
+      const nb = (b?.gates || []).length, na = (a.gates || []).length;
+      for (let i = nb; i < na; i++) { const T = GATES[a.gates[i].type]; if (T) add({ swing: 1400, swingArch: 1650, slide: 2600, wicket: 450, wicketArch: 540, wicketIntercom: 980 }[a.gates[i].type] || 800, T.name); }
     } else if (type === 'fence' && a) {
       const d0 = b?.done || {}, d1 = a.done || {}, np = postsOf(a).length;
       if (d1.posts && !d0.posts) add(P.fence.post * np, `Столбы 60×60 с бетоном · ${np} шт`);
