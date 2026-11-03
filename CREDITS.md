@@ -63,6 +63,23 @@
 |---|---|---|---|---|
 | `assets/models/garden/sprinkler.glb` — поливалка (текстуры 512) | Garden Sprinkler 01 | Amal Kumar | CC0 | https://polyhaven.com/a/garden_sprinkler_01 |
 | `assets/models/plants/tree.glb` — дерево | Tree Small 02 | Rico Cilliers | CC0 | https://polyhaven.com/a/tree_small_02 |
+| `assets/models/plants/tree2.glb` — олива (упрощено, текстуры 512) | Island Tree 01 | Rob Tuytel, Rico Cilliers | CC0 | https://polyhaven.com/a/island_tree_01 |
+| `assets/models/plants/tree3.glb` — дерево раскидистое (упрощено, текстуры 512) | Island Tree 02 | Rob Tuytel, Rico Cilliers | CC0 | https://polyhaven.com/a/island_tree_02 |
+| `assets/models/plants/jacaranda.glb` — жакаранда (упрощено, текстуры 512) | Jacaranda Tree | Rob Tuytel, Rico Cilliers | CC0 | https://polyhaven.com/a/jacaranda_tree |
+| `assets/models/plants/fir.glb` — ель (упрощено, текстуры 512) | Fir Sapling | Rob Tuytel, Rico Cilliers | CC0 | https://polyhaven.com/a/fir_sapling |
+| `assets/models/plants/pine.glb` — сосна (упрощено, текстуры 512) | Pine Sapling Small | Rob Tuytel, Rico Cilliers | CC0 | https://polyhaven.com/a/pine_sapling_small |
+| `assets/models/plants/searsia.glb` — кустарник вечнозелёный (упрощено, текстуры 512) | Searsia Lucida | James Ray Cock, Jenelle van Heerden | CC0 | https://polyhaven.com/a/searsia_lucida |
+| `assets/models/plants/rooibos.glb` — кустарник низкий (упрощено, текстуры 512) | Wild Rooibos Bush | James Ray Cock, Jenelle van Heerden | CC0 | https://polyhaven.com/a/wild_rooibos_bush |
+| `assets/models/plants/fern.glb` — папоротник (упрощено, текстуры 512) | Fern 02 | Rob Tuytel, Rico Cilliers | CC0 | https://polyhaven.com/a/fern_02 |
+| `assets/models/plants/periwinkle.glb` — барвинок (упрощено, текстуры 512) | Periwinkle Plant | Amal Kumar | CC0 | https://polyhaven.com/a/periwinkle_plant |
+| `assets/models/plants/gazania.glb` — газания (упрощено, текстуры 512) | Flower Gazania | James Ray Cock, Jenelle van Heerden | CC0 | https://polyhaven.com/a/flower_gazania |
+| `assets/models/plants/ursinia.glb` — урсиния (упрощено, текстуры 512) | Flower Ursinia | Jenelle van Heerden, Rico Cilliers | CC0 | https://polyhaven.com/a/flower_ursinia |
+| `assets/models/plants/pot.glb` — сингониум в кашпо (упрощено, текстуры 512) | Potted Plant 02 | Rico Cilliers | CC0 | https://polyhaven.com/a/potted_plant_02 |
+| `assets/models/plants/pot2.glb` — фикус в кашпо (упрощено, текстуры 512) | Potted Plant 01 | Rico Cilliers | CC0 | https://polyhaven.com/a/potted_plant_01 |
+| `assets/models/plants/pot3.glb` — алоэ в горшке (упрощено, текстуры 512) | Potted Plant 04 | James Ray Cock | CC0 | https://polyhaven.com/a/potted_plant_04 |
+| `assets/models/lights/street1.glb` — фонарный столб (упрощено, текстуры 512) | Street Lamp 01 | Josh Dean | CC0 | https://polyhaven.com/a/street_lamp_01 |
+| `assets/models/lights/lantern.glb` — фонарь «летучая мышь» (упрощено, текстуры 512) | Lantern 01 | Rajil Jose Macatangay | CC0 | https://polyhaven.com/a/Lantern_01 |
+| `assets/models/lights/wlantern.glb` — фонарь деревянный (упрощено, текстуры 512) | Wooden Lantern 01 | James Ray Cock | CC0 | https://polyhaven.com/a/wooden_lantern_01 |
 
 ## Модели инструментов (Poly Haven, CC0 1.0)
 

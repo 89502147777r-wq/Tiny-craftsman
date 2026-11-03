@@ -802,6 +802,40 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2h. Plants and garden lights: every kind goes in (a pot set down, no hole), its model comes, a lamp glows ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, land = wt.land, o = {};
+    const { PLANTS } = await import('/src/world/plants.js');
+    const run = () => { for (let i = 0; i < 8000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
+    tc.ui.openGroup('landG'); Object.assign(tc.settings, { wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }); tc.ui.refresh();
+    tc.ui.navPath = ['land', 'plants']; o.groups = tc.ui.navNodes().list.map((c) => c.label).join('|');
+    tc.ui.navPath = ['land', 'lights']; o.lgroups = tc.ui.navNodes().list.map((c) => c.label).join('|');
+    const kinds = Object.keys(PLANTS).filter((k) => k !== 'hedge');
+    o.plants = kinds.filter((k) => !PLANTS[k].light).length + 1; o.lights = kinds.filter((k) => PLANTS[k].light).length;
+    kinds.forEach((k, i) => { tc.settings.plantKind = k; const x = -0.45 + (i % 7) * 0.15, z = -0.4 + Math.floor(i / 7) * 0.16; land._plantDown(new V(x, tc.terrain.heightAt(x, z), z)); run(); });
+    o.n = tc.objects.all('plant').length; o.want = kinds.length;
+    // a pot: no hole under it
+    const pot = tc.objects.all('plant').find((q) => q.kind === 'aloe'); o.potLevel = Math.abs(tc.terrain.heightAt(pot.x, pot.z) - pot.g) < 1e-4;
+    tc.renderer.render(tc.scene, tc.camera);
+    // every model comes (meshes in it); a photographed lamp has its glass to glow
+    const M = await import('/src/world/machines/models.js');
+    o.bad = [];
+    for (const k of kinds) {
+      const P = PLANTS[k]; if (!P.model) continue;
+      try { const { scene } = await M.loadModel(P.model); let n = 0; scene.traverse((q) => { if (q.isMesh) n++; }); if (!n) o.bad.push(k + ':empty'); if (P.light === 'model') { let g = 0; scene.traverse((q) => { if (q.isMesh && /glass|bulb/i.test(q.material?.name || '')) g++; }); if (!g) o.bad.push(k + ':noglass'); } } catch (err) { o.bad.push(k + ':' + err); }
+    }
+    // night: the lamps' lenses glow
+    const B = await import('/src/world/plants.js'); const g = B.plantBody('globe5'); let lens = null; g.traverse((q) => { if (q.userData.lens) lens = q; }); o.lens = !!lens;
+    return o;
+  });
+  check('plants: 4 groups, ≥ 15 kinds; lights: 4 groups, ≥ 15 kinds', o.groups === 'Деревья|Кустарники|Цветы и клумбы|В кашпо' && o.lgroups === 'У дорожки|Подсветка|Декоративные|Фонарные столбы' && o.plants >= 15 && o.lights >= 15, JSON.stringify(o));
+  check('plants: every kind planted or set (a pot with no hole), every model loads, a lamp has its lens', o.n === o.want && o.potLevel && !o.bad.length && o.lens, JSON.stringify(o));
+  check('plants: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 3. WebKit (Safari's engine), if installed ------------------------------------------------------
 if (process.env.WEBKIT) {
   try {

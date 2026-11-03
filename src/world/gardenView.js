@@ -225,7 +225,7 @@ export class GardenView {
       // each plant (a hedge: each of its plants) with its root ball under it while it goes in
       this._part(e, 'body', geo, () => {
         const G = new THREE.Group();
-        spotsOf(r).forEach(([x, z], i) => { const o = new THREE.Group(); o.position.set(x, r.g, z); o.rotation.y = (r.rot || 0) + i * 2.4; o.add(plantBody(r.kind, r.s || 1)); const b = rootBall(P.ball); b.visible = false; o.add(b); o.userData.ball = b; G.add(o); });
+        spotsOf(r).forEach(([x, z], i) => { const o = new THREE.Group(); o.position.set(x, r.g, z); o.rotation.y = (r.rot || 0) + i * 2.4; o.add(plantBody(r.kind, r.s || 1, (r.rot || 0) + i * 2.4)); const b = rootBall(Math.max(P.ball, 1)); b.visible = false; o.add(b); o.userData.ball = b; G.add(o); });
         return G;
       });
       this._part(e, 'mulch', P.mulch ? geo : null, () => {
