@@ -5,6 +5,7 @@ import {
   PATH, PATH_LAYERS, PATH_WIDTHS, PAVERS, PAVE_COLS, TOPS, lineOf, lineWhy, legsOf, legW, lengthOf, half, paveQuads, digQuads, kerbOuter, inQuads, boxOf, chainOf, kerbsOf, paversOf,
 } from '../world/garden.js';
 import { pointAt } from '../world/gardenView.js';
+import { PathWork } from './pathTool.js';
 import { FENCE, FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES, fenceLine, postsOf, fenceLength, fillCount, sOf, gateFit, kindOf } from '../world/fence.js';
 import { PLANTS, hedgePlants } from '../world/plants.js';
 import { LAWN, LAWN_LAYERS, LAWN_HOW, polyOf, areaOf, inside as inPolyL, mainDir, cellsOf as lawnCells, frameW } from '../world/lawn.js';
@@ -22,7 +23,7 @@ const FNAME = Object.fromEntries(FENCE_LAYERS), FORDER = FENCE_LAYERS.map(([k]) 
 const f1 = (v) => v.toFixed(1).replace('.', ',');
 
 export class LandWork {
-  constructor(app) { this.app = app; this.drag = null; this.sel = null; }
+  constructor(app) { this.app = app; this.drag = null; this.sel = null; this.pw = new PathWork(this); }
   get layer() { return NAME[this.app.settings.pathLayer] ? this.app.settings.pathLayer : 'set'; }
   get W() { return PATH_WIDTHS.includes(this.app.settings.pathW) ? this.app.settings.pathW : 1200; }
   get paver() { return PAVERS[this.app.settings.pathPaver] ? this.app.settings.pathPaver : 'brick'; }
@@ -77,6 +78,8 @@ export class LandWork {
     if (this.what === 'lawn') return this._lawnDown(p, e);
     if (this.what === 'fence') return this._fenceDown(p, e);
     if (this.what === 'plant') return this._plantDown(p, e);
+    // (the path by hand — pathTool.js; a path set out before it: its old stages)
+    { const old = this.pw.L !== 'set' && this.pick(p); if (!old || old.v === 2) return this.pw.down(p, e); }
     const L = this.layer;
     if (L === 'set') {
       const app = this.app;
@@ -93,7 +96,8 @@ export class LandWork {
     ({ dig: () => this._dig(r), kerb: () => this._kerb(r), geo: () => this._geo(r), grav: () => this._grav(r), sand: () => this._sand(r), pave: () => this._pave(r), joint: () => this._joint(r) })[L]?.();
     return true;
   }
-  move(p) {
+  move(p, e) {
+    if (this.pw.drag) { this.pw.move(p, e); return; }
     const d = this.drag; if (!d) return;
     if (d.L === 'area') { this._lawnMove(p); return; }
     if (d.L === 'fline') { this._fenceMove(p); return; }
@@ -109,6 +113,7 @@ export class LandWork {
   }
   update() {}
   up() {
+    if (this.pw.drag) { this.pw.up(); return; }
     const app = this.app, d = this.drag;
     if (d?.L === 'area') { this._lawnUp(); return; }
     if (d?.L === 'fline') { this._fenceUp(); return; }
@@ -128,7 +133,7 @@ export class LandWork {
     const len = lengthOf(rec) / S / 1000;
     this.toast(`Дорожка ${f1(len)} м, ширина ${f1(this.W / 1000)} м: колышки и шнур по краям бордюров. Дальше «2 · Корыто»`);
   }
-  interrupt() { if (this.drag?.L === 'set') { this.view.setLive(null); this.app.ui?.hideMeasure?.(); } if (this.drag?.L === 'area') { this.view.setLiveLawn(null); this.app.ui?.hideMeasure?.(); } if (this.drag?.L === 'fline') { this.view.setLiveFence(null); this.app.ui?.hideMeasure?.(); } this.drag = null; }
+  interrupt() { this.pw.interrupt(); if (this.drag?.L === 'set') { this.view.setLive(null); this.app.ui?.hideMeasure?.(); } if (this.drag?.L === 'area') { this.view.setLiveLawn(null); this.app.ui?.hideMeasure?.(); } if (this.drag?.L === 'fline') { this.view.setLiveFence(null); this.app.ui?.hideMeasure?.(); } this.drag = null; }
 
   // the ground's level along the line (the middle of what is there)
   _groundOf(pts) {
@@ -332,7 +337,7 @@ export class LandWork {
     if (this.what === 'lawn') return this.lawnNext();
     if (this.what === 'fence') return this.fenceNext();
     if (this.what === 'plant') return [null, this.plantStatus()];
-    if (!r) return ['set', 'Разметьте дорожку: проведите пальцем по участку'];
+    if (!r || r.v === 2) return this.pw.next(r && r.v === 2 ? r : undefined);
     const d = r.done || {};
     for (const k of ORDER.slice(1)) if (!d[k]) return [k, NAME[k]];
     return [null, 'Дорожка готова'];
@@ -341,6 +346,7 @@ export class LandWork {
     if (this.what === 'lawn') return this.lawnStatus();
     if (this.what === 'fence') return this.fenceStatus();
     if (this.what === 'plant') return this.plantStatus();
+    if (this.what === 'path') return this.pw.status();
     return {
       set: `Проведите пальцем по участку, где пройдёт дорожка шириной ${f1(this.W / 1000)} м — повороты по ходу пальца`,
       dig: 'Коснитесь дорожки — выкопается корыто 300 мм с запасом под бордюры',

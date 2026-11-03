@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { PATH, TOPS, paversOf, kerbsOf, paveQuads, kerbOuter, bandQuads, legsOf, legW, lengthOf, half, inset } from './garden.js';
+import { PATH, TOPS, PAVERS, paversOf, kerbsOf, paveQuads, kerbOuter, digQuads, bandQuads, legsOf, legW, lengthOf, half, inset } from './garden.js';
 import { lawnUniforms, buildLawn, lawnLine, lawnGhost, turfRoll, roller, sprinkler } from './lawnView.js';
 import { frameW } from './lawn.js';
 import { fenceString, fencePosts, fenceFill, fenceUniforms, auger, fenceGates } from './fence.js';
@@ -148,6 +148,15 @@ export class GardenView {
       if (e.canopy) { this._canopyFrame(e); continue; }
       if (e.flight) { this._lightFrame(e); continue; }
       const r = e.rec, d = r.done || {}, a = this.anim[r.id] || {}, U = e.U;
+      if (r.v === 2) {
+        // (by hand: what is laid shows; the pavers going in now drop into their places; the roll where the finger is)
+        U.kerb.n.value = 1e9; U.bed.f.value = 1e9; U.pave.n.value = a.pave ?? 1e9;
+        if (e.roll) {
+          e.roll.visible = a.roll != null;
+          if (a.roll != null) { const p = pointAt(r, a.roll), L = lengthOf(r) / S, k = Math.max(0, Math.min(1, (a.rolled || 0) / Math.max(1, L))); e.roll.position.set(p[0], r.g - MM(PATH.dig) + MM(10 + 60 * (1 - k)), p[1]); e.roll.rotation.y = -Math.atan2(p[3], p[2]); const sc = 0.35 + 0.65 * (1 - k); e.roll.scale.set(sc, 1, sc); }
+        }
+        continue;
+      }
       U.kerb.n.value = a.kerb ?? (d.kerb ? 1e9 : -1);
       U.bed.f.value = a.kerbS ?? (d.kerb ? 1e9 : -1e9);
       U.geo.f.value = a.geo ?? (d.geo ? 1e9 : -1e9);
@@ -399,6 +408,7 @@ export class GardenView {
   }
 
   _buildPath(app, r, e) {
+    if (r.v === 2) { this._buildPath2(app, r, e); return; }
     const d = r.done || {}, a = this.anim[r.id] || {}, geo = [r.pts.flat().join(), r.W, r.g].join('|');
     // the ghost while it is drawn
     this._part(e, 'ghost', r.id == null ? geo : null, () => ghost(r));
@@ -411,6 +421,80 @@ export class GardenView {
     this._part(e, 'pave', d.pave || a.pave != null ? geo + '|' + (r.paver || '') + (r.col || '') : null, () => paveMesh(r, e.U));
     this._part(e, 'joint', d.joint || a.joint != null ? geo : null, () => jointMesh(r, e.U));
   }
+}
+
+// ---- the path laid by hand (v: 2) ----
+GardenView.prototype._buildPath2 = function (app, r, e) {
+  const d = r.done || {}, a = this.anim[r.id] || {}, geo = [r.pts.flat().join(), r.W, r.g].join('|');
+  this._part(e, 'ghost', r.id == null ? geo : null, () => ghost(r));
+  // the pegs at the corners and the ends, the strings along the kerbs' outer line (until the kerbs are all in)
+  const K = kerbsOf(r), laidK = new Set([...(r.kerbs || []), ...(a.kerbs || [])]), allK = K.length && laidK.size >= K.length;
+  this._part(e, 'string', r.id != null && !allK ? geo + JSON.stringify(r.base || 0) : null, () => strings2(r));
+  this._part(e, 'kerb', laidK.size ? geo + '|' + [...laidK].sort((x, y) => x - y).join(',') : null, () => kerbMesh(r, e.U, laidK, PATH.kerbUp));
+  const gi = [...(r.geo || []), ...(a.geo ? [a.geo] : [])];
+  this._part(e, 'geo', gi.length ? geo + JSON.stringify(gi.map((q) => q.map(Math.round))) : null, () => geoMesh2(r, gi));
+  if (a.roll != null && !e.roll) { e.roll = rollMesh(r); e.roll.material.map = fabricPrint(); e.g.add(e.roll); }
+  const laid = [...(r.laid || []), ...(a.laid || [])];
+  this._part(e, 'pave', laid.length ? geo + '|' + r.paver + r.col + '|' + laid.length + ':' + laid.at(-1) : null, () => paveMesh2(r, e.U, laid));
+  this._part(e, 'joint', laid.length ? geo + '|' + r.paver + '|' + laid.length + ':' + laid.at(-1) : null, () => jointMesh2(r, laid));
+};
+// the setting-out of a hand-laid path: a peg each side at its ends and at each corner of its line, the
+// strings along the kerbs' outer line (round the curves where the corners are rounded)
+function strings2(r) {
+  const G = new THREE.Group(), y = r.g, peg = new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.8 }), tape = new THREE.MeshStandardMaterial({ color: 0xff5a1f, roughness: 0.6 });
+  const pegGeo = new THREE.BoxGeometry(MM(40), MM(450), MM(40)); pegGeo.translate(0, MM(450 / 2 - 150), 0);
+  const tg = new THREE.BoxGeometry(MM(44), MM(40), MM(44)); tg.translate(0, MM(260), 0);
+  const B = { ...r, pts: r.base || r.pts }, qb = kerbOuter(B), qs = kerbOuter(r);
+  const pegs = [qb[0][3], ...qb.map((q) => q[2]), qb[0][0], ...qb.map((q) => q[1])];
+  for (const p of pegs) { for (const [gg, m] of [[pegGeo, peg], [tg, tape]]) { const o = new THREE.Mesh(gg, m); o.position.set(p[0], y, p[1]); o.castShadow = true; G.add(o); } }
+  const ptsL = [qs[0][3], ...qs.map((q) => q[2])], ptsR = [qs[0][0], ...qs.map((q) => q[1])], line = new THREE.LineBasicMaterial({ color: 0xfff3c4 });
+  for (const pts of [ptsL, ptsR, [ptsL[0], ptsR[0]], [ptsL.at(-1), ptsR.at(-1)]]) G.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(([x, z]) => new THREE.Vector3(x, y + MM(100), z))), line));
+  return G;
+}
+// the geotextile where it is rolled out: the stretches [s0, s1] (mm along), on the trough's floor
+function geoMesh2(r, gi) {
+  const legs = legsOf(r), on = (s) => gi.some(([a, b]) => s >= Math.min(a, b) - 1 && s <= Math.max(a, b) + 1);
+  const chain = (x, z) => { let best = 0, bd = Infinity; for (const q of legs) { const dx = x - q.o[0], dz = z - q.o[1], aa0 = q.a0 + dx * q.u[0] + dz * q.u[1], c = dx * q.n[0] + dz * q.n[1], aa = Math.max(q.a0, Math.min(q.a0 + q.L, aa0)), dd = Math.hypot(aa - aa0, c); if (dd < bd) bd = dd, best = aa0; } return best / S; };
+  // (cut into strips 100 long so its ends fall where it was rolled to)
+  const list = [];
+  for (const q of digQuads(r)) {
+    const s = q.map(([x, z]) => chain(x, z)), lo = Math.min(...s), hi = Math.max(...s);
+    for (let a = lo; a < hi; a += 100) {
+      const b = Math.min(hi, a + 100);
+      if (!on((a + b) / 2)) continue;
+      const P = (t) => [q[0][0] + (q[1][0] - q[0][0]) * t, q[0][1] + (q[1][1] - q[0][1]) * t], P2 = (t) => [q[3][0] + (q[2][0] - q[3][0]) * t, q[3][1] + (q[2][1] - q[3][1]) * t];
+      const t0 = (a - lo) / Math.max(1, hi - lo), t1 = (b - lo) / Math.max(1, hi - lo);
+      list.push({ p: [P(t0), P(t1), P2(t1), P2(t0)], s: [a, b, b, a] });
+    }
+  }
+  const o = new THREE.Mesh(sheets(list, r.g - MM(PATH.dig) + MM(2), MM(2000)), new THREE.MeshStandardMaterial({ map: fabricPrint(), roughness: 0.95, side: THREE.DoubleSide })); o.receiveShadow = true;
+  return o;
+}
+// the pavers laid (their order: as they were laid — the last ones dropping in), the joints between them
+function paveMesh2(r, U, laid) {
+  const all = paversOf(r), P = laid.map((i, k) => all[i] && { p: all[i].p, yT: r.g + MM(TOPS.pave), yB: r.g - MM(PATH.paver), ord: k, rgb: all[i].rgb.map((v) => Math.min(1, v * 0.95)), s: all[i].ord }).filter(Boolean);
+  const m = byCount(new THREE.MeshStandardMaterial({ map: tex('pool_coat', 'col.jpg', true), normalMap: tex('pool_coat', 'nor.jpg', false), vertexColors: true, roughness: 0.88 }), U.pave);
+  const o = new THREE.Mesh(prisms(P, MM(PAVERS[r.paver]?.ch || 4), MM(500)), m); o.receiveShadow = true; o.castShadow = false;
+  return o;
+}
+function jointMesh2(r, laid) {
+  const all = paversOf(r), list = laid.map((i) => all[i] && { p: inset(all[i].p, -MM(PATH.joint)), s: [0, 0, 0, 0, 0, 0, 0, 0] }).filter(Boolean);
+  const o = new THREE.Mesh(sheets(list, r.g - MM(8), MM(400)), new THREE.MeshStandardMaterial({ map: tex('dense_sand', 'diff.jpg', true), color: 0xd8cdb4, roughness: 1 })); o.receiveShadow = true;
+  return o;
+}
+// the geotextile's face: a white needle-punched felt, the maker's print in blue along the roll
+let _fabricP = null;
+function fabricPrint() {
+  if (_fabricP) return _fabricP;
+  const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#e4e2dc'; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 26000; i++) { g.fillStyle = `rgba(${Math.random() < 0.55 ? '255,255,255' : '140,138,130'},${Math.random() * 0.22})`; const a = Math.random() * Math.PI; g.save(); g.translate(Math.random() * W, Math.random() * H); g.rotate(a); g.fillRect(0, 0, 2 + Math.random() * 7, 0.7); g.restore(); }
+  g.fillStyle = 'rgba(28,78,160,0.82)'; g.font = 'bold 15px Arial, Helvetica, sans-serif';
+  for (const [y, t] of [[40, 'GEOTEXTILE  NONWOVEN  ·  150 g/m²  ·  100% PP'], [130, 'SEPARATION · FILTRATION  ·  ROLL 2 m × 50 m'], [220, 'NEEDLE-PUNCHED  ·  UV STABILIZED  ·  EN 13249']]) { g.fillText(t, 14, y); g.fillText('◆', W - 30, y); }
+  g.strokeStyle = 'rgba(28,78,160,0.5)'; g.lineWidth = 2; for (const y of [8, H - 8]) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return (_fabricP = t);
 }
 
 // a point at a chainage (mm): [x, z, ux, uz]
@@ -443,9 +527,10 @@ function strings(r) {
   return G;
 }
 // the kerbs (grey concrete, the top's edges chamfered), on a bed of concrete with a haunch behind
-function kerbMesh(r, U) {
+function kerbMesh(r, U, only = null, up = 0) {
   const G = new THREE.Group(), g = r.g, K = kerbsOf(r);
-  const kerbs = K.map((k, i) => ({ p: k.p, yT: g + MM(TOPS.pave), yB: g - MM(PATH.kerbH), ord: i, s: k.s, rgb: [0.66, 0.66, 0.64] }));
+  // (laid by hand: those laid, their top `up` over the ground — a quarter of the kerb shows, as on site)
+  const kerbs = K.map((k, i) => ({ p: k.p, yT: g + MM(TOPS.pave + up), yB: g - MM(PATH.kerbH - up), ord: only ? 0 : i, s: k.s, rgb: [0.66, 0.66, 0.64], i })).filter((k) => !only || only.has(k.i));
   const km = byCount(new THREE.MeshStandardMaterial({ map: tex('pool_coat', 'col.jpg', true), normalMap: tex('pool_coat', 'nor.jpg', false), vertexColors: true, roughness: 0.85 }), U.kerb);
   const mk = new THREE.Mesh(prisms(kerbs, MM(8), MM(600)), km); mk.receiveShadow = true; G.add(mk);
   // the bed (100 under the kerbs, 100 wider behind) and the haunch (from 2/3 up the kerb out to 100 behind)

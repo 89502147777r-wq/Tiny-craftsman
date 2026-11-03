@@ -6,7 +6,7 @@ import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
 import { POOL_LAYERS, MOSAICS, COPES, DECKS, DECK_WIDTHS } from '../world/pool.js';
-import { PATH_LAYERS, PATH_WIDTHS, PAVERS, PAVE_COLS } from '../world/garden.js';
+import { PATH_LAYERS, PATH_LAYERS2, PATH_WIDTHS, PAVERS, PAVE_COLS, filletLine } from '../world/garden.js';
 import { LAWN_LAYERS, LAWN_HOW } from '../world/lawn.js';
 import { FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES } from '../world/fence.js';
 import { PLANTS } from '../world/plants.js';
@@ -596,10 +596,13 @@ export class UI {
       });
       // the garden: the path's stages (the width when it is set out; the pavers and their colour)
       const LS = wt.land.layer, lw = wt.land, isLawn = lw.what === 'lawn', isFence = lw.what === 'fence', fset = (o) => lay({ wallKind: 'land', landWhat: 'fence', ...o }), lset = (o) => lay({ wallKind: 'land', landWhat: 'path', ...o }), gset = (o) => lay({ wallKind: 'land', landWhat: 'lawn', ...o });
-      const paths = PATH_LAYERS.map(([k, l], i) => {
-        const c = C(`${i + 1} · ${l}`, has('land') && lw.what === 'path' && LS === k, () => lset({ pathLayer: k }));
-        if (k === 'set') return G('lset', c.label, PATH_WIDTHS.map((w) => C(`Ширина ${String(w / 1000).replace('.', ',')} м`, lw.W === w, () => lset({ pathLayer: 'set', pathW: w }))), null, c);
-        if (k === 'pave') return G('lpave', c.label, [...Object.entries(PAVERS).map(([q, P]) => C('▦ ' + P.name, lw.paver === q, () => lset({ pathLayer: 'pave', pathPaver: q }))), ...Object.entries(PAVE_COLS).map(([q, [n]]) => C('◼ ' + n, lw.col === q, () => lset({ pathLayer: 'pave', pathCol: q })))], null, c);
+      // (the path by hand: the width and the corners' radius — the sliders; the corners straight or rounded;
+      // the pavers: each kind opens its colours)
+      const pw = lw.pw, PS = pw.L;
+      const paths = PATH_LAYERS2.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('land') && lw.what === 'path' && PS === k, () => lset({ pathLayer: k }));
+        if (k === 'set') return G('lset', c.label, [C('Прямые углы', !pw.roundOn, () => { lset({ pathLayer: 'set', pathCorner: 'sharp' }); pw.restyle(); }), C('Скруглённые углы', pw.roundOn, () => { lset({ pathLayer: 'set', pathCorner: 'round' }); pw.restyle(); })], null, c);
+        if (k === 'pave') return G('lpave', c.label, Object.entries(PAVERS).map(([q, P]) => G('lp' + q, '▦ ' + P.name, Object.entries(PAVE_COLS).map(([cq, [n]]) => C('◼ ' + n, pw.paver === q && pw.col === cq, () => lset({ pathLayer: 'pave', pathPaver: q, pathCol: cq }))), null, C('', pw.paver === q, () => lset({ pathLayer: 'pave', pathPaver: q })))), null, c);
         return c;
       });
       const lawn = LAWN_LAYERS.map(([k, l], i) => {
@@ -662,7 +665,7 @@ export class UI {
             del(),
           ];
         })(), null, C('', has('fence'), () => lay({ wallKind: 'fence' })))),
-        hid(G('land', 'Благоустройство', [(() => { const [nk, nw] = lw.next(); return C(`➜ ${nw}`, false, () => { if (!nk) app.ui.toast(nw); else if (isLawn) gset({ lawnLayer: nk }); else if (isFence) fset({ fenceLayer: nk }); else lset({ pathLayer: nk }); }, 'next'); })(), G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('plants', 'Растения', Object.entries(PLANTS).filter(([, P]) => !P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }))), G('lights', 'Освещение', Object.entries(PLANTS).filter(([, P]) => P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !!PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'bollard' }))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
+        hid(G('land', 'Благоустройство', [G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('plants', 'Растения', Object.entries(PLANTS).filter(([, P]) => !P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }))), G('lights', 'Освещение', Object.entries(PLANTS).filter(([, P]) => P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !!PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'bollard' }))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
@@ -719,6 +722,7 @@ export class UI {
   renderParams() {
     const app = this.app, el = $('params');
     if (this._fenceSlider(el)) return;
+    if (this._pathSliders(el)) return;
     if (this._colSliders(el)) return;
     const o = app.tool === 'mark' ? app.markTool.rec : null;
     el.hidden = !o;
@@ -774,6 +778,30 @@ export class UI {
 
   // «Забор»: a slider for the stage open — the pegs' spacing (1 … 5 m), the post's size (40 … 100), the
   // rail's length (1 … 6 m); true when it is shown
+  // «Дорожка → Разметка»: the width and (rounded corners) the radius; the path set out last takes them
+  // while its trough is not dug
+  _pathSliders(el) {
+    const app = this.app, pw = app.wallTool?.land?.pw, on = app.tool === 'wall' && app.wallTool.mode === 'lay' && app.settings.wallKind === 'land' && app.wallTool.land.what === 'path' && pw && pw.L === 'set';
+    if (!on) { if (this._paramKey?.startsWith?.('path')) { this._paramKey = null; el.hidden = true; } return false; }
+    const en = LANG === 'en', m = en ? 'm' : 'м', dec = (t) => (en ? t : t.replace('.', ','));
+    const apply = () => pw.restyle();
+    const specs = [{ k: 'pathW', t: en ? 'Width' : 'Ширина', min: 500, max: 3000, step: 100, v: () => pw.W, out: (v) => dec(`${(v / 1000).toFixed(1)} ${m}`) }];
+    if (pw.roundOn) specs.push({ k: 'pathR', t: en ? 'Corner radius' : 'Радиус углов', min: 300, max: 5000, step: 100, v: () => pw.R, out: (v) => dec(`${(v / 1000).toFixed(1)} ${m}`) });
+    el.hidden = false;
+    const key = 'path' + specs.length;
+    if (this._paramKey !== key) {
+      this._paramKey = key;
+      el.innerHTML = specs.map((q, i) => `<label data-notr><span>${q.t}</span> <output id="p-p${i}"></output><input id="p-p${i}-r" type="range" min="${q.min}" max="${q.max}" step="${q.step}"></label>`).join('');
+      specs.forEach((q, i) => {
+        const r = $(`p-p${i}-r`);
+        r.addEventListener('input', () => { app.settings[q.k] = +r.value; $(`p-p${i}`).textContent = q.out(+r.value); });
+        r.addEventListener('change', () => { app.settings[q.k] = +r.value; apply(); app.applySettings?.(); this.refresh(); });
+      });
+    }
+    specs.forEach((q, i) => { const r = $(`p-p${i}-r`); if (document.activeElement !== r && +r.value !== q.v()) r.value = q.v(); $(`p-p${i}`).textContent = q.out(q.v()); });
+    return true;
+  }
+
   _fenceSlider(el) {
     const app = this.app, fw = app.wallTool?.fence, on = app.tool === 'wall' && app.wallTool.mode === 'lay' && app.settings.wallKind === 'fence' && fw && ['line', 'posts', 'rails'].includes(fw.L);
     if (!on) { if (this._paramKey?.startsWith?.('f2')) { this._paramKey = null; el.hidden = true; } return false; }

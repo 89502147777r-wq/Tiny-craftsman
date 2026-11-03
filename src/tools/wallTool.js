@@ -72,7 +72,7 @@ export class WallTool {
     this.fence = new FenceWork(app);
     // «Шнур» (the fence's setting-out): on — the finger pulls a new string; off — the pegs are moved
     this.cordBtn = typeof document !== 'undefined' ? document.getElementById('fence-cord') : null;
-    this.cordBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.fence.cord = !this.fence.cord; app.ui.toast(this.fence.cord ? 'Шнур: тяните пальцем разметку забора' : 'Шнур убран: колышки двигают пальцем вдоль шнура'); app.ui.refresh(); });
+    this.cordBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (this.kind === 'land') { const pw = this.land.pw; pw.cord = !pw.cord; app.ui.toast(pw.cord ? 'Шнур: тяните пальцем разметку дорожки' : 'Шнур убран: угловые колышки двигают пальцем'); app.ui.refresh(); return; } this.fence.cord = !this.fence.cord; app.ui.toast(this.fence.cord ? 'Шнур: тяните пальцем разметку забора' : 'Шнур убран: колышки двигают пальцем вдоль шнура'); app.ui.refresh(); });
     this.ext = new ExtWork(app);
     this.col = new ColumnWork(app);
     this.proof = new PitchedWork(app);
@@ -84,7 +84,7 @@ export class WallTool {
     this.tray = typeof document !== 'undefined' ? document.getElementById('wall-tray') : null;
     // under the tray: a course along a line
     this.rowBtn = typeof document !== 'undefined' ? document.getElementById('wall-row') : null;
-    this.rowBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this.toggleRow(); });
+    this.rowBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (this.kind === 'land') { this.land.pw.row = !this.land.pw.row; app.ui.toast(this.land.pw.row ? 'Ряд: ведите пальцем вдоль края дорожки — бордюры лягут один за другим' : 'По одному: бордюр из лотка к краю'); app.ui.refresh(); return; } this.toggleRow(); });
     // and the delete: straight from laying and back (no going back through the menu)
     this.delBtn = typeof document !== 'undefined' ? document.getElementById('wall-del') : null;
     this.delBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (this.rowJob) this._rowStop(); this.setMode(this.mode === 'delete' ? 'lay' : 'delete'); app.ui.toast(this.mode === 'delete' ? 'Удаление: коснитесь того, что снять. Ещё раз «Удалить» — снова кладка' : 'Снова кладка'); });
@@ -96,6 +96,11 @@ export class WallTool {
         // «Колонны и сваи»: the formwork / the cage taken from the tray and carried to its place
         if (app.tool === 'column') {
           if (this.col.trayDown(app.gestures.ground(e.clientX, e.clientY), e)) { try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ } this.tray.classList.add('active'); this._colTray = this.col; }
+          return;
+        }
+        // «Благоустройство → Дорожка → Бордюр»: a kerb taken from the tray
+        if (app.tool === 'wall' && this.kind === 'land' && this.land.what === 'path') {
+          if (this.land.pw.trayDown(app.gestures.ground(e.clientX, e.clientY), e)) { try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ } this.tray.classList.add('active'); this._colTray = this.land.pw; }
           return;
         }
         // «Забор → Прожилины»: a rail taken from the tray and carried onto the posts
@@ -136,7 +141,7 @@ export class WallTool {
     }
   }
 
-  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || !!this.pool.drag || !!this.land.drag || !!this.ext.drag || !!this.col.drag || !!this.fence.drag; }
+  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || !!this.pool.drag || !!this.land.drag || !!this.land.pw.drag || !!this.ext.drag || !!this.col.drag || !!this.fence.drag; }
   // one finger works on the wall in every mode (the camera: two fingers)
   blocksOrbit() { return true; }
 
@@ -267,7 +272,7 @@ export class WallTool {
     if (this.blind.drag) { this.blind.move(p, e); return; }
     if (this.pool.drag) { this.pool.move(p, e); return; }
     if (this.ext.drag) { this.ext.move(p, e); return; }
-    if (this.land.drag) { this.land.move(p, e); return; }
+    if (this.land.drag || this.land.pw.drag) { this.land.move(p, e); return; }
     if (this.fence.drag) { this.fence.move(p, e); return; }
     if (this.col.drag) { this.col.move(p, e); return; }
     if (this.proof.drag) { this.proof.move(p, e); return; }
@@ -314,7 +319,7 @@ export class WallTool {
     if (this.blind.drag) { this.blind.up(); return; }
     if (this.pool.drag) { this.pool.up(); return; }
     if (this.ext.drag) { this.ext.up(); return; }
-    if (this.land.drag) { this.land.up(); return; }
+    if (this.land.drag || this.land.pw.drag) { this.land.up(); return; }
     if (this.fence.drag) { this.fence.up(); return; }
     if (this.col.drag) { this.col.up(); return; }
     if (this.proof.drag) { this.proof.up(); return; }
@@ -1122,7 +1127,19 @@ export class WallTool {
       return;
     }
     this.tray.classList.remove('col-form', 'col-cage', 'col-round', 'fence-rail');
-    if (this.cordBtn) { this.cordBtn.hidden = !(this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'fence' && this.fence.L === 'line'); this.cordBtn.classList.toggle('active', !!this.fence.cord); }
+    const pathOn = this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'land' && this.land.what === 'path', pw = this.land.pw;
+    if (this.cordBtn) { this.cordBtn.hidden = !((this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'fence' && this.fence.L === 'line') || (pathOn && pw.L === 'set')); this.cordBtn.classList.toggle('active', pathOn ? !!pw.cord : !!this.fence.cord); }
+    // «Дорожка → Бордюр»: the tray holds a kerb, «Ряд» lays them along a side
+    if (pathOn) {
+      this.tray.hidden = pw.L !== 'kerb';
+      if (this.rowBtn) { this.rowBtn.hidden = pw.L !== 'kerb'; this.rowBtn.classList.toggle('active', !!pw.row); }
+      this.tray.classList.remove('brick', 'cinder', 'fence-rail'); this.tray.classList.add('cinder');
+      const lab = document.getElementById('wall-tray-label'), sm = this.tray.querySelector('small');
+      if (lab) lab.textContent = 'Бордюр';
+      if (sm) sm.textContent = 'тяните к краю';
+      this.tray.title = '';
+      return;
+    }
     // «Забор → Прожилины»: the tray holds a rail (a profile pipe)
     if (this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'fence') {
       if (this.rowBtn) this.rowBtn.hidden = true;
