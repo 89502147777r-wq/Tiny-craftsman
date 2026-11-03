@@ -14,6 +14,8 @@ import { PORCH_LAYERS, PORCH_TILES } from '../world/porch.js';
 import { FLIGHTS, FLIGHT_TEMPS } from '../world/facadeLights.js';
 import { COL_SECS, COURSES, TILTS, courseH } from '../world/columns.js';
 import { COL_TABS, DIRS } from '../tools/columnTool.js';
+import { F2_TABS } from '../tools/fenceTool.js';
+import { RAIL_SECS } from '../world/fence2.js';
 import { PALLETS } from '../core/budget.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
 import { LAYERS as FAC_LAYERS, VLAYERS as FAC_VLAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES, VENT } from '../world/facade.js';
@@ -42,6 +44,7 @@ const GROUPS = [
   { id: 'blindG', label: 'Отмостка', svg: '<svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="13"/><path d="M2 16h20l-2 4H4z"/><path d="M7 18h.01M12 18h.01M17 18h.01"/></svg>', virt: { kinds: ['blind'], path: ['blind'] } },
   { id: 'poolG', label: 'Бассейн', svg: '<svg viewBox="0 0 24 24"><path d="M3 7h18v10H3z"/><path d="M5 12c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 3-1.2 4.5 0"/><path d="M7 4v6M11 4v6M7 6h4"/></svg>', virt: { kinds: ['pool'], path: ['pool'] } },
   { id: 'extG', label: 'Экстерьер', svg: '<svg viewBox="0 0 24 24"><path d="M4 21V9l8-5 8 5v12"/><rect x="9.5" y="13" width="5" height="8"/><path d="M7 12h10"/><path d="M6 21h12M5 19h14"/></svg>', virt: { kinds: ['ext'], path: ['ext'] } },
+  { id: 'fenceG', label: 'Забор', svg: '<svg viewBox="0 0 24 24"><path d="M5 21V7l2-3 2 3v14M15 21V7l2-3 2 3v14"/><path d="M3 10h18M3 16h18"/><path d="M2 21h20"/></svg>', virt: { kinds: ['fence'], path: ['fence'] } },
   { id: 'landG', label: 'Благоустройство', svg: '<svg viewBox="0 0 24 24"><path d="M9 21l2-9h2l2 9"/><path d="M10.4 15h3.2M9.6 18.5h4.8"/><circle cx="18" cy="7" r="3"/><path d="M18 10v5"/><path d="M3 9c1.5-3 4.5-3 6 0-1.5 1.5-4.5 1.5-6 0zM6 10v5"/><path d="M2 21h20"/></svg>', virt: { kinds: ['land'], path: ['land'] } },
   { id: 'machines', label: 'Техника', icon: 'machine' },
 ];
@@ -651,7 +654,21 @@ export class UI {
         hid(G('blind', 'Отмостка', [...blind, del()], null, C('', has('blind'), () => lay({ wallKind: 'blind' })))),
         hid(G('pool', 'Бассейн', [(() => { const [nk, nw] = wt.pool.next(); return C(`➜ ${nw}`, false, () => { if (nk === 'concrete') { app.setTool?.('hose'); app.ui.toast(nw); } else if (nk) plset({ poolLayer: nk }); else app.ui.toast(nw); }, 'next'); })(), ...pool, del()], null, C('', has('pool'), () => lay({ wallKind: 'pool' })))),
         hid(G('ext', 'Экстерьер', [G('flights', 'Освещение фасада', [...Object.entries(FLIGHTS).map(([q, F]) => C(F.name, has('ext') && ew.what === 'light' && ew.lightKind === q, () => eset({ extWhat: 'light', flKind: q }))), ...Object.entries(FLIGHT_TEMPS).map(([q, [n]]) => C('◐ ' + n, ew.lightTemp === q, () => eset({ extWhat: 'light', flTemp: q })))], null, C('', has('ext') && ew.what === 'light', () => eset({ extWhat: 'light' }))), G('canopies', 'Козырьки', [C('Стеклянный над входом', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' }))], null, C('', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' }))), del()], null, C('', has('ext'), () => lay({ wallKind: 'ext' })))),
-        hid(G('land', 'Благоустройство', [(() => { const [nk, nw] = lw.next(); return C(`➜ ${nw}`, false, () => { if (!nk) app.ui.toast(nw); else if (isLawn) gset({ lawnLayer: nk }); else if (isFence) fset({ fenceLayer: nk }); else lset({ pathLayer: nk }); }, 'next'); })(), G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('fence', 'Забор', fence, null, C('', has('land') && isFence, () => fset({}))), G('plants', 'Растения', Object.entries(PLANTS).filter(([, P]) => !P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }))), G('lights', 'Освещение', Object.entries(PLANTS).filter(([, P]) => P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !!PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'bollard' }))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
+        hid(G('fence', 'Забор', (() => {
+          const fw = wt.fence, FL = fw.L, fz = (o) => lay({ wallKind: 'fence', ...o }), tab = (k, i) => C(`${i + 1} · ${F2_TABS[i][1]}`, has('fence') && FL === k, () => fz({ f2Layer: k }));
+          return [
+            tab('line', 0), tab('holes', 1),
+            G('f2posts', `3 · ${F2_TABS[2][1]}`, [
+              G('f2psize', 'Размеры', [C('Квадратный', fw.postSh === 'sq', () => fz({ f2Layer: 'posts', postSh: 'sq' })), C('Круглый', fw.postSh === 'rd', () => fz({ f2Layer: 'posts', postSh: 'rd' })), ...FENCE_HEIGHTS.map((h) => C(`Высота ${String(h / 1000).replace('.', ',')} м`, fw.H === h, () => fz({ f2Layer: 'posts', fenceH: h })))]),
+              C('Установка', has('fence') && FL === 'posts', () => fz({ f2Layer: 'posts' })),
+            ], null, C('', has('fence') && FL === 'posts', () => fz({ f2Layer: 'posts' }))),
+            G('f2rails', `4 · ${F2_TABS[3][1]}`, [G('f2rsize', 'Размеры', Object.entries(RAIL_SECS).map(([k, q]) => C('Сечение ' + q.name, fw.railSec === k, () => fz({ f2Layer: 'rails', railSec: k }))))], null, C('', has('fence') && FL === 'rails', () => fz({ f2Layer: 'rails' }))),
+            G('f2fill', `5 · ${F2_TABS[4][1]}`, [...Object.entries(FENCE_KINDS).map(([q, K]) => C(K.name, fw.kind === q, () => fz({ f2Layer: 'fill', fenceKind: q }))), ...FENCE_KINDS[fw.kind].cols.map((q) => C('◼ ' + FENCE_COLS[q][0], fw.col === q, () => fz({ f2Layer: 'fill', fenceCol: q })))], null, C('', has('fence') && FL === 'fill', () => fz({ f2Layer: 'fill' }))),
+            G('f2gate', `6 · ${F2_TABS[5][1]}`, [G('f2gates', 'Ворота', Object.entries(GATES).filter(([, T]) => T.gate).map(([q, T]) => C(T.name, fw.gateType === q, () => fz({ f2Layer: 'gate', gateType: q })))), G('f2wick', 'Калитки', Object.entries(GATES).filter(([, T]) => !T.gate).map(([q, T]) => C(T.name, fw.gateType === q, () => fz({ f2Layer: 'gate', gateType: q }))))], null, C('', has('fence') && FL === 'gate', () => fz({ f2Layer: 'gate' }))),
+            del(),
+          ];
+        })(), null, C('', has('fence'), () => lay({ wallKind: 'fence' })))),
+        hid(G('land', 'Благоустройство', [(() => { const [nk, nw] = lw.next(); return C(`➜ ${nw}`, false, () => { if (!nk) app.ui.toast(nw); else if (isLawn) gset({ lawnLayer: nk }); else if (isFence) fset({ fenceLayer: nk }); else lset({ pathLayer: nk }); }, 'next'); })(), G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('plants', 'Растения', Object.entries(PLANTS).filter(([, P]) => !P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }))), G('lights', 'Освещение', Object.entries(PLANTS).filter(([, P]) => P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !!PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'bollard' }))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
@@ -707,6 +724,7 @@ export class UI {
   // sliders for the selected outline (depth, trench width)
   renderParams() {
     const app = this.app, el = $('params');
+    if (this._fenceSlider(el)) return;
     const o = app.tool === 'mark' ? app.markTool.rec : null;
     el.hidden = !o;
     if (!o) { this._paramKey = null; return; }
@@ -730,6 +748,31 @@ export class UI {
     $('p-depth').textContent = `${o.depth} мм · ${real(o.depth).toFixed(0)} см`;
     const w = $('p-width-r');
     if (w) { if (document.activeElement !== w) w.value = Math.round(o.width * 1000); $('p-width').textContent = `${(o.width * 1000).toFixed(0)} мм · ${(o.width * MODEL_SCALE * 100).toFixed(0)} см`; }
+  }
+
+  // «Забор»: a slider for the stage open — the pegs' spacing (1 … 5 m), the post's size (40 … 100), the
+  // rail's length (1 … 6 m); true when it is shown
+  _fenceSlider(el) {
+    const app = this.app, fw = app.wallTool?.fence, on = app.tool === 'wall' && app.wallTool.mode === 'lay' && app.settings.wallKind === 'fence' && fw && ['line', 'posts', 'rails'].includes(fw.L);
+    if (!on) { if (this._paramKey?.startsWith?.('f2')) { this._paramKey = null; el.hidden = true; } return false; }
+    const L = fw.L, key = 'f2' + L, en = LANG === 'en';
+    const spec = {
+      line: { t: en ? 'Between the posts' : 'Между столбами', min: 1000, max: 5000, step: 100, v: () => fw.step, set: (v, done) => { if (done) fw.setStep(v); else app.settings.fenceStep = v; }, out: (v) => `${(v / 1000).toFixed(1)} ${en ? 'm' : 'м'}` },
+      posts: { t: fw.postSh === 'rd' ? (en ? 'Post diameter' : 'Диаметр столба') : (en ? 'Post section' : 'Сечение столба'), min: 40, max: 100, step: 10, v: () => fw.postA, set: (v) => { app.settings.postA = v; }, out: (v) => (fw.postSh === 'rd' ? `Ø ${v} ${en ? 'mm' : 'мм'}` : `${v} × ${v} ${en ? 'mm' : 'мм'}`) },
+      rails: { t: en ? 'Rail length' : 'Длина прожилины', min: 1000, max: 6000, step: 500, v: () => fw.railL, set: (v) => { app.settings.railL = v; }, out: (v) => `${(v / 1000).toFixed(1)} ${en ? 'm' : 'м'}` },
+    }[L];
+    el.hidden = false;
+    if (this._paramKey !== key + fw.postSh) {
+      this._paramKey = key + fw.postSh;
+      el.innerHTML = `<label data-notr><span>${spec.t}</span> <output id="p-f2"></output><input id="p-f2-r" type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}"></label>`;
+      const r = $('p-f2-r'), show = () => { $('p-f2').textContent = spec.out(+r.value).replace(en ? /,/ : /\./, en ? '.' : ','); };
+      r.addEventListener('input', () => { spec.set(+r.value, false); show(); });
+      r.addEventListener('change', () => { spec.set(+r.value, true); show(); app.applySettings?.(); this.refresh(); });
+      r.value = spec.v(); show();
+    }
+    const r = $('p-f2-r');
+    if (document.activeElement !== r && +r.value !== spec.v()) { r.value = spec.v(); $('p-f2').textContent = spec.out(spec.v()).replace(en ? /,/ : /\./, en ? '.' : ','); }
+    return true;
   }
 
   refresh() {

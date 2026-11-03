@@ -4,6 +4,7 @@ import { PATH, TOPS, paversOf, kerbsOf, paveQuads, kerbOuter, bandQuads, legsOf,
 import { lawnUniforms, buildLawn, lawnLine, lawnGhost, turfRoll, roller, sprinkler } from './lawnView.js';
 import { frameW } from './lawn.js';
 import { fenceString, fencePosts, fenceFill, fenceUniforms, auger, fenceGates } from './fence.js';
+import { isV2, stringAndPegs, postsAndConcrete, railsAndWelds, bays2, postA, pegXZ, RAIL_SECS } from './fence2.js';
 import { PLANTS, plantBody, rootBall, mulchDisc, mulchStrip, spotsOf } from './plants.js';
 import { buildLight, lightLevel } from './facadeLights.js';
 import { buildInterior, interiorLight } from './interior.js';
@@ -195,6 +196,7 @@ export class GardenView {
       let e = this.parts.get(key);
       if (!e) { e = { g: new THREE.Group(), keys: {}, sub: {}, U: fenceUniforms(), fence: true }; this.group.add(e.g); this.parts.set(key, e); }
       e.rec = r;
+      if (isV2(r)) { this._buildFence2(r, e); continue; }
       const d = r.done || {}, a = this.anim['F' + r.id] || {}, gk = JSON.stringify((r.gates || []).map((q) => [q.s, q.w, q.type])), geo = [r.pts.flat().join(), r.H, r.kind, r.g, gk].join('|');
       this._part(e, 'string', !d.posts ? geo : null, () => fenceString(r));
       this._part(e, 'posts', d.posts || a.posts != null ? geo : null, () => fencePosts(r, e.U));
@@ -315,10 +317,29 @@ export class GardenView {
     });
     if (e.sub.mulch) { const k = a ? a.mulch ?? 0 : 1; e.sub.mulch.visible = k > (r.kind === 'hedge' ? 0.5 : 0.01); if (r.kind !== 'hedge') e.sub.mulch.scale.set(Math.max(0.01, k), 1, Math.max(0.01, k)); }
   }
+  // the fence by the post (fence2.js): the string and the pegs, the posts and their concrete, the rails
+  // and the welds, the filled bays, the gates
+  _buildFence2(r, e) {
+    const a = this.anim['F' + r.id] || {}, P = r.pegs || [], base = JSON.stringify([r.pts, r.g]);
+    this._part(e, 'string', base + JSON.stringify([P.map((q) => [q.s, q.hole ? 1 : 0]), a.hidePeg ?? -1]), () => stringAndPegs(r, a.hidePeg ?? -1));
+    const pour = a.pour ? [a.pour.i, Math.round(a.pour.f * 60)] : 0;
+    this._part(e, 'posts', P.some((q) => q.post || q.fill) || a.pour ? base + JSON.stringify([P.map((q) => [q.s, q.post, q.fill, q.pourT != null]), pour]) : null, () => postsAndConcrete(r, a.pour));
+    this._part(e, 'rails', (r.rails || []).length ? base + JSON.stringify([r.rails, postA(r), P.map((q) => [q.s, q.post?.a])]) : null, () => railsAndWelds(r));
+    // (the bays filled, and those going in now: their pieces counted in one by one)
+    const fresh = a.fresh || [], B = bays2(r).filter((b) => b.gate < 0 && (b.filled || fresh.some((m) => Math.abs(m - b.mid) < 2)));
+    this._part(e, 'fill', B.length ? base + JSON.stringify([B.map((b) => b.mid), fresh, r.kind, r.col, postA(r), P.map((q) => [q.s, q.post?.h])]) : null, () => {
+      const pa = postA(r), rd = Math.max(...(r.rails || []).map((q) => (RAIL_SECS[q.sec] || RAIL_SECS.r4020).d), 20);
+      const bays = B.map((b) => { const [ax, az] = pegXZ(r, b.a.s), [bx, bz] = pegXZ(r, b.b.s); return { a: [ax, az, 0, b.a.s], b: [bx, bz, 0, b.b.s], L: Math.hypot(bx - ax, bz - az), mid: b.mid, gate: -1 }; });
+      const H = Math.min(...B.map((b) => Math.min(b.a.post?.h || r.H, b.b.post?.h || r.H)));
+      return fenceFill({ ...r, H }, e.U, { bays, fresh: new Set(fresh.length ? bays.filter((b) => fresh.some((m) => Math.abs(m - b.mid) < 2)).map((b) => b.mid) : []), off0: pa / 2 + rd, pa, H });
+    });
+    const gk = JSON.stringify((r.gates || []).map((q) => [q.s, q.w, q.type]));
+    this._part(e, 'gates', (r.gates || []).length ? base + gk + '|' + r.kind + '|' + r.col + '|' + r.H : null, () => { const G = new THREE.Group(); e.gl = fenceGates(r); for (const q of e.gl) G.add(q.group); return G; });
+  }
   _fenceFrame(e) {
     const r = e.rec, d = r.done || {}, a = this.anim['F' + r.id] || {};
     e.U.posts.n.value = a.posts ?? (d.posts ? 1e9 : -1);
-    e.U.fill.n.value = a.fill ?? (d.fill ? 1e9 : -1);
+    e.U.fill.n.value = a.fill ?? (d.fill || (isV2(r) && (r.filled || []).length) ? 1e9 : -1);
     // the gates: shown when hung; each leaf swung (or rolled) toward where it is meant to be
     if (e.sub.gates && e.gl) {
       e.gs = e.gs || {};
@@ -338,8 +359,8 @@ export class GardenView {
       }
     }
     const g = a.augerAt;
-    e.auger.visible = !!g;
-    if (g) { e.auger.position.set(g.x, g.y, g.z); e.auger.userData.screw.rotation.y = g.spin; }
+    if (e.auger) e.auger.visible = !!g;
+    if (g && e.auger) { e.auger.position.set(g.x, g.y, g.z); e.auger.userData.screw.rotation.y = g.spin; }
   }
   _buildLawn(app, r, e) {
     const d = r.done || {}, a = this.anim['L' + r.id] || {}, geo = [r.poly.flat().join(), r.g, r.u].join('|');

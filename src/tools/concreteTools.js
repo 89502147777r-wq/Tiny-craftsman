@@ -9,11 +9,48 @@ import { BlindChannel } from './blindPour.js';
 import { BLIND, layerSet } from '../world/blind.js';
 import { BIT, dab } from '../world/bitumen.js';
 import { LANG } from '../i18n/i18n.js';
+import { isV2, pegXZ, HOLE } from '../world/fence2.js';
 import { COL_SECS, colTop, colBot, axisAt, fillOf, formOn, cageOn, castDone } from '../world/columns.js';
 
 // the concrete cast in place on the walls: a run of U-blocks or a ring beam (or a column's formwork)
-const makeChannel = (app, t) => (t.type === 'column' ? new ColumnChannel(app, t) : t.type === 'belt' ? new BeltChannel(app, t) : t.type === 'blind' ? new BlindChannel(app, t) : new Channel(app, t));
-const topOf = (t) => (t.type === 'column' ? colTop(t) : t.type === 'belt' ? t.top + t.H : t.type === 'blind' ? t.g + BLIND.top / 1000 / MODEL_SCALE : t.p[1] + t.s[1] / 2);
+const makeChannel = (app, t) => (t.type === 'fpost' ? new PostChannel(app, t) : t.type === 'column' ? new ColumnChannel(app, t) : t.type === 'belt' ? new BeltChannel(app, t) : t.type === 'blind' ? new BlindChannel(app, t) : new Channel(app, t));
+const topOf = (t) => (t.type === 'fpost' ? t.g + MM_(150) : t.type === 'column' ? colTop(t) : t.type === 'belt' ? t.top + t.H : t.type === 'blind' ? t.g + BLIND.top / 1000 / MODEL_SCALE : t.p[1] + t.s[1] / 2);
+
+const MM_ = (v) => v / 1000 / MODEL_SCALE;
+// The hole round a fence post (fence2.js) as a channel: one sample, the level of the concrete in it
+// (mm from its bottom) rising by the litres poured (the hole Ø 200 less the post); full — level with
+// the ground, a collar sloped off round the post. The target: { type: 'fpost', id (the fence), i (its
+// peg), g (the ground) }.
+class PostChannel {
+  constructor(app, t) {
+    const r = app.objects.get(t.id), q = r.pegs[t.i], a = (q.post?.a || 60) / 1000;
+    this.app = app; this.t = t;
+    this.area = Math.PI * (HOLE.r / 1000) ** 2 - (q.post?.sh === 'rd' ? Math.PI * a * a / 4 : a * a);   // m²
+    this.cap = HOLE.depth;
+    this.h = [(q.fill || 0) * this.cap]; this.h0 = this.h[0];
+  }
+  has(t) { return t?.type === 'fpost' && t.id === this.t.id && t.i === this.t.i; }
+  at() { return 0; }
+  get full() { return this.h[0] >= this.cap - 2.5; }
+  pour(i, l) { this.h[0] = Math.min(this.cap, this.h[0] + l / this.area); }
+  step() { return 0; }
+  show() { this.app.gardenView.setAnim('F' + this.t.id, { pour: { i: this.t.i, f: this.h[0] / this.cap } }); }
+  point() { const r = this.app.objects.get(this.t.id), [x, z] = pegXZ(r, r.pegs[this.t.i].s); return new THREE.Vector3(x, this.t.g - MM_(HOLE.depth - this.h[0]), z); }
+  write(app) {
+    app.gardenView.setAnim('F' + this.t.id, null);
+    const hose = app.concreteTools?.hose; if (hose && hose.ch === this) hose._colPour = true;
+    if (this.h[0] <= this.h0 + 0.5) return;
+    const r = app.objects.get(this.t.id), q = r.pegs[this.t.i], full = this.full, f = full ? 1 : +(this.h[0] / this.cap).toFixed(4);
+    app.objects.update(r.id, { pegs: r.pegs.map((p, k) => (k === this.t.i ? { ...p, fill: f, ...(p.pourT == null ? { pourT: +app.clock.toFixed(3) } : {}) } : p)) });
+    if (full) {
+      // (the hole closed: the ground round the collar made good)
+      const [x, z] = pegXZ(r, q.s), R = MM_(HOLE.r + 40);
+      app.terrain.levelTo((wx, wz) => Math.hypot(wx - x, wz - z) < R, r.g, [x - R, z - R, x + R, z + R]);
+      const left = r.pegs.filter((p, k) => p.post && !(p.fill >= 1) && k !== this.t.i).length;
+      app.ui?.toast(LANG === 'en' ? `The post is concreted${left ? ` — ${left} more to do` : ' — all of them. Next «4 · Rails» (Fence)'}` : `Столб забетонирован${left ? ` — осталось ещё ${left}` : ' — все. Дальше «4 · Прожилины» (Забор)'}`);
+    } else app.ui?.toast(LANG === 'en' ? `The hole is ${Math.round(f * 100)} % full — pour on` : `Яма залита на ${Math.round(f * 100)} % — лейте дальше`);
+  }
+}
 
 // The formwork of a column / a pile (columns.js) as a channel: one sample, the level of the
 // concrete in it (mm from the bottom of the hole / the foot) rising by the litres poured in; it
@@ -94,6 +131,7 @@ class ConcreteTool {
     const app = this.app, v = app.wallView;
     if (!e || !v || e.clientX === undefined) return null;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
+    if (cols) { const f = this._postAt(); if (f) return f; }
     const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.blocks, v.bricks, v.cinders, v.lintels, v.blinds, ...(cols && v.columns ? [v.columns.group] : [])], true)[0];
     if (!hit) {
       // (a pool's bottom slab: nothing but the bars over its lean concrete — its plane)
@@ -123,6 +161,28 @@ class ConcreteTool {
     if (r?.kind === 'ublock') return r;
     // (between the boards of a ring beam: on the masonry under it)
     return app.objects.all('belt').find((b) => beltContains(b, hit.point.x, hit.point.z) && hit.point.y > b.top - 0.002 && hit.point.y < b.top + b.H + 0.004) || null;
+  }
+  // a fence post's hole under the ray (the post itself: its axis within reach of the ray), for the hose
+  // and the bucket: { type: 'fpost', id, i, g }
+  _postAt() {
+    const app = this.app, ray = _ray.ray, a = new THREE.Vector3(), b = new THREE.Vector3(), pr = new THREE.Vector3(), ps = new THREE.Vector3();
+    let best = null, bd = Infinity;
+    for (const r of app.objects.all('fence')) {
+      if (!isV2(r)) continue;
+      r.pegs.forEach((q, i) => {
+        if (!q.hole) return;
+        const [x, z] = pegXZ(r, q.s), top = r.g + (q.post ? MM_(q.post.h) : MM_(100));
+        a.set(x, r.g - MM_(200), z); b.set(x, top, z);
+        const d2 = ray.distanceSqToSegment(a, b, pr, ps), d = Math.sqrt(d2), reach = MM_(Math.max(160, (q.post?.a || 60)));
+        if (d < reach && pr.distanceTo(ray.origin) < bd) { bd = pr.distanceTo(ray.origin); best = { r, q, i, x, z }; }
+      });
+    }
+    if (!best) return null;
+    const { r, q, i, x, z } = best;
+    const why = !q.post ? 'Сначала столб в яму («Забор» → «3 · Столбы»)' : q.fill >= 1 ? 'Этот столб уже забетонирован' : null;
+    if (why) { if (!this._bSaid) { this._bSaid = true; app.ui?.toast(why); } return null; }
+    this._uHit = new THREE.Vector3(x, r.g, z);
+    return { type: 'fpost', id: r.id, i, g: r.g };
   }
   _uBegin(e, type) {
     const u = this._uAt(e);
@@ -247,9 +307,9 @@ export class HoseTool extends ConcreteTool {
     const ch = this.ch, i = ch.at(this.p.x, this.p.z);
     // (a ring beam takes the hose near its pump rate: 37 … 60 l/s; the narrow channel of the
     // U-blocks 8 l/s)
-    const lps = this.uT.type === 'column' ? Math.min(20, (app.settings.pump || PUMP[1]) * 300) : isSlab(this.uT) || this.uT.kind === 'pool' || this.uT.type === 'blind' ? (app.settings.pump || PUMP[1]) * (this.uT.type === 'blind' ? 300 : 1000) : this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;   // (a slab: the pump's whole rate)
+    const lps = this.uT.type === 'fpost' ? Math.min(8, (app.settings.pump || PUMP[1]) * 300) : this.uT.type === 'column' ? Math.min(20, (app.settings.pump || PUMP[1]) * 300) : isSlab(this.uT) || this.uT.kind === 'pool' || this.uT.type === 'blind' ? (app.settings.pump || PUMP[1]) * (this.uT.type === 'blind' ? 300 : 1000) : this.uT.type === 'belt' ? Math.min(60, (app.settings.pump || PUMP[1]) * 300) : 8;   // (a slab: the pump's whole rate)
     if (!ch.full && ch.h[i] < (ch.brim ? ch.brim(i) : ch.cap) - 2) { ch.pour(i, lps * dt); this.poured += lps / 1000 * dt / MODEL_SCALE ** 3; }
-    else if (this.uT.type === 'column') { /* (full: the channel says so when it is written) */ }
+    else if (this.uT.type === 'column' || this.uT.type === 'fpost') { /* (full: the channel says so when it is written) */ }
     else if (!ch.full && !this.brimSaid) { this.brimSaid = true; app.ui?.toast(this.uT.type === 'blind' ? 'Здесь отмостка полна — ведите шланг дальше вдоль дома' : isSlab(this.uT) ? 'Здесь уже 200 мм — ведите шланг дальше по перекрытию' : this.uT.kind === 'pool' ? (this.uT.part === 'floor' ? 'Здесь днище полно — ведите шланг дальше' : 'Здесь стена полна — ведите шланг дальше по периметру') : this.uT.type === 'belt' ? 'Здесь опалубка полна — ведите шланг дальше по поясу' : 'Здесь лоток полон — ведите шланг дальше вдоль ряда'); }
     else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast(this.uT.type === 'blind' ? 'Отмостка залита — отпустите; потом вибратор, правило по доскам (уклон от стен) и кельма' : isSlab(this.uT) ? 'Перекрытие залито — отпустите; потом вибратор и правило по доскам' : this.uT.kind === 'pool' ? (this.uT.part === 'floor' ? 'Днище залито — отпустите; потом вибратор и правило по доскам' : 'Стены чаши залиты доверху — отпустите, провибрируйте') : this.uT.type === 'belt' ? 'Пояс залит доверху — отпустите' : 'U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
@@ -363,7 +423,7 @@ export class PailTool extends ConcreteTool {
     // tipping: on until it runs, then further as it empties
     // (where the channel is full already it is held back: lead it on along the run)
     const brim = ch.h[this.i] >= (ch.brim ? ch.brim(this.i) : ch.cap) - 2;
-    if (brim && !ch.full && !this.brimSaid && this.uT?.type !== 'column') { this.brimSaid = true; app.ui?.toast(this.uT?.type === 'blind' ? 'Здесь отмостка полна — ведите ведро дальше' : 'Здесь лоток полон — ведите ведро дальше вдоль ряда'); }
+    if (brim && !ch.full && !this.brimSaid && this.uT?.type !== 'column' && this.uT?.type !== 'fpost') { this.brimSaid = true; app.ui?.toast(this.uT?.type === 'blind' ? 'Здесь отмостка полна — ведите ведро дальше' : 'Здесь лоток полон — ведите ведро дальше вдоль ряда'); }
     const want = this.left > 0 && !brim ? 1.25 + 0.75 * (1 - this.left / PAIL_L) : 0.6;
     this.tilt += (want - this.tilt) * (1 - Math.exp(-dt * 4));
     const run = this.left > 0 && this.tilt > 1.1 ? Math.min(1, (this.tilt - 1.1) / 0.15) : 0;
@@ -372,7 +432,7 @@ export class PailTool extends ConcreteTool {
       const l = Math.min(this.left, 3.5 * run * dt);
       ch.pour(this.i, l); this.left -= l; this.poured += l / 1000 / MODEL_SCALE ** 3;
       if (this.left <= 0) app.ui?.toast('Ведро пустое — отпустите и наберите ещё');
-    } else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast(this.uT?.type === 'column' ? 'Колонна залита доверху — отпустите' : this.uT?.type === 'blind' ? 'Отмостка залита — отпустите' : 'U-блоки залиты доверху — отпустите'); }
+    } else if (ch.full && !this.warned) { this.warned = true; app.ui?.toast(this.uT?.type === 'fpost' ? 'Яма залита — отпустите' : this.uT?.type === 'column' ? 'Колонна залита доверху — отпустите' : this.uT?.type === 'blind' ? 'Отмостка залита — отпустите' : 'U-блоки залиты доверху — отпустите'); }
     ch.step(dt);
     if (run > 0 && Math.random() < 0.3) {
       const p = ch.point(this.i), a = Math.random() * Math.PI * 2;

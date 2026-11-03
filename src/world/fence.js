@@ -45,7 +45,7 @@ export const colOf = (r) => { const K = FENCE_KINDS[kindOf(r)]; return K.cols.in
 export const fenceLine = (trail) => lineOf(trail);
 
 // ---- along the line ---------------------------------------------------------------------------------
-function legs(r) {
+export function legs(r) {
   const out = []; let s = 0;
   for (let i = 1; i < r.pts.length; i++) { const [x0, z0] = r.pts[i - 1], [x1, z1] = r.pts[i], L = Math.hypot(x1 - x0, z1 - z0) / S; out.push({ x0, z0, ux: (x1 - x0) / (L * S), uz: (z1 - z0) / (L * S), s0: s, L }); s += L; }
   return out;
@@ -181,33 +181,38 @@ export function fencePosts(r, U) {
 }
 // the fill of the bays (the gates' bays left open: their leaves are fenceGates'); the order: bay by bay,
 // the rails first, then the infill from the bottom (slats, louvres) or along (pickets)
-export function fenceFill(r, U) {
-  const G = new THREE.Group(), kind = kindOf(r), col = colOf(r), B = baysOf(r).filter((b) => b.gate < 0), H = r.H, m = fillMat(kind, col), rail = metal((FENCE_COLS[col] || FENCE_COLS.anth)[2]);
+// opt (the fence by the post, fence2.js): { bays: the bays to fill, fresh: the middles of those going in
+// now (the others shown as they are), off0: the back of the infill off the posts' line (mm), pa: the
+// posts' size (mm), H }
+export function fenceFill(r, U, opt = null) {
+  const G = new THREE.Group(), kind = kindOf(r), col = colOf(r), B = opt ? opt.bays : baysOf(r).filter((b) => b.gate < 0), H = opt?.H || r.H, m = fillMat(kind, col), rail = metal((FENCE_COLS[col] || FENCE_COLS.anth)[2]);
   const L = { rails: [], fill: [], wire: [] };
   let ord = 0;
+  const P0 = opt ? opt.off0 : FENCE.post / 2, PA = opt ? opt.pa : FENCE.post, o = (b) => (!opt || opt.fresh.has(b.mid) ? ord++ : -1);
   for (const b of B) {
     const yaw = yawOf(b.a, b.b), cx = (b.a[0] + b.b[0]) / 2, cz = (b.a[1] + b.b[1]) / 2, ux = (b.b[0] - b.a[0]) / b.L, uz = (b.b[1] - b.a[1]) / b.L, nx = -uz, nz = ux;
     const span = (len, y, M) => { M.multiply(new THREE.Matrix4().makeScale(len, 1, 1)); return M; };
-    const inner = b.L - MM(FENCE.post);
+    const inner = b.L - MM(PA);
     if (kind === 'slat') {
-      const rows = Math.floor((H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)), off = MM(FENCE.post / 2 + FENCE.slatT / 2);
-      for (let k = 0; k < rows; k++) L.fill.push([span(b.L + MM(FENCE.post), 0, at(cx + nx * off, r.g + MM(FENCE.gap + k * (FENCE.slat + FENCE.slatGap) + FENCE.slat / 2), cz + nz * off, yaw)), ord++]);
+      const rows = Math.floor((H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)), off = MM(P0 + FENCE.slatT / 2);
+      for (let k = 0; k < rows; k++) L.fill.push([span(b.L + MM(PA), 0, at(cx + nx * off, r.g + MM(FENCE.gap + k * (FENCE.slat + FENCE.slatGap) + FENCE.slat / 2), cz + nz * off, yaw)), o(b)]);
     } else if (kind === 'picket') {
       // two rails 40 × 20 on the posts' face, the pickets 120 wide 30 apart screwed to them
       const off = MM(FENCE.post / 2 + 10);
-      for (const y of [300, H - 300]) L.rails.push([span(b.L + MM(FENCE.post), 0, at(cx + nx * off, r.g + MM(y), cz + nz * off, yaw)), ord++]);
-      const n = Math.floor((b.L / S - FENCE.post) / 150);
-      for (let k = 0; k < n; k++) { const s = -inner / 2 + (inner - (n - 1) * MM(150)) / 2 + k * MM(150); L.fill.push([at(cx + ux * s + nx * MM(FENCE.post / 2 + 24), r.g + MM(100 + (H - 100) / 2), cz + uz * s + nz * MM(FENCE.post / 2 + 24), yaw), ord++]); }
+      if (!opt) for (const y of [300, H - 300]) L.rails.push([span(b.L + MM(FENCE.post), 0, at(cx + nx * off, r.g + MM(y), cz + nz * off, yaw)), o(b)]);
+      const n = Math.floor((b.L / S - PA) / 150), po = MM(P0 + (opt ? 4 : 24));
+      for (let k = 0; k < n; k++) { const s = -inner / 2 + (inner - (n - 1) * MM(150)) / 2 + k * MM(150); L.fill.push([at(cx + ux * s + nx * po, r.g + MM(100 + (H - 100) / 2), cz + uz * s + nz * po, yaw), o(b)]); }
     } else if (kind === 'louvre') {
       // the blades 100 deep at 45°, every 70 between two U-channels on the posts
       const n = Math.floor((H - 2 * FENCE.gap) / 70);
-      for (let k = 0; k < n; k++) { const M = at(cx, r.g + MM(FENCE.gap + 35 + k * 70), cz, yaw); M.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 4)); M.multiply(new THREE.Matrix4().makeScale(inner, 1, 1)); L.fill.push([M, ord++]); }
+      for (let k = 0; k < n; k++) { const M = at(cx, r.g + MM(FENCE.gap + 35 + k * 70), cz, yaw); M.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 4)); M.multiply(new THREE.Matrix4().makeScale(inner, 1, 1)); L.fill.push([M, o(b)]); }
     } else if (kind === 'mesh') {
-      const M = at(cx, r.g + MM(FENCE.gap), cz, yaw); M.multiply(new THREE.Matrix4().makeScale(inner, 1, 1)); L.fill.push([M, ord++]);
+      const M = at(cx, r.g + MM(FENCE.gap), cz, yaw); M.multiply(new THREE.Matrix4().makeScale(inner, 1, 1)); L.fill.push([M, o(b)]);
     } else {
       // chain-link: three tension wires, the mesh stretched over them
-      for (const y of [80, H / 2, H - 40]) L.wire.push([span(b.L, 0, at(cx, r.g + MM(y), cz, yaw)), ord]);
-      const M = at(cx, r.g + MM(40 + (H - 40) / 2), cz, yaw); M.multiply(new THREE.Matrix4().makeScale(b.L, 1, 1)); L.fill.push([M, ord++]);
+      const k = o(b);
+      for (const y of [80, H / 2, H - 40]) L.wire.push([span(b.L, 0, at(cx, r.g + MM(y), cz, yaw)), k]);
+      const M = at(cx, r.g + MM(40 + (H - 40) / 2), cz, yaw); M.multiply(new THREE.Matrix4().makeScale(b.L, 1, 1)); L.fill.push([M, k]);
     }
   }
   if (kind === 'slat') G.add(pieces(box(1, MM(FENCE.slat), MM(FENCE.slatT)), m, L.fill, U.fill));

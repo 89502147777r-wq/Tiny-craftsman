@@ -285,6 +285,9 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .wall-row b { font-size: 10px; font-weight: 600; } .wall-row small { display: none; }
 .wall-row svg rect { fill: #a9533d; } .wall-row svg path { stroke: currentColor; }
 .wall-row.active { outline: 2px solid var(--accent, #f0a53a); background: rgba(240,165,58,.28); }
+.fence-cord svg path:first-child { stroke: #c49a62; } .fence-cord svg path:last-child { stroke: #fff3c4; }
+/* the fence's tray: a profile pipe */
+.wall-tray.fence-rail .tray-stack i { height: 7px; background: #4a4f55; box-shadow: inset 0 -2px 0 rgba(0,0,0,.35), inset 0 2px 0 rgba(255,255,255,.18); left: 0; width: 52px; }
 .wall-tray b { font-size: 10px; font-weight: 600; line-height: 1.1; text-align: center; }
 .wall-tray small { display: none; }
 .wall-tray .tray-stack { position: relative; width: 52px; height: 34px; transform: scale(.62); margin: -7px 0 -9px; }

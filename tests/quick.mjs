@@ -626,6 +626,56 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2e. The fence by the post («Забор»): the string with its pegs, a peg moved for a wicket, the holes
+// one by one, the posts, the concrete by the bucket and the hose, the rails welded, the fill, the wicket
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const f = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, fw = wt.fence, o = {}, F2 = await import('/src/world/fence2.js');
+    const e = (p) => { const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
+    const run = () => { for (let i = 0; i < 4000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
+    const G = (x, z) => new V(x, tc.terrain.heightAt(x, z), z), sAt = (s) => { const [x, z] = F2.pegXZ(fw.rec, s); return new V(x, fw.rec.g, z); }, at = (i) => sAt(fw.rec.pegs[i].s);
+    tc.rig.setState({ target: [0, 0.05, 0.1], yaw: 0.2, pitch: 0.75, dist: 1.5 }); tc.simulate(0.05);
+    tc.ui.openGroup('fenceG'); tc.ui.refresh();
+    o.chips = tc.ui.navNodes().list.map((c) => c.label).join('|');
+    o.inLand = JSON.stringify((() => { tc.ui.openGroup('landG'); const x = tc.ui.navNodes().list.map((c) => c.label); tc.ui.openGroup('fenceG'); return x; })()).includes('Забор');
+    Object.assign(tc.settings, { f2Layer: 'line', fenceStep: 2000 }); fw.cord = true; tc.ui.refresh();
+    o.ui = !document.getElementById('fence-cord').hidden && !document.getElementById('params').hidden;
+    const pts = []; for (let k = 0; k <= 20; k++) pts.push(G(-0.38 + 0.76 * k / 20, 0.15));
+    fw.down(pts[0], e(pts[0])); for (const p of pts) fw.move(p, e(p)); fw.up();
+    o.pegs = fw.rec.pegs.map((q) => q.s).join();
+    fw.cord = false; { const p = at(3); fw.down(p, e(p)); const q = sAt(5000); fw.move(q, e(q)); fw.up(); }
+    o.moved = fw.rec.pegs[3].s;
+    tc.settings.f2Layer = 'holes'; for (let i = 0; i < fw.rec.pegs.length; i++) { const p = at(i); fw.down(p, e(new V(p.x, p.y + 0.02, p.z))); fw.up(); run(); }
+    o.holes = fw.rec.pegs.map((q) => (q.hole ? 1 : 0)).join('');
+    Object.assign(tc.settings, { f2Layer: 'posts', postSh: 'rd', postA: 80, fenceH: 1800 });
+    for (let i = 0; i < fw.rec.pegs.length; i++) { const p = at(i); fw.down(p, e(p)); fw.up(); run(); }
+    o.posts = fw.rec.pegs.map((q) => (q.post ? q.post.sh + q.post.a : '-')).join();
+    tc.setTool('pail'); { const pail = tc.concreteTools.pail, p = at(0), top = new V(p.x, p.y + 0.05, p.z); pail.down(top, e(top)); tc.simulate(8); pail.up(); tc.simulate(2); o.pail = fw.rec.pegs[0].fill; }
+    tc.setTool('hose'); tc.settings.pump = 1; const hose = tc.concreteTools.hose;
+    for (let i = 0; i < fw.rec.pegs.length; i++) { const p = at(i), top = new V(p.x, p.y + 0.06, p.z); hose.down(top, e(top)); for (let k = 0; k < 40 && !hose.ch?.full; k++) { hose.move(top, e(top)); tc.simulate(0.25); } hose.up(); tc.simulate(1); }
+    o.conc = fw.rec.pegs.every((q) => q.fill === 1);
+    tc.ui.openGroup('fenceG'); Object.assign(tc.settings, { f2Layer: 'rails', railSec: 'r4020', railL: 4000 }); tc.ui.refresh();
+    o.tray = document.getElementById('wall-tray').hidden ? '' : document.getElementById('wall-tray-label').textContent;
+    for (const s of [2000, 2000, 7000, 7000]) { const p = sAt(s); fw.trayDown(p, e(p)); fw.move(p, e(p)); fw.up(); run(); }
+    o.rails = fw.rec.rails.map((q) => `${q.a}-${q.b}@${q.y}`).join();
+    Object.assign(tc.settings, { f2Layer: 'fill', fenceKind: 'slat' }); { const p = sAt(1000); fw.down(p, e(p)); fw.up(); run(); }
+    o.filled = fw.rec.filled.length;
+    Object.assign(tc.settings, { f2Layer: 'gate', gateType: 'swing' }); { const p = sAt(4500); fw.down(p, e(p)); fw.up(); run(); }
+    o.swingRefused = fw.rec.gates.length === 0;
+    tc.settings.gateType = 'wicket'; { const p = sAt(4500); fw.down(p, e(p)); fw.up(); run(); }
+    o.gates = fw.rec.gates.map((q) => `${q.type}:${q.w}`).join();
+    tc.renderer.render(tc.scene, tc.camera);
+    tc.undo(); o.undo = fw.rec.gates.length === 0;
+    return o;
+  });
+  check('fence: its own group (6 stages), not under «Благоустройство»; the string with pegs every 2 m, a peg moved for a wicket', f.chips === '1 · Разметка|2 · Ямы|3 · Столбы|4 · Прожилины|5 · Наполнение|6 · Ворота и калитки|Удалить' && !f.inLand && f.ui && f.pegs === '0,2000,4000,6000,7953' && f.moved === 5000, JSON.stringify(f));
+  check('fence: holes one by one, round posts Ø80 in each, concrete by the bucket and the hose', f.holes === '11111' && f.posts === 'rd80,rd80,rd80,rd80,rd80' && f.pail > 0.5 && f.pail < 1 && f.conc, JSON.stringify(f));
+  check('fence: rails welded post to post (two rows), the railed bays filled, a wicket in the bay left (a gate too wide refused), undo', f.tray === 'Прожилина' && f.rails === '0-4000@300,0-4000@1500,5000-7953@300,5000-7953@1500' && f.filled === 3 && f.swingRefused && f.gates === 'wicket:1000' && f.undo, JSON.stringify(f));
+  check('fence: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 3. WebKit (Safari's engine), if installed ------------------------------------------------------
 if (process.env.WEBKIT) {
   try {
