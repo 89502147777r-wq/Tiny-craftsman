@@ -2,12 +2,15 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { Loader } from '../world/loader.js';
 import { Truck, TRUCK_LOAD } from '../world/truck.js';
+import { Excavator } from '../world/excavator.js';
+import { LANG } from '../i18n/i18n.js';
 import { Grader } from './grade.js';
 import { houseOutside } from './pitchedTool.js';
 import { boxOf } from './freeBrick.js';
 import { makeLoadMaterial } from '../world/terrainMaterial.js';
 import { Puffs } from '../world/smoke.js';
 import { Streams } from '../world/stream.js';
+import { lawnLine, lawnPegs } from '../world/lawnView.js';
 
 // The site machines, driven by the finger (no joysticks):
 //   grade – draw a line over the plot: the skid-steer loader drives to its start, lowers its bucket
@@ -21,6 +24,7 @@ import { Streams } from '../world/stream.js';
 // Each grading pass and each bucket tipped into the truck is one journal action; the machines'
 // places and the truck's load are records (`vehicle`), so undo puts them back.
 const R = (m) => m / MODEL_SCALE;
+const LANGX = () => LANG === 'en';
 const SPEED = R(2.2), TURN = 1.4;                 // m/s, rad/s (a skid steer turns on the spot)
 const BUCKET = 0.45;                               // m³ the bucket holds
 const BUCKET_COL = [0x6f5137, 0xc9a46a, 0xa3a29e, 0x86847f, 0x33271f].map((c) => new THREE.Color(c));   // soil, sand, gravels
@@ -36,11 +40,12 @@ export class MachineTool {
     app.objects.on((id, rec) => {
       if (rec?.type !== 'vehicle' || this.state === 'work' || this.state === 'haul') return;
       if (rec.kind === 'loader' && this.loader?.loaded) this.loader.place(app.terrain, rec.x, rec.z, rec.yaw);
+      if (rec.kind === 'excavator' && this.exc?.loaded) { const E = this.exc; E.place(app.terrain, rec.x, rec.z, rec.yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = rec[k] || 0; E.load = rec.load || 0; }
       if (rec.kind === 'truck' && this.truck?.loaded) { this.truck.place(app.terrain, rec.x, rec.z, rec.yaw); this.truck.load = rec.load || 0; this.truck.root.visible = !rec.away; }
     });
   }
   get machine() { return this.loader; }
-  get mode() { return this.app.settings.machineMode === 'haul' ? 'haul' : 'grade'; }
+  get mode() { const m = this.app.settings.machineMode; return m === 'haul' || m === 'grade' ? m : 'area'; }
   busy() { return this.state !== 'idle' && this.state !== 'drive'; }
   get driving() { return this.state === 'drive'; }
   recOf(kind) { return this.app.objects.all('vehicle').find((r) => r.kind === kind) || null; }
@@ -69,6 +74,23 @@ export class MachineTool {
       if (r) { T.place(app.terrain, r.x, r.z, r.yaw); T.load = r.load || 0; T.root.visible = !r.away; } else T.root.visible = false;
     });
   }
+  // the mini excavator: where it was left, else at the far right corner, facing into the plot
+  ensureExc() {
+    if (this.exc) return this.exc.ready;
+    const app = this.app, t = app.terrain, E = (this.exc = new Excavator());
+    return E.ready.then(() => {
+      app.scene.add(E.root);
+      const r = this.recOf('excavator');
+      E.place(t, r?.x ?? t.toWorldX(t.rx) - R(3.5), r?.z ?? t.toWorldZ(t.rz) - R(3), r?.yaw ?? Math.PI * 0.75);
+      if (r) { for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = r[k] || 0; E.load = r.load || 0; }
+      E.update(0);
+    });
+  }
+  _saveExc() {
+    const app = this.app, E = this.exc, r = this.recOf('excavator');
+    const rec = { x: +E.x.toFixed(5), z: +E.z.toFixed(5), yaw: +Math.atan2(Math.sin(E.yaw), Math.cos(E.yaw)).toFixed(4), swing: +E.swingGoal.toFixed(3), boom: +E.boomGoal.toFixed(3), stick: +E.stickGoal.toFixed(3), curl: +E.curlGoal.toFixed(3), load: +E.load.toFixed(3) };
+    if (r) app.objects.update(r.id, rec); else app.objects.add({ type: 'vehicle', kind: 'excavator', ...rec });
+  }
   show(on) { if (on) this.ensure(); }
 
   down(p) {
@@ -76,11 +98,15 @@ export class MachineTool {
     if (this.state === 'drive') return false;   // (the finger turns the camera round the machine)
     if (!this.loader?.loaded) { this.ensure(); app.ui?.toast('Погрузчик заезжает на участок…'); return true; }
     if (!app.terrain.inside(p.x, p.z)) return false;
+    if (this.mode === 'area') {
+      if (this.state !== 'idle' || this.area) { app.ui?.toast(LANGX() ? 'The loader is at work in its area — wait till it is done' : 'Погрузчик работает в своей области — дождитесь, пока закончит'); return true; }
+      this.rect = { a: [p.x, p.z], b: [p.x, p.z] }; this._rectDraw(); return true;
+    }
     if (this.mode === 'haul') { this._haulAt(p); return true; }
     if (this.state === 'haul') return true;
     if (this.state === 'idle') {
       app.journal.begin('grade', { machine: 'loader' }, app.clock);
-      this.grader.design(app.settings.gradeSlope ?? 1.5);
+      this._design();
       this.out = houseOutside(app);
       this.start = { x: this.loader.x, z: this.loader.z, yaw: this.loader.yaw };
       this.state = 'work'; this.cutting = false; this.moved = 0; this._said = false;
@@ -97,9 +123,80 @@ export class MachineTool {
     if (this.out && this.out(p.x, p.z) !== true) return;   // (not into a house)
     this.path.push({ x: p.x, z: p.z });
   }
-  move(p) { if (this.state === 'work' && this.finger) this._add(p); }
-  up() { this.finger = false; }
-  interrupt() { this.finger = false; }
+  move(p) {
+    if (this.rect && p) { this.rect.b = [p.x, p.z]; this._rectDraw(); const w = Math.abs(this.rect.b[0] - this.rect.a[0]) * MODEL_SCALE, h = Math.abs(this.rect.b[1] - this.rect.a[1]) * MODEL_SCALE; this.app.ui?.showMeasure?.(`${w.toFixed(1)} × ${h.toFixed(1)} м = ${(w * h).toFixed(1)} м²`.replace(/\./g, LANGX() ? '.' : ',')); return; }
+    if (this.state === 'work' && this.finger) this._add(p);
+  }
+  up() { this.finger = false; if (this.rect) { const r = this.rect; this.rect = null; this.app.ui?.hideMeasure?.(); this._areaStart(r); } }
+  interrupt() { this.finger = false; if (this.rect) { this.rect = null; this._rectDraw(); this.app.ui?.hideMeasure?.(); } }
+
+  // ---- «Погрузчик в самосвал»: an area set out by a string on pegs; in it the loader cuts the heaps and
+  // the bumps down to the level most of it lies at, fills the pits with that, and what is left over it
+  // loads into the truck, bucket by bucket, till the area is level ----
+  _design() {
+    const app = this.app, g = this.grader;
+    g.design(app.settings.gradeSlope ?? 1.5);
+    const A = this.area;
+    if (!A) return;
+    const free0 = g.free;
+    g.free = (i, x, z) => x > A.x0 && x < A.x1 && z > A.z0 && z < A.z1 && free0(i, x, z);
+    g.target = () => A.base;
+  }
+  _rectDraw() {
+    const app = this.app, r = this.rect || this.area;
+    if (this._rectG) { app.scene.remove(this._rectG); this._rectG.traverse((o) => o.geometry?.dispose?.()); this._rectG = null; }
+    if (!r) return;
+    const [x0, x1, z0, z1] = r.a ? [Math.min(r.a[0], r.b[0]), Math.max(r.a[0], r.b[0]), Math.min(r.a[1], r.b[1]), Math.max(r.a[1], r.b[1])] : [r.x0, r.x1, r.z0, r.z1];
+    if (x1 - x0 < R(0.2) || z1 - z0 < R(0.2)) return;
+    const L = { poly: [[x0, z0], [x1, z0], [x1, z1], [x0, z1]], g: app.terrain.heightAt((x0 + x1) / 2, (z0 + z1) / 2), u: [1, 0] };
+    const G = (this._rectG = new THREE.Group()); G.add(lawnLine(app, L), lawnPegs(app, L)); app.scene.add(G);
+  }
+  _areaStart(rc) {
+    const app = this.app, t = app.terrain, L = this.loader;
+    const x0 = Math.max(t.toWorldX(0), Math.min(rc.a[0], rc.b[0])), x1 = Math.min(t.toWorldX(t.rx), Math.max(rc.a[0], rc.b[0])), z0 = Math.max(t.toWorldZ(0), Math.min(rc.a[1], rc.b[1])), z1 = Math.min(t.toWorldZ(t.rz), Math.max(rc.a[1], rc.b[1]));
+    if (x1 - x0 < R(1.5) || z1 - z0 < R(1.5)) { this._rectDraw(); app.ui?.toast(LANGX() ? 'Stretch the string wider — at least 1.5 × 1.5 m' : 'Растяните шнур шире — хотя бы 1,5 × 1,5 м'); return; }
+    // (the level: the one most of the free ground in it lies at — ±25 mm round the commonest)
+    this.area = { x0, x1, z0, z1, base: 0 };
+    this.grader.design(app.settings.gradeSlope ?? 1.5);
+    const free0 = this.grader.free, hs = [];
+    for (let x = x0 + R(0.1); x < x1; x += R(0.2)) for (let z = z0 + R(0.1); z < z1; z += R(0.2)) { const i = t.index(x, z); if (free0(i, x, z)) hs.push(t.nat[i] + t.loose[i]); }
+    if (!hs.length) { this.area = null; this._rectDraw(); app.ui?.toast(LANGX() ? 'No free ground in it — concrete or a house' : 'Здесь нет свободной земли — бетон или дом'); return; }
+    hs.sort((a, b) => a - b);
+    let best = 0, b0 = 0;
+    for (let i = 0, j = 0; i < hs.length; i++) { while (hs[i] - hs[j] > R(0.05)) j++; if (i - j + 1 > best) best = i - j + 1, b0 = j; }
+    this.area.base = best >= hs.length * 0.3 ? hs.slice(b0, b0 + best).reduce((a, v) => a + v, 0) / best : hs[hs.length >> 1];
+    this._rectDraw();
+    this._design();
+    // the passes: side by side across the area, the bucket's width apart, all the same way (it backs to
+    // the start of the next with its bucket up); each from just before the area to its far side
+    const along = x1 - x0 >= z1 - z0, A0 = along ? x0 : z0, A1 = along ? x1 : z1, C0 = along ? z0 : x0, C1 = along ? z1 : x1;
+    L.update(0); const e = L.edgeWorld(new THREE.Vector3()), off = (e.x - L.x) * Math.cos(L.yaw) - (e.z - L.z) * Math.sin(L.yaw), sp = L.bucketW * 0.85;
+    const P = (a, c, cut) => (along ? { x: a, z: c, cut } : { x: c, z: a, cut });
+    this.path = [];
+    for (let c = C0 + L.bucketW * 0.45; c <= C1 - L.bucketW * 0.3 + 1e-9; c += sp) this.path.push(P(A0 - off - R(0.5), c, false), P(A1 - off, c, true));
+    app.journal.begin('grade', { machine: 'loader' }, app.clock);
+    this.out = houseOutside(app);
+    this.start = { x: L.x, z: L.z, yaw: L.yaw };
+    this.state = 'work'; this.cutting = false; this.moved = 0; this._said = false; this.finger = false;
+    app.sfx.scrapeStart(); app.sfx.scrapeLevel(0.3);
+    const w = (x1 - x0) * MODEL_SCALE, h = (z1 - z0) * MODEL_SCALE;
+    app.ui?.toast(LANGX() ? `Area ${w.toFixed(1)} × ${h.toFixed(1)} m: the loader cuts the heaps and the bumps, fills the pits, then loads the rest into the truck` : `Область ${w.toFixed(1).replace('.', ',')} × ${h.toFixed(1).replace('.', ',')} м: погрузчик срезает кучи и бугры, засыпает ямы, остальное грузит в самосвал`);
+    app.ui?.refresh();
+  }
+  // the highest place in the area over its level (a heap left) — null when it is level
+  _areaNext() {
+    const A = this.area, t = this.app.terrain, g = this.grader;
+    if (!A) return null;
+    let best = R(0.03), at = null;
+    for (let x = A.x0 + R(0.1); x < A.x1; x += R(0.15)) for (let z = A.z0 + R(0.1); z < A.z1; z += R(0.15)) { const i = t.index(x, z); if (!g.free(i, x, z)) continue; const o = t.nat[i] + t.loose[i] - A.base; if (o > best) { best = o; at = { x, z }; } }
+    return at && this._over(at.x, at.z, R(1.4)) > 0.03 ? at : null;
+  }
+  _areaDone(msg) {
+    const app = this.app;
+    this.area = null; this._rectDraw();
+    app.ui?.toast(msg ?? (LANGX() ? 'The area is level: the heaps and the bumps cut, the pits filled, the rest taken away' : 'Область выровнена: кучи и бугры срезаны, ямы засыпаны, лишнее вывезено'));
+    this._design();
+  }
 
   // the bucket's arm set so its edge is at height y (bisection over the lift)
   _armFor(y, low = false) {   // (low: the bucket's lowest point, not its edge)
@@ -139,6 +236,8 @@ export class MachineTool {
   update(dt) {
     if (!this.loader && this.rec) this.ensure();   // (a project with the loader on its plot)
     if (!this.truck && this.recOf('truck')) this.ensureTruck();
+    if (!this.exc && this.recOf('excavator')) this.ensureExc();
+    if (this.exc?.loaded && !(this.state === 'drive' && this.drv === 'excavator')) this.exc.update(dt);
     const L = this.loader;
     if (!L?.loaded) return;
     let moved = 0;
@@ -194,8 +293,8 @@ export class MachineTool {
     const tg = this.path[0];
     if (tg) {
       const r = this._drive(dt, tg.x, tg.z);
-      if (r.blocked) { this.path.shift(); if (!this._said) { this._said = true; app.ui?.toast('Дом на пути — погрузчик туда не едет, ведите в обход'); } }
-      else if (r.d < R(0.15)) { this.path.shift(); this.cutting = true; }
+      if (r.blocked) { this.path.shift(); this.cutting = this.path[0]?.cut ?? this.cutting; if (!this._said) { this._said = true; app.ui?.toast('Дом на пути — погрузчик туда не едет, ведите в обход'); } }
+      else if (r.d < R(0.15)) { this.path.shift(); this.cutting = this.path[0]?.cut ?? true; }
       moved = r.step;
       if (this.cutting && r.step > 0) {
         // (the edge along the way it moved: the cut and the fill under it, in short steps; a full
@@ -227,6 +326,13 @@ export class MachineTool {
     L.load = 0; L.armGoal = 0.25; L.tiltGoal = 0.35;
     this._savePose();
     app.journal.commit(app.clock);
+    if (this.area) {
+      // (the passes done: what is left over the level — the heap at the end of each pass — into the truck)
+      const nx = this._areaNext();
+      if (nx) { app.ui?.toast(LANGX() ? 'Level, the pits filled; what is left over goes into the truck' : 'Выровнено, ямы засыпаны; лишнее — в самосвал'); this._haulAt(nx); if (this.state !== 'haul') this._areaDone(); }
+      else this._areaDone();
+      app.ui?.refresh(); return;
+    }
     app.ui?.toast(this.moved > R(0.5) ? 'Погрузчик выровнял полосу по проектной отметке — бугры срезаны, ямы засыпаны, уклон от дома' : 'Погрузчик на месте — ведите пальцем по участку, где ровнять');
     app.ui?.refresh();
   }
@@ -290,7 +396,7 @@ export class MachineTool {
   _haulAt(p) {
     const app = this.app;
     if (this.state === 'work') return;
-    this.grader.design(app.settings.gradeSlope ?? 1.5);
+    this._design();
     this.out = houseOutside(app);
     if (this._over(p.x, p.z, R(1.4)) < 0.05) { app.ui?.toast('Здесь нечего вывозить: земля не выше проектной отметки — коснитесь кучи'); return; }
     this.heap = { x: p.x, z: p.z }; this.empty = 0;
@@ -462,7 +568,9 @@ export class MachineTool {
           this.phase = 'leave';
           app.ui?.toast('Самосвал полный — уезжает, вернётся пустым');
         }
-        if (this._over(H.x, H.z, R(1.4)) < 0.03 || this.empty >= 3) { app.ui?.toast('Куча вывезена до проектной отметки'); this.heap = null; if (this.phase !== 'leave') this._haulEnd(); }
+        const nx = (this._over(H.x, H.z, R(1.4)) < 0.03 || this.empty >= 3) && this.area ? this._areaNext() : null;
+        if (nx) { this.heap = nx; this.empty = 0; this.aim = null; if (this.phase !== 'leave') { this.phase = 'backoff'; this.backD = R(1.6); } }
+        else if (this._over(H.x, H.z, R(1.4)) < 0.03 || this.empty >= 3) { if (this.area) this._areaDone(); else app.ui?.toast('Куча вывезена до проектной отметки'); this.heap = null; if (this.phase !== 'leave') this._haulEnd(); }
         else if (this.phase !== 'leave') { this.phase = 'backoff'; this.backD = R(1.6); }
       }
     } else if (ph === 'backoff') {
@@ -480,6 +588,7 @@ export class MachineTool {
     this.grader.carry.fill(0); if (this.loader) { this.loader.load = 0; this.loader.armGoal = 0.25; this.loader.tiltGoal = 0.35; }
     if (this.phase === 'leave' || this.phase === 'away' || this.phase === 'arrive') { this.heap = null; return; }   // (the truck finishes its trip)
     this.state = 'idle'; this.phase = null; this.heap = null;
+    if (this.area) this._areaDone();
     app.sfx.scrapeStop();
     app.ui?.refresh();
   }
@@ -490,10 +599,10 @@ export class MachineTool {
   enter(kind) {
     const app = this.app;
     if (this.state !== 'idle') return;
-    Promise.all([this.ensure(), kind === 'truck' ? this.ensureTruck() : null]).then(() => {
+    Promise.all([this.ensure(), kind === 'truck' ? this.ensureTruck() : null, kind === 'excavator' ? this.ensureExc() : null, this.recOf('truck') ? this.ensureTruck() : null]).then(() => {
       if (this.state !== 'idle') return;
       this.out = houseOutside(app);
-      this.grader.design(app.settings.gradeSlope ?? 1.5);
+      this._design();
       if (kind === 'truck') {
         const T = this.truck, r = this.recOf('truck');
         if (!r || r.away || !T.root.visible) {
@@ -505,17 +614,19 @@ export class MachineTool {
       }
       // (a machine left in a wall — a project from before the walls were looked at — is moved out to
       // the nearest clear place first, else it could not move at all)
-      const M = kind === 'truck' ? this.truck : this.loader;
-      if (!this._fits(kind, M.x, M.z, M.yaw)) {
+      const M = kind === 'truck' ? this.truck : kind === 'excavator' ? this.exc : this.loader;
+      if (kind !== 'excavator' && !this._fits(kind, M.x, M.z, M.yaw)) {
         const q = kind === 'truck' ? this._parkFor({ x: M.x, z: M.z }) : this._clearNear(M.x, M.z, M.yaw);
         if (q) app.journal.act('move-out', {}, app.clock, () => { M.place(app.terrain, q.x, q.z, q.yaw); if (kind === 'truck') this._saveTruck({}); else this._savePose(); });
       }
       this.state = 'drive'; this.drv = kind; this.stick = { l: [0, 0], r: [0, 0] };
       this.v = 0; this.camOff = 0; this._camYaw = null; this.idleT = 0; this.holdY = null; this.holdRel = null; this.armSet = null; this.view ??= 'cab';   // (from the cab's front: the bucket and the arms below, the way ahead)
       if (kind === 'loader') { this.loader.armGoal = 0; this.loader.tiltGoal = 0; }
+      if (kind === 'excavator') { this.excMode = 'dig'; this.view = 'back'; }
+      if (kind === 'truck') this._exitSigns(true);
       app.rig.goal.dist = R(kind === 'truck' ? 14 : 10); app.rig.goal.pitch = 0.5;
       app.sfx.scrapeStart(); app.sfx.scrapeLevel(0.15);
-      app.ui?.toast(kind === 'truck' ? 'Вы в самосвале: левый джойстик — газ и руль, правый вверх/вниз — кузов' : 'Вы в погрузчике: левый джойстик — езда, правый: вверх/вниз — стрела, влево/вправо — ковш');
+      app.ui?.toast(kind === 'excavator' ? 'Вы в экскаваторе. Копание: левый джойстик — поворот башни и рукоять, правый — стрела и ковш. Кнопка «Ход» — ехать на гусеницах' : kind === 'truck' ? 'Вы в самосвале: левый джойстик — газ и руль, правый вверх/вниз — кузов. Вывоз грунта — выезжайте за край участка (стрелка «Вывоз»)' : 'Вы в погрузчике: левый джойстик — езда, правый: вверх/вниз — стрела, влево/вправо — ковш');
       app.ui?.refresh();
     });
   }
@@ -526,7 +637,7 @@ export class MachineTool {
     this.state = 'idle'; this.stick = { l: [0, 0], r: [0, 0] };
     app.sfx.scrapeStop();
     if (app.rig.shakeKeep != null) { app.rig.shake = app.rig.shakeKeep; app.rig.shakeKeep = null; }
-    this._fov(null); this._mirrors(null);
+    this._fov(null); this._mirrors(null); this._exitSigns(false);
     app.rig.goal.dist = R(16); app.rig.goal.pitch = 0.6;
     app.ui?.refresh();
   }
@@ -576,7 +687,8 @@ export class MachineTool {
   _commitDrive() {
     const app = this.app;
     if (app.journal.pending?.type !== 'drive') return;
-    this._savePose(); if (this.truck?.root.visible && this.recOf('truck')) this._saveTruck({});
+    if (this.drv === 'excavator') this._saveExc(); else this._savePose();
+    if (this.truck?.root.visible && this.recOf('truck')) this._saveTruck({});
     app.journal.commit(app.clock);
   }
   // the machine's outline there clear of houses, of the other machine and of the plot's edge
@@ -585,10 +697,10 @@ export class MachineTool {
     // its middle line. The loader's bucket and the arms' ends, its front 1 m, are stopped by what stands higher than its
     // bottom — lifted over the truck's side or a low wall it goes over it)
     const t = this.app.terrain, fx = Math.cos(yaw), fz = -Math.sin(yaw);
-    const [a0, a1, hb] = kind === 'truck' ? [-2.35, 2.35, 0.9] : [-1.5, 2.0, 1.0], st = 0.2, pts = [];
+    const ET = this.exc?.track, [a0, a1, hb] = kind === 'truck' ? [-2.35, 2.35, 0.9] : kind === 'excavator' ? (ET ? [ET.x0 * MODEL_SCALE, ET.x1 * MODEL_SCALE, ET.w * MODEL_SCALE / 2] : [-2.3, 0.4, 0.8]) : [-1.5, 2.0, 1.0], st = 0.2, pts = [];
     for (let a = a0; a <= a1 + 1e-6; a += st) pts.push([a, hb], [a, -hb], [a, 0]);
     for (let b = -hb + st; b < hb - 1e-6; b += st) pts.push([a0, b], [a1, b]);
-    const other = noOther ? null : kind === 'truck' ? this.loader : this.truck?.root.visible ? this.truck : null, oh = kind === 'truck' ? [1.6, 1.0] : [2.4, (other?.width ? other.width * MODEL_SCALE / 2 : 0.85) + 0.05];   // (the loader comes right up to the body's side: its front tyres end 0,8 m ahead of it, what is further on is the arms and the bucket)
+    const other = noOther ? null : kind === 'truck' ? this.loader : kind === 'excavator' ? (this.truck?.root.visible ? this.truck : this.loader) : this.truck?.root.visible ? this.truck : null, oh = kind === 'truck' ? [1.6, 1.0] : [2.4, (other?.width ? other.width * MODEL_SCALE / 2 : 0.85) + 0.05];   // (the loader comes right up to the body's side: its front tyres end 0,8 m ahead of it, what is further on is the arms and the bucket)
     const bucketY = kind === 'loader' && this.loader?.loaded ? this.loader.lowWorld(new THREE.Vector3()).y : null;
     const otherTop = other?.loaded && kind === 'loader' ? other.y + other.bodyBox.max.y : Infinity;
     for (const [a, b] of pts) {
@@ -644,7 +756,8 @@ export class MachineTool {
     if (on) { this.idleT = 0; if (!app.journal.pending) app.journal.begin('drive', { machine: this.drv }, app.clock); }
     else if (app.journal.pending?.type === 'drive' && (this.idleT += dt) > 0.4) this._commitDrive();
     let moved = 0;
-    if (this.drv === 'truck') {
+    if (this.drv === 'excavator') this._excStep(dt, lx, ly, rx, ry);
+    else if (this.drv === 'truck') {
       // a truck: speeds up and slows down, steers its front wheels (it turns as it goes)
       this.v += (-ly * R(4) - this.v) * (1 - Math.exp(-dt * 1.8));
       if (Math.abs(this.v) < R(0.02) && !ly) this.v = 0;
@@ -659,6 +772,7 @@ export class MachineTool {
       T.tipGoal = Math.max(0, Math.min(0.8, T.tipGoal - ry * 0.5 * dt));
       // the body up: the soil runs out over the tailgate, a heap behind it
       this._tipOut(dt);
+      this._offPlot();
       app.sfx.scrapeLevel(0.1 + Math.min(0.4, Math.abs(this.v) / R(4) * 0.4));
     } else {
       // the skid steer: on the spot or on, the left stick forward / round; the right one the arms (up /
@@ -873,26 +987,121 @@ export class MachineTool {
         } else L.update(dt, moved);
       }
     }
-    const M = this.drv === 'truck' ? T : L, rig = app.rig;
+    const M = this.drv === 'truck' ? T : this.drv === 'excavator' ? this.exc : L, rig = app.rig, ex = this.drv === 'excavator', yawV = M.yaw + (ex ? this.exc.swing : 0);
     if (this.view === 'free') { this._mirrors(null); return; }   // (the camera left where it is)
     if (this.view === 'cab' || this.view === 'roof') {
       // from the driver's seat: looking ahead and down at where the bucket works (held still, no lag)
-      const f = new THREE.Vector3(Math.cos(M.yaw), 0, -Math.sin(M.yaw)), roof = this.view === 'roof', seat = this.seatAt || (roof ? (this.drv === 'truck' ? [1.3, 2.75] : [0.85, 2.55]) : this.drv === 'truck' ? [1.45, 1.6] : [0.62, 1.75]);
-      const e = new THREE.Vector3(seat[0] * R(1), seat[1] * R(1), 0).applyMatrix4(M.root.matrixWorld);
-      const [la, ld] = this.lookAt || (roof ? (this.drv === 'truck' ? [5.5, 2.3] : [1.35, 2.4]) : this.drv === 'truck' ? [8, 1.2] : [2.6, 1.8]), ahead = R(la), drop = R(ld);   // (the loader: steep down — the bucket in the middle of the picture)
-      rig.setState({ target: [e.x + f.x * ahead, e.y - drop, e.z + f.z * ahead], yaw: M.yaw - Math.PI / 2, pitch: Math.atan2(drop, ahead), dist: Math.hypot(ahead, drop) }, true);
+      const f = new THREE.Vector3(Math.cos(yawV), 0, -Math.sin(yawV)), roof = this.view === 'roof', seat = this.seatAt || (ex ? (roof ? [-0.9, 2.3] : [-0.3, 1.25]) : roof ? (this.drv === 'truck' ? [1.3, 2.75] : [0.85, 2.55]) : this.drv === 'truck' ? [1.45, 1.6] : [0.62, 1.75]);
+      if (ex) M.root.updateMatrixWorld(true);
+      const e = new THREE.Vector3(seat[0] * R(1), seat[1] * R(1), 0).applyMatrix4(ex ? this.exc.house.matrixWorld : M.root.matrixWorld);
+      const [la, ld] = this.lookAt || (ex ? (roof ? [3.2, 2.6] : [3.0, 1.7]) : roof ? (this.drv === 'truck' ? [5.5, 2.3] : [1.35, 2.4]) : this.drv === 'truck' ? [8, 1.2] : [2.6, 1.8]), ahead = R(la), drop = R(ld);   // (the loader: steep down — the bucket in the middle of the picture)
+      rig.setState({ target: [e.x + f.x * ahead, e.y - drop, e.z + f.z * ahead], yaw: yawV - Math.PI / 2, pitch: Math.atan2(drop, ahead), dist: Math.hypot(ahead, drop) }, true);
       this._camYaw = null; rig.shakeKeep ??= rig.shake; rig.shake = false;
-      this._fov(this.drv === 'truck' ? 70 : 92);   // (wide, as a camera in a cab: the bucket below and the way ahead both in sight)
-      this._mirrors(M, f);
+      this._fov(this.drv === 'truck' ? 70 : ex ? 80 : 92);   // (wide, as a camera in a cab: the bucket below and the way ahead both in sight)
+      if (!ex) this._mirrors(M, f);
       return;
     }
     if (rig.shakeKeep != null) { rig.shake = rig.shakeKeep; rig.shakeKeep = null; }
     this._fov(null); this._mirrors(null);
     // the camera behind it (a finger turning it round keeps its turn)
     if (this._camYaw != null) this.camOff += rig.goal.yaw - this._camYaw;
-    rig.goal.yaw = this._camYaw = M.yaw - Math.PI / 2 + this.camOff;
-    const ahead = R(this.drv === 'truck' ? 1.5 : 2);   // (a little ahead of it: what it goes into is in sight)
-    rig.goal.target.set(M.x + Math.cos(M.yaw) * ahead, M.y + R(0.8), M.z - Math.sin(M.yaw) * ahead); rig.clampTarget();
+    rig.goal.yaw = this._camYaw = yawV - Math.PI / 2 + this.camOff;
+    const ahead = R(this.drv === 'truck' ? 1.5 : ex ? 2.5 : 2);   // (a little ahead of it: what it goes into is in sight)
+    rig.goal.target.set(M.x + Math.cos(yawV) * ahead, M.y + R(0.8), M.z - Math.sin(yawV) * ahead); rig.clampTarget();
+  }
+
+  // ---- the excavator by hand ------------------------------------------------------------------------
+  // «Копание» (ISO): the left stick turns the house (left / right) and works the stick (forward — out,
+  // back — in); the right one the boom (up / down) and the bucket (left — curl in, right — open).
+  // «Ход»: the left stick drives on the tracks (forward / back, turning on the spot), the right one
+  // still the boom and the bucket. The teeth under the ground cut what is over them into the bucket
+  // (up to its 0,08 m³); opened, the bucket lets it go — into the truck's body under it, else in a heap.
+  _excStep(dt, lx, ly, rx, ry) {
+    const app = this.app, t = app.terrain, E = this.exc;
+    const g = (this.digG ||= new Grader(app));
+    g.free = (i, x, z) => t.zone[i] !== 1 && t.conc[i] <= 1e-6 && t.top[i] <= 0 && (!this.out || this.out(x, z) === true);
+    const cap = R(1) ** 3 * 0.08 / t.cellArea;
+    if (this.excMode === 'drive') {
+      this.v += (-ly * R(1.3) - this.v) * (1 - Math.exp(-dt * 3));
+      if (Math.abs(this.v) < R(0.01) && !ly) this.v = 0;
+      const yaw = E.yaw - lx * 0.8 * dt, nx = E.x + Math.cos(yaw) * this.v * dt, nz = E.z - Math.sin(yaw) * this.v * dt;
+      if ((this.v || lx) && this._fits('excavator', nx, nz, yaw)) {
+        const keep = [E.x, E.z, E.yaw]; E.place(t, nx, nz, yaw);
+        if (this._tooSteep('excavator', E, keep)) { E.place(t, ...keep); this.v = 0; }
+      } else this.v = 0;
+    } else {
+      E.swingGoal -= lx * 0.7 * dt;
+      E.stickGoal += ly * 0.7 * dt;
+    }
+    E.boomGoal -= ry * 0.55 * dt;
+    E.curlGoal -= rx * 1.2 * dt;
+    const before = E.teethWorld(new THREE.Vector3());
+    E.update(dt);
+    const p = E.teethWorld(new THREE.Vector3()), moving = p.distanceTo(before) > R(0.002);
+    // (the teeth in the ground, the bucket going: what is over them comes into it)
+    if (moving && !E.open && g.load < cap && t.inside(p.x, p.z)) {
+      const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2;
+      let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+      for (let q = -hw; q <= hw; q += t.cell * 0.7) {
+        const px = p.x + ux * q, pz = p.z + uz * q; if (!t.inside(px, pz)) continue;
+        const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
+        const s = t.nat[i] + t.loose[i], d = Math.min(s - p.y, cap - g.load);
+        if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
+      }
+      if (any) { t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); if (Math.random() < 0.3) app.particles?.emit(p.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.3), R(0.4), (Math.random() - 0.5) * R(0.3)), 0, R(0.03), 0, 0, 0); app.sfx.scrapeLevel(0.45); }
+    }
+    // (opened: it runs out — into the body of the truck under it, else onto the ground)
+    if (E.open && g.load > 1e-9) {
+      const m = E.mouthWorld(new THREE.Vector3()), T = this.truck, part = Math.min(1, dt * 1.8 + 0.02);
+      let into = false;
+      if (T?.loaded && T.root.visible) { const q = T.root.worldToLocal(m.clone()), b = T.bodyBox; into = q.x > b.min.x && q.x < b.max.x && q.z > b.min.z && q.z < b.max.z && m.y > T.y + b.min.y; }
+      const take = [0, 0, 0, 0, 0]; for (let k = 0; k < 5; k++) { take[k] = g.carry[k] * (g.load * part < 1e-9 ? 1 : part); g.carry[k] -= take[k]; }
+      const v = take.reduce((a, b) => a + b, 0);
+      if (into) {
+        const vol = v * t.cellArea * MODEL_SCALE ** 3, room = Math.max(0, (1 - T.load) * TRUCK_LOAD), inT = Math.min(vol, room);
+        if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let k = 0; k < 4; k++) T.mix[k] += (take[k] + (k ? 0 : take[4])) / Math.max(1e-12, v) * inT; T.soil.material.setMix?.(T.mix);
+        T.pourLine(m, new THREE.Vector3(Math.sin(E.yaw + E.swing), 0, Math.cos(E.yaw + E.swing)), E.bucketW / 2, inT / TRUCK_LOAD);
+        const k = vol > 0 ? 1 - inT / vol : 0; if (k > 1e-6) { const sp = this._overSide(m); for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(sp.x, sp.z, take[j] * k * t.cellArea, R(0.4), 0, j); }
+      } else if (t.inside(m.x, m.z)) for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(m.x, m.z, take[j] * t.cellArea, R(0.35), 0, j);
+      for (let j = 0; j < 4; j++) app.particles?.emit(m.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.2), -R(0.6), (Math.random() - 0.5) * R(0.2)), 0, R(0.03 + Math.random() * 0.04), 0, 0, 0);
+      if (g.load < cap * 0.01) g.carry.fill(0);
+    }
+    E.load = Math.min(1, g.load / cap);
+    E.soilColor(this._mixOf(g.carry));
+  }
+  _mixOf(c) { const tot = c[0] + c[1] + c[2] + c[3] + c[4], out = (this._mc ||= new THREE.Color()); out.setRGB(0, 0, 0); if (tot <= 0) return out.copy(BUCKET_COL[0]); for (let k = 0; k < 5; k++) out.r += BUCKET_COL[k].r * c[k] / tot, out.g += BUCKET_COL[k].g * c[k] / tot, out.b += BUCKET_COL[k].b * c[k] / tot; return out; }
+  setExcMode(m) { this.excMode = m; this.app.ui?.toast(m === 'drive' ? 'Ход: левый джойстик — вперёд/назад и разворот на гусеницах' : 'Копание: левый — башня и рукоять, правый — стрела и ковш'); this.app.ui?.refresh(); }
+
+  // ---- where the soil goes: off the plot, to the tip ---------------------------------------------
+  // the truck driven by hand out past the plot's edge (by the «Вывоз» arrows) with a load: it goes to
+  // the tip and comes back empty, where it went out
+  _offPlot() {
+    const app = this.app, t = app.terrain, T = this.truck, out = Math.max(Math.abs(T.x) - t.halfX, Math.abs(T.z) - t.halfZ);
+    if (out < R(3) || T.load < 0.02 || this._tipT) return;
+    const r = this.recOf('truck'), got = T.load * TRUCK_LOAD, total = (r?.hauled || 0) + got;
+    this._tipT = 1;
+    T.load = 0; T.tip = T.tipGoal = 0; T.mix = [1, 0, 0, 0]; T.soil.material.setMix?.(T.mix);
+    if (app.journal.pending?.type === 'drive') this._commitDrive();
+    app.journal.act('truck-out', {}, app.clock, () => this._saveTruck({ load: 0, hauled: +total.toFixed(3) }));
+    app.ui?.toast(LANGX() ? `The truck took ${got.toFixed(1)} m³ to the tip and came back empty — ${total.toFixed(1)} m³ hauled in all` : `Самосвал отвёз на полигон ${got.toFixed(1).replace('.', ',')} м³ и вернулся пустым — всего вывезено ${total.toFixed(1).replace('.', ',')} м³`);
+    setTimeout(() => { this._tipT = 0; }, 3000);
+  }
+  // the «Вывоз» arrows on the ground just past each edge of the plot (shown while the truck is driven)
+  _exitSigns(on) {
+    const app = this.app, t = app.terrain;
+    if (!on) { if (this._signs) this._signs.visible = false; return; }
+    if (!this._signs) {
+      const c = document.createElement('canvas'); c.width = 512; c.height = 256; const g = c.getContext('2d');
+      g.fillStyle = 'rgba(255,210,0,0.92)'; g.beginPath(); g.moveTo(40, 96); g.lineTo(330, 96); g.lineTo(330, 40); g.lineTo(480, 128); g.lineTo(330, 216); g.lineTo(330, 160); g.lineTo(40, 160); g.closePath(); g.fill();
+      g.fillStyle = '#1b1b1b'; g.font = 'bold 54px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(LANGX() ? 'SOIL OUT' : 'ВЫВОЗ', 200, 130);
+      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+      const G = (this._signs = new THREE.Group()), mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+      for (const [x, z, a] of [[t.halfX + R(1.8), 0, 0], [-t.halfX - R(1.8), 0, Math.PI], [0, t.halfZ + R(1.8), -Math.PI / 2], [0, -t.halfZ - R(1.8), Math.PI / 2]]) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(R(3), R(1.5)).rotateX(-Math.PI / 2), mat); m.rotation.y = a; m.position.set(x, t.heightAt(Math.max(-t.halfX, Math.min(t.halfX, x)), Math.max(-t.halfZ, Math.min(t.halfZ, z))) + R(0.05), z); m.renderOrder = 5; G.add(m);
+      }
+      app.scene.add(G);
+    }
+    this._signs.visible = true;
   }
 
   // too steep for it: up or down a slope over its limit, or across one (a loaded bucket held high
@@ -1185,6 +1394,7 @@ export class MachineTool {
       app.journal.cancel(); this.grader.carry.fill(0); L.load = 0; this.v = 0;
       const r = this.rec; if (r) L.place(app.terrain, r.x, r.z, r.yaw);
       const T = this.truck, q = this.recOf('truck'); if (T && q) { T.place(app.terrain, q.x, q.z, q.yaw); T.load = q.load || 0; }
+      const E = this.exc, qe = this.recOf('excavator'); if (E && qe) { E.place(app.terrain, qe.x, qe.z, qe.yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = qe[k] || 0; E.load = qe.load || 0; this.digG?.carry.fill(0); }
       return true;
     }
     if (this.state === 'work') {
@@ -1193,6 +1403,7 @@ export class MachineTool {
       this.grader.carry.fill(0); L.load = 0;
       app.journal.cancel();
       L.place(app.terrain, this.start.x, this.start.z, this.start.yaw);
+      this.area = null; this._rectDraw();
       app.ui?.refresh();
       return true;
     }
@@ -1201,7 +1412,7 @@ export class MachineTool {
       this.grader.carry.fill(0); L.load = 0; this.heap = null;
       const T = this.truck, r = this.recOf('truck');
       if (T && r) { T.place(app.terrain, r.x, r.z, r.yaw); T.load = r.load || 0; T.root.visible = !r.away; }
-      this.state = 'idle'; this.phase = null;
+      this.state = 'idle'; this.phase = null; this.area = null; this._rectDraw();
       app.sfx.scrapeStop();
       app.ui?.refresh();
       return true;

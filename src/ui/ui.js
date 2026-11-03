@@ -91,6 +91,7 @@ const HINTS = {
     delete: 'Коснитесь стержня, сетки или стульчика, чтобы убрать',
   },
   haul: 'Коснитесь кучи: самосвал встанет у края участка, погрузчик наберёт ковш и ссыплет в кузов — так, пока куча не уйдёт до проектной отметки. Полный самосвал уезжает и возвращается пустым',
+  area: 'Погрузчик в самосвал: растяните пальцем шнур — область. В ней погрузчик сам срежет кучи и бугры, засыплет ямы, лишнее погрузит в самосвал; полный самосвал уезжает на полигон и возвращается пустым',
   machine: 'Погрузчик: ведите пальцем по участку — он подъедет, опустит ковш и пройдёт по линии, срезая бугры и засыпая ямы по проектной отметке (уровень большей части участка, с уклоном от дома). Дом, отмостку и бетон не трогает',
 };
 
@@ -208,8 +209,8 @@ export class UI {
     const box = $('mbtns');
     box.hidden = !on; box.classList.toggle('up', on);
     if (!on) { this._mKey = null; return; }
-    if (this._mKey === mt.drv + mt.view) return;
-    this._mKey = mt.drv + mt.view;
+    if (this._mKey === mt.drv + mt.view + mt.excMode) return;
+    this._mKey = mt.drv + mt.view + mt.excMode;
     box.innerHTML = '';
     // (the view: the cab → the roof → behind, round and round; the button says the next one)
     const next = { cab: 'roof', roof: 'back', back: 'cab' }[mt.view] || 'cab';
@@ -217,6 +218,8 @@ export class UI {
     v.addEventListener('click', () => mt.setView(next));
     const b = document.createElement('button'); b.textContent = 'Выйти';
     b.addEventListener('click', () => { mt.exit(); this.refresh(); });
+    // (the excavator: digging or driving on its tracks — the left stick does one or the other)
+    if (mt.drv === 'excavator') { const m = document.createElement('button'); m.textContent = mt.excMode === 'drive' ? 'Копание' : 'Ход'; m.addEventListener('click', () => mt.setExcMode(mt.excMode === 'drive' ? 'dig' : 'drive')); box.append(m); }
     box.append(v, b);
   }
 
@@ -683,11 +686,10 @@ export class UI {
     if (t === 'machine') {
       const s = app.settings, mt = app.machineTool, set = (o) => { if (mt.driving) mt.exit(); Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
       return [
-        C('Погрузчик · планировка', !mt.driving && s.machineMode !== 'haul', () => set({ machineMode: 'grade' })),
-        C('Погрузчик · в самосвал', !mt.driving && s.machineMode === 'haul', () => set({ machineMode: 'haul' })),
+        C('Погрузчик в самосвал', !mt.driving && mt.mode === 'area', () => set({ machineMode: 'area' })),
         C('Сесть в погрузчик', mt.driving && mt.drv === 'loader', () => { if (mt.driving) mt.exit(); mt.enter('loader'); }),
         C('Сесть в самосвал', mt.driving && mt.drv === 'truck', () => { if (mt.driving) mt.exit(); mt.enter('truck'); }),
-        G('gslope', `Уклон от дома ${s.gradeSlope ?? 1.5} %`.replace('.', ','), [0, 1, 1.5, 2].map((v) => C(`${v} %`.replace('.', ','), (s.gradeSlope ?? 1.5) === v, () => set({ gradeSlope: v }))), 'Уклон'),
+        C('Сесть в экскаватор', mt.driving && mt.drv === 'excavator', () => { if (mt.driving) mt.exit(); mt.enter('excavator'); }),
       ];
     }
     return [];
@@ -855,7 +857,7 @@ export class UI {
     if (t === 'column') hint = app.wallTool.col.drag || app.physJob ? '' : app.wallTool.col.status();
     app.wallTool?.syncTray();
     if (t === 'wall') hint = app.wallTool.mode === 'lay' ? (app.wallTool.status() || HINTS.wall.lay) : app.wallTool.busy || app.physJob ? '' : HINTS.wall[app.wallTool.mode];
-    if (t === 'machine') hint = app.machineTool.busy() || app.machineTool.driving ? '' : app.machineTool.loader?.loaded ? (app.settings.machineMode === 'haul' ? HINTS.haul : HINTS.machine) : 'Погрузчик заезжает на участок…';
+    if (t === 'machine') hint = app.machineTool.busy() || app.machineTool.driving ? '' : app.machineTool.loader?.loaded ? (app.machineTool.mode === 'area' ? HINTS.area : app.settings.machineMode === 'haul' ? HINTS.haul : HINTS.machine) : 'Погрузчик заезжает на участок…';
     if (this._hint !== hint) { $('hint').textContent = hint; this._hint = hint; }
     this.renderGroups();
     this.renderChips();
