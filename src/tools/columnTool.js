@@ -5,7 +5,7 @@ import { uStrength } from './lintels.js';
 import { boxOf, beltTopAt } from './freeBrick.js';
 import { isSlab } from './slab.js';
 import { LANG } from '../i18n/i18n.js';
-import { COURSES, COL_TYPES, PILE_DEP, secOf, typeOf, courseH, axisAt, colTop, colBot, cageOn, formOn, fillOf, castDone } from '../world/columns.js';
+import { COURSES, COL_TYPES, PILE_DEP, BORE_DEP, holeR, secOf, typeOf, courseH, axisAt, colTop, colBot, cageOn, formOn, fillOf, castDone } from '../world/columns.js';
 
 // Columns and piles by the finger («Фундамент → Колонны и сваи», columns.js). «Размеры» — sliders: the
 // section, the height (in courses of the masonry), the slope and its side; they show the column picked
@@ -132,7 +132,7 @@ export class ColumnWork {
     const q = H.p, sec = this.spec, course = this.course;
     let y0 = q.y, why = null, snap = null;
     // masonry of that kind within 1,5 m: the column's foot at its first course's
-    if (!sec.pile && H.on !== 'fcage') {
+    if (!sec.pile && H.on !== 'fcage' && !(what === 'cage' && GROUND.has(H.on))) {
       const us = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind === (course === 'block' ? 'block' : course)).map(boxOf).filter((b) => Math.hypot(b.x - q.x, b.z - q.z) < MM(1500) + b.hl);
       if (us.length) {
         const lo = us.reduce((a, b) => (b.bot < a.bot ? b : a));
@@ -142,11 +142,14 @@ export class ColumnWork {
     }
     if (H.open) why = 'Здесь арматура фундамента — сначала каркас колонны (он привяжется к ней), опалубку — после бетона фундамента';
     else if (sec.pile && !GROUND.has(H.on)) why = `Сваю бурят в грунт — поставьте её на землю или щебень (сейчас ${ON[H.on]})`;
-    else if (!sec.pile && LOOSE.has(H.on)) why = `Колонну ставят на фундамент, плиту, перекрытие, кладку или щебёночную подушку — ${ON[H.on]} нужна свая`;
+    // (a column's cage on the ground / loose fill: its hole bored first — the formwork alone does not go there)
+    const bore = !sec.pile && what === 'cage' && GROUND.has(H.on);
+    if (why) { /* (said above) */ } else if (!sec.pile && !bore && LOOSE.has(H.on)) why = `Колонну ставят на фундамент, плиту, перекрытие, кладку или щебёночную подушку — ${ON[H.on]} нужна свая`;
     if (app.objects.all('column').some((r) => Math.hypot(r.x - q.x, r.z - q.z) < MM((secOf(r).a + sec.a) / 2 + 120))) why = 'Здесь уже стоит колонна';
     if (!app.terrain.inside(q.x, q.z) && !['slab', 'belt', 'masonry', 'column'].includes(H.on)) why = 'За краем участка';
-    const rec = { type: 'column', ...this.sizes(), x: +q.x.toFixed(6), z: +q.z.toFixed(6), y0: +y0.toFixed(6), dep: sec.pile ? +MM(PILE_DEP).toFixed(6) : 0, stage: what === 'form' ? 2 : 0, cage: what === 'cage', fill: 0, on: H.on };
+    const rec = { type: 'column', ...this.sizes(), x: +q.x.toFixed(6), z: +q.z.toFixed(6), y0: +y0.toFixed(6), dep: sec.pile ? +MM(PILE_DEP).toFixed(6) : bore ? +MM(BORE_DEP).toFixed(6) : 0, stage: what === 'form' ? 2 : 0, cage: what === 'cage', fill: 0, on: H.on };
     if (H.on === 'fcage') rec.anc = H.anc;
+    if (bore) rec.bored = true;
     return { rec, why, snap };
   }
   // an existing column the carried piece goes onto: a formwork round a cage standing alone, a cage
@@ -238,16 +241,17 @@ export class ColumnWork {
 
   _label(r, snap, what = 'form') {
     const sec = secOf(r), c = COURSES[r.course], mm = Math.round(r.h / S), cage = what === 'cage';
-    if (EN()) return `${cage ? 'Cage' : sec.round ? 'Two-half formwork' : 'Board formwork'} — ${SEC_EN(sec)} ${ON_EN[r.on] || ''}: height ${mm} mm = ${r.n} course${r.n > 1 ? 's' : ''} (${COURSE_EN[r.course]})${snap ? ', foot at the foot of the first course nearby' : ''}${this.tiltDeg ? `, tilt ${this.tiltDeg}°` : ''}${sec.pile ? `, hole ${PILE_DEP} mm` : ''}${r.anc ? `, ${r.anc} mm into the foundation` : ''}`;
-    return `${cage ? 'Каркас' : sec.round ? 'Опалубка из двух половин' : 'Щитовая опалубка'} — ${sec.name} ${ON[r.on] || ''}: высота ${mm} мм = ${r.n} ${rows(r.n)} (${c.name})${snap ? ', низ — по низу первого ряда кладки рядом' : ''}${this.tiltDeg ? `, наклон ${this.tiltDeg}°` : ''}${sec.pile ? `, скважина ${PILE_DEP} мм` : ''}${r.anc ? `, в фундамент на ${r.anc} мм` : ''}`;
+    if (EN()) return `${cage ? 'Cage' : sec.round ? 'Two-half formwork' : 'Board formwork'} — ${SEC_EN(sec)} ${ON_EN[r.on] || ''}: height ${mm} mm = ${r.n} course${r.n > 1 ? 's' : ''} (${COURSE_EN[r.course]})${snap ? ', foot at the foot of the first course nearby' : ''}${this.tiltDeg ? `, tilt ${this.tiltDeg}°` : ''}${sec.pile || r.bored ? `, a hole ${Math.round(r.dep / S)} mm bored first` : ''}${r.anc ? `, ${r.anc} mm into the foundation` : ''}`;
+    return `${cage ? 'Каркас' : sec.round ? 'Опалубка из двух половин' : 'Щитовая опалубка'} — ${sec.name} ${ON[r.on] || ''}: высота ${mm} мм = ${r.n} ${rows(r.n)} (${c.name})${snap ? ', низ — по низу первого ряда кладки рядом' : ''}${this.tiltDeg ? `, наклон ${this.tiltDeg}°` : ''}${sec.pile || r.bored ? `, сначала яма ${Math.round(r.dep / S)} мм` : ''}${r.anc ? `, в фундамент на ${r.anc} мм` : ''}`;
   }
 
   // ---- the stages ----
   // before a new column: a pile's hole bored by the auger; on concrete the starter bars drilled and glued in
   _prep(rec, parts, steps) {
     const app = this.app, sec = secOf(rec);
-    if (sec.pile) {
-      const auger = augerMesh(MM(sec.a / 2));
+    if (sec.pile || rec.bored) {
+      // the auger turning down to the depth, the spoil thrown round; then lifted out
+      const auger = augerMesh(MM(holeR(rec)));
       parts.push(auger);
       steps.push([2.2, (u) => {
         const dep = rec.dep * Math.min(1, u * 1.15), [ax, az] = axisAt(rec, rec.y0 - dep);
@@ -312,7 +316,8 @@ export class ColumnWork {
     const sec = secOf(r);
     const tail = EN() ? (alone ? (r.anc ? ` Its bars go ${r.anc} mm down into the foundation's cage, the feet bent out and wired to it. The formwork once the foundation is cast` : ' Next “Formwork” round it') : ' Next “Concrete” — the hose or the bucket')
       : (alone ? (r.anc ? ` Выпуски — на ${r.anc} мм в каркас фундамента, лапками по его нижним стержням, привязаны проволокой. Опалубку — после бетона фундамента` : ' Дальше «Опалубка» вокруг него') : ' Дальше «Бетон» — шланг или ведро');
-    this.toast(EN() ? `Cage: ${sec.bars} × Ø${sec.d}, stirrups Ø6 every 200 mm, spacers — 30 mm cover; starter bars 500 mm on top.${tail}` : `Каркас: ${sec.bars} × Ø${sec.d}, хомуты Ø6 через 200 мм, фиксаторы — защитный слой 30 мм; сверху выпуски 500 мм.${tail}`);
+    const hole = alone && (sec.pile || r.bored) ? (EN() ? `The hole Ø${holeR(r) * 2} bored ${Math.round(r.dep / S)} mm deep, the cage lowered into it. ` : `Яма Ø${holeR(r) * 2} на ${Math.round(r.dep / S)} мм пробурена, каркас опущен в неё. `) : '';
+    this.toast(hole + (EN() ? `Cage: ${sec.bars} × Ø${sec.d}, stirrups Ø6 every 200 mm, spacers — 30 mm cover; starter bars 500 mm on top.${tail}` : `Каркас: ${sec.bars} × Ø${sec.d}, хомуты Ø6 через 200 мм, фиксаторы — защитный слой 30 мм; сверху выпуски 500 мм.${tail}`));
   }
   // into a formwork / round nothing yet, on a column standing
   _cage(r) {
@@ -369,7 +374,7 @@ export class ColumnWork {
     const L = this.stage, sec = this.spec;
     if (L === 'form') return EN() ? `${SEC_EN(sec)}, ${courseH(this.course, this.n)} mm${this.tiltDeg ? `, tilt ${this.tiltDeg}°` : ''}: drag the formwork (or from the tray) to its place or round a cage — green fits; tap a column to pick it`
       : `${sec.name}, ${courseH(this.course, this.n)} мм${this.tiltDeg ? `, наклон ${this.tiltDeg}°` : ''}: ведите опалубку (или из лотка) на место или вокруг каркаса — зелёная встанет; тап по колонне — выбрать её`;
-    if (L === 'cage') return 'Тяните каркас в опалубку или на основание: на бетон, в скважину сваи, в арматуру фундамента (привяжется к ней); тап по колонне — выбрать её';
+    if (L === 'cage') return 'Тяните каркас в опалубку или на основание: на бетон; на грунт или щебень — сначала пробурят яму; в арматуру фундамента (привяжется к ней); тап по колонне — выбрать её';
     if (L === 'strip') return 'Коснитесь залитой колонны — опалубку снимут, когда бетон наберёт прочность';
     return 'Коснитесь колонны без бетона — её уберут';
   }
