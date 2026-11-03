@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { PATH, TOPS, PAVERS, paversOf, kerbsOf, paveQuads, kerbOuter, digQuads, bandQuads, legsOf, legW, lengthOf, half, inset } from './garden.js';
-import { lawnUniforms, buildLawn, lawnLine, lawnGhost, turfRoll, roller, sprinkler } from './lawnView.js';
+import { lawnUniforms, buildLawn, lawnLine, lawnGhost, lawnPegs, turfRoll, roller, sprinkler } from './lawnView.js';
 import { frameW } from './lawn.js';
 import { fenceString, fencePosts, fenceFill, fenceUniforms, auger, fenceGates } from './fence.js';
 import { isV2, railRows, stringAndPegs, postsAndConcrete, railsAndWelds, bays2, postA, pegXZ, RAIL_SECS } from './fence2.js';
@@ -205,7 +205,7 @@ export class GardenView {
       let e = this.parts.get(key);
       if (!e) { e = { g: new THREE.Group(), keys: {}, sub: {}, U: fenceUniforms(), fence: true }; this.group.add(e.g); this.parts.set(key, e); }
       e.rec = r;
-      if (isV2(r)) { this._buildFence2(r, e); continue; }
+      if (isV2(r)) { this._buildFence2(r, e, app); continue; }
       const d = r.done || {}, a = this.anim['F' + r.id] || {}, gk = JSON.stringify((r.gates || []).map((q) => [q.s, q.w, q.type])), geo = [r.pts.flat().join(), r.H, r.kind, r.g, gk].join('|');
       this._part(e, 'string', !d.posts ? geo : null, () => fenceString(r));
       this._part(e, 'posts', d.posts || a.posts != null ? geo : null, () => fencePosts(r, e.U));
@@ -328,7 +328,7 @@ export class GardenView {
   }
   // the fence by the post (fence2.js): the string and the pegs, the posts and their concrete, the rails
   // and the welds, the filled bays, the gates
-  _buildFence2(r, e) {
+  _buildFence2(r, e, app) {
     const a = this.anim['F' + r.id] || {}, P = r.pegs || [], base = JSON.stringify([r.pts, r.g]);
     this._part(e, 'string', base + JSON.stringify([P.map((q) => [q.s, q.hole ? 1 : 0, q.pillar ? 1 : 0]), a.hidePeg ?? -1]), () => stringAndPegs(r, a.hidePeg ?? -1));
     const pour = a.pour ? [a.pour.i, Math.round(a.pour.f * 60)] : 0;
@@ -338,7 +338,9 @@ export class GardenView {
     const fresh = a.fresh || [], B = bays2(r).filter((b) => b.gate < 0 && (b.filled || fresh.some((m) => Math.abs(m - b.mid) < 2)));
     this._part(e, 'fill', B.length ? base + JSON.stringify([B.map((b) => b.mid), fresh, r.kind, r.col, postA(r), P.map((q) => [q.s, q.post?.h, q.pillar?.w]), (r.rails || [])[0]?.side || 1, (r.rails || []).some((q) => q.inline)]) : null, () => {
       const inline = (r.rails || []).some((q) => q.inline), pa = Math.max(postA(r), ...(inline ? P.map((q) => q.pillar?.w || 0) : [0])), rd = Math.max(...(r.rails || []).map((q) => (RAIL_SECS[q.sec] || RAIL_SECS.r4020).d), 20);
-      const bays = B.map((b) => { const [ax, az] = pegXZ(r, b.a.s), [bx, bz] = pegXZ(r, b.b.s); return { a: [ax, az, 0, b.a.s], b: [bx, bz, 0, b.b.s], L: Math.hypot(bx - ax, bz - az), mid: b.mid, gate: -1 }; });
+      // (each bay's infill from what is under it — the ground, or a strip foundation cast along the fence)
+      const t = app?.terrain, under = (s0, s1) => { let top = r.g; if (t) for (let k = 2; k <= 8; k++) { const [x, z] = pegXZ(r, s0 + (s1 - s0) * k / 10); if (t.inside(x, z)) top = Math.max(top, t.heightAt(x, z)); } return top - r.g > MM(60) ? top : r.g; };
+      const bays = B.map((b) => { const [ax, az] = pegXZ(r, b.a.s), [bx, bz] = pegXZ(r, b.b.s); return { a: [ax, az, 0, b.a.s], b: [bx, bz, 0, b.b.s], L: Math.hypot(bx - ax, bz - az), mid: b.mid, gate: -1, y0: under(b.a.s, b.b.s) }; });
       const H = Math.min(...B.map((b) => Math.min(b.a.post?.h || r.H, b.b.post?.h || r.H)));
       return fenceFill({ ...r, H }, e.U, { bays, fresh: new Set(fresh.length ? bays.filter((b) => fresh.some((m) => Math.abs(m - b.mid) < 2)).map((b) => b.mid) : []), off0: inline ? rd / 2 : pa / 2 + rd, pa, H, inline, side: (r.rails || [])[0]?.side || 1, rows: railRows(H) });
     });
@@ -374,6 +376,15 @@ export class GardenView {
   _buildLawn(app, r, e) {
     const d = r.done || {}, a = this.anim['L' + r.id] || {}, geo = [r.poly.flat().join(), r.g, r.u].join('|');
     this._part(e, 'ghost', r.id == null ? geo : null, () => lawnGhost(r));
+    if (r.v === 2) {
+      // (by hand: the pegs and the string until the grass is on; the grass over the ground as it is — the
+      // black topsoil in the ground itself)
+      this._part(e, 'line', !d.grass ? geo : null, () => lawnPegs(app, r));
+      const near = this.objects.all('path').length + ':' + this.objects.all('pool').length + ':' + Math.round((app.terrain.version || 0) / 50);
+      this._part(e, 'body', r.id != null && (d.grass || a.lay != null || a.grow != null) ? geo + '|' + (r.how || 'turf') + '|' + near : null, () => buildLawn(app, r, e.U));
+      if (!e.gear) { e.gear = { roll: turfRoll(), roller: roller(), spr: sprinkler() }; for (const o of Object.values(e.gear)) { o.visible = false; e.g.add(o); } }
+      return;
+    }
     this._part(e, 'line', r.id != null && !d.grass ? geo : null, () => lawnLine(app, r));
     // (what is round it when the soil goes on: the paths, the pools)
     const near = this.objects.all('path').length + ':' + this.objects.all('pool').length;

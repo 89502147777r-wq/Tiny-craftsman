@@ -42,7 +42,7 @@ export class PathWork {
   // the width and the corners chosen: taken by the path set out last while its trough is not dug
   restyle() {
     const r = this.rec, app = this.app;
-    if (!r || r.done?.dig || (r.kerbs || []).length || this.troughOK(r)) return;
+    if (!r || r.done?.dig || (r.kerbs || []).length) return;
     const round = this.roundOn ? this.R : 0;
     if (r.W === this.W && (r.round || 0) === round) return;
     if (lineWhy(r.base || r.pts, this.W)) { this.toast(lineWhy(r.base || r.pts, this.W)); return; }
@@ -88,11 +88,9 @@ export class PathWork {
     if (k === 'pave') return (r.laid || []).length >= paversOf(r).length;
     return false;
   }
-  _need(r, L) {
-    const order = PATH_LAYERS2.map(([k]) => k), i = order.indexOf(L);
-    for (let k = 1; k < i; k++) if (!this.stageDone(r, order[k])) return EN() ? `First «${k + 1} · ${NAME[order[k]]}»` : `Сначала «${k + 1} · ${NAME[order[k]]}»`;
-    return null;
-  }
+  // (no stage waits for another: the trough as deep as it is dug, the layers as thick as they are spread —
+  // the pavers go on at the ground's level whatever is under them)
+  _need() { return null; }
   next(r = this.rec) {
     if (!r) return ['set', 'Разметьте дорожку: включите «Шнур» и тяните пальцем'];
     for (const [k, n] of PATH_LAYERS2.slice(1)) if (!this.stageDone(r, k)) return [k, n];
@@ -108,7 +106,7 @@ export class PathWork {
       // (a corner's peg: dragged to a new place, the line after it — before the trough is dug)
       const V = this._corner(p, e);
       if (!V) { this.toast(this.paths.length ? 'Колышек на углу двигают пальцем; новая разметка — «Шнур» справа' : 'Включите «Шнур» справа и тяните пальцем — где пройдёт дорожка'); return true; }
-      if (V.r.done?.dig || (V.r.kerbs || []).length || this.troughOK(V.r)) { this.toast('Корыто уже выкопано — разметку не двигают'); return true; }
+      if (V.r.done?.dig || (V.r.kerbs || []).length) { this.toast('Корыто уже выкопано — разметку не двигают'); return true; }
       app.journal.begin('path-corner', {}, app.clock);
       this.drag = { L: 'corner', id: V.r.id, k: V.k };
       return true;

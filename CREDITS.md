@@ -61,6 +61,7 @@
 
 | Файл в проекте | Ассет | Автор | Лицензия | Источник |
 |---|---|---|---|---|
+| `assets/models/garden/sprinkler.glb` — поливалка (текстуры 512) | Garden Sprinkler 01 | Amal Kumar | CC0 | https://polyhaven.com/a/garden_sprinkler_01 |
 | `assets/models/plants/tree.glb` — дерево | Tree Small 02 | Rico Cilliers | CC0 | https://polyhaven.com/a/tree_small_02 |
 
 ## Модели инструментов (Poly Haven, CC0 1.0)

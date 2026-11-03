@@ -62,7 +62,7 @@ export function cellsOf(app, r) {
     const ca = a + C / 2, cb = b + C / 2, x = ca * u[0] + cb * n[0], z = ca * u[1] + cb * n[1];
     if (!inside(r.poly, x, z) || !t.inside(x, z)) continue;
     const i = t.index(x, z);
-    if (t.conc[i] > 1e-6 || Math.abs(t.hAt(i) - r.g) > MM(120)) continue;
+    if (t.conc[i] > 1e-6 || Math.abs(t.hAt(i) - r.g) > MM(400)) continue;   // (topsoil on it, a heap left: still the lawn)
     if (paths.some((q) => inQuads(q, x, z))) continue;
     if (pools.some(([px0, pz0, px1, pz1]) => x > px0 && x < px1 && z > pz0 && z < pz1)) continue;
     const row = Math.floor((cb - b0) / RW), sh = row % 2 ? RL / 2 : 0, k = Math.floor((ca - a0 + sh) / RL);

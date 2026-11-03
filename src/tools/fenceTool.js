@@ -69,6 +69,15 @@ export class FenceWork {
     const w = Math.max(...B.map((b) => (Math.hypot(b.x - cx, b.z - cz) + Math.max(b.hl, b.hw)) * 2)) / S;
     return { x: cx, z: cz, top, w: Math.round(Math.min(640, Math.max(250, w))) };
   }
+  // the highest of what is under the fence between s0 and s1 (mm over its line's ground): the ground, a strip
+  // foundation cast on it, masonry
+  baseUnder(r, s0, s1) {
+    // (the inner part of the bay — not the posts' collars; a bump of the ground under 60 mm does not count)
+    const t = this.app.terrain; let top = r.g;
+    for (let k = 2; k <= 8; k++) { const [x, z] = pegXZ(r, s0 + (s1 - s0) * k / 10); if (t.inside(x, z)) top = Math.max(top, t.heightAt(x, z)); }
+    const mm = Math.round((top - r.g) / S);
+    return mm > 60 ? mm : 0;
+  }
   // the pegs with the pillars laid on them since (a peg on a pillar: no hole, no post — the pillar holds the rails)
   withPillars(r) {
     return r.pegs.map((q) => {
@@ -345,7 +354,9 @@ export class FenceWork {
     }
     // (each peg in it: its post standing — concreted / anchored — or a pillar)
     const mid = pegs.filter((x) => x.s >= a - 1 && x.s <= b + 1);
-    const h = Math.min(...mid.map((x) => x.post?.h || x.pillar?.h || r.H)), rows = railRows(h), taken = (y) => (r.rails || []).some((o) => Math.abs(o.y - y) < 5 && o.a < b - 1 && o.b > a + 1);
+    // (the rows over what is under the bay — the ground, or a strip foundation / masonry standing above it:
+    // the lowest rail 250 over its top)
+    const base = this.baseUnder(r, a, b), h = Math.min(...mid.map((x) => x.post?.h || x.pillar?.h || r.H)), rows = railRows(h - base).map((v) => Math.round(v + base)), taken = (y) => (r.rails || []).some((o) => Math.abs(o.y - y) < 5 && o.a < b - 1 && o.b > a + 1);
     const y = rows.find((v) => !taken(v));
     q.y = y ?? rows.at(-1);
     let why = null;

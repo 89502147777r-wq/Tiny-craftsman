@@ -82,7 +82,7 @@ export function buildLawn(app, r, U) {
   const G = new THREE.Group(), d = r.done || {}, cells = cellsOf(app, r);
   G.userData.nRolls = cells.nRolls; G.userData.a0 = cells.a0 / S; G.userData.a1 = cells.a1 / S;
   if (!cells.length) return G;
-  const soil = new THREE.Mesh(cellGeo(app, r, cells, MM(6)), soilMat(U)); soil.receiveShadow = true; G.add(soil);
+  if (r.v !== 2) { const soil = new THREE.Mesh(cellGeo(app, r, cells, MM(6)), soilMat(U)); soil.receiveShadow = true; G.add(soil); }
   const seed = r.how === 'seed', geo = cellGeo(app, r, cells, MM(10));
   for (let k = 0; k < 3; k++) { const o = new THREE.Mesh(geo, grassMat(U, k, seed)); o.receiveShadow = k === 0; o.userData.keepGeo = k > 0; G.add(o); }
   void d;
@@ -100,6 +100,17 @@ export function lawnLine(app, r) {
   pts.push(pts[0].clone());
   const L = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xf4f4ee }));
   const G = new THREE.Group(); G.add(L);
+  return G;
+}
+// the setting-out by hand: a peg at each corner (a stake, an orange tape on it), the string between
+export function lawnPegs(app, r) {
+  const G = new THREE.Group(), t = app.terrain, gy = (x, z) => (t.inside(x, z) ? t.heightAt(x, z) : r.g);
+  const peg = new THREE.BoxGeometry(MM(36), MM(400), MM(36)); peg.translate(0, MM(180), 0);
+  const tape = new THREE.BoxGeometry(MM(40), MM(40), MM(40)); tape.translate(0, MM(340), 0);
+  const pm = new THREE.MeshStandardMaterial({ color: 0xc49a62, roughness: 0.85 }), tm = new THREE.MeshStandardMaterial({ color: 0xff5a1f, roughness: 0.6 });
+  for (const [x, z] of r.poly) for (const [geo, m] of [[peg, pm], [tape, tm]]) { const o = new THREE.Mesh(geo, m); o.position.set(x, gy(x, z), z); o.castShadow = true; G.add(o); }
+  const pts = [...r.poly, r.poly[0]].map(([x, z]) => new THREE.Vector3(x, gy(x, z) + MM(150), z));
+  G.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xfff3c4 })));
   return G;
 }
 // the ghost while it is drawn: the area filled

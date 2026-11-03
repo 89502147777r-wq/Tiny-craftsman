@@ -195,34 +195,37 @@ export function fenceFill(r, U, opt = null) {
   const SD = opt?.side || 1, P0 = (opt ? opt.off0 : FENCE.post / 2) * SD, PA = opt ? opt.pa : FENCE.post, o = (b) => (!opt || opt.fresh.has(b.mid) ? ord++ : -1);
   // (from post to post over their faces; between brick pillars — inline — from face to face)
   const SPAN = (b) => b.L + (opt?.inline ? -1 : 1) * MM(PA);
+  const H0 = H;   // (the pieces made once at this height: a bay standing on a strip — shorter, scaled)
   for (const b of B) {
+    // (the bay's bottom: what is under it — b.y0, the top of a strip foundation along the fence; its height to the posts' tops)
+    const gB = b.y0 ?? r.g, H = (opt?.H || r.H) - Math.max(0, (gB - r.g) / S), rg = gB;
     const yaw = yawOf(b.a, b.b), cx = (b.a[0] + b.b[0]) / 2, cz = (b.a[1] + b.b[1]) / 2, ux = (b.b[0] - b.a[0]) / b.L, uz = (b.b[1] - b.a[1]) / b.L, nx = -uz, nz = ux;
     const span = (len, y, M) => { M.multiply(new THREE.Matrix4().makeScale(len, 1, 1)); return M; };
     const inner = b.L - MM(PA);
     if (kind === 'slat') {
       const rows = Math.floor((H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)), off = MM(P0 + SD * FENCE.slatT / 2);
-      for (let k = 0; k < rows; k++) L.fill.push([span(SPAN(b), 0, at(cx + nx * off, r.g + MM(FENCE.gap + k * (FENCE.slat + FENCE.slatGap) + FENCE.slat / 2), cz + nz * off, yaw)), o(b)]);
+      for (let k = 0; k < rows; k++) L.fill.push([span(SPAN(b), 0, at(cx + nx * off, rg + MM(FENCE.gap + k * (FENCE.slat + FENCE.slatGap) + FENCE.slat / 2), cz + nz * off, yaw)), o(b)]);
     } else if (kind === 'picket') {
       // two rails 40 × 20 on the posts' face, the pickets 120 wide 30 apart screwed to them
       const off = MM(FENCE.post / 2 + 10);
-      if (!opt) for (const y of [300, H - 300]) L.rails.push([span(b.L + MM(FENCE.post), 0, at(cx + nx * off, r.g + MM(y), cz + nz * off, yaw)), o(b)]);
+      if (!opt) for (const y of [300, H - 300]) L.rails.push([span(b.L + MM(FENCE.post), 0, at(cx + nx * off, rg + MM(y), cz + nz * off, yaw)), o(b)]);
       const n = Math.floor((b.L / S - PA) / 150), po = MM(P0 + SD * (opt ? 4 : 24));
-      for (let k = 0; k < n; k++) { const s = -inner / 2 + (inner - (n - 1) * MM(150)) / 2 + k * MM(150); L.fill.push([at(cx + ux * s + nx * po, r.g + MM(100 + (H - 100) / 2), cz + uz * s + nz * po, yaw), o(b)]); }
+      for (let k = 0; k < n; k++) { const s = -inner / 2 + (inner - (n - 1) * MM(150)) / 2 + k * MM(150); L.fill.push([at(cx + ux * s + nx * po, rg + MM(100 + (H - 100) / 2), cz + uz * s + nz * po, yaw).multiply(new THREE.Matrix4().makeScale(1, (H - 100) / (H0 - 100), 1)), o(b)]); }
     } else if (kind === 'louvre') {
       // the blades 100 deep at 45°, every 70 between two U-channels on the posts
       const n = Math.floor((H - 2 * FENCE.gap) / 70);
-      for (let k = 0; k < n; k++) { const M = at(cx, r.g + MM(FENCE.gap + 35 + k * 70), cz, yaw); M.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 4)); M.multiply(new THREE.Matrix4().makeScale(inner, 1, 1)); L.fill.push([M, o(b)]); }
+      for (let k = 0; k < n; k++) { const M = at(cx, rg + MM(FENCE.gap + 35 + k * 70), cz, yaw); M.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 4)); M.multiply(new THREE.Matrix4().makeScale(inner, 1, 1)); L.fill.push([M, o(b)]); }
     } else if (kind === 'mesh') {
-      const M = at(cx, r.g + MM(FENCE.gap), cz, yaw); M.multiply(new THREE.Matrix4().makeScale(inner, 1, 1)); L.fill.push([M, o(b)]);
+      const M = at(cx, rg + MM(FENCE.gap), cz, yaw); M.multiply(new THREE.Matrix4().makeScale(inner, (H - FENCE.gap - 20) / (H0 - FENCE.gap - 20), 1)); L.fill.push([M, o(b)]);
     } else if (kind === 'prof') {
       // the sheets over the bay from post to post (one wave over the next sheet), their back on the rails
       const span = SPAN(b), n = Math.max(1, Math.ceil(span / MM(PROF.lay))), fresh = !opt || opt.fresh.has(b.mid), off = MM(P0);
-      for (let k = 0; k < n; k++) L.sheets.push({ x0: -span / 2 + k * MM(PROF.lay), w: Math.min(MM(PROF.w), span - k * MM(PROF.lay) + MM(PROF.w - PROF.lay)), cx: cx + nx * off, cz: cz + nz * off, yaw, sd: SD, ord: fresh ? ord++ : -1, rows: opt?.rows || [300, H - 300] });
+      for (let k = 0; k < n; k++) L.sheets.push({ x0: -span / 2 + k * MM(PROF.lay), w: Math.min(MM(PROF.w), span - k * MM(PROF.lay) + MM(PROF.w - PROF.lay)), cx: cx + nx * off, cz: cz + nz * off, yaw, sd: SD, ord: fresh ? ord++ : -1, rows: (opt?.rows || [300, H - 300]).map((y) => y - (gB - r.g) / S), g: rg, H });
     } else {
       // chain-link: three tension wires, the mesh stretched over them
       const k = o(b);
-      for (const y of [80, H / 2, H - 40]) L.wire.push([span(b.L, 0, at(cx, r.g + MM(y), cz, yaw)), k]);
-      const M = at(cx, r.g + MM(40 + (H - 40) / 2), cz, yaw); M.multiply(new THREE.Matrix4().makeScale(b.L, 1, 1)); L.fill.push([M, k]);
+      for (const y of [80, H / 2, H - 40]) L.wire.push([span(b.L, 0, at(cx, rg + MM(y), cz, yaw)), k]);
+      const M = at(cx, rg + MM(40 + (H - 40) / 2), cz, yaw); M.multiply(new THREE.Matrix4().makeScale(b.L, (H - 40) / (H0 - 40), 1)); L.fill.push([M, k]);
     }
   }
   if (kind === 'slat') G.add(pieces(box(1, MM(FENCE.slat), MM(FENCE.slatT)), m, L.fill, U.fill));
@@ -272,9 +275,9 @@ function profSheets(g, H, col, list, U) {
   const face = counted(new THREE.MeshStandardMaterial({ color: C[2], roughness: col === 'galv' ? 0.32 : 0.42, metalness: col === 'galv' ? 0.85 : 0.35 }), U);
   const back = counted(new THREE.MeshStandardMaterial({ color: 0x9da2a6, roughness: 0.6, metalness: 0.25 }), U);
   const screw = counted(new THREE.MeshStandardMaterial({ color: C[2], roughness: 0.4, metalness: 0.4 }), U), washer = counted(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.8 }), U);
-  const sheets = [], heads = [], rings = [], y0 = MM(FENCE.gap), y1 = MM(H - 20), d = MM(PROF.depth);
+  const sheets = [], heads = [], rings = [], y0 = MM(FENCE.gap), d = MM(PROF.depth);
   for (const q of list) {
-    const geo = profGeo(q.x0, q.w, g + y0, g + y1, q.ord);
+    const gq = q.g ?? g, y1 = MM((q.H ?? H) - 20), geo = profGeo(q.x0, q.w, gq + y0, gq + y1, q.ord);
     // (on the other side: turned round — the ribs still out, away from the rails)
     if (q.sd < 0) { geo.applyMatrix4(new THREE.Matrix4().makeScale(-1, 1, 1)); const ix = geo.index.array; for (let i = 0; i < ix.length; i += 3) { const t2 = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t2; } const nr = geo.attributes.normal; for (let i = 0; i < nr.count; i++) nr.setX(i, -nr.getX(i)); }
     geo.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(q.cx, 0, q.cz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), q.yaw + (q.sd < 0 ? Math.PI : 0)), new THREE.Vector3(1, 1, 1)));
@@ -284,7 +287,7 @@ function profSheets(g, H, col, list, U) {
     for (const y of q.rows) for (let x = q.x0 + MM(PROF.bot) / 2; x < q.x0 + q.w; x += 2 * P) {
       const h = new THREE.CylinderGeometry(MM(4.5), MM(4.5), MM(6), 6), w = new THREE.CylinderGeometry(MM(7), MM(7), MM(2), 10);
       for (const [gg, z, list2] of [[h, MM(4), heads], [w, MM(1), rings]]) {
-        gg.rotateX(Math.PI / 2); gg.translate(q.sd < 0 ? -x : x, g + MM(y), z);
+        gg.rotateX(Math.PI / 2); gg.translate(q.sd < 0 ? -x : x, gq + MM(y), z);
         gg.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(q.cx, 0, q.cz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), q.yaw + (q.sd < 0 ? Math.PI : 0)), new THREE.Vector3(1, 1, 1)));
         gg.deleteAttribute('uv'); gg.setAttribute('aOrd', new THREE.Float32BufferAttribute(new Float32Array(gg.attributes.position.count).fill(q.ord), 1));
         list2.push(gg.toNonIndexed());
