@@ -574,6 +574,58 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2d. Columns and piles («Фундамент»): the formwork by the finger on what is under it, the cage
+// carried into it, the concrete by the bucket and the hose, the stripping; a slab and a brick on them;
+// the black topsoil delivered -----------------------------------------------------------------------
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const c = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, col = wt.col, o = {};
+    const e = (p) => { const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
+    const run = () => { for (let i = 0; i < 4000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
+    const G = (x, z) => new V(x, tc.terrain.heightAt(x, z), z), cols = () => tc.objects.all('column');
+    tc.rig.setState({ target: [0, 0.05, 0], yaw: 0.5, pitch: 0.7, dist: 1.4 }); tc.simulate(0.05);
+    tc.ui.openGroup('found'); tc.setTool('column'); tc.ui.refresh();
+    o.chips = tc.ui.chips().map((q) => q.label).join('|');
+    o.tray = document.getElementById('wall-tray').hidden ? '' : document.getElementById('wall-tray-label').textContent;
+    o.wallCols = JSON.stringify((() => { tc.setTool('wall'); const x = JSON.stringify(tc.ui.chips()); tc.setTool('column'); return x; })()).includes('Колонны');
+    Object.assign(tc.settings, { colSec: 'p300', colStage: 'form', colTilt: 0, colCourse: 'block', colN: 1 });
+    for (const [x, z] of [[-0.1, -0.1], [0.1, -0.1], [0, 0.1]]) { const p = G(x, z); col.down(p, e(p)); col.move(p, e(p)); col.up(); run(); }
+    o.formed = cols().map((r) => `${r.stage}${r.cage}`).join();
+    tc.settings.colSec = 'sq250'; { const p = G(0.3, 0.3); col.down(p, e(p)); o.sqOnSoil = !!col.drag?.P?.why; col.interrupt(); }
+    tc.settings.colStage = 'cage';
+    for (const r of cols()) { const far = G(r.x + 0.2, r.z + 0.2), mid = new V(r.x, r.y0 + r.h / 2, r.z); col.down(far, e(far)); col.move(G(r.x, r.z), e(mid)); col.up(); run(); }
+    o.caged = cols().every((r) => r.cage);
+    tc.setTool('pail'); const pail = tc.concreteTools.pail, r0 = cols()[0], top0 = new V(r0.x, r0.y0 + r0.h, r0.z);
+    pail.down(top0, e(top0)); tc.simulate(8); pail.up(); tc.simulate(2);
+    o.pail = tc.objects.get(r0.id).fill;
+    tc.setTool('hose'); const hose = tc.concreteTools.hose;
+    for (const r of cols()) { const top = new V(r.x, r.y0 + r.h, r.z); hose.down(top, e(top)); for (let i = 0; i < 80 && !hose.ch?.full; i++) { hose.move(top, e(top)); tc.simulate(0.25); } hose.up(); tc.simulate(1); }
+    o.cast = cols().map((r) => r.stage).join();
+    tc.setTool('column'); tc.settings.colStage = 'strip'; tc.clock += 1e6; tc.simulate(0.05);
+    for (const r of cols()) { const m = new V(r.x, r.y0 + r.h / 2, r.z); col.down(G(r.x, r.z), e(m)); col.up(); run(); }
+    o.stripped = cols().map((r) => r.stage).join();
+    const FB = await import('/src/tools/freeBrick.js'), r1 = cols()[1], tp = new V(r1.x, r1.y0 + r1.h, r1.z);
+    tc.setTool('wall'); wt.setMode('lay');
+    const pt = wt._pt(G(r1.x, r1.z), e(tp)), pu = FB.placeUnit(tc, 'brick', pt, (v) => wt._screen(v), null, false, {});
+    o.brick = pu?.ok ? +((pu.p.y - pu.s.y / 2 - (r1.y0 + r1.h)) * 10465).toFixed(1) : null;   // (its bed over the top, mm)
+    Object.assign(tc.settings, { wallKind: 'slab', slabCant: 0 });
+    wt.carry = { kind: 'slab', tray: true, snap: null }; wt._carryMove(tp, e(tp)); wt._carryDrop(); run();
+    o.slab = tc.objects.all('belt').filter((b) => b.kind === 'slab').map((b) => b.piles).join();
+    tc.setTool('black'); Object.assign(tc.settings, { matMode: 'deliver', delivery: 1 }); const bl = tc.materialTools.black;
+    bl.down(G(0.35, -0.3)); for (let i = 0; i < 400 && bl.busy; i++) tc.simulate(0.1);
+    o.black = +(tc.terrain.materialVolumes()[4] * 10.47 ** 3).toFixed(2);
+    tc.renderer.render(tc.scene, tc.camera); o.shader = tc.shaderErrors.length;
+    return o;
+  });
+  check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
+  check('columns: three piles bored, their two-half formwork set; a column not on the bare soil; the cages carried in', c.formed === '2false,2false,2false' && c.sqOnSoil && c.caged, JSON.stringify(c));
+  check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3', JSON.stringify(c));
+  check('black topsoil: delivered (1 m³), the soil shader builds', Math.abs(c.black - 1) < 0.05 && c.shader === 0, JSON.stringify(c));
+  check('columns: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 3. WebKit (Safari's engine), if installed ------------------------------------------------------
 if (process.env.WEBKIT) {
   try {

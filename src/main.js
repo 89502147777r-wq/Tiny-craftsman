@@ -1,6 +1,6 @@
 import { Mirrors } from './render/mirrors.js';
 import * as THREE from 'three';
-import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, KT, M_SOIL, M_SAND, M_G5, M_G20, CONCRETE, PUMP, DELIVERY } from './config.js';
+import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, KT, M_SOIL, M_SAND, M_G5, M_G20, M_BLACK, CONCRETE, PUMP, DELIVERY } from './config.js';
 import { loadAssets } from './world/assets.js';
 import { buildWorkshop } from './world/workshop.js';
 import { Terrain } from './world/terrain.js';
@@ -35,6 +35,7 @@ import { ConcreteGear } from './world/concreteGear.js';
 import { MarkTool } from './tools/markTool.js';
 import { BuildTool } from './tools/buildTool.js';
 import { WallTool } from './tools/wallTool.js';
+import { ColumnTool } from './tools/columnTool.js';
 import { MachineTool } from './tools/machineTool.js';
 import { Sfx } from './audio/sfx.js';
 import { UI } from './ui/ui.js';
@@ -143,11 +144,12 @@ async function main() {
   app.shovelTool = new ScoopTool(app, app.shovel);
   app.rakeTool = new RakeTool(app, app.rake);
   app.concreteTools = { hose: new HoseTool(app), pail: new PailTool(app), screed: new ScreedTool(app), vibro: new VibratorTool(app), trowel: new TrowelTool(app), bitumen: new BitumenTool(app), plate: new PlateTool(app), breaker: new BreakerTool(app) };
-  app.materialTools = { sand: new MaterialTool(app, M_SAND), g5: new MaterialTool(app, M_G5), g20: new MaterialTool(app, M_G20), soil: new MaterialTool(app, M_SOIL) };
+  app.materialTools = { sand: new MaterialTool(app, M_SAND), g5: new MaterialTool(app, M_G5), g20: new MaterialTool(app, M_G20), soil: new MaterialTool(app, M_SOIL), black: new MaterialTool(app, M_BLACK) };
   app.markTool = new MarkTool(app);
   app.formTool = new BuildTool(app, 'form');
   app.rebarTool = new BuildTool(app, 'rebar');
   app.wallTool = new WallTool(app);
+  app.columnTool = new ColumnTool(app);
   app.machineTool = new MachineTool(app);
   app.backdrop = new Backdrop(app);
   app.sky = new Sky(app);   // the time of day and the weather (sky.js)
@@ -169,6 +171,9 @@ async function main() {
   // (what was just read is what is stored: nothing to write until something changes)
   if (restored && byParts && !app.migrated) { app.terrain.sDirty.fill(0); for (const r of [...app.journal.done, ...app.journal.undone]) SAVE.j.add(r.id); SAVE.trackT = performance.now(); }
   if (!restored) freshPlot();
+  // (the columns moved from «Стены → Монолит» to «Фундамент»: a saved wall kind of them is masonry again)
+  if (app.settings.wallKind === 'column') { app.settings.wallKind = 'block'; if (app.tool === 'wall') app.tool = 'column'; }
+  if (!['form', 'cage', 'strip', 'del'].includes(app.settings.colStage)) app.settings.colStage = 'form';
   if (app.filmMode) { app.objects.load({ nextId: 1, items: [] }); app.settings.quiet = false; app.settings.orbit = false; app.settings.hints = false; }
 
   app.ui = new UI(app);
@@ -457,7 +462,7 @@ function resize() {
 }
 
 // ---- tools ------------------------------------------------------------------------------
-app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, ...app.concreteTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, wall: app.wallTool, machine: app.machineTool }[app.tool] || null);
+app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, ...app.concreteTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, wall: app.wallTool, column: app.columnTool, machine: app.machineTool }[app.tool] || null);
 app.busy = () => !!app.physJob || app.wallTool?.busy || !!app.physLoading || app.shovelTool.busy || app.rakeTool.busy || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy();
 
 function setTool(t) {

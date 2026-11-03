@@ -9,7 +9,7 @@ import { MATERIALS, DELIVERY, BUCKET, MODEL_SCALE, K } from '../config.js';
 //              (one bucket per 2 s), for exact work
 // One delivery / one pour = one journal entry. Volumes are exact: every crumb
 // carries its share to the heightfield.
-const CRUMB = [1, 0.55, 0.8, 1.45], KEEP = [0, 0, 0, 0];   // stones show in the texture; crumbs only fly
+const CRUMB = [1, 0.55, 0.8, 1.45, 0.9], KEEP = [0, 0, 0, 0, 0.1];   // stones show in the texture; crumbs only fly
 const real = (m3) => m3 / MODEL_SCALE ** 3;   // real m³ → model m³
 
 export class MaterialTool {

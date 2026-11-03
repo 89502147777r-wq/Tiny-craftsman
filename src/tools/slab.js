@@ -1,4 +1,6 @@
+import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
+import { COL_SECS, axisAt, colTop, castDone } from '../world/columns.js';
 import { findBelt, plan, toWorld, toFrame, beltContains, rle, unrle, snapS } from './belt.js';
 import { boxOf } from './freeBrick.js';
 
@@ -26,6 +28,9 @@ export const isSlab = (b) => b?.kind === 'slab';
 // cantMm: the cantilever, on the side of the house nearest the finger
 export function findSlab(app, p, screen, finger, cantMm = 0) {
   const belts = app.objects.all('belt');
+  // on cast columns / piles (no walls under it): the slab over the group of them
+  const P = findPileSlab(app, p, screen, finger, belts);
+  if (P) return P;
   // on a cast ring beam: the slab goes on its top
   let base = belts.find((b) => !isSlab(b) && b.fill > 0.5 && beltContains(b, p.x, p.z) && p.y > b.top + b.H * 0.5 && p.y < b.top + b.H + MM(60));
   let T;
@@ -114,6 +119,45 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
   };
   rec.clip = slabClip(rec, app.objects.all('unit'), belts);
   const exists = belts.some((b) => isSlab(b) && Math.abs(b.top - rec.top) < MM(30) && beltContains(b, p.x, p.z));
+  return { rec, n, area: n * (SLAB.cell / 1000) ** 2, exists };
+}
+
+// The slab on cast columns / piles (a slab on piles, a terrace on columns): the column under the
+// finger (its top nearest on the screen), the cast ones with their tops at that level (± 30 mm),
+// each within 6 m of another of them; at least three. A rectangle round their tops (out by 100 mm
+// past their faces), on the plot's axes; the cells over the tops carry it, the rest is the deck on
+// the props (they stand on the ground / what is under it).
+export function findPileSlab(app, p, screen, finger, belts = app.objects.all('belt')) {
+  const cols = app.objects.all('column').filter(castDone);
+  if (cols.length < 3) return null;
+  let pick = null, bd = Infinity;
+  for (const r of cols) {
+    const top = colTop(r), [x, z] = axisAt(r, top);
+    let d;
+    if (finger) { const sp = screen(new THREE.Vector3(x, top, z)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 110) continue; }
+    else { d = Math.hypot(p.x - x, p.z - z); if (d > MM(COL_SECS[r.sec].a)) continue; }
+    if (d < bd) bd = d, pick = r;
+  }
+  if (!pick) return null;
+  const T = colTop(pick), same = cols.filter((r) => Math.abs(colTop(r) - T) < MM(30)), grp = [pick];
+  for (let grew = true; grew;) { grew = false; for (const r of same) if (!grp.includes(r) && grp.some((q) => Math.hypot(q.x - r.x, q.z - r.z) < MM(6000))) { grp.push(r); grew = true; } }
+  if (grp.length < 3) return null;
+  const c = MM(SLAB.cell), tops = grp.map((r) => { const [x, z] = axisAt(r, colTop(r)); return { x, z, a: MM(COL_SECS[r.sec].a / 2), round: COL_SECS[r.sec].round }; });
+  const x0 = Math.min(...tops.map((t) => t.x - t.a)) - MM(100), x1 = Math.max(...tops.map((t) => t.x + t.a)) + MM(100);
+  const z0 = Math.min(...tops.map((t) => t.z - t.a)) - MM(100), z1 = Math.max(...tops.map((t) => t.z + t.a)) + MM(100);
+  const ni = Math.max(1, Math.round((x1 - x0) / c)), nj = Math.max(1, Math.round((z1 - z0) / c)), n = ni * nj;
+  const mask = new Uint8Array(n).fill(1), deck = new Uint8Array(n).fill(1);
+  for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
+    const x = x0 + (i + 0.5) * c, z = z0 + (j + 0.5) * c;
+    if (tops.some((t) => (t.round ? Math.hypot(x - t.x, z - t.z) <= t.a : Math.abs(x - t.x) <= t.a && Math.abs(z - t.z) <= t.a))) deck[j * ni + i] = 0;
+  }
+  const rec = {
+    type: 'belt', kind: 'slab', o: [+x0.toFixed(6), +z0.toFixed(6)], u: [1, 0], c: +c.toFixed(7), ni, nj,
+    mask: rle(mask), deck: rle(deck), top: +T.toFixed(6), H: +MM(SLAB.H).toFixed(6), lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0, segs: [],
+    cant: null, piles: grp.length,
+  };
+  rec.clip = [0, 0, +(ni * c).toFixed(6), +(nj * c).toFixed(6)];
+  const exists = belts.some((b) => isSlab(b) && Math.abs(b.top - rec.top) < MM(30) && beltContains(b, tops[0].x, tops[0].z));
   return { rec, n, area: n * (SLAB.cell / 1000) ** 2, exists };
 }
 

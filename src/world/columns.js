@@ -2,23 +2,28 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { makeCastConcreteMaterial } from './terrainMaterial.js';
+import { beltContains } from '../tools/belt.js';
 
-// Cast columns (монолитные колонны) and bored piles (буронабивные сваи), as on site:
-//   set   – a column is set out on the slab / the foundation (the starter bars of its cage
-//           drilled and glued in); a pile — the auger bores its hole into the ground;
-//   cage  – the bars (4 – 8, Ø12 – 16) tied into stirrups Ø6 every 200 mm; at the top the bars
-//           run on past the concrete along the column's axis (the starter bars of what goes on it);
-//   form  – square: film-faced plywood boards with steel clamps every 500 mm and two braces;
-//           round / a pile above the ground: a cardboard tube;
-//   pour  – the concrete from the hose to the level of the top (always cut level, 0°, whatever
-//           the slope of the column), the vibrator; it sets;
+// Cast columns (монолитные колонны) and bored piles (буронабивные сваи), as on site («Фундамент →
+// Колонны и сваи»; the concrete — «Бетон», the hose or the bucket):
+//   sizes – the section (square / round / a pile), the height by the courses of the masonry beside
+//           it (gas block, brick, cinder block: its top level with the top of the n-th course),
+//           the slope of the axis and its side;
+//   form  – the formwork carried by the finger to its place (it sits on what is under it: the
+//           foundation, the gravel, a slab, the masonry; a pile — the auger bores its hole first):
+//           square — film-faced plywood boards with timbers, steel clamps every 500 mm and two
+//           braces; round — two steel half shells bolted together by their flanges;
+//   cage  – the cage carried into the formwork (as into a lintel's): the bars (4 – 8, Ø12 – 16) in
+//           stirrups Ø6 every 200 mm, the spacer wheels; at the top the starter bars run on along
+//           the axis (into what goes on it);
+//   pour  – the concrete from the hose / the bucket up to the top (always cut level, whatever the
+//           slope); it sets;
 //   strip – the formwork comes off once it has the strength.
-// The height goes by the courses of the masonry beside it (gas block, brick, cinder block): its
-// top level with the top of the n-th course. A column may lean (a slope of the axis): the top is
-// still cut level, the starter bars keep to the axis.
-//   column { x, z, y0 (its foot: the slab / the ground), dep (a pile: how far into the ground),
-//            h (over the foot), sec, tilt: [tx, tz] (the axis: horizontal per vertical),
-//            course, n, stage (0 set … 4 stripped), fill (0…1), pourT }
+// On a cast column / pile: a slab, the masonry.
+//   column { x, z, y0 (its foot), dep (a pile: how far into the ground), h (over the foot), sec,
+//            tilt: [tx, tz] (the axis: horizontal per vertical), course, n, cage (in),
+//            stage (2 the formwork on, 3 cast, 4 stripped; old records: 0 set out, 1 a cage),
+//            fill (0…1 while it is poured), pourT }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const COL_SECS = {
   sq200: { name: 'Колонна 200 × 200', round: false, a: 200, bars: 4, d: 12 },
@@ -35,7 +40,7 @@ export const COURSES = {
   brick: { name: 'кирпич', H: 65, bed: 12, bed0: 12 },
   cinder: { name: 'шлакоблок', H: 188, bed: 10, bed0: 12 },
 };
-export const COL_STAGES = [['set', 'Разметка / бурение'], ['cage', 'Каркас'], ['form', 'Опалубка'], ['pour', 'Бетон'], ['strip', 'Распалубка']];
+export const COL_STAGES = [['form', 'Опалубка'], ['cage', 'Каркас'], ['strip', 'Распалубка']];
 export const TILTS = [0, 2, 5, 10, 15];
 export const PILE_DEP = 2000;
 const STARTER = 500, COVER = 30, STEP = 200;
@@ -86,13 +91,14 @@ function rod(a, b, r, seg = 6) {
   return g;
 }
 
-// the cage: the bars along the axis (the starter bars on past the top), the stirrups every 200
-export function cageGeo(r) {
+// the cage: the bars along the axis (the starter bars on past the top: r.starter mm, 500 when
+// nothing is on it yet), the stirrups every 200, the plastic spacer wheels (the cover) on the bars
+export function cageParts(r) {
   const sec = COL_SECS[r.sec] || COL_SECS.sq250, half = MM(sec.a / 2 - COVER - sec.d / 2), d = MM(sec.d), y0 = colBot(r) + MM(50), y1 = colTop(r);
-  const ax = new THREE.Vector3(r.tilt[0], 1, r.tilt[1]).normalize(), st = MM(STARTER) * ax.y;   // (the bars on along the axis by 500)
+  const ax = new THREE.Vector3(r.tilt[0], 1, r.tilt[1]).normalize(), st = MM(r.starter ?? STARTER) * ax.y;   // (the bars on along the axis)
   const offs = sec.round ? Array.from({ length: sec.bars }, (_, k) => [Math.cos(k / sec.bars * Math.PI * 2) * half, Math.sin(k / sec.bars * Math.PI * 2) * half])
     : sec.bars === 8 ? [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]].map(([a, b]) => [a * half, b * half]) : [[-half, -half], [half, -half], [half, half], [-half, half]];
-  const gs = [];
+  const gs = [], pl = [];
   for (const [ox, oz] of offs) { const [a0, b0] = axisAt(r, y0), [a1, b1] = axisAt(r, y1 + st); gs.push(rod([a0 + ox, y0, b0 + oz], [a1 + ox, y1 + st, b1 + oz], d / 2)); }
   // the stirrups (square / round), every 200 mm up the axis — the last 100 under the top
   const sh = half + d / 2 + MM(3);
@@ -101,8 +107,21 @@ export function cageGeo(r) {
     if (sec.round) { const t = new THREE.TorusGeometry(sh, MM(3), 4, 18); t.rotateX(Math.PI / 2); t.translate(cx, y, cz); t.deleteAttribute('uv'); gs.push(t); }
     else { const c = [[-sh, -sh], [sh, -sh], [sh, sh], [-sh, sh]]; for (let k = 0; k < 4; k++) { const p = c[k], q = c[(k + 1) % 4]; gs.push(rod([cx + p[0], y, cz + p[1]], [cx + q[0], y, cz + q[1]], MM(3), 4)); } }
   }
-  return mergeGeometries(gs);
+  // the spacer wheels (Ø60, the cover 30): on the outer bars every metre, upright, facing out
+  const H = y1 - y0;
+  for (let y = y0 + MM(300); y < y1 - MM(200); y += Math.max(MM(900), H / 4)) {
+    const [cx, cz] = axisAt(r, y);
+    for (const [ox, oz] of offs) {
+      const L = Math.hypot(ox, oz) || 1, nx = ox / L, nz = oz / L;
+      const w = new THREE.TorusGeometry(MM(COVER - 4), MM(5), 4, 10);
+      w.rotateY(Math.atan2(-nz, nx) + Math.PI / 2);   // (its plane: up and out)
+      w.translate(cx + ox + nx * MM(sec.d / 2 + COVER / 2 - 4) * 0.5, y, cz + oz + nz * MM(sec.d / 2 + COVER / 2 - 4) * 0.5);
+      w.deleteAttribute('uv'); pl.push(w);
+    }
+  }
+  return { rebar: mergeGeometries(gs), plastic: pl.length ? mergeGeometries(pl) : null };
 }
+export const cageGeo = (r) => cageParts(r).rebar;
 
 // the concrete in it up to the level fill (0…1 of the height), the time it was poured
 export function concreteGeo(r, fill, pourT) {
@@ -114,38 +133,99 @@ export function concreteGeo(r, fill, pourT) {
   return g;
 }
 
-// the formwork: square — four boards of 18 mm plywood round it, the clamps every 500 mm, two
-// braces to the floor; round — the cardboard tube (from the ground up on a pile)
-export function formParts(r) {
-  const sec = COL_SECS[r.sec] || COL_SECS.sq250, a = MM(sec.a / 2), y0 = r.y0, y1 = colTop(r) + MM(sec.round ? 20 : 30), out = { ply: [], steel: [], wood: [], tube: [] };
-  if (sec.round) { out.tube.push(shear(r, y0, y1, a + MM(6), true, 24)); return out; }
-  const t = MM(18);
-  // (the boards: two across the full width, two between them)
-  for (const [cx, cz, hx, hz] of [[0, -(a + t / 2), a + t, t / 2], [0, a + t / 2, a + t, t / 2], [-(a + t / 2), 0, t / 2, a], [a + t / 2, 0, t / 2, a]]) {
-    const g = shear({ ...r, x: r.x + cx, z: r.z + cz }, y0, y1, 1, false);
-    // (a box of half sizes hx, hz: the unit prism scaled about its axis)
-    const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) { const [ax, az] = axisAt({ ...r, x: r.x + cx, z: r.z + cz }, p.getY(i)); p.setX(i, ax + (p.getX(i) - ax) * hx); p.setZ(i, az + (p.getZ(i) - az) * hz); }
-    out.ply.push(g);
+// a box along the axis: the middle (cx, cz) off the axis, half sizes hx, hz, between two levels
+function prism(r, cx, cz, hx, hz, y0, y1) {
+  const q = { ...r, x: r.x + cx, z: r.z + cz }, g = shear(q, y0, y1, 1, false), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const [ax, az] = axisAt(q, p.getY(i)); p.setX(i, ax + (p.getX(i) - ax) * hx); p.setZ(i, az + (p.getZ(i) - az) * hz); }
+  g.computeVertexNormals();
+  return g;
+}
+// a part of a cylinder's shell along the axis (an arc a0…a1 of radius rad), open, both faces
+function arcShell(r, y0, y1, rad, a0, a1, seg = 14) {
+  const pos = [], nor = [], [x0, z0] = axisAt(r, y0), [x1, z1] = axisAt(r, y1);
+  for (let k = 0; k < seg; k++) {
+    const t0 = a0 + (a1 - a0) * k / seg, t1 = a0 + (a1 - a0) * (k + 1) / seg, c0 = Math.cos(t0), s0 = Math.sin(t0), c1 = Math.cos(t1), s1 = Math.sin(t1);
+    const A = [x0 + c0 * rad, y0, z0 + s0 * rad], B = [x0 + c1 * rad, y0, z0 + s1 * rad], C = [x1 + c1 * rad, y1, z1 + s1 * rad], D = [x1 + c0 * rad, y1, z1 + s0 * rad];
+    pos.push(...A, ...C, ...B, ...A, ...D, ...C);
+    nor.push(c0, 0, s0, c1, 0, s1, c1, 0, s1, c0, 0, s0, c0, 0, s0, c1, 0, s1);
   }
-  // the clamps: a steel frame every 500 mm up (two at the least)
-  const H = y1 - y0, nC = Math.max(2, Math.round(H / MM(500)) + 1), o = a + t + MM(25);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  return g;
+}
+
+// The formwork, as a set of pieces (each one brought in / taken off on its own):
+//   square – four boards of film-faced plywood 18 mm, each with two upright timbers 50 × 50 on its
+//            back; the steel clamps every 500 mm and two braces to the floor (one piece);
+//   round  – two half shells of steel 3 mm, split along the column, each with its flanges
+//            (40 mm) bolted to the other's every 300 mm; the clamp rings every 500 mm.
+// piece: { dir: [dx, dz] (it comes in / goes off that way), drop (it comes down from above),
+//          ply / steel / wood / shell / bolt: [geometries] }
+export function formPieces(r) {
+  const sec = COL_SECS[r.sec] || COL_SECS.sq250, a = MM(sec.a / 2), y0 = r.y0, y1 = colTop(r) + MM(sec.round ? 20 : 30), H = y1 - y0;
+  const pieces = [], piece = (o) => { const p = { ply: [], steel: [], wood: [], shell: [], bolt: [], dir: [0, 0], drop: false, ...o }; pieces.push(p); return p; };
+  if (sec.round) {
+    const t = MM(3), R = a + t, fl = MM(40), ft = MM(8);
+    for (const sd of [1, -1]) {
+      // (the half on the +z side: the arc 0…π; its flanges at ±x)
+      const P = piece({ dir: [0, sd] });
+      P.shell.push(arcShell(r, y0, y1, R, sd > 0 ? 0 : Math.PI, sd > 0 ? Math.PI : Math.PI * 2, 16));
+      for (const sx of [1, -1]) {
+        P.shell.push(prism(r, sx * (R + fl / 2), sd * ft / 2, fl / 2, ft / 2, y0, y1));
+        // the bolts through the two flanges, every 300 mm
+        if (sd > 0) for (let y = y0 + MM(120); y < y1 - MM(60); y += MM(300)) {
+          const [cx, cz] = axisAt(r, y), b = new THREE.CylinderGeometry(MM(7), MM(7), ft * 2 + MM(24), 6); b.rotateX(Math.PI / 2); b.translate(cx + sx * (R + fl * 0.6), y, cz); P.bolt.push(b);
+          const n = new THREE.BoxGeometry(MM(20), MM(20), MM(10)); n.translate(cx + sx * (R + fl * 0.6), y, cz + ft + MM(5)); P.bolt.push(n);
+        }
+      }
+      // (stiffening ribs round the half, every 500 mm)
+      for (let y = y0 + MM(150); y < y1 - MM(60); y += MM(500)) {
+        const [cx, cz] = axisAt(r, y), ring = new THREE.TorusGeometry(R + MM(6), MM(7), 4, 16, Math.PI); ring.rotateX(sd > 0 ? Math.PI / 2 : -Math.PI / 2); ring.translate(cx, y, cz); ring.deleteAttribute('uv'); P.shell.push(ring);
+      }
+    }
+    return pieces;
+  }
+  const t = MM(18), rib = MM(25);
+  // (the boards: two across the full width, two between them; each with two timbers on its back)
+  for (const [nx, nz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+    const P = piece({ dir: [nx, nz] }), across = nx === 0, hl = across ? a + t : a;
+    P.ply.push(prism(r, nx * (a + t / 2), nz * (a + t / 2), across ? hl : t / 2, across ? t / 2 : hl, y0, y1));
+    for (const s of [-0.55, 0.55]) {
+      const o = a + t + rib, w = s * hl;
+      P.wood.push(prism(r, across ? w : nx * o, across ? nz * o : w, rib, rib, y0, y1));
+    }
+  }
+  // the clamps: a steel frame every 500 mm up (two at the least), round the timbers
+  const C = piece({ drop: true }), nC = Math.max(2, Math.round(H / MM(500)) + 1), o = a + t + 2 * rib + MM(25);
   for (let k = 0; k < nC; k++) {
     const y = y0 + MM(150) + (H - MM(300)) * k / Math.max(1, nC - 1), [cx, cz] = axisAt(r, y);
     for (const [sx, sz, lx, lz] of [[0, -o, o + MM(60), MM(25)], [0, o, o + MM(60), MM(25)], [-o, 0, MM(25), o + MM(60)], [o, 0, MM(25), o + MM(60)]]) {
-      const g = new THREE.BoxGeometry(lx * 2, MM(50), lz * 2); g.translate(cx + sx, y, cz + sz); out.steel.push(g);
+      const g = new THREE.BoxGeometry(lx * 2, MM(50), lz * 2); g.translate(cx + sx, y, cz + sz); C.steel.push(g);
     }
   }
-  // the braces: from two thirds up to the floor at 45° (two sides)
+  // the braces: from two thirds up to the floor at 45° (two sides), a plate under each foot
   const yb = y0 + H * 0.66, [bx, bz] = axisAt(r, yb), reach = H * 0.66;
   for (const [dx, dz] of [[1, 0], [0, 1]]) {
     const s = r.tilt[0] * dx + r.tilt[1] * dz >= 0 ? -1 : 1;   // (on the side it leans away from — it holds it)
-    const top = [bx + dx * s * (a + t), yb, bz + dz * s * (a + t)], foot = [bx + dx * s * (a + t + reach), y0 + MM(20), bz + dz * s * (a + t + reach)];
-    out.wood.push(rod(top, foot, MM(30), 4));
-    const pl = new THREE.BoxGeometry(MM(120), MM(40), MM(120)); pl.translate(foot[0], y0 + MM(20), foot[2]); out.wood.push(pl);
+    const top = [bx + dx * s * (o - MM(25)), yb, bz + dz * s * (o - MM(25))], foot = [bx + dx * s * (a + t + reach), y0 + MM(20), bz + dz * s * (a + t + reach)];
+    C.wood.push(rod(top, foot, MM(30), 4));
+    const pl = new THREE.BoxGeometry(MM(120), MM(40), MM(120)); pl.translate(foot[0], y0 + MM(20), foot[2]); C.wood.push(pl);
   }
+  return pieces;
+}
+// (the old flat list of all of them, by material)
+export function formParts(r) {
+  const out = { ply: [], steel: [], wood: [], shell: [], bolt: [] };
+  for (const p of formPieces(r)) for (const k of Object.keys(out)) out[k].push(...p[k]);
   return out;
 }
+// the record's state: the cage in (old records: from stage 1), the formwork on, the concrete in it
+export const cageOn = (r) => r.cage ?? ((r.stage ?? 0) >= 1);
+export const formOn = (r) => (r.stage ?? 0) >= 2 && (r.stage ?? 0) < 4;
+export const fillOf = (r) => ((r.stage ?? 0) >= 3 ? 1 : Math.max(0, Math.min(1, r.fill || 0)));
+// cast and its formwork off or its concrete set: what goes on it may (a slab, the masonry)
+export const castDone = (r) => (r.stage ?? 0) >= 3;
 
 export class ColumnView {
   constructor(group, plyMat) {
@@ -153,10 +233,12 @@ export class ColumnView {
     this.concU = null;
     this.mats = {
       rebar: new THREE.MeshStandardMaterial({ color: 0x4f4338, roughness: 0.62, metalness: 0.55 }),
+      plastic: new THREE.MeshStandardMaterial({ color: 0xd9d6cc, roughness: 0.6 }),
       ply: plyMat || new THREE.MeshStandardMaterial({ color: 0xb8714a, roughness: 0.55 }),
       steel: new THREE.MeshStandardMaterial({ color: 0x3d6fb0, roughness: 0.45, metalness: 0.6 }),
       wood: new THREE.MeshStandardMaterial({ color: 0xc89a5c, roughness: 0.8 }),
-      tube: new THREE.MeshStandardMaterial({ color: 0x9d8766, roughness: 0.9, side: THREE.DoubleSide }),
+      shell: new THREE.MeshStandardMaterial({ color: 0x8e9aa4, roughness: 0.42, metalness: 0.7, side: THREE.DoubleSide }),
+      bolt: new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.5, metalness: 0.8 }),
       hole: new THREE.MeshStandardMaterial({ color: 0x241c15, roughness: 1 }),
       spoil: new THREE.MeshStandardMaterial({ color: 0x6b5641, roughness: 1 }),
     };
@@ -165,53 +247,97 @@ export class ColumnView {
     this.ghost = null;
   }
   setConcreteUniforms(u) { if (!this.concMat) this.concMat = makeCastConcreteMaterial(u); }
+  // the formwork as pieces, each its own group (the fitting animation moves them one by one)
+  formGroup(r, mat = null) {
+    const G = new THREE.Group();
+    for (const P of formPieces(r)) {
+      const g = new THREE.Group(); g.userData.dir = P.dir; g.userData.drop = P.drop;
+      for (const k of ['ply', 'steel', 'wood', 'shell', 'bolt']) {
+        if (!P[k].length) continue;
+        const geo = mergeGeometries(P[k].map((q) => (q.index ? q.toNonIndexed() : q)).map((q) => { for (const n of Object.keys(q.attributes)) if (!['position', 'normal', ...(k === 'ply' && !mat ? ['uv'] : [])].includes(n)) q.deleteAttribute(n); return q; }));
+        if (k === 'ply' && !mat && !geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+        const o = new THREE.Mesh(geo, mat || this.mats[k]); o.castShadow = !mat; o.receiveShadow = !mat; o.userData.uOwner = r.id ?? null; if (mat) o.renderOrder = 5; g.add(o);
+      }
+      G.add(g);
+    }
+    return G;
+  }
+  cageGroup(r, mat = null) {
+    const g = new THREE.Group(), C = cageParts(r);
+    for (const [k, geo] of Object.entries(C)) if (geo) { const o = new THREE.Mesh(geo, mat || this.mats[k]); o.castShadow = !mat; o.userData.uOwner = r.id ?? null; if (mat) o.renderOrder = 5; g.add(o); }
+    return g;
+  }
   // only: 'cage' / 'form' — just that (the piece carried in by the fitting animation)
   _build(r, fill, only = null) {
+    if (only === 'cage') return this.cageGroup(r);
+    if (only === 'form') return this.formGroup(r);
     const g = new THREE.Group(), add = (geo, m, shadow = true) => { if (!geo) return; const o = new THREE.Mesh(geo, m); o.castShadow = shadow; o.receiveShadow = true; o.userData.uOwner = r.id ?? null; g.add(o); return o; };
     const sec = COL_SECS[r.sec] || COL_SECS.sq250;
     // a pile's hole while it is empty: the dark hole and the spoil round it
-    if (sec.pile && (r.stage ?? 0) < 3 && fill <= 0 && !only) {
+    if (sec.pile && (r.stage ?? 0) < 3) {
       const [x, z] = axisAt(r, r.y0);
-      const h = new THREE.CircleGeometry(MM(sec.a / 2 + 10), 24); h.rotateX(-Math.PI / 2); h.translate(x, r.y0 + MM(4), z); add(h, this.mats.hole, false);
-      const sp = new THREE.TorusGeometry(MM(sec.a / 2 + 160), MM(90), 6, 20); sp.rotateX(Math.PI / 2); sp.scale(1, 0.45, 1); sp.translate(x, r.y0 + MM(10), z); add(sp, this.mats.spoil);
+      if (fill <= 0) { const h = new THREE.CircleGeometry(MM(sec.a / 2 + 10), 24); h.rotateX(-Math.PI / 2); h.translate(x, r.y0 + MM(4), z); add(h, this.mats.hole, false); }
+      const sp = new THREE.TorusGeometry(MM(sec.a / 2 + 180), MM(80), 6, 20); sp.rotateX(Math.PI / 2); sp.scale(1, 0.45, 1); sp.translate(x, r.y0 + MM(10), z); add(sp, this.mats.spoil);
     }
-    if ((r.stage ?? 0) >= 1 && only !== 'form') add(cageGeo(r), this.mats.rebar);
-    if (only === 'cage') return g;
-    if (fill > 0 && !only) add(concreteGeo(r, fill, r.pourT), this.concMat);
-    if (((r.stage ?? 0) >= 2 && (r.stage ?? 0) < 4) || only === 'form') {
-      const F = formParts(r);
-      for (const [k, list] of Object.entries(F)) if (list.length) add(mergeGeometries(list.map((q) => (q.index ? q.toNonIndexed() : q)).map((q) => { for (const n of Object.keys(q.attributes)) if (!['position', 'normal', ...(k === 'ply' || k === 'tube' ? ['uv'] : [])].includes(n)) q.deleteAttribute(n); return q; })), this.mats[k]);
-    }
+    if (cageOn(r)) g.add(this.cageGroup(r));
+    if (fill > 0) { const c = add(concreteGeo(r, fill, r.pourT), this.concMat); c.userData.conc = 1; }
+    if (formOn(r)) g.add(this.formGroup(r));
     return g;
+  }
+  // the concrete alone, at another level (a pour going on: the formwork and the cage stay as built)
+  _setConcrete(it, r, fill) {
+    const old = it.g.children.find((o) => o.userData.conc);
+    if (old) { it.g.remove(old); old.geometry.dispose(); }
+    if (fill > 0) { const o = new THREE.Mesh(concreteGeo(r, fill, r.pourT ?? 0), this.concMat); o.receiveShadow = true; o.userData.uOwner = r.id; o.userData.conc = 1; it.g.add(o); }
   }
   update(objects) {
     const all = objects.all('column'), seen = new Set();
+    // the starter bars of a column with a slab / masonry on it: into that, not out through it
+    const v = objects.ver ?? 0;
+    if (this._covV !== v || this._covO !== objects) { this._covV = v; this._covO = objects; this._cov = new Map(); for (const r of all) if (castDone(r)) this._cov.set(r.id, covered(r, objects)); }
     for (const r of all) {
-      const lv = this.live.get(r.id), fill = lv ? lv.fill : (r.stage ?? 0) >= 3 ? 1 : 0;
-      const key = JSON.stringify([r.x, r.z, r.y0, r.h, r.dep, r.sec, r.tilt, r.stage, r.pourT, Math.round(fill * 200)]);
+      const lv = this.live.get(r.id), fill = lv ? lv.fill : fillOf(r), st = this._cov.get(r.id) ? 150 : STARTER;
+      // (the concrete's level apart: while it is poured only the concrete is made again)
+      const key = JSON.stringify([r.x, r.z, r.y0, r.h, r.dep, r.sec, r.tilt, r.stage, cageOn(r), r.pourT, fill > 0, st]), fk = Math.round(fill * 200);
       seen.add(r.id);
       const it = this.items.get(r.id);
-      if (it && it.key === key) continue;
+      if (it && it.key === key) { if (it.fk !== fk) { it.fk = fk; this._setConcrete(it, { ...r, pourT: r.pourT ?? lv?.t }, fill); } continue; }
       if (it) this._drop(it.g);
-      const g = this._build(r, fill);
+      const g = this._build({ ...r, starter: st, pourT: r.pourT ?? lv?.t }, fill);
       this.group.add(g);
-      this.items.set(r.id, { key, g });
+      this.items.set(r.id, { key, g, fk });
     }
     for (const [id, it] of this.items) if (!seen.has(id)) { this._drop(it.g); this.items.delete(id); }
   }
   _drop(g) { this.group.remove(g); g.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); }
-  // where a column would go: green / red
-  setGhost(r, ok) {
+  // where it would go: green / red — the formwork (what = 'form'), the cage carried ('cage'),
+  // or the column itself (anything else)
+  setGhost(r, ok, what = 'form') {
     if (this.ghost) { this._drop(this.ghost); this.ghost = null; }
     if (!r) return;
-    const sec = COL_SECS[r.sec] || COL_SECS.sq250, geo = shear(r, colBot(r), colTop(r), MM(sec.a / 2), sec.round, 20);
-    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe0453a, transparent: true, opacity: 0.4, depthWrite: false }));
-    m.renderOrder = 5;
-    this.ghost = new THREE.Group(); this.ghost.add(m);
-    // the axis and the starter bars' direction
-    const st = MM(STARTER), [x1, z1] = axisAt(r, colTop(r)), ax = new THREE.Vector3(r.tilt[0], 1, r.tilt[1]).normalize();
-    const line = new THREE.Mesh(rod([x1, colTop(r), z1], [x1 + ax.x * st, colTop(r) + ax.y * st, z1 + ax.z * st], MM(8)), new THREE.MeshBasicMaterial({ color: 0xff8a1c }));
-    this.ghost.add(line);
+    const mat = new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe0453a, transparent: true, opacity: what === 'cage' ? 0.85 : 0.42, depthWrite: false });
+    this.ghost = what === 'cage' ? this.cageGroup(r, mat) : what === 'form' ? this.formGroup(r, mat) : new THREE.Group();
+    const sec = COL_SECS[r.sec] || COL_SECS.sq250;
+    if (what !== 'cage') {
+      // the column inside: its body faint, the axis and the starter bars' direction
+      const m = new THREE.Mesh(shear(r, colBot(r), colTop(r), MM(sec.a / 2), sec.round, 20), new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe0453a, transparent: true, opacity: 0.18, depthWrite: false }));
+      m.renderOrder = 5; this.ghost.add(m);
+      const st = MM(STARTER), [x1, z1] = axisAt(r, colTop(r)), ax = new THREE.Vector3(r.tilt[0], 1, r.tilt[1]).normalize();
+      this.ghost.add(new THREE.Mesh(rod([x1, colTop(r), z1], [x1 + ax.x * st, colTop(r) + ax.y * st, z1 + ax.z * st], MM(8)), new THREE.MeshBasicMaterial({ color: 0xff8a1c })));
+      // the base it stands on: a ring / a square round its foot
+      const [x0, z0] = axisAt(r, r.y0), ring = new THREE.RingGeometry(MM(sec.a / 2 + 40), MM(sec.a / 2 + 90), sec.round ? 28 : 4, 1, sec.round ? 0 : Math.PI / 4);
+      ring.rotateX(-Math.PI / 2); ring.translate(x0, r.y0 + MM(6), z0);
+      const rm = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe0453a, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide })); rm.renderOrder = 6; this.ghost.add(rm);
+    }
+    this.ghost.traverse((o) => { if (o.isMesh) o.raycast = () => {}; });   // (the finger's ray goes through it)
     this.group.add(this.ghost);
   }
+}
+
+// a slab cast on the column's top, or masonry laid on it
+function covered(r, objects) {
+  const top = colTop(r), [x, z] = axisAt(r, top), near = MM((COL_SECS[r.sec]?.a || 250) / 2);
+  for (const b of objects.all('belt')) if (b.kind === 'slab' && Math.abs(b.top - top) < MM(40) && b.fill > 0.05 && beltContains(b, x, z)) return true;
+  for (const u of objects.all('unit')) if (u.p && u.s && Math.abs(u.p[1] - u.s[1] / 2 - top) < MM(40) && Math.abs(u.p[0] - x) < u.s[0] / 2 + near && Math.abs(u.p[2] - z) < u.s[0] / 2 + near) return true;
+  return false;
 }

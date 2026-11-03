@@ -90,11 +90,11 @@ function baseUniforms(tex) {
 
 const VERT_COMMON = `#include <common>
         attribute vec4 aSoil;
-        attribute vec3 aMat;
+        attribute vec4 aMat;
         attribute vec3 aConc;
         attribute vec2 aExtra;
         varying vec4 vSoil;
-        varying vec3 vMat;
+        varying vec4 vMat;
         varying vec3 vConc;
         varying vec2 vExtra;
         varying vec3 vWPos;
@@ -116,7 +116,7 @@ const FRAG_DECL = `
         uniform sampler2D tMask;
         uniform highp sampler2DArray tMat;
         uniform vec3 uMatScale;
-        varying vec3 vMat;
+        varying vec4 vMat;
         varying vec3 vConc;
         varying vec2 vExtra;
         uniform float uClock;
@@ -167,6 +167,14 @@ const FRAG_SOIL = `
           float mSum = vMat.x + vMat.y + vMat.z;
           vec3 mc = (cS * vMat.x + c5 * vMat.y + c20 * vMat.z) / max(0.001, mSum);
           soilC = mix(soilC, mc, smoothstep(0.0, 1.0, clamp(mSum, 0.0, 1.0)));
+          // black topsoil: the loam's crumbs, almost black-brown, a lighter dry crumb here and there
+          float blk = clamp(vMat.w, 0.0, 1.0);
+          if (blk > 0.001) {
+            vec2 bq = mq * ${RESCALE.toFixed(5)};
+            vec3 cb = mix(uWallMean.rgb, wallTopC, 0.8) * vec3(0.36, 0.29, 0.24) * (0.8 + 0.4 * tcHash(floor(bq * 260.0)));
+            cb *= mix(1.0, 1.6, step(0.93, tcHash(floor(bq * 140.0 + 5.0))));
+            soilC = mix(soilC, cb, smoothstep(0.0, 1.0, blk));
+          }
         }
         // compacted (the plate, wheels, a bucket pressed on it): denser and darker, the grain pressed
         // smooth — its photo's crumbs and stones flattened toward one even tone

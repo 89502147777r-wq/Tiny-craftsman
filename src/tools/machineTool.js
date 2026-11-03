@@ -23,7 +23,7 @@ import { Streams } from '../world/stream.js';
 const R = (m) => m / MODEL_SCALE;
 const SPEED = R(2.2), TURN = 1.4;                 // m/s, rad/s (a skid steer turns on the spot)
 const BUCKET = 0.45;                               // m³ the bucket holds
-const BUCKET_COL = [0x6f5137, 0xc9a46a, 0xa3a29e, 0x86847f].map((c) => new THREE.Color(c));   // soil, sand, gravels
+const BUCKET_COL = [0x6f5137, 0xc9a46a, 0xa3a29e, 0x86847f, 0x33271f].map((c) => new THREE.Color(c));   // soil, sand, gravels
 
 export class MachineTool {
   constructor(app) {
@@ -1158,8 +1158,8 @@ export class MachineTool {
   }
   // the shares of the materials in the bucket (soil, sand, g5, g20)
   _mixW() {
-    const c = this.grader.carry, tot = c[0] + c[1] + c[2] + c[3], w = (this._mw ||= [1, 0, 0, 0]);
-    if (tot > 0) for (let k = 0; k < 4; k++) w[k] = c[k] / tot;
+    const c = this.grader.carry, tot = c[0] + c[1] + c[2] + c[3] + c[4], w = (this._mw ||= [1, 0, 0, 0]);
+    if (tot > 0) for (let k = 0; k < 4; k++) w[k] = (c[k] + (k ? 0 : c[4])) / tot;   // (black topsoil: shown as soil)
     return w;
   }
   // where what runs over the truck's side lands: just outside the side nearest to p, level with it
@@ -1170,10 +1170,10 @@ export class MachineTool {
   }
   // the colour of what is in the bucket (the materials mixed as they are in it)
   _mix() {
-    const c = this.grader.carry, tot = c[0] + c[1] + c[2] + c[3], out = (this._mixC ||= new THREE.Color());
+    const c = this.grader.carry, tot = c[0] + c[1] + c[2] + c[3] + c[4], out = (this._mixC ||= new THREE.Color());
     out.setRGB(0, 0, 0);
     if (tot <= 0) return out.set(BUCKET_COL[0]);
-    for (const m of [0, 1, 2, 3]) if (c[m] > 0) { const k = c[m] / tot, col = BUCKET_COL[m]; out.r += col.r * k; out.g += col.g * k; out.b += col.b * k; }
+    for (const m of [0, 1, 2, 3, 4]) if (c[m] > 0) { const k = c[m] / tot, col = BUCKET_COL[m] || BUCKET_COL[0]; out.r += col.r * k; out.g += col.g * k; out.b += col.b * k; }
     return out;
   }
 

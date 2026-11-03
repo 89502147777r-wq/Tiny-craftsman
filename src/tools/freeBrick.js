@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { KINDS } from '../world/walls.js';
 import { cellAt, plan } from './belt.js';
+import { COL_SECS, axisAt, colTop, castDone } from '../world/columns.js';
 
 // Free masonry: bricks (and blocks next to other blocks) are laid one by one, anywhere —
 // no wall records, no planned courses. Where a carried unit goes is worked out from what
@@ -89,14 +90,27 @@ export function beltTopAt(app, x, z) {
   }
   return h;
 }
-// the surface free masonry goes on: the ground / a slab, and a ring beam's concrete on the walls
+// The top of a cast column / pile over (x, z) (columns.js), or -Infinity: masonry goes on it
+export function colTopAt(app, x, z) {
+  let h = -Infinity;
+  for (const r of app.objects.all('column')) {
+    if (!castDone(r)) continue;
+    const top = colTop(r), [cx, cz] = axisAt(r, top), sec = COL_SECS[r.sec] || COL_SECS.sq250, a = sec.a / 2 / 1000 / MODEL_SCALE;
+    if (sec.round ? Math.hypot(x - cx, z - cz) <= a : Math.abs(x - cx) <= a && Math.abs(z - cz) <= a) h = Math.max(h, top);
+  }
+  return h;
+}
+// the cast concrete over (x, z) things are laid on: a ring beam / a slab, a column's top
+export function castTopAt(app, x, z) { return Math.max(beltTopAt(app, x, z), colTopAt(app, x, z)); }
+// the surface free masonry goes on: the ground / a slab, a ring beam's concrete on the walls, the
+// top of a cast column / pile
 function surface(app) {
   const t = app.terrain;
-  if (!app.objects.all('belt').some((b) => b.fill > 0)) return t;
+  if (!app.objects.all('belt').some((b) => b.fill > 0) && !app.objects.all('column').some(castDone)) return t;
   return {
-    inside: (x, z) => t.inside(x, z) || beltTopAt(app, x, z) > -Infinity, index: (x, z) => t.index(x, z), conc: t.conc, cell: t.cell,
-    heightAt: (x, z) => Math.max(t.heightAt(x, z), beltTopAt(app, x, z)),
-    belt: (x, z) => beltTopAt(app, x, z),
+    inside: (x, z) => t.inside(x, z) || castTopAt(app, x, z) > -Infinity, index: (x, z) => t.index(x, z), conc: t.conc, cell: t.cell,
+    heightAt: (x, z) => Math.max(t.heightAt(x, z), castTopAt(app, x, z)),
+    belt: (x, z) => castTopAt(app, x, z),
   };
 }
 // a place cuts into a ring beam's concrete (its bottom under the top of the concrete there)
