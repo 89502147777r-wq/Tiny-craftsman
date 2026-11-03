@@ -386,12 +386,18 @@ function leaf(kind, col, w, H, arch = 0, opts = {}) {
   return G;
 }
 // the gates of a fence: { group, leaves: [{ pivot, side, swing }] } per gate; posts are fencePosts'
-export function fenceGates(r) {
-  const out = [], kind = kindOf(r), col = colOf(r), H = r.H;
+// opt: { side — the fence's face (the side of the string its rails and fill are on: ±1), z — how far out
+// of the string that face is (mm) }. Each gate: hinge 'L' (on the post at its start along the fence) or
+// 'R' (the other post; a sliding gate rolls back that way), swing 'front' (opens to the fence's face
+// side) or 'back'
+export function fenceGates(r, opt = {}) {
+  const out = [], kind = kindOf(r), col = colOf(r), H = r.H, side = opt.side || 1, zf = opt.z || 0;
   (r.gates || []).forEach((q, gi) => {
-    const T = GATES[q.type] || GATES.swing, [ax, az] = pointAtS(r, q.s - q.w / 2), [bx, bz, ux, uz] = pointAtS(r, q.s + q.w / 2), yaw = Math.atan2(-uz, ux);
-    const G = new THREE.Group(), leaves = [], gap = 20, Wc = q.w - FENCE.bigPost - 2 * gap;
-    G.position.set(ax, r.g, az); G.rotation.y = yaw;
+    const T = GATES[q.type] || GATES.swing, [ax, az] = pointAtS(r, q.s - q.w / 2), [bx, bz, ux, uz] = pointAtS(r, q.s + q.w / 2), R = q.hinge === 'R', flip = R ? -1 : 1, yaw = Math.atan2(-uz, ux) + (R ? Math.PI : 0);
+    const G = new THREE.Group(), leaves = [], gap = 20, Wc = q.w - FENCE.bigPost - 2 * gap, nx = -uz, nz = ux;
+    // (from the hinge post; on the face of the posts, where the fill hangs)
+    G.position.set((R ? bx : ax) + nx * MM(zf * side), r.g, (R ? bz : az) + nz * MM(zf * side)); G.rotation.y = yaw;
+    const dirL = (q.swing === 'back' ? -side : side) * flip;   // (the way it opens, in the gate's own frame: +z or −z)
     const x0 = FENCE.bigPost / 2 + gap;
     if (T.slide) {
       // the cantilever gate: the leaf with its tail (behind the post it rolls back past), the bottom
@@ -417,7 +423,7 @@ export function fenceGates(r) {
         // hinges on the post's side
         const hm = metal(0x1d1e20, 0.5);
         for (const y of [250, H - 400]) { const h = new THREE.Mesh(new THREE.CylinderGeometry(MM(14), MM(14), MM(120), 8), hm); h.position.set(0, MM(y), 0); pivot.add(h); }
-        leaves.push({ pivot, side: k === 1 ? -1 : 1 });
+        leaves.push({ pivot, side: k === 1 ? -1 : 1, rot: -dirL * (k === 1 ? -1 : 1) });
       }
       if (T.intercom) {
         // the intercom panel and the mailbox on the post by the wicket

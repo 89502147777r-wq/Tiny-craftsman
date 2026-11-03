@@ -504,10 +504,21 @@ export class FenceWork {
     this._save('fence-remove', () => app.objects.remove(r.id)); this.toast('Шнур с колышками убрали — забора нет');
   }
 
+  // the hinge side / the way it opens chosen: for the gates to come, and for the one last touched — it is
+  // rehung so at once (its leaves taken off and hung on the other post / turned)
+  setGateWay(patch) {
+    const app = this.app; Object.assign(app.settings, patch); app.applySettings();
+    const [id, gi] = this.lastGate || [], r = id != null ? app.objects.get(id) : null, q = r?.gates?.[gi];
+    if (!q) { app.ui?.refresh(); return; }
+    const next = { ...q, ...(patch.gateHinge ? { hinge: patch.gateHinge } : {}), ...(patch.gateSwing ? { swing: patch.gateSwing } : {}), open: false };
+    this._save('gate-way', () => app.objects.update(r.id, { gates: r.gates.map((x, i) => (i === gi ? next : x)) }));
+    this.toast(`${GATES[q.type].name}: ${next.hinge === 'R' ? 'петли справа' : 'петли слева'}, ${next.swing === 'back' ? 'открывается назад' : 'открывается вперёд'}`);
+  }
   _gate(r, s) {
     const app = this.app, gates = r.gates || [], key = 'F' + r.id;
     const hit = gates.findIndex((q) => Math.abs(q.s - s) < q.w / 2);
     if (hit >= 0) {
+      this.lastGate = [r.id, hit];
       const open = !gates[hit].open;
       this._save('gate-open', () => app.objects.update(r.id, { gates: gates.map((q, i) => (i === hit ? { ...q, open } : q)) }));
       this.toast(open ? `${GATES[gates[hit].type].name}: открыто` : `${GATES[gates[hit].type].name}: закрыто`);
@@ -520,7 +531,8 @@ export class FenceWork {
     if (b.railed || (r.rails || []).some((q) => q.a < b.b.s - 1 && q.b > b.a.s + 1)) { this.toast('В этом пролёте прожилины — ворота и калитки ставят в пролёт без них (его оставляют при разметке)'); return; }
     const T = GATES[this.gateType], [lo, hi] = GATE_W[this.gateType];
     if (b.L < lo || b.L > hi) { this.toast(EN() ? `The bay is ${m1(b.L)} m: ${T.name} takes ${m1(lo)} … ${m1(hi)} m — move the pegs at the setting-out` : `Пролёт ${m1(b.L)} м: ${T.name.toLowerCase()} — от ${m1(lo)} до ${m1(hi)} м. Ширину задают колышками при разметке`); return; }
-    const gi = gates.length, rec = { s: Math.round(b.mid), w: Math.round(b.L), type: this.gateType, open: false, hung: 1 };
+    const gi = gates.length, rec = { s: Math.round(b.mid), w: Math.round(b.L), type: this.gateType, open: false, hung: 1, hinge: this.app.settings.gateHinge === 'R' ? 'R' : 'L', swing: this.app.settings.gateSwing === 'back' ? 'back' : 'front' };
+    this.lastGate = [r.id, gi];
     app.journal.begin('gate', {}, app.clock);
     app.objects.update(r.id, { gates: [...gates, rec] });
     new FitJob(app, {

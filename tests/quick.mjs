@@ -691,7 +691,11 @@ console.log('—', sec());
     tc.renderer.render(tc.scene, tc.camera);
     tc.undo(); o.undo = fw.rec.gates.length === 0;
     // «Удалить» a part at a time: the wicket, a section, a rail (refused while a section hangs on it), a post (refused while rails are welded to it), its hole
-    { tc.redo(); const Mm = 1 / 1000 / 10.4651, at2 = (s, y) => { const q = sAt(s); q.y = fw.rec.g + y * Mm; return q; }, R = () => fw.rec, log = [];
+    // the wicket's way: its hinges on the other post, opening to the back — the record and the leaf's turn follow
+    { tc.redo(); fw.lastGate = [fw.rec.id, 0]; const FG = (await import('/src/world/fence.js')).fenceGates, rot = () => FG(fw.rec, { side: 1, z: 65 })[0].leaves[0].rot, pos = () => FG(fw.rec, { side: 1, z: 65 })[0].group.position.clone();
+      const r0 = rot(), p0 = pos(); fw.setGateWay({ gateHinge: 'R' }); const p1 = pos(); fw.setGateWay({ gateSwing: 'back' }); const r1 = rot();
+      o.way = `${fw.rec.gates[0].hinge}:${fw.rec.gates[0].swing}:${p0.distanceTo(p1) > 0.05}:${r0 === -1 && r1 === -1}`; fw.setGateWay({ gateHinge: 'L', gateSwing: 'front' }); tc.undo(); }
+    { const Mm = 1 / 1000 / 10.4651, at2 = (s, y) => { const q = sAt(s); q.y = fw.rec.g + y * Mm; return q; }, R = () => fw.rec, log = [];
       const del = (s, y) => { fw.removePart(R(), at2(s, y)); log.push(`${R().gates.length}/${R().filled.length}/${R().rails.length}/${R().pegs.filter((q) => q.post).length}/${R().pegs.filter((q) => q.hole).length}`); };
       del(4500, 1000); del(1000, 1000); del(1000, 1500); del(3000, 1000); del(1000, 1500); del(1000, 300); del(2000, 900); del(2000, 900);
       o.del = log.join(' '); o.delFence = !!R(); }
@@ -722,6 +726,7 @@ console.log('—', sec());
   check('fence: its own group (6 stages), not under «Благоустройство»; the string with pegs every 2 m, a peg moved for a wicket', f.chips === '1 · Разметка|2 · Ямы|3 · Столбы|4 · Прожилины|5 · Наполнение|6 · Ворота и калитки|Удалить' && !f.inLand && f.ui && f.pegs === '0,2000,4000,6000,7953' && f.moved === 5000, JSON.stringify(f));
   check('fence: holes one by one, round posts Ø80 in each, concrete by the bucket and the hose', f.holes === '11111' && f.posts === 'rd80,rd80,rd80,rd80,rd80' && f.pail > 0.3 && f.pail < 1 && f.conc, JSON.stringify(f));
   check('fence: rails welded post to post (two rows), the railed bays filled, a wicket in the bay left (a gate too wide refused), undo', f.tray === 'Прожилина' && f.rails === '0-4000@300,0-4000@1500,5000-7953@300,5000-7953@1500' && f.otherSide === -1 && f.postG && f.fillTabs && f.filled === 3 && f.swingRefused && f.gates === 'wicket:1000' && f.undo, JSON.stringify(f));
+  check('fence: a wicket hung on either post (left / right), opening to the front or the back', f.way?.startsWith('R:back:true'), JSON.stringify(f.way));
   check('fence: «Удалить» takes a part at a time — the wicket, a section, a rail, a post, its hole (not the whole fence)', f.del === '0/3/4/5/5 0/2/4/5/5 0/2/4/5/5 0/1/4/5/5 0/1/3/5/5 0/1/2/5/5 0/1/2/4/5 0/1/2/4/4' && f.delFence, JSON.stringify(f));
   check('fence: on brick pillars (the pegs set on them, no holes, the rails between them on the plates), corrugated sheet in its colour; a post anchored on the strip\'s concrete', f.pillarPegs === 2 && f.noHole && /^in:pillar-pillar@300,in:pillar-pillar@\d+$/.test(f.inline) && f.prof === 'prof:wine:1' && f.anchor === 'anchor:true:true', JSON.stringify(f));
   check('fence: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));

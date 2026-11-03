@@ -345,7 +345,8 @@ export class GardenView {
       return fenceFill({ ...r, H }, e.U, { bays, fresh: new Set(fresh.length ? bays.filter((b) => fresh.some((m) => Math.abs(m - b.mid) < 2)).map((b) => b.mid) : []), off0: inline ? rd / 2 : pa / 2 + rd, pa, H, inline, side: (r.rails || [])[0]?.side || 1, rows: railRows(H) });
     });
     const gk = JSON.stringify((r.gates || []).map((q) => [q.s, q.w, q.type]));
-    this._part(e, 'gates', (r.gates || []).length ? base + gk + '|' + r.kind + '|' + r.col + '|' + r.H : null, () => { const G = new THREE.Group(); e.gl = fenceGates(r); for (const q of e.gl) G.add(q.group); return G; });
+    const gside = (r.rails || [])[0]?.side || 1, gz = postA(r) / 2 + 25;
+    this._part(e, 'gates', (r.gates || []).length ? base + JSON.stringify((r.gates || []).map((q) => [q.s, q.w, q.type, q.hinge, q.swing])) + '|' + r.kind + '|' + r.col + '|' + r.H + '|' + gside + '|' + gz : null, () => { const G = new THREE.Group(); e.gl = fenceGates(r, { side: gside, z: gz }); for (const q of e.gl) G.add(q.group); return G; });
   }
   _fenceFrame(e) {
     const r = e.rec, d = r.done || {}, a = this.anim['F' + r.id] || {};
@@ -364,7 +365,7 @@ export class GardenView {
         const ease = k * k * (3 - 2 * k);
         for (const L of q.leaves) {
           if (L.base == null) L.base = L.pivot.position.x;
-          if (L.slide) L.pivot.position.x = L.base - L.slide * ease; else L.pivot.rotation.y = L.side * ease * 1.45;
+          if (L.slide) L.pivot.position.x = L.base - L.slide * ease; else L.pivot.rotation.y = (L.rot ?? L.side) * ease * 1.45;
           L.pivot.position.y = inst ? MM(500) * (1 - (a.gu ?? 1)) : 0;
         }
       }
