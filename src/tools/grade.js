@@ -10,7 +10,7 @@ import { houseOutside, buildings, findHouse } from './pitchedTool.js';
 const MM = (v) => v / 1000 / MODEL_SCALE;
 
 export class Grader {
-  constructor(app) { this.app = app; this.carry = new Float64Array(4); this._seg = { m: new Uint8Array(8), h: new Float64Array(8), n: 0 }; this._seen = new Set(); }
+  constructor(app) { this.app = app; this.carry = new Float64Array(5); this._seg = { m: new Uint8Array(8), h: new Float64Array(8), n: 0 }; this._seen = new Set(); }
 
   // the design level over the plot (worked out as the work begins)
   design(slopePct = 1.5) {
@@ -33,7 +33,7 @@ export class Grader {
     return this;
   }
 
-  get load() { return this.carry[0] + this.carry[1] + this.carry[2] + this.carry[3]; }   // (heights summed over samples; × cellArea = volume)
+  get load() { return this.carry[0] + this.carry[1] + this.carry[2] + this.carry[3] + this.carry[4]; }   // (heights summed over samples; × cellArea = volume)
   // a sample cut down by h (what is cut goes into `into`: the loose layers first, then the ground)
   cut(i, h, into = this.carry) {
     const t = this.app.terrain, seg = this._seg;
@@ -44,7 +44,7 @@ export class Grader {
   }
   fill(i, need) {
     const t = this.app.terrain, c = this.carry;
-    for (const m of [0, 1, 2, 3]) { if (need <= 0) break; const g = Math.min(need, c[m]); if (g > 0) { t._push(i, g, m); c[m] -= g; need -= g; } }
+    for (const m of [0, 1, 2, 3, 4]) { if (need <= 0) break; const g = Math.min(need, c[m]); if (g > 0) { t._push(i, g, m); c[m] -= g; need -= g; } }
   }
   // the blade at (x, z), across (ux, uz), half width hw: cut down to the level, fill up to it;
   // `cap`: the most it may carry (the bucket full: it cuts no more, it still fills)

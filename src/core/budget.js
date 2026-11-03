@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODEL_SCALE, M_SAND, M_G5, M_G20 } from '../config.js';
+import { MODEL_SCALE, M_SAND, M_G5, M_G20, M_BLACK } from '../config.js';
 import { pitBox, DECKS, deckRing } from '../world/pool.js';
 import { lengthOf, PAVERS } from '../world/garden.js';
 import { areaOf } from '../world/lawn.js';
@@ -220,9 +220,13 @@ export class Budget {
     } else if (type === 'column') {
       const s0 = b?.stage ?? -1, s1 = a?.stage ?? -1;
       const hm = (a.h + (a.dep || 0)) * M1;
-      if (s0 < 1 && s1 >= 1) add(P.rebar * hm * 4.6 + P.wire6 * hm * 5, `Арматура колонны · ${(hm * 4.6).toFixed(0)} м + хомуты`);
-      if (s0 < 2 && s1 >= 2) add(P.board * hm * 1.2, `Фанера опалубки · ${(hm * 1.2).toFixed(1)} м²`);
-      if (s0 < 3 && s1 >= 3) { const r = a.sec?.startsWith('p') || a.sec?.startsWith('r') ? +a.sec.slice(1) / 2000 : +a.sec.slice(2) / 1000; const sq = a.sec?.startsWith('sq'); const v = (sq ? r * r : Math.PI * r * r) * ((a.h + (a.dep || 0)) * M1); add(P.concrete * v, `Бетон ${v.toFixed(2)} м³`); }
+      // (the cage: its flag, old records by the stage; the concrete by how full it is — a column is
+      // poured by the bucket / the hose a little at a time)
+      const cg = (r) => !!r && (r.cage ?? (r.stage ?? 0) >= 1), fl = (r) => (!r ? 0 : (r.stage ?? 0) >= 3 ? 1 : r.fill || 0);
+      if (!cg(b) && cg(a)) add(P.rebar * hm * 4.6 + P.wire6 * hm * 5, `Арматура колонны · ${(hm * 4.6).toFixed(0)} м + хомуты`);
+      if (s0 < 2 && s1 >= 2) add(P.board * hm * 1.2, `Опалубка колонны · ${(hm * 1.2).toFixed(1)} м²`);
+      const df = fl(a) - fl(b);
+      if (df > 0.001) { const r = a.sec?.startsWith('p') || a.sec?.startsWith('r') ? +a.sec.slice(1) / 2000 : +a.sec.slice(2) / 1000; const sq = a.sec?.startsWith('sq'); const v = (sq ? r * r : Math.PI * r * r) * ((a.h + (a.dep || 0)) * M1) * df; add(P.concrete * v, `Бетон ${v.toFixed(2)} м³`); }
     } else if (type === 'pool') {
       // the coats (cells 100 × 100, a coat each pass), the mosaic sheets (316 × 316), the stones, the embeds, the water
       const chars = (arr, f) => (arr || []).reduce((n, q) => n + (typeof q === 'string' ? [...q].reduce((m, c) => m + f(c), 0) : Array.isArray(q) ? q.length : 0), 0);
@@ -326,6 +330,7 @@ export class Budget {
     if (mats[M_SAND] > 0) add(PRICE.sand * v(mats[M_SAND]), `Песок ${v(mats[M_SAND]).toFixed(1)} м³`);
     const g = (mats[M_G5] || 0) + (mats[M_G20] || 0);
     if (g > 0) add(PRICE.gravel * v(g), `Щебень ${v(g).toFixed(1)} м³`);
+    if (mats[M_BLACK] > 0) add(PRICE.lawn.soil * v(mats[M_BLACK]), `Чернозём ${v(mats[M_BLACK]).toFixed(1)} м³`);
     if (bit > 0) add(PRICE.bitumen * bit * ca, 'Битум');
   }
   // the money out (inside the current journal entry), the popup, the till

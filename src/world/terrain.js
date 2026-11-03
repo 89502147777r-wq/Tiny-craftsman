@@ -683,7 +683,7 @@ export class Terrain {
   buildMesh(material) {
     const { nx: n, nz } = this;
     const N = n * nz;
-    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4), mats = new Float32Array(N * 3), cc = new Float32Array(N * 3);
+    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4), mats = new Float32Array(N * 4), cc = new Float32Array(N * 3);
     for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < n; ix++) {
       const i = iz * n + ix;
       pos[i * 3] = this.toWorldX(ix); pos[i * 3 + 2] = this.toWorldZ(iz);
@@ -710,8 +710,8 @@ export class Terrain {
     this.aPos = new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage);
     this.aNor = new THREE.BufferAttribute(nor, 3).setUsage(THREE.DynamicDrawUsage);
     this.aSoil = new THREE.BufferAttribute(soil, 4).setUsage(THREE.DynamicDrawUsage);
-    // share of sand / crushed stone 5–20 / 20–40 in the top 2 mm (the rest is soil)
-    this.aMat = new THREE.BufferAttribute(mats, 3).setUsage(THREE.DynamicDrawUsage);
+    // share of sand / crushed stone 5–20 / 20–40 / black topsoil in the top 2 mm (the rest is soil)
+    this.aMat = new THREE.BufferAttribute(mats, 4).setUsage(THREE.DynamicDrawUsage);
     // concrete: thickness, pour time, smoothness (the shader cures it with the clock)
     this.aConc = new THREE.BufferAttribute(cc, 3).setUsage(THREE.DynamicDrawUsage);
     // bitumen coat, compaction
@@ -851,19 +851,19 @@ export class Terrain {
       soil[i * 4 + 1] = conc[i] > 1e-6 ? (topM[i] === 0 ? top[i] : 0) : loose[i];
       soil[i * 4 + 2] = occ[i];
       soil[i * 4 + 3] = this.ldep[i];
-      let f1 = 0, f2 = 0, f3 = 0;
+      let f1 = 0, f2 = 0, f3 = 0, f4 = 0;
       for (let k = lN[i] - 1, rest = 0.002; k >= 0 && rest > 0; k--) {
         const h = Math.min(rest, lH[i * LAYERS + k]), m = lM[i * LAYERS + k];
-        if (m === 1) f1 += h; else if (m === 2) f2 += h; else if (m === 3) f3 += h;
+        if (m === 1) f1 += h; else if (m === 2) f2 += h; else if (m === 3) f3 += h; else if (m === 4) f4 += h;
         rest -= h;
       }
       if (conc[i] > 1e-6) {
         // the slab covers the layers under it; what lies on it shows instead
-        f1 = f2 = f3 = 0;
+        f1 = f2 = f3 = f4 = 0;
         const tm = topM[i], th = Math.min(top[i], 0.002);
-        if (tm === 1) f1 = th; else if (tm === 2) f2 = th; else if (tm === 3) f3 = th;
+        if (tm === 1) f1 = th; else if (tm === 2) f2 = th; else if (tm === 3) f3 = th; else if (tm === 4) f4 = th;
       }
-      mats[i * 3] = f1 * 500; mats[i * 3 + 1] = f2 * 500; mats[i * 3 + 2] = f3 * 500;
+      mats[i * 4] = f1 * 500; mats[i * 4 + 1] = f2 * 500; mats[i * 4 + 2] = f3 * 500; mats[i * 4 + 3] = f4 * 500;
       // under a cover of sand / stone the concrete fades out (gone at ~1.3 mm of the model)
       const cover = top[i] > 0 ? Math.pow(Math.max(0, 1 - top[i] / 0.0013), 3) : 1;
       cc[i * 3] = conc[i] * cover; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
@@ -991,8 +991,8 @@ export class Terrain {
     }
     if (any) this._touch(ix0, iz0, ix1, iz1);
   }
-  // how thick each material lies loose at a sample (m): [soil, sand, 5–20, 20–40]
-  looseOf(i, out = [0, 0, 0, 0]) {
+  // how thick each material lies loose at a sample (m): [soil, sand, 5–20, 20–40, black]
+  looseOf(i, out = [0, 0, 0, 0, 0]) {
     out.fill(0);
     for (let k = 0; k < this.lN[i]; k++) out[this.lM[i * LAYERS + k]] += this.lH[i * LAYERS + k];
     return out;

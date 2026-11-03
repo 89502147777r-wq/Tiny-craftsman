@@ -12,7 +12,8 @@ import { FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES } from '../
 import { PLANTS } from '../world/plants.js';
 import { PORCH_LAYERS, PORCH_TILES } from '../world/porch.js';
 import { FLIGHTS, FLIGHT_TEMPS } from '../world/facadeLights.js';
-import { COL_SECS, COURSES, COL_STAGES, TILTS, courseH } from '../world/columns.js';
+import { COL_SECS, COURSES, TILTS, courseH } from '../world/columns.js';
+import { COL_TABS, DIRS } from '../tools/columnTool.js';
 import { PALLETS } from '../core/budget.js';
 import { BLIND_LAYERS, BLIND_WIDTHS, BLIND_FIN, TILE_COLOURS } from '../world/blind.js';
 import { LAYERS as FAC_LAYERS, VLAYERS as FAC_VLAYERS, PLASTER_COLOURS, PLASTER_KINDS, PANEL_TYPES, VENT } from '../world/facade.js';
@@ -52,8 +53,8 @@ const HINTS = {
   rake: 'Ведите пальцем по кучке — грабли срежут верх и растащат грунт ровным слоем. Тяните к себе несколько раз',
   loaded: 'Коснитесь места для отвала и отпустите — грунт высыплется',
   deliver: (name, v) => `Коснитесь места на участке — самосвал высыплет кучу: ${name.toLowerCase()} ${m3(v)}. Потом лопатой в котлован и граблями разровнять`,
-  hose: 'Держите палец — из шланга идёт бетон. Ведите по опалубке, начиная с дальнего угла. Подача — вверху',
-  pail: 'Ведро бетона 24 л — для U-блоков: держите палец над лотком, ведро наклонится и бетон потечёт, растекаясь по лотку. Ведите вдоль ряда. Каждое нажатие — новое ведро',
+  hose: 'Держите палец — из шланга идёт бетон. Ведите по опалубке, начиная с дальнего угла (в колонну — держите над её опалубкой). Подача — вверху',
+  pail: 'Ведро бетона 24 л — для U-блоков и колонн: держите палец над лотком или опалубкой, ведро наклонится и бетон потечёт. Ведите вдоль ряда. Каждое нажатие — новое ведро',
   screed: 'Тяните правило по бетону — оно идёт по верху опалубки, лишнее сдвигается вперёд',
   vibro: 'Держите палец в бетоне — вибратор осаживает его, бетон растекается ровно вокруг',
   wall: {
@@ -485,6 +486,28 @@ export class UI {
       if (m.selected && !m.trench) out.push(C('Удалить контур', false, () => m.deleteSelected(), 'warn'));
       return out;
     }
+    if (t === 'column') {
+      // «Фундамент → Колонны и сваи»: the sizes first (the section, the height by the courses, the
+      // slope and its side), then the stages; the concrete — «Бетон»
+      const cw = app.wallTool.col, s = app.settings, CS = cw.stage;
+      const cset = (o) => { Object.assign(s, o); app.applySettings(); if ('colN' in o || 'colCourse' in o || 'colTilt' in o || 'colDir' in o) cw.restyle(cw.rec); this.refresh(); };
+      return [
+        G('csize', 'Размеры', [
+          G('csec', `Сечение: ${COL_SECS[cw.sec].name}`, Object.entries(COL_SECS).map(([k, q]) => C(q.name, cw.sec === k, () => cset({ colSec: k, colStage: 'form' }))), 'Сечение'),
+          G('cheight', `Высота: ${courseH(cw.course, cw.n)} мм`, [
+            ...Object.entries(COURSES).map(([k, q]) => C('По кладке: ' + q.name, cw.course === k, () => cset({ colCourse: k, colN: null }))),
+            C(`− ряд (${cw.n})`, false, () => cset({ colN: Math.max(1, cw.n - 1) })),
+            C(`+ ряд → ${courseH(cw.course, cw.n + 1)} мм`, false, () => cset({ colN: cw.n + 1 })),
+          ], 'Высота'),
+          G('ctilt', `Наклон: ${cw.tiltDeg}°`, [
+            ...TILTS.map((d) => C(d ? `${d}°` : 'Вертикально', cw.tiltDeg === d, () => cset({ colTilt: d }))),
+            ...(cw.tiltDeg ? DIRS.map(([d, a]) => C(`${a} ${d}°`, cw.dirDeg === d, () => cset({ colDir: d }))) : []),
+          ], 'Наклон'),
+        ]),
+        ...COL_TABS.map(([k, l], i) => C(`${i + 1} · ${l}`, CS === k, () => cset({ colStage: k }))),
+        C('Удалить', CS === 'del', () => cset({ colStage: 'del' }), 'warn'),
+      ];
+    }
     if (t === 'wall') {
       const wt = app.wallTool, s = app.settings;
       const set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
@@ -498,17 +521,6 @@ export class UI {
       if (has('block', 'brick', 'cinder')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
       // the budget: pallets bought onto the plot (the units laid come off them)
       if (app.budget?.on) masonry.push(G('shop', '🛒 Купить поддон', Object.entries(PALLETS).map(([k, P]) => C(`${P.short} · ${P.n} шт · $${P.usd} (на участке ${app.budget.stockOf(k)})`, false, () => { app.budget.buy(k); this.refresh(); })), 'Купить'));
-      // the columns and the piles: the stage; the section, the height by the courses, the slope
-      const cw = wt.col, cset = (o) => { lay({ wallKind: 'column', ...o }); const r = cw.rec; if (r && (r.stage ?? 0) < 3 && ('colN' in o || 'colCourse' in o || 'colTilt' in o || 'colDir' in o)) cw.restyle(r); };
-      const CS = cw.stage, cols = [
-        ...COL_STAGES.map(([k, l], i) => C(`${i + 1} · ${l}`, has('column') && CS === k, () => cset({ colStage: k }))),
-        G('csec', `Сечение: ${COL_SECS[cw.sec].name}`, Object.entries(COL_SECS).map(([k, q]) => C(q.name, cw.sec === k, () => cset({ colSec: k, colStage: 'set' }))), 'Сечение'),
-        G('ccourse', `По кладке: ${COURSES[cw.course].name}`, Object.entries(COURSES).map(([k, q]) => C(q.name[0].toUpperCase() + q.name.slice(1), cw.course === k, () => cset({ colCourse: k, colN: null }))), 'Кладка'),
-        C(`− ряд (${cw.n})`, false, () => cset({ colN: Math.max(1, cw.n - 1) })),
-        C(`+ ряд → ${courseH(cw.course, cw.n + 1)} мм`, false, () => cset({ colN: cw.n + 1 })),
-        G('ctilt', `Наклон: ${cw.tiltDeg}°`, TILTS.map((d) => C(d ? `${d}°` : 'Вертикально', cw.tiltDeg === d, () => cset({ colTilt: d }))), 'Наклон'),
-        ...(cw.tiltDeg ? [C(`↻ Сторона наклона (${cw.dirDeg}°)`, false, () => cset({ colDir: (cw.dirDeg + 45) % 360 }))] : []),
-      ];
       // the roof: its layer → the colour
       const RL = s.roofLayer || 'vap';
       const roof = ROOF_LAYERS.map(([k, l], i) => {
@@ -642,7 +654,7 @@ export class UI {
         hid(G('land', 'Благоустройство', [(() => { const [nk, nw] = lw.next(); return C(`➜ ${nw}`, false, () => { if (!nk) app.ui.toast(nw); else if (isLawn) gset({ lawnLayer: nk }); else if (isFence) fset({ fenceLayer: nk }); else lset({ pathLayer: nk }); }, 'next'); })(), G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('fence', 'Забор', fence, null, C('', has('land') && isFence, () => fset({}))), G('plants', 'Растения', Object.entries(PLANTS).filter(([, P]) => !P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }))), G('lights', 'Освещение', Object.entries(PLANTS).filter(([, P]) => P.light).map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && !!PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'bollard' }))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
         G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
-        G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие')), G('cols', 'Колонны и сваи', cols, null, C('', has('column'), () => lay({ wallKind: 'column' })))], null, C('', has('belt', 'studs', 'slab', 'column'))),
+        G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
         del(),
       ];
     }
@@ -678,7 +690,8 @@ export class UI {
     const add = (label, cls, fn) => { const b = document.createElement('button'); b.className = `chip-btn ${cls}`; b.textContent = label; if (fn) b.addEventListener('click', fn); bar.appendChild(b); return b; };
     add('‹', 'back', () => this.navBack());
     const tool = this.virt ? '' : document.querySelector(`#toolrow [data-tool="${this.app.tool}"] span`)?.textContent || '';
-    add([tool, ...crumbs].filter(Boolean).join(' › '), 'crumb');
+    // (only the name of what is open: the tabs before it are not shown)
+    add(crumbs.length ? crumbs[crumbs.length - 1] : tool, 'crumb');
     for (const c of list) {
       if (c.hidden) continue;
       add(c.label + (c.kids ? ' ›' : ''), `${c.on ? 'on' : ''} ${c.cls || ''} ${c.kids ? 'group' : ''}`, () => {
@@ -740,6 +753,7 @@ export class UI {
     if (t === 'mark') hint = HINTS.mark[app.markTool.mode];
     if (t === 'form') hint = HINTS.form[app.formTool.mode];
     if (t === 'rebar') hint = HINTS.rebar[app.rebarTool.mode];
+    if (t === 'column') hint = app.wallTool.col.drag || app.physJob ? '' : app.wallTool.col.status();
     app.wallTool?.syncTray();
     if (t === 'wall') hint = app.wallTool.mode === 'lay' ? (app.wallTool.status() || HINTS.wall.lay) : app.wallTool.busy || app.physJob ? '' : HINTS.wall[app.wallTool.mode];
     if (t === 'machine') hint = app.machineTool.busy() || app.machineTool.driving ? '' : app.machineTool.loader?.loaded ? (app.settings.machineMode === 'haul' ? HINTS.haul : HINTS.machine) : 'Погрузчик заезжает на участок…';
@@ -784,7 +798,7 @@ export class UI {
     // sand / crushed stone lying on the plot (real m³)
     if ((this.matT = (this.matT || 0) + 1) % 3 === 1) {
       const v = app.terrain.materialVolumes().map((x) => x * MODEL_SCALE ** 3);
-      const short = ['', 'песок', 'щ. 5–20', 'щ. 20–40'];
+      const short = ['', 'песок', 'щ. 5–20', 'щ. 20–40', 'чернозём'];
       const parts = MATERIALS.map((m, k) => (k && v[k] > 0.005 ? `${short[k]} ${v[k].toFixed(2).replace('.', ',')}` : '')).filter(Boolean);
       $('st-mat-row').hidden = !parts.length;
       $('st-mat').textContent = parts.join(' · ') + (parts.length ? ' м³' : '');

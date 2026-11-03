@@ -292,6 +292,15 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .wall-tray .tray-stack i:nth-child(1) { top: 22px; } .wall-tray .tray-stack i:nth-child(2) { top: 11px; } .wall-tray .tray-stack i:nth-child(3) { top: 0; left: 8px; width: 40px; }
 .wall-tray.brick .tray-stack i { background: #a9533d; }
 .wall-tray.cinder .tray-stack i { background: #8d8a84; height: 13px; }
+/* the columns' tray: the formwork (plywood boards / two steel half shells) and the cage (bars, stirrups) */
+.wall-tray.col-form .tray-stack i { top: 0; width: 13px; height: 34px; background: #c98c5a; box-shadow: inset -3px 0 0 rgba(0,0,0,.18); }
+.wall-tray.col-form .tray-stack i:nth-child(1) { left: 2px; } .wall-tray.col-form .tray-stack i:nth-child(2) { left: 19px; } .wall-tray.col-form .tray-stack i:nth-child(3) { left: 36px; width: 13px; }
+.wall-tray.col-form.col-round .tray-stack i { width: 18px; height: 34px; background: #9aa6b0; border-radius: 18px 0 0 18px / 17px 0 0 17px; box-shadow: inset 4px 0 0 rgba(255,255,255,.25); }
+.wall-tray.col-form.col-round .tray-stack i:nth-child(1) { left: 6px; } .wall-tray.col-form.col-round .tray-stack i:nth-child(2) { left: 28px; border-radius: 0 18px 18px 0 / 0 17px 17px 0; }
+.wall-tray.col-form.col-round .tray-stack i:nth-child(3) { display: none; }
+.wall-tray.col-cage .tray-stack i { top: 0; width: 4px; height: 34px; background: #6b5a4a; box-shadow: none; border-radius: 1px; }
+.wall-tray.col-cage .tray-stack i:nth-child(1) { left: 12px; } .wall-tray.col-cage .tray-stack i:nth-child(2) { left: 36px; }
+.wall-tray.col-cage .tray-stack i:nth-child(3) { left: 10px; width: 32px; background: repeating-linear-gradient(to bottom, #8a7766 0 2px, transparent 2px 7px); }
 .wall-tray.active { outline: 2px solid var(--accent, #f0a53a); }
 
 /* ---- one row at a time: groups → tools → modes (‹ back) ---------------------------------- */

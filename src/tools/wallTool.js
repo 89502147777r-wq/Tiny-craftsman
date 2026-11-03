@@ -6,6 +6,7 @@ import { placeUnit, freeTops, topAt, beltTopAt, boxOf, dims } from './freeBrick.
 import { placeLintel, placeProp, placeLintelForm, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds, rle } from './belt.js';
+import { COL_SECS, castDone } from '../world/columns.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
 import { PALLETS } from '../core/budget.js';
 import { findOpenings, findCorners, openingAt } from './windowFit.js';
@@ -87,6 +88,11 @@ export class WallTool {
       const g = (e) => this._pt(app.gestures.ground(e.clientX, e.clientY) || this._lastP || new THREE.Vector3(), e);
       this.tray.addEventListener('pointerdown', (e) => {
         e.preventDefault(); e.stopPropagation();
+        // «Колонны и сваи»: the formwork / the cage taken from the tray and carried to its place
+        if (app.tool === 'column') {
+          if (this.col.trayDown(app.gestures.ground(e.clientX, e.clientY), e)) { try { this.tray.setPointerCapture(e.pointerId); } catch { /* old browsers */ } this.tray.classList.add('active'); this._colTray = true; }
+          return;
+        }
         if (app.physJob?.fit) app.physJob.finish();   // (the last piece's fitting: done at once)
         if (this.mode !== 'lay' || app.physJob || app.physLoading) return;
         if (this.kind === 'roof' && !this.roof.isCarry) { app.ui.toast(this.roof.status(false)); return; }
@@ -105,9 +111,18 @@ export class WallTool {
         loadPhysics().catch(() => {});
         this._carryMove(g(e), e);
       });
-      this.tray.addEventListener('pointermove', (e) => { if (this.carry?.tray) { e.preventDefault(); this._carryMove(g(e), e); } });
-      this.tray.addEventListener('pointerup', (e) => { if (this.carry?.tray) { e.preventDefault(); this.tray.classList.remove('active'); this._carryDrop(); } });
-      this.tray.addEventListener('pointercancel', () => { if (this.carry?.tray) { this.tray.classList.remove('active'); this._carryCancel(); } });
+      this.tray.addEventListener('pointermove', (e) => {
+        if (this._colTray) { e.preventDefault(); this.col.move(app.gestures.ground(e.clientX, e.clientY), e); app.ui?.moveMeasure?.(e.clientX, e.clientY); return; }
+        if (this.carry?.tray) { e.preventDefault(); this._carryMove(g(e), e); }
+      });
+      this.tray.addEventListener('pointerup', (e) => {
+        if (this._colTray) { e.preventDefault(); this._colTray = false; this.tray.classList.remove('active'); this.col.up(); app.ui?.refresh(); return; }
+        if (this.carry?.tray) { e.preventDefault(); this.tray.classList.remove('active'); this._carryDrop(); }
+      });
+      this.tray.addEventListener('pointercancel', () => {
+        if (this._colTray) { this._colTray = false; this.tray.classList.remove('active'); this.col.interrupt(); return; }
+        if (this.carry?.tray) { this.tray.classList.remove('active'); this._carryCancel(); }
+      });
     }
   }
 
@@ -160,8 +175,8 @@ export class WallTool {
     if (!e || e.clientX === undefined || (!e.clientX && !e.clientY)) return p;
     const app = this.app, v = app.wallView;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
-    // laid masonry only (not the unit in the hand, not the stacks on the pallets)
-    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.cinders, v.lintels, v.mortar, v.frames, v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.roofs], true).find((h) => h.object === v.mortar || h.object === v.frames || v.ownerOf(h) != null);
+    // laid masonry only (not the unit in the hand, not the stacks on the pallets); the top of a cast column
+    const hit = _ray.intersectObjects([v.blocks, v.bricks, v.cinders, v.lintels, v.mortar, v.frames, v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.roofs, ...(v.columns ? [v.columns.group] : [])], true).find((h) => h.object === v.mortar || h.object === v.frames || (v.ownerOf(h) != null && (app.objects.get(v.ownerOf(h))?.type !== 'column' || (h.face?.normal.y > 0.5 && castDone(app.objects.get(v.ownerOf(h)))))));
     return hit ? hit.point.clone() : p;
   }
 
@@ -1078,6 +1093,22 @@ export class WallTool {
   // the tray: shown while laying, labelled with the material
   syncTray() {
     if (!this.tray) return;
+    // «Колонны и сваи»: the tray holds the formwork / the cage of the section chosen
+    if (this.app.tool === 'column') {
+      const L = this.col.stage, round = COL_SECS[this.col.sec]?.round;
+      if (this.delBtn) this.delBtn.hidden = true;
+      if (this.rowBtn) this.rowBtn.hidden = true;
+      this.tray.hidden = L !== 'form' && L !== 'cage';
+      this.tray.classList.remove('brick', 'cinder');
+      this.tray.classList.toggle('col-form', L === 'form'); this.tray.classList.toggle('col-cage', L === 'cage'); this.tray.classList.toggle('col-round', !!round);
+      const lab = document.getElementById('wall-tray-label'), sm = this.tray.querySelector('small');
+      if (lab) lab.textContent = L === 'cage' ? 'Каркас' : 'Опалубка';
+      if (sm) sm.textContent = L === 'cage' ? 'тяните в опалубку' : 'тяните на место';
+      this.tray.title = '';
+      return;
+    }
+    this.tray.classList.remove('col-form', 'col-cage', 'col-round');
+    { const sm = this.tray.querySelector('small'); if (sm && sm.textContent !== 'тяните на стену') sm.textContent = 'тяните на стену'; }
     const on = this.app.tool === 'wall' && this.mode === 'lay';
     if (this.delBtn) { this.delBtn.hidden = !(this.app.tool === 'wall' && (this.mode === 'lay' || this.mode === 'delete')); this.delBtn.classList.toggle('active', this.mode === 'delete'); }
     this.tray.hidden = !on || this.kind === 'pool' || this.kind === 'land' || this.kind === 'ext' || this.kind === 'column';
@@ -1199,10 +1230,10 @@ export class WallTool {
       return;
     }
     if (ck === 'slab') {
-      if (!belt) { app.ui.toast('Перекрытие — на верх стен (или на армопояс): коснитесь верха стены'); return; }
+      if (!belt) { app.ui.toast('Перекрытие — на верх стен, армопояс или залитые колонны и сваи (от трёх, верх на одной отметке): коснитесь верха стены или колонны'); return; }
       if (belt.exists) { app.ui.toast('Здесь опалубка перекрытия уже стоит'); return; }
       app.journal.act('slab-form', {}, app.clock, () => app.objects.add(belt.rec));
-      app.ui.toast(`Опалубка перекрытия: ${belt.area.toFixed(1).replace('.', ',')} м², ${cantText(belt.rec)}; фанера на балках и стойках, по краю доски, толщина плиты 200 мм — теперь каркас («Каркас»), потом бетон шлангом`);
+      app.ui.toast(`Опалубка перекрытия${belt.rec.piles ? ` на ${belt.rec.piles} колоннах/сваях` : ''}: ${belt.area.toFixed(1).replace('.', ',')} м², ${cantText(belt.rec)}; фанера на балках и стойках, по краю доски, толщина плиты 200 мм — теперь каркас («Каркас»), потом бетон шлангом`);
       return;
     }
     if (ck === 'ucage' && !cage && bc) {
@@ -1277,7 +1308,7 @@ export class WallTool {
     if (c?.kind === 'proof') return this.proof.status(true);
     if (c?.kind === 'rwin') return this.rwin.status();
     if (c?.kind === 'window' || c?.kind === 'door') { const door = c.kind === 'door', key = door ? this.app.settings.doorKey || 'door1' : this.app.settings.windowKey || 'pvc2'; return c.win ? (c.win.why2 ? 'Красный — ' + c.win.why2 : `${winName(key)}: ${c.win.w} × ${c.win.h} мм — отпустите`) : door ? 'Поднесите дверь к проёму до пола — она встанет по его размеру' : key === 'corner' ? 'Угловое окно: 1) обе стены кладите, не доводя до угла (в каждую сторону проём от 350 мм, по всей высоте этажа); 2) над углом — монолитный пояс или перекрытие (его консоль держит угол без стойки); 3) поднесите окно к углу' : 'Поднесите окно к проёму в кладке — оно встанет по его размеру'; }
-    if (c?.kind === 'slab') return c.belt ? (c.belt.exists ? 'Здесь опалубка перекрытия уже стоит' : `Перекрытие ${c.belt.area.toFixed(1).replace('.', ',')} м², ${cantText(c.belt.rec)} — отпустите`) : 'Поднесите к верху стен (или армопояса) — перекрытие встанет на весь дом' + ((this.app.settings.slabCant || 0) ? ', консоль — с той стороны, где коснулись' : '');
+    if (c?.kind === 'slab') return c.belt ? (c.belt.exists ? 'Здесь опалубка перекрытия уже стоит' : `Перекрытие ${c.belt.area.toFixed(1).replace('.', ',')} м², ${cantText(c.belt.rec)} — отпустите`) : 'Поднесите к верху стен, армопояса или залитых колонн — перекрытие встанет на весь дом' + ((this.app.settings.slabCant || 0) ? ', консоль — с той стороны, где коснулись' : '');
     if (c?.kind === 'ucage') return c.cage ? (c.cage.has ? 'В этих U-блоках каркас уже есть' : `Каркас в ${c.cage.run.length} U-блок(а) — отпустите`) : c.beltCage ? (isSlab(c.beltCage) ? 'Арматура перекрытия — отпустите' : 'Каркас пояса — отпустите') : 'Поднесите каркас к ряду U-блоков, в опалубку пояса или перекрытия';
     if (c && (c.kind === 'lintel' || c.kind === 'prop') && !c.free) return c.kind === 'lintel' ? 'Поднесите перемычку к проёму в кладке' : 'Поднесите подпорку к проёму в кладке';
     if (c?.free && c.kind === 'lintel') return c.free.ok ? `Перемычка ${c.free.lenMm} мм над проёмом ${c.free.gapMm} мм. Отпустите` : 'Красный — ' + lintelWhy(c.free);
