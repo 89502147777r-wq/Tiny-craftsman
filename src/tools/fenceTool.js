@@ -3,7 +3,7 @@ import { MODEL_SCALE } from '../config.js';
 import { FitJob, ease } from './fitJob.js';
 import { LANG } from '../i18n/i18n.js';
 import { FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES, fenceLine, sOf, legs } from '../world/fence.js';
-import { HOLE, RAIL_SECS, isV2, railRows, pegsFor, legBounds, pegXZ, bays2, railMesh, postMesh, earthAuger, welderKit, welderArc, hotBead, postA } from '../world/fence2.js';
+import { HOLE, RAIL_SECS, gOf, isV2, railRows, pegsFor, legBounds, pegXZ, bays2, railMesh, postMesh, earthAuger, welderKit, welderArc, hotBead, postA } from '../world/fence2.js';
 
 // «Забор» (its own group on the top row; the fence by the post — fence2.js): the stages one after the
 // other, each a touch where it is done:
@@ -28,7 +28,8 @@ export class FenceWork {
   get s() { return this.app.settings; }
   get L() { return F2_TABS.some(([k]) => k === this.s.f2Layer) ? this.s.f2Layer : 'line'; }
   get step() { return Math.max(1000, Math.min(5000, Math.round((this.s.fenceStep || 2500) / 100) * 100)); }
-  get H() { return FENCE_HEIGHTS.includes(this.s.fenceH) ? this.s.fenceH : 1800; }
+  // the post's height over the ground (the slider; 900 more of it go down the hole)
+  get H() { return Math.max(1000, Math.min(3000, Math.round((this.s.postH || this.s.fenceH || 1800) / 100) * 100)); }
   get postSh() { return this.s.postSh === 'rd' ? 'rd' : 'sq'; }
   get postA() { return Math.max(40, Math.min(100, Math.round((this.s.postA || 60) / 10) * 10)); }
   get railSec() { return RAIL_SECS[this.s.railSec] ? this.s.railSec : 'r4020'; }
@@ -184,18 +185,18 @@ export class FenceWork {
   // ---- a hole: the peg pulled out, the auger brought down, the hole bored (lifted twice to clear it),
   // the spoil thrown round, the auger lifted out ----
   _drill(r, i) {
-    const app = this.app, t = app.terrain, q = r.pegs[i], [x, z, ux, uz] = pegXZ(r, q.s), R = MM(HOLE.r), deep = MM(HOLE.depth), key = 'F' + r.id;
-    const A = earthAuger(); A.rotation.y = Math.atan2(-uz, ux) + Math.PI / 2; A.position.set(x, r.g + MM(700), z);
+    const app = this.app, t = app.terrain, q = r.pegs[i], [x, z, ux, uz] = pegXZ(r, q.s), G0 = t.inside(x, z) ? t.heightAt(x, z) : G0, R = MM(HOLE.r), deep = MM(HOLE.depth), key = 'F' + r.id;
+    const A = earthAuger(); A.rotation.y = Math.atan2(-uz, ux) + Math.PI / 2; A.position.set(x, G0 + MM(700), z);
     const spoilV = Math.PI * (HOLE.r / 1000) ** 2 * HOLE.depth / 1000 / MODEL_SCALE ** 3;   // (model m³)
     app.journal.begin('fence-hole', {}, app.clock);
     let dug = 0, thrown = 0;
-    const dig = (dep, seed) => { if (dep > dug + MM(20)) { dug = dep; t.scoop(x, z, R * 1.12, r.g - dug, r.g, () => true, seed); } };
+    const dig = (dep, seed) => { if (dep > dug + MM(20)) { dug = dep; t.scoop(x, z, R * 0.95, G0 - dug, G0, () => true, seed); } };
     const throwSpoil = (u) => {
       // (what the screw brings up is thrown round the hole, a ring of loose soil)
       const want = spoilV * u;
       while (thrown < want) {
         const v = spoilV / 60, a = Math.random() * Math.PI * 2, sp = 0.08 + Math.random() * 0.1;
-        app.particles?.emit(new THREE.Vector3(x + Math.cos(a) * R, r.g + MM(60), z + Math.sin(a) * R), new THREE.Vector3(Math.cos(a) * sp, 0.12 + Math.random() * 0.1, Math.sin(a) * sp), v, MM(25 + Math.random() * 25), 0.3, 0, 0);
+        app.particles?.emit(new THREE.Vector3(x + Math.cos(a) * R, G0 + MM(60), z + Math.sin(a) * R), new THREE.Vector3(Math.cos(a) * sp, 0.12 + Math.random() * 0.1, Math.sin(a) * sp), v, MM(25 + Math.random() * 25), 0.3, 0, 0);
         thrown += v;
       }
     };
@@ -204,21 +205,21 @@ export class FenceWork {
       parts: [A],
       steps: [
         [0.35, (u) => { if (u > 0.1) this.view.setAnim(key, { hidePeg: i }); }],   // (the peg pulled out)
-        [0.7, (u) => { A.position.y = r.g + MM(700) * (1 - ease(u)); A.userData.screw.rotation.y = u * 4; app.sfx?.engine?.('fence-auger', 0.25); }],
+        [0.7, (u) => { A.position.y = G0 + MM(700) * (1 - ease(u)); A.userData.screw.rotation.y = u * 4; app.sfx?.engine?.('fence-auger', 0.25); }],
         [2.6, (u) => {
           const dep = depthAt(u);
-          A.position.y = r.g - dep; A.userData.screw.rotation.y += 0.55; A.position.x = x + (Math.random() - 0.5) * MM(4);
+          A.position.y = G0 - dep; A.userData.screw.rotation.y += 0.55; A.position.x = x + (Math.random() - 0.5) * MM(4);
           dig(Math.max(dug, deep * u), i); throwSpoil(u);
           app.sfx?.engine?.('fence-auger', 0.7);
         }],
-        [0.7, (u) => { A.position.y = r.g - deep * (1 - ease(u)) + MM(300) * ease(u); A.userData.screw.rotation.y += 0.2 * (1 - u); app.sfx?.engine?.('fence-auger', 0.3 * (1 - u)); }],
+        [0.7, (u) => { A.position.y = G0 - deep * (1 - ease(u)) + MM(300) * ease(u); A.userData.screw.rotation.y += 0.2 * (1 - u); app.sfx?.engine?.('fence-auger', 0.3 * (1 - u)); }],
       ],
       onAbort: () => { app.journal.cancel(); this.view.setAnim(key, null); app.sfx?.engine?.('fence-auger', 0); },
       commit: () => {
-        t.scoop(x, z, R * 1.12, r.g - deep, r.g, () => true, i);
+        t.scoop(x, z, R * 0.95, G0 - deep, G0, () => true, i);
         app.particles?.flush?.();
         const cur = app.objects.get(r.id);
-        app.objects.update(r.id, { pegs: cur.pegs.map((p, k) => (k === i ? { ...p, hole: 1 } : p)) });
+        app.objects.update(r.id, { pegs: cur.pegs.map((p, k) => (k === i ? { ...p, hole: 1, g: +G0.toFixed(6) } : p)) });
         app.journal.commit(app.clock);
         this.view.setAnim(key, null); app.sfx?.engine?.('fence-auger', 0);
         const left = cur.pegs.filter((p, k) => !p.hole && k !== i).length;
@@ -237,13 +238,13 @@ export class FenceWork {
         [0.3, (u) => { G.position.y = lift; G.visible = u > 0; }],
         [1.0, (u) => { G.position.y = lift * (1 - ease(u)); G.rotation.z = 0.06 * (1 - u) * Math.sin(u * 9); }],
         [0.15, (u) => { G.position.y = MM(15) * Math.sin(u * Math.PI); G.rotation.z = 0; if (u >= 1) app.sfx?.stab?.(); }],
-        [0.6, (u) => app.handTools.set('level', new THREE.Vector3(x, r.g + MM(900), z + MM(post.a / 2 + 4)), new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0), u)],
+        [0.6, (u) => app.handTools.set('level', new THREE.Vector3(x, gOf(r, q) + MM(900), z + MM(post.a / 2 + 4)), new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 1, 0), u)],
       ],
       commit: () => {
         const cur = app.objects.get(r.id);
         this._save('fence-post', () => app.objects.update(r.id, { pegs: cur.pegs.map((p, k) => (k === i ? { ...p, post } : p)) }));
-        const name = post.sh === 'rd' ? `Ø ${post.a}` : `${post.a} × ${post.a}`;
-        this.toast(EN() ? `Post ${name}, ${m1(post.h)} m above the ground, set plumb in its hole. Concrete it: «Concrete» → the hose or the bucket` : `Столб ${name}, ${m1(post.h)} м над землёй, выставлен по уровню в яме. Забетонируйте: «Бетон» → шланг или ведро`);
+        const name = post.sh === 'rd' ? `Ø ${post.a}` : `${post.a} × ${post.a}`, pipe = m1(post.h + HOLE.depth - 100);
+        this.toast(EN() ? `Post ${name}: ${m1(post.h)} m above the ground (a ${pipe} m pipe, ${m1(HOLE.depth - 100)} m of it in the hole), set plumb. Concrete it: «Concrete» → the hose or the bucket` : `Столб ${name}: ${m1(post.h)} м над землёй (труба ${pipe} м, ${m1(HOLE.depth - 100)} м в яме), выставлен по уровню. Забетонируйте: «Бетон» → шланг или ведро`);
       },
     });
   }
@@ -267,7 +268,11 @@ export class FenceWork {
     const mid = r.pegs.filter((q) => q.s >= a - 1 && q.s <= b + 1);
     const h = Math.min(...mid.map((q) => q.post?.h || r.H)), rows = railRows(h), taken = (y) => (r.rails || []).some((o) => Math.abs(o.y - y) < 5 && o.a < b - 1 && o.b > a + 1);
     const y = rows.find((v) => !taken(v));
-    const q = { a, b, y: y ?? rows.at(-1), sec };
+    // (the side of the string the rail is put against: where the finger is; on the line itself — the side
+    // the rails of this fence are on)
+    const [lx, lz, ux, uz] = pegXZ(r, N.s), side0 = (r.rails || [])[0]?.side || 1, cr = (p.x - lx) * -uz + (p.z - lz) * ux;
+    const side = Math.abs(cr) > MM(60) ? Math.sign(cr) : side0;
+    const q = { a, b, y: y ?? rows.at(-1), sec, side };
     let why = null;
     if (mid.some((m) => !m.post)) why = 'Между столбами пустая яма — сначала столб';
     else if (mid.some((m) => !(m.fill >= 1))) why = 'Столбы ещё не забетонированы — «Бетон» → шланг или ведро';
@@ -300,7 +305,7 @@ export class FenceWork {
     const y = r.g + MM(q.y), Y0 = R.position.y;
     const spots = [];
     for (const p of r.pegs) if (p.post && p.s >= q.a - 1 && p.s <= q.b + 1) for (const dy of [sec.h / 2, -sec.h / 2]) spots.push({ s: p.s, dy, len: Math.min(p.post.a, 60) * 0.8 });
-    const prev = (r.rails || []).find((o) => Math.abs(o.y - q.y) < 5 && (Math.abs(o.b - q.a) < 2 || Math.abs(o.a - q.b) < 2));
+    const prev = (r.rails || []).find((o) => Math.abs(o.y - q.y) < 5 && (o.side || 1) === (q.side || 1) && (Math.abs(o.b - q.a) < 2 || Math.abs(o.a - q.b) < 2));
     if (prev) spots.push({ s: Math.abs(prev.b - q.a) < 2 ? q.a : q.b, dy: 0, len: sec.h, joint: true });
     kit.visible = false;
     const hot = [], cool = (dt) => { for (const b of hot) b.material.emissiveIntensity = Math.max(0, b.material.emissiveIntensity - dt * 0.9); };
@@ -308,7 +313,7 @@ export class FenceWork {
     const tick = (u, dur) => { const dt = Math.max(0, (u - last) * dur); last = u >= 1 ? 0 : u; return dt; };
     const steps = [[0.7, (u) => { R.position.y = Y0 + MM(400) * (1 - ease(u)); if (u >= 1) app.sfx?.stab?.(); }]];
     for (const sp of spots) {
-      const [x, z, ux, uz] = pegXZ(r, sp.s), nx = -uz, nz = ux, yaw = Math.atan2(-uz, ux);
+      const [x, z, ux, uz] = pegXZ(r, sp.s), nx = -uz * (q.side || 1), nz = ux * (q.side || 1), yaw = Math.atan2(-uz, ux);
       const pos = new THREE.Vector3(x + nx * MM(pa / 2 + (sp.joint ? sec.d : sec.d * 0.35)), y + MM(sp.dy), z + nz * MM(pa / 2 + (sp.joint ? sec.d : sec.d * 0.35)));
       const b = hotBead(MM(sp.len), 0); b.position.copy(pos); b.rotation.y = sp.joint ? yaw + Math.PI / 2 : yaw; if (sp.joint) b.rotation.z = Math.PI / 2; b.scale.set(0.001, 1, 1); beads.add(b);
       const dur = sp.joint ? 1.1 : 0.8;

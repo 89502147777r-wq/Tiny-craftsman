@@ -653,11 +653,11 @@ export class UI {
           return [
             tab('line', 0), tab('holes', 1),
             G('f2posts', `3 · ${F2_TABS[2][1]}`, [
-              G('f2psize', 'Размеры', [C('Квадратный', fw.postSh === 'sq', () => fz({ f2Layer: 'posts', postSh: 'sq' })), C('Круглый', fw.postSh === 'rd', () => fz({ f2Layer: 'posts', postSh: 'rd' })), ...FENCE_HEIGHTS.map((h) => C(`Высота ${String(h / 1000).replace('.', ',')} м`, fw.H === h, () => fz({ f2Layer: 'posts', fenceH: h })))]),
+              G('f2psize', 'Размеры', [C('Квадратный', fw.postSh === 'sq', () => fz({ f2Layer: 'posts', postSh: 'sq' })), C('Круглый', fw.postSh === 'rd', () => fz({ f2Layer: 'posts', postSh: 'rd' }))]),
               C('Установка', has('fence') && FL === 'posts', () => fz({ f2Layer: 'posts' })),
             ], null, C('', has('fence') && FL === 'posts', () => fz({ f2Layer: 'posts' }))),
             G('f2rails', `4 · ${F2_TABS[3][1]}`, [G('f2rsize', 'Размеры', Object.entries(RAIL_SECS).map(([k, q]) => C('Сечение ' + q.name, fw.railSec === k, () => fz({ f2Layer: 'rails', railSec: k }))))], null, C('', has('fence') && FL === 'rails', () => fz({ f2Layer: 'rails' }))),
-            G('f2fill', `5 · ${F2_TABS[4][1]}`, [...Object.entries(FENCE_KINDS).map(([q, K]) => C(K.name, fw.kind === q, () => fz({ f2Layer: 'fill', fenceKind: q }))), ...FENCE_KINDS[fw.kind].cols.map((q) => C('◼ ' + FENCE_COLS[q][0], fw.col === q, () => fz({ f2Layer: 'fill', fenceCol: q })))], null, C('', has('fence') && FL === 'fill', () => fz({ f2Layer: 'fill' }))),
+            G('f2fill', `5 · ${F2_TABS[4][1]}`, Object.entries(FENCE_KINDS).map(([q, K]) => G('f2k' + q, K.name, K.cols.map((c) => C('◼ ' + FENCE_COLS[c][0], fw.kind === q && fw.col === c, () => fz({ f2Layer: 'fill', fenceKind: q, fenceCol: c }))), null, C('', fw.kind === q, () => fz({ f2Layer: 'fill', fenceKind: q })))), null, C('', has('fence') && FL === 'fill', () => fz({ f2Layer: 'fill' }))),
             G('f2gate', `6 · ${F2_TABS[5][1]}`, [G('f2gates', 'Ворота', Object.entries(GATES).filter(([, T]) => T.gate).map(([q, T]) => C(T.name, fw.gateType === q, () => fz({ f2Layer: 'gate', gateType: q })))), G('f2wick', 'Калитки', Object.entries(GATES).filter(([, T]) => !T.gate).map(([q, T]) => C(T.name, fw.gateType === q, () => fz({ f2Layer: 'gate', gateType: q }))))], null, C('', has('fence') && FL === 'gate', () => fz({ f2Layer: 'gate' }))),
             del(),
           ];
@@ -777,23 +777,28 @@ export class UI {
   _fenceSlider(el) {
     const app = this.app, fw = app.wallTool?.fence, on = app.tool === 'wall' && app.wallTool.mode === 'lay' && app.settings.wallKind === 'fence' && fw && ['line', 'posts', 'rails'].includes(fw.L);
     if (!on) { if (this._paramKey?.startsWith?.('f2')) { this._paramKey = null; el.hidden = true; } return false; }
-    const L = fw.L, key = 'f2' + L, en = LANG === 'en';
-    const spec = {
-      line: { t: en ? 'Between the posts' : 'Между столбами', min: 1000, max: 5000, step: 100, v: () => fw.step, set: (v, done) => { if (done) fw.setStep(v); else app.settings.fenceStep = v; }, out: (v) => `${(v / 1000).toFixed(1)} ${en ? 'm' : 'м'}` },
-      posts: { t: fw.postSh === 'rd' ? (en ? 'Post diameter' : 'Диаметр столба') : (en ? 'Post section' : 'Сечение столба'), min: 40, max: 100, step: 10, v: () => fw.postA, set: (v) => { app.settings.postA = v; }, out: (v) => (fw.postSh === 'rd' ? `Ø ${v} ${en ? 'mm' : 'мм'}` : `${v} × ${v} ${en ? 'mm' : 'мм'}`) },
-      rails: { t: en ? 'Rail length' : 'Длина прожилины', min: 1000, max: 6000, step: 500, v: () => fw.railL, set: (v) => { app.settings.railL = v; }, out: (v) => `${(v / 1000).toFixed(1)} ${en ? 'm' : 'м'}` },
+    const L = fw.L, key = 'f2' + L + fw.postSh, en = LANG === 'en', m = en ? 'm' : 'м', mm = en ? 'mm' : 'мм', dec = (t) => t.replace(en ? /,/g : /\./g, en ? '.' : ',');
+    const specs = {
+      line: [{ t: en ? 'Between the posts' : 'Между столбами', min: 1000, max: 5000, step: 100, v: () => fw.step, set: (v, done) => { if (done) fw.setStep(v); else app.settings.fenceStep = v; }, out: (v) => `${(v / 1000).toFixed(1)} ${m}` }],
+      posts: [
+        { t: fw.postSh === 'rd' ? (en ? 'Post diameter' : 'Диаметр столба') : (en ? 'Post section' : 'Сечение столба'), min: 40, max: 100, step: 10, v: () => fw.postA, set: (v) => { app.settings.postA = v; }, out: (v) => (fw.postSh === 'rd' ? `Ø ${v} ${mm}` : `${v} × ${v} ${mm}`) },
+        // (the height counts from the ground: what stands out of it; the pipe is 0,9 m longer — that goes in the hole)
+        { t: en ? 'Height above the ground' : 'Высота над землёй', min: 1000, max: 3000, step: 100, v: () => fw.H, set: (v) => { app.settings.postH = v; }, out: (v) => `${(v / 1000).toFixed(1)} ${m} · ${en ? 'pipe' : 'труба'} ${((v + 900) / 1000).toFixed(1)} ${m}` },
+      ],
+      rails: [{ t: en ? 'Rail length' : 'Длина прожилины', min: 1000, max: 6000, step: 500, v: () => fw.railL, set: (v) => { app.settings.railL = v; }, out: (v) => `${(v / 1000).toFixed(1)} ${m}` }],
     }[L];
     el.hidden = false;
-    if (this._paramKey !== key + fw.postSh) {
-      this._paramKey = key + fw.postSh;
-      el.innerHTML = `<label data-notr><span>${spec.t}</span> <output id="p-f2"></output><input id="p-f2-r" type="range" min="${spec.min}" max="${spec.max}" step="${spec.step}"></label>`;
-      const r = $('p-f2-r'), show = () => { $('p-f2').textContent = spec.out(+r.value).replace(en ? /,/ : /\./, en ? '.' : ','); };
-      r.addEventListener('input', () => { spec.set(+r.value, false); show(); });
-      r.addEventListener('change', () => { spec.set(+r.value, true); show(); app.applySettings?.(); this.refresh(); });
-      r.value = spec.v(); show();
+    if (this._paramKey !== key) {
+      this._paramKey = key;
+      el.innerHTML = specs.map((q, i) => `<label data-notr><span>${q.t}</span> <output id="p-f2${i}"></output><input id="p-f2${i}-r" type="range" min="${q.min}" max="${q.max}" step="${q.step}"></label>`).join('');
+      specs.forEach((q, i) => {
+        const r = $(`p-f2${i}-r`), show = () => { $(`p-f2${i}`).textContent = dec(q.out(+r.value)); };
+        r.addEventListener('input', () => { q.set(+r.value, false); show(); });
+        r.addEventListener('change', () => { q.set(+r.value, true); show(); app.applySettings?.(); this.refresh(); });
+        r.value = q.v(); show();
+      });
     }
-    const r = $('p-f2-r');
-    if (document.activeElement !== r && +r.value !== spec.v()) { r.value = spec.v(); $('p-f2').textContent = spec.out(spec.v()).replace(en ? /,/ : /\./, en ? '.' : ','); }
+    specs.forEach((q, i) => { const r = $(`p-f2${i}-r`); if (document.activeElement !== r && +r.value !== q.v()) { r.value = q.v(); $(`p-f2${i}`).textContent = dec(q.out(q.v())); } });
     return true;
   }
 

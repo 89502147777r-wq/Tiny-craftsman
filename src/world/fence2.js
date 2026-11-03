@@ -39,7 +39,17 @@ export function legBounds(r, s) {
   return null;
 }
 export const pegXZ = (r, s) => pointAtS(r, s);
-export const postTop = (r, q) => r.g + MM(q.post?.h || r.H || 1800);
+// the ground at a post (taken when its hole is bored: a sloping plot), else the line's
+export const gOf = (r, q) => q?.g ?? r.g;
+export const postTop = (r, q) => gOf(r, q) + MM(q.post?.h || r.H || 1800);
+// the hole as the auger leaves it (its rim a little ragged: the concrete fills all of it)
+export const HOLE_R = HOLE.r * 1.28;   // (the auger's hole, its rim not quite round: 0,76 … 1,26 × its radius)
+// where the concrete is poured into a post's hole: into the gap between the post and the hole's wall,
+// on the side toward `from` (the camera)
+export function pourSpot(r, q, from) {
+  const [x, z] = pegXZ(r, q.s), dx = from.x - x, dz = from.z - z, L = Math.hypot(dx, dz) || 1, d = MM(((q.post?.a || 60) / 2 + HOLE_R) / 2);
+  return [x + dx / L * d, z + dz / L * d];
+}
 export const postA = (r) => Math.max(40, ...(r.pegs || []).map((q) => q.post?.a || 0));
 // the bays between neighbouring posts; railed: rails on every row of it
 export function bays2(r) {
@@ -59,7 +69,7 @@ const M = (k, make) => mats[k] || (mats[k] = make());
 const std = (o) => new THREE.MeshStandardMaterial(o);
 const steelM = () => M('steel', () => std({ color: 0x2f3236, roughness: 0.45, metalness: 0.55 }));
 const concM = () => M('conc', () => { const t = new THREE.TextureLoader().load('assets/textures/pool_coat/col.jpg'); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; return std({ map: t, color: 0xbdbab3, roughness: 0.95 }); });
-const wetM = () => M('wet', () => std({ color: 0x5d5b57, roughness: 0.35 }));
+const wetM = () => M('wet', () => { const m = concM().clone(); m.color.setHex(0x6a6863); m.roughness = 0.25; return m; });   // (fresh: dark, wet, shining)
 const weldM = () => M('weld', () => std({ color: 0x3a3632, roughness: 0.7, metalness: 0.4 }));
 const pegM = () => M('peg', () => std({ color: 0xc49a62, roughness: 0.85 }));
 const tapeM = () => M('tape', () => std({ color: 0xff5a1f, roughness: 0.6 }));
@@ -83,11 +93,11 @@ export function stringAndPegs(r, hide = -1) {
 }
 // the posts in their holes and the concrete round them (live: { i, f } — a hole being poured)
 export function postsAndConcrete(r, live = null) {
-  const G = new THREE.Group(), bot = r.g - MM(HOLE.depth - 100);
+  const G = new THREE.Group();
   (r.pegs || []).forEach((q, i) => {
-    const [x, z, ux, uz] = pegXZ(r, q.s), yaw = Math.atan2(-uz, ux);
+    const [x, z, ux, uz] = pegXZ(r, q.s), yaw = Math.atan2(-uz, ux), g = gOf(r, q), bot = g - MM(HOLE.depth - 100);
     if (q.post) {
-      const a = MM(q.post.a), top = r.g + MM(q.post.h), L = top - bot;
+      const a = MM(q.post.a), top = g + MM(q.post.h), L = top - bot;
       const geo = q.post.sh === 'rd' ? new THREE.CylinderGeometry(a / 2, a / 2, L, 16) : new THREE.BoxGeometry(a, L, a);
       const o = new THREE.Mesh(geo, steelM()); o.position.set(x, (top + bot) / 2, z); o.rotation.y = yaw; o.castShadow = true; o.receiveShadow = true; o.userData.post = i; G.add(o);
       // the cap welded on its top
@@ -96,11 +106,12 @@ export function postsAndConcrete(r, live = null) {
     }
     const f = live && live.i === i ? live.f : q.fill || 0;
     if (f > 0) {
-      // the concrete in the hole up to its level; full: a collar sloped off round the post at the ground
-      const y0 = r.g - MM(HOLE.depth), y1 = y0 + MM(HOLE.depth) * Math.min(1, f) + (f >= 1 ? MM(15) : 0);
-      const cg = new THREE.CylinderGeometry(MM(f >= 1 ? 112 : HOLE.r), MM(HOLE.r), y1 - y0, 18); cg.translate(x, (y0 + y1) / 2, z);
-      const fresh = q.pourT == null || live?.i === i;
+      // the concrete fills the hole wall to wall round the post, up to its level; full: level with the
+      // ground and a collar sloped off round the post (the rain runs away from it)
+      const y0 = g - MM(HOLE.depth), y1 = y0 + MM(HOLE.depth) * Math.min(1, f), R = MM(HOLE_R), fresh = q.pourT == null || live?.i === i;
+      const cg = new THREE.CylinderGeometry(R, R * 0.97, y1 - y0, 20); cg.translate(x, (y0 + y1) / 2, z);
       const o = new THREE.Mesh(cg, fresh && f < 1 ? wetM() : concM()); o.receiveShadow = true; o.userData.post = i; G.add(o);
+      if (f >= 1) { const a = (q.post?.a || 60) / 2; const c = new THREE.CylinderGeometry(MM(a + 25), R + MM(20), MM(30), 20); c.translate(x, g + MM(12), z); const k = new THREE.Mesh(c, concM()); k.receiveShadow = true; G.add(k); }
     }
   });
   return G;
@@ -110,9 +121,9 @@ export function postsAndConcrete(r, live = null) {
 export function railsAndWelds(r) {
   const G = new THREE.Group(), list = r.rails || [], pa = postA(r), parts = [], welds = [];
   for (const q of list) {
-    const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, off = MM(pa / 2 + sec.d / 2), y = r.g + MM(q.y);
-    // (along each leg it crosses: a rail is laid within one leg)
-    const [ax, az, ux, uz] = pegXZ(r, q.a + 0.5), [bx, bz] = pegXZ(r, q.b - 0.5), nx = -uz, nz = ux;
+    const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, off = MM(pa / 2 + sec.d / 2), y = r.g + MM(q.y), sd = q.side || 1;
+    // (along each leg it crosses: a rail is laid within one leg; on the side of the string it was put against)
+    const [ax, az, ux, uz] = pegXZ(r, q.a + 0.5), [bx, bz] = pegXZ(r, q.b - 0.5), nx = -uz * sd, nz = ux * sd;
     const L = Math.hypot(bx - ax, bz - az) + MM(pa), cx = (ax + bx) / 2 + nx * off, cz = (az + bz) / 2 + nz * off;
     const g = new THREE.BoxGeometry(L, MM(sec.h), MM(sec.d));
     g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(cx, y, cz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-uz, ux)), new THREE.Vector3(1, 1, 1)));
@@ -125,7 +136,7 @@ export function railsAndWelds(r) {
   }
   // the joints: a rail starting where another ends on the same row — a bead round the butt
   for (const q of list) for (const o of list) if (o !== q && Math.abs(o.y - q.y) < 5 && Math.abs(o.b - q.a) < 2) {
-    const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, [x, z, ux, uz] = pegXZ(r, q.a), nx = -uz, nz = ux;
+    const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, [x, z, ux, uz] = pegXZ(r, q.a), nx = -uz * (q.side || 1), nz = ux * (q.side || 1);
     const b = new THREE.BoxGeometry(MM(10), MM(sec.h + 6), MM(sec.d + 6)); b.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(x + nx * MM(pa / 2 + sec.d / 2), r.g + MM(q.y), z + nz * MM(pa / 2 + sec.d / 2)), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(-uz, ux)), new THREE.Vector3(1, 1, 1)));
     b.deleteAttribute('uv'); welds.push(b);
   }
@@ -143,8 +154,8 @@ function bead(x, y, z, yaw, len) {
 }
 // a rail carried by the finger (green: it goes there; red: not), or laid by the animation
 export function railMesh(r, q, ok = true, ghost = true) {
-  const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, pa = postA(r), off = MM(pa / 2 + sec.d / 2);
-  const [ax, az, ux, uz] = pegXZ(r, q.a + 0.5), [bx, bz] = pegXZ(r, q.b - 0.5), nx = -uz, nz = ux;
+  const sec = RAIL_SECS[q.sec] || RAIL_SECS.r4020, pa = postA(r), off = MM(pa / 2 + sec.d / 2), sd = q.side || 1;
+  const [ax, az, ux, uz] = pegXZ(r, q.a + 0.5), [bx, bz] = pegXZ(r, q.b - 0.5), nx = -uz * sd, nz = ux * sd;
   const L = Math.max(MM(100), Math.hypot(bx - ax, bz - az) + MM(pa));
   const o = new THREE.Mesh(new THREE.BoxGeometry(L, MM(sec.h), MM(sec.d)), ghost ? new THREE.MeshBasicMaterial({ color: ok ? 0x35d06a : 0xe0453a, transparent: true, opacity: 0.6, depthWrite: false }) : steelM());
   o.position.set((ax + bx) / 2 + nx * off, r.g + MM(q.y), (az + bz) / 2 + nz * off); o.rotation.y = Math.atan2(-uz, ux);
@@ -153,7 +164,7 @@ export function railMesh(r, q, ok = true, ghost = true) {
 }
 // a post carried down into its hole by the animation
 export function postMesh(r, q, post) {
-  const a = MM(post.a), bot = r.g - MM(HOLE.depth - 100), top = r.g + MM(post.h), L = top - bot, G = new THREE.Group();
+  const g = gOf(r, q), a = MM(post.a), bot = g - MM(HOLE.depth - 100), top = g + MM(post.h), L = top - bot, G = new THREE.Group();
   const o = new THREE.Mesh(post.sh === 'rd' ? new THREE.CylinderGeometry(a / 2, a / 2, L, 16) : new THREE.BoxGeometry(a, L, a), steelM()); o.position.y = (top + bot) / 2; o.castShadow = true; G.add(o);
   const [x, z, ux, uz] = pegXZ(r, q.s); G.position.set(x, 0, z); G.rotation.y = Math.atan2(-uz, ux);
   return G;

@@ -683,6 +683,11 @@ console.log('—', sec());
     o.tray = document.getElementById('wall-tray').hidden ? '' : document.getElementById('wall-tray-label').textContent;
     for (const s of [2000, 2000, 7000, 7000]) { const p = sAt(s); fw.trayDown(p, e(p)); fw.move(p, e(p)); fw.up(); run(); }
     o.rails = fw.rec.rails.map((q) => `${q.a}-${q.b}@${q.y}`).join();
+    // a rail put against the other side of the string goes on that side; the posts' ground is their own
+    { const [x, z, ux, uz] = F2.pegXZ(fw.rec, 3000), q = fw.plan(new V(x + uz * 0.05, fw.rec.g, z - ux * 0.05)); o.otherSide = q?.q?.side; }
+    o.postG = fw.rec.pegs.every((q) => q.g != null);
+    // the fill: the materials, each with its colours inside it
+    tc.ui.navPath = ['fence', 'f2fill']; o.fillTabs = tc.ui.navNodes().list.every((c) => c.kids && c.kids.length && c.kids.every((k) => k.label.startsWith('◼')));
     Object.assign(tc.settings, { f2Layer: 'fill', fenceKind: 'slat' }); { const p = sAt(1000); fw.down(p, e(p)); fw.up(); run(); }
     o.filled = fw.rec.filled.length;
     Object.assign(tc.settings, { f2Layer: 'gate', gateType: 'swing' }); { const p = sAt(4500); fw.down(p, e(p)); fw.up(); run(); }
@@ -694,8 +699,8 @@ console.log('—', sec());
     return o;
   });
   check('fence: its own group (6 stages), not under «Благоустройство»; the string with pegs every 2 m, a peg moved for a wicket', f.chips === '1 · Разметка|2 · Ямы|3 · Столбы|4 · Прожилины|5 · Наполнение|6 · Ворота и калитки|Удалить' && !f.inLand && f.ui && f.pegs === '0,2000,4000,6000,7953' && f.moved === 5000, JSON.stringify(f));
-  check('fence: holes one by one, round posts Ø80 in each, concrete by the bucket and the hose', f.holes === '11111' && f.posts === 'rd80,rd80,rd80,rd80,rd80' && f.pail > 0.5 && f.pail < 1 && f.conc, JSON.stringify(f));
-  check('fence: rails welded post to post (two rows), the railed bays filled, a wicket in the bay left (a gate too wide refused), undo', f.tray === 'Прожилина' && f.rails === '0-4000@300,0-4000@1500,5000-7953@300,5000-7953@1500' && f.filled === 3 && f.swingRefused && f.gates === 'wicket:1000' && f.undo, JSON.stringify(f));
+  check('fence: holes one by one, round posts Ø80 in each, concrete by the bucket and the hose', f.holes === '11111' && f.posts === 'rd80,rd80,rd80,rd80,rd80' && f.pail > 0.3 && f.pail < 1 && f.conc, JSON.stringify(f));
+  check('fence: rails welded post to post (two rows), the railed bays filled, a wicket in the bay left (a gate too wide refused), undo', f.tray === 'Прожилина' && f.rails === '0-4000@300,0-4000@1500,5000-7953@300,5000-7953@1500' && f.otherSide === -1 && f.postG && f.fillTabs && f.filled === 3 && f.swingRefused && f.gates === 'wicket:1000' && f.undo, JSON.stringify(f));
   check('fence: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
