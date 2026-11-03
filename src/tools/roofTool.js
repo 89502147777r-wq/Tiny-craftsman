@@ -230,7 +230,7 @@ export class RoofWork {
     const g = buildRoof(R.b, R.units, rec, null);
     if (!g) { save(); return; }
     const box = new THREE.Box3().setFromObject(g), top = box.max.y, up = new THREE.Vector3(0, 1, 0), steps = [];
-    steps.push([0.45, (u) => { g.visible = true; g.position.y = MMr(piece.copS ? 150 : 220) * (1 - u * u); }]);
+    steps.push([0.45, (u) => { g.visible = true; g.position.y = MMr(piece.copS ? 150 : 220) * (1 - u * u); if (u >= 1) app.sfx?.play?.(piece.copS ? 'tile' : 'sheet'); }]);
     if (piece.copS) {
       const [x0, z0, x1, z1] = P.seg, along = new THREE.Vector3(x1 - x0, 0, z1 - z0).normalize();
       for (const f of [0.15, 0.38, 0.62, 0.85]) steps.push(drive(app, new THREE.Vector3(x0 + (x1 - x0) * f, top + MMr(1), z0 + (z1 - z0) * f), up, null, 0.26, along));

@@ -1,131 +1,118 @@
-// Procedural foley (no samples needed): blade scraping through soil, crumbs
-// pattering onto the pile. Unlocked on the first touch (iOS requirement).
+// The sounds of the site: recorded foley (Freesound, CC0 / CC BY — CREDITS.md), cut and made light for
+// phones (assets/sounds/*.mp3). Each sound has a few takes; every play picks one, a little higher or lower,
+// a little louder or softer, so nothing repeats exactly. A sound at a place is as loud as it is near the
+// camera. The machines and the power tools are loops whose pitch follows their revs; the day has its
+// birds, the night its crickets, the rain and the wind are loops as loud as they are. Unlocked on the
+// first touch (iOS). The old calls (stab, pour, scrape…, engine, rain, cash) all still work.
+import { SOUNDS } from './sounds.js';
+
+const KT = 10.4651;   // (the model's scale: 1 unit = KT m)
 export class Sfx {
-  constructor() { this.ctx = null; this.enabled = true; this.scrape = null; }
+  constructor() { this.ctx = null; this.enabled = true; this.scrape = null; this.buf = new Map(); this.loops = new Map(); this.ear = null; this._last = {}; }
 
   unlock() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
-    const len = this.ctx.sampleRate * 2;
-    this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const d = this.noise.getChannelData(0);
-    // crunchy noise: white noise with sparse clicks (grains of sand / small stones)
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.5 + (Math.random() < 0.004 ? (Math.random() * 2 - 1) * 2.5 : 0);
-    this.master = this.ctx.createGain();
-    this.master.gain.value = 0.5;
-    this.master.connect(this.ctx.destination);
+    this.master = this.ctx.createGain(); this.master.gain.value = 0.8;
+    // (a gentle limiter: many sounds at once do not clip)
+    const comp = this.ctx.createDynamicsCompressor(); comp.threshold.value = -10; comp.knee.value = 12; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.2;
+    this.master.connect(comp).connect(this.ctx.destination);
+    // (the sounds most heard come first; the rest after them, quietly in the background)
+    const first = ['shovel_dig', 'soil_dump', 'brick', 'block', 'tap', 'click', 'mallet', 'birds'];
+    for (const n of first) this._load(n);
+    setTimeout(() => { for (const n of Object.keys(SOUNDS)) this._load(n); }, 2500);
+  }
+  // the camera: what is near it is loud (set every frame)
+  listen(pos) {
+    this.ear = pos;
+    // (a loop no one keeps going — a tool put down, a job done — fades out by itself)
+    if (this.ctx) { const t = this.ctx.currentTime; for (const [id, L] of this.loops) if (L.auto && t - L.seen > 0.35 && L.g.gain.value > 0.003) this.loop(id, L.name, 0); }
   }
 
-  _src(rate = 1) {
-    const s = this.ctx.createBufferSource();
-    s.buffer = this.noise; s.loop = true; s.playbackRate.value = rate;
-    s.loopStart = Math.random(); s.loopEnd = s.loopStart + 0.8;
-    return s;
+  _load(name) {
+    const S = SOUNDS[name];
+    if (!S || this.buf.has(name) || !this.ctx) return this.buf.get(name);
+    const p = Promise.all(S.f.map((f) => fetch(`assets/sounds/${f}.mp3`).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(f)))).then((a) => new Promise((res, rej) => this.ctx.decodeAudioData(a, res, rej))).catch(() => null)))
+      .then((list) => { const ok = list.filter(Boolean); this.buf.set(name, ok); return ok; });
+    this.buf.set(name, p);
+    return p;
+  }
+  _ready(name) { const b = this.buf.get(name); return Array.isArray(b) && b.length ? b : null; }
+  _gainAt(at, range = 1) {
+    if (!at || !this.ear) return 1;
+    const d = Math.hypot(at.x - this.ear.x, at.y - this.ear.y, at.z - this.ear.z) * KT;   // (m)
+    return 1 / (1 + Math.max(0, d - 3) / (12 * range));
   }
 
-  // continuous scrape whose loudness follows blade speed
-  scrapeStart() {
-    if (!this.enabled || !this.ctx || this.scrape) return;
-    const s = this._src(0.9), f = this.ctx.createBiquadFilter(), g = this.ctx.createGain();
-    f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.8;
-    g.gain.value = 0;
-    s.connect(f).connect(g).connect(this.master);
-    s.start(0, Math.random());
-    this.scrape = { s, f, g };
+  // one sound once: opt { vol, rate, at (a place: as loud as it is near), gap (s: not again sooner) }
+  play(name, opt = {}) {
+    if (!this.enabled || !this.ctx) return;
+    const S = SOUNDS[name]; if (!S) return;
+    const now = this.ctx.currentTime, gap = opt.gap ?? S.gap ?? 0.05;
+    if (now - (this._last[name] ?? -9) < gap) return;
+    const list = this._ready(name);
+    if (!list) { this._load(name); return; }
+    this._last[name] = now;
+    const b = list[Math.floor(Math.random() * list.length)];
+    const src = this.ctx.createBufferSource(), g = this.ctx.createGain();
+    src.buffer = b; src.playbackRate.value = (opt.rate ?? 1) * (S.rate ?? 1) * (1 + (Math.random() * 2 - 1) * (S.jit ?? 0.06));
+    g.gain.value = (opt.vol ?? 1) * (S.vol ?? 0.8) * (0.85 + Math.random() * 0.3) * this._gainAt(opt.at, S.range);
+    src.connect(g).connect(this.master); src.start(now);
+    return src;
   }
-
-  scrapeLevel(v) {
-    if (!this.scrape) return;
-    const t = this.ctx.currentTime;
-    this.scrape.g.gain.setTargetAtTime(Math.min(0.9, v), t, 0.03);
-    this.scrape.f.frequency.setTargetAtTime(900 + v * 1600, t, 0.05);
+  // a sound going on while vol > 0 (by id): its loudness and its pitch follow (rate); vol 0 — it fades out
+  loop(id, name, vol, rate = 1, at = null, auto = false) {
+    if (!this.ctx) return;
+    vol = this.enabled ? vol : 0;
+    const t = this.ctx.currentTime, S = SOUNDS[name];
+    let L = this.loops.get(id);
+    if (L && L.name !== name) { this._stopLoop(id, L); L = null; }
+    if (!L && vol > 0.004 && S) {
+      const list = this._ready(name);
+      if (!list) { this._load(name); return; }
+      const src = this.ctx.createBufferSource(), g = this.ctx.createGain(), b = list[Math.floor(Math.random() * list.length)];
+      src.buffer = b; src.loop = true; g.gain.value = 0;
+      src.connect(g).connect(this.master); src.start(t, Math.random() * Math.max(0, b.duration - 0.5));
+      L = { src, g, name }; this.loops.set(id, L);
+    }
+    if (!L) return;
+    if (vol > 0.004) { L.auto = auto; L.seen = t; }
+    L.g.gain.setTargetAtTime(Math.min(1.2, vol * (S?.vol ?? 0.8) * this._gainAt(at, S?.range)), t, 0.08);
+    L.src.playbackRate.setTargetAtTime(rate * (S?.rate ?? 1), t, 0.1);
+    if (vol <= 0.004) { clearTimeout(L.end); L.end = setTimeout(() => { if (this.loops.get(id) === L && L.g.gain.value < 0.01) this._stopLoop(id, L); }, 700); }
   }
+  _stopLoop(id, L) { try { L.g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05); L.src.stop(this.ctx.currentTime + 0.3); } catch { /* stopped */ } if (this.loops.get(id) === L) this.loops.delete(id); }
 
-  scrapeStop() {
-    if (!this.scrape) return;
-    const { s, g } = this.scrape;
-    g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.04);
-    s.stop(this.ctx.currentTime + 0.3);
-    this.scrape = null;
-  }
-
-  // the rain: a soft wide hiss and the patter of drops, as loud as it rains
+  // ---- the old calls ----------------------------------------------------------------------------
+  // the scrape of a tool going along (its loudness follows how fast it goes): which tool — `name`
+  scrapeStart(name = 'scrape') { this._scr = name; this._scrV = 0; this.loop('scrape', name, 0.001); }
+  scrapeLevel(v) { if (this._scr) { this._scrV = v; this.loop('scrape', this._scr, Math.min(1, v * 1.2), 0.9 + v * 0.25); } }
+  scrapeStop() { if (this._scr) this.loop('scrape', this._scr, 0); this._scr = null; }
+  // the rain as loud as it rains; now and then thunder far off when it pours
   rain(v) {
     if (!this.ctx) return;
-    v = this.enabled ? v : 0;
-    if (!this._rain && v > 0.01) {
-      const s = this._src(0.6), lo = this.ctx.createBiquadFilter(), hi = this.ctx.createBiquadFilter(), g = this.ctx.createGain();
-      lo.type = 'lowpass'; lo.frequency.value = 5200; hi.type = 'highpass'; hi.frequency.value = 400; g.gain.value = 0;
-      s.connect(hi).connect(lo).connect(g).connect(this.master); s.start();
-      this._rain = { s, g };
-    }
-    if (!this._rain) return;
-    this._rain.g.gain.setTargetAtTime(0.16 * v, this.ctx.currentTime, 0.5);
-    if (v > 0.2 && Math.random() < 0.15 * v) this._burst(0.03, 3000 + Math.random() * 3000, 3, 0.05 * v);
-    if (v <= 0.01 && this._rain.g.gain.value < 0.002) { this._rain.s.stop(); this._rain = null; }
+    this.loop('rain', 'rain', v * 0.9);
+    if (v > 0.6 && Math.random() < 0.0006) this.play('thunder', { vol: 0.6 * v, gap: 12 });
   }
-
-  // a diesel engine (one voice per machine, by id): on while `vol` > 0; `rpm` 0 (idling) … 1 (full)
-  // sets its pitch and how bright and rough it sounds — a low saw and square through a low-pass,
-  // beating (the cylinders firing) at the firing rate
-  engine(id, vol, rpm = 0) {
+  // the day's birds, the night's crickets, the wind (0…1 each)
+  ambience(day, night, wind = 0.15) {
     if (!this.ctx) return;
-    const e = (this._eng ||= {}), t = this.ctx.currentTime;
-    vol = this.enabled ? vol : 0;
-    let v = e[id];
-    if (!v && vol > 0.005) {
-      const o1 = this.ctx.createOscillator(), o2 = this.ctx.createOscillator(), lp = this.ctx.createBiquadFilter(), g = this.ctx.createGain(), am = this.ctx.createGain(), lfo = this.ctx.createOscillator(), dep = this.ctx.createGain();
-      o1.type = 'sawtooth'; o2.type = 'square'; lp.type = 'lowpass'; lp.Q.value = 2; g.gain.value = 0;
-      lfo.type = 'triangle'; dep.gain.value = 0.35; am.gain.value = 0.65;
-      lfo.connect(dep).connect(am.gain);
-      const mix2 = this.ctx.createGain(); mix2.gain.value = 0.35;
-      o1.connect(am); o2.connect(mix2).connect(am); am.connect(lp).connect(g).connect(this.master);
-      o1.start(); o2.start(); lfo.start();
-      v = e[id] = { o1, o2, lfo, lp, g };
-    }
-    if (!v) return;
-    const f = 34 + rpm * 46;   // (≈ 1000 … 2400 rpm of a 4-cylinder: the firing rate)
-    v.o1.frequency.setTargetAtTime(f, t, 0.12); v.o2.frequency.setTargetAtTime(f * 2.01, t, 0.12); v.lfo.frequency.setTargetAtTime(f / 2, t, 0.12);
-    v.lp.frequency.setTargetAtTime(220 + rpm * 900, t, 0.15);
-    v.g.gain.setTargetAtTime(Math.min(0.5, vol) * (0.55 + 0.45 * rpm), t, 0.15);
-    if (vol <= 0.005 && v.g.gain.value < 0.003) { for (const o of [v.o1, v.o2, v.lfo]) o.stop(); delete e[id]; }
+    this.loop('amb-day', 'birds', 0.32 * day);
+    this.loop('amb-night', 'crickets', 0.3 * night);
+    this.loop('amb-wind', 'wind', 0.25 * wind);
   }
-
-  stab() { this._burst(0.09, 2200, 1.6, 0.6); }
-
-  // the till: the drawer's clunk, the bell (two partials, ringing out), a few coins
-  cash() {
-    if (!this.enabled || !this.ctx) return;
-    this._burst(0.06, 380, 1.2, 0.5);
-    const t = this.ctx.currentTime + 0.05;
-    for (const [f, v] of [[2093, 0.22], [3136, 0.12], [4186, 0.06]]) {
-      const o = this.ctx.createOscillator(), g = this.ctx.createGain();
-      o.type = 'sine'; o.frequency.value = f;
-      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0008, t + 0.9);
-      o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t + 0.95);
-    }
-    for (let i = 0; i < 5; i++) setTimeout(() => this._burst(0.03, 5200 + Math.random() * 2500, 6, 0.18), 110 + i * 45 + Math.random() * 30);
+  // an engine or a power tool (by id) at its revs (rpm 0 idling … 1 full)
+  engine(id, vol, rpm = 0) {
+    const name = ENGINES[id] || (id.startsWith('fit-drill') ? 'drill' : id.startsWith('fit-driver') ? 'screwdriver' : 'engine');
+    const tool = !['loader', 'truck', 'excavator', 'engine'].includes(name);
+    this.loop('eng-' + id, name, vol * (tool ? 1.6 : 1.4), tool ? 1 : 0.82 + rpm * 0.5, null, true);
   }
-
-  pour(amount = 1) {
-    if (!this.enabled || !this.ctx) return;
-    // a stream of tiny ticks + a soft hiss
-    this._burst(0.45 + 0.2 * amount, 700, 0.7, 0.35 * amount);
-    for (let i = 0; i < 14; i++) setTimeout(() => this._burst(0.02, 2500 + Math.random() * 2500, 4, 0.25 * Math.random()), 60 + Math.random() * 420);
-  }
-
-  _burst(dur, freq, q, vol) {
-    if (!this.enabled || !this.ctx) return;
-    const t = this.ctx.currentTime;
-    const s = this._src(1), f = this.ctx.createBiquadFilter(), g = this.ctx.createGain();
-    f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    s.connect(f).connect(g).connect(this.master);
-    s.start(t, Math.random());
-    s.stop(t + dur + 0.05);
-  }
+  stab() { this.play('tap'); }
+  thud() { this.play('block'); return true; }
+  cash() { this.play('cash'); }
+  pour(amount = 1, kind = 'soil_pour') { this.play(kind, { vol: 0.5 + 0.5 * Math.min(1, amount), gap: 0.35 }); }
 }
+// the machines' engines and the tools: their loops
+const ENGINES = { loader: 'loader', truck: 'truck', excavator: 'excavator', hydraulic: 'hydraulic', backup: 'backup', tip: 'truck_tip', breaker: 'jackhammer', 'col-auger': 'auger', 'col-bore': 'auger_dig', 'fence-auger': 'auger', grinder: 'grinder', welder: 'welding', pump: 'pump', mixer: 'mixer', compactor: 'compactor', vibrator: 'vibrator' };

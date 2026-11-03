@@ -54,6 +54,7 @@ export class MarkTool {
       const rec = app.objects.add({ type: 'outline', kind: 'rect', x0: x, z0: z, x1: x + 0.001, z1: z + 0.001, depth: app.settings.target });
       this.creating = { id: rec.id, ax: x, az: z };
       this.select(rec.id);
+      app.sfx?.play?.('tape');
       return true;
     }
     if (this.mode === 'trench') {
@@ -99,7 +100,7 @@ export class MarkTool {
     else if (this.creating) {
       const o = app.objects.get(this.creating.id);
       this.creating = null;
-      if (o && o.x1 - o.x0 > 0.012 * KT && o.z1 - o.z0 > 0.012 * KT) app.journal.commit(app.clock);
+      if (o && o.x1 - o.x0 > 0.012 * KT && o.z1 - o.z0 > 0.012 * KT) { app.journal.commit(app.clock); app.sfx?.play?.('stake'); }
       else { app.journal.cancel(); this.select(null); }
     }
     app.ui.refresh();

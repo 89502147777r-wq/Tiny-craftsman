@@ -177,7 +177,7 @@ export class LandWork {
         t.scoop(b.x, b.z, b.R, b.yT + (b.deep - b.yT) * e, b.yT, inside, b.seed);
         if (q < 1 && rr() < 0.4) app.particles?.emit(new THREE.Vector3(b.x, r.g, b.z), new THREE.Vector3((rr() - 0.5) * 0.12, 0.18 + rr() * 0.12, (rr() - 0.5) * 0.12), 0, MM(25 + rr() * 40), 0, 0, 0);
       }
-      if (rr() < 0.12) app.sfx?.stab?.();
+      if (rr() < 0.12) app.sfx?.play?.('shovel_dig');
     }], [0.15, (u) => { if (u >= 1) { t.levelTo(inside, y, box); sh.root.visible = vis; } }]];
     new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); sh.root.visible = vis; }, commit: () => {
       app.objects.update(r.id, { done: { ...(app.objects.get(r.id).done || {}), dig: 1 } });
@@ -205,7 +205,7 @@ export class LandWork {
       // (the mallet on the one going down)
       const f = (n % 1), sw = f < 0.6 ? Math.sin(f / 0.6 * Math.PI / 2) : Math.cos((f - 0.6) / 0.4 * Math.PI / 2);
       gear.malletSwing = sw * 0.75; gear.set('mallet', P(Math.max(0, k - 1)), 0);
-      if (Math.floor(n) !== job._lastK) { job._lastK = Math.floor(n); app.sfx?.stab?.(); }
+      if (Math.floor(n) !== job._lastK) { job._lastK = Math.floor(n); app.sfx?.play?.('mallet'); }
       if (u >= 1) gear.set(null);
     }]);
     // the soil back behind them, from the start to the end
@@ -247,7 +247,7 @@ export class LandWork {
       }
       t._touch(...cells.box);
       if (u < 1 && Math.random() < 0.6) { const p = pointAt(r, Math.max(0, Math.min(L, front - 300))); app.particles?.emit(new THREE.Vector3(p[0] + (Math.random() - 0.5) * half(r), yTop + MM(500), p[1] + (Math.random() - 0.5) * half(r)), new THREE.Vector3(0, -0.15, 0), 0, MM(mat === M_G20 ? 30 : 10), 0, 0, mat === M_G20 ? 3 : 1); }
-      if (u < 1 && Math.random() < 0.2) app.sfx?.pour?.(0.35);
+      if (u < 1 && Math.random() < 0.2) app.sfx?.pour?.(0.35, mat === M_SAND ? 'sand_pour' : 'gravel_pour');
     }];
   }
   // the plate compactor along the path: down one side, back the other (heading where it goes)
@@ -265,7 +265,7 @@ export class LandWork {
       for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) if (Math.hypot(t.toWorldX(ix) - x, t.toWorldZ(iz) - z) < wide) t.comp[iz * t.nx + ix] = 1;
       t._touch(ix0, iz0, ix1, iz1);
       onAt?.(s);
-      if (Math.random() < 0.1) app.sfx?.stab?.();
+      app.sfx?.engine?.('compactor', 0.6);
       if (u >= 1) { app.concreteGear.plateOn = false; app.concreteGear.set(null); }
     }];
   }
@@ -315,7 +315,7 @@ export class LandWork {
     const steps = [[dur, (u, job) => {
       const k = u * (n + 6);
       v.setAnim(r.id, { pave: u >= 1 ? 1e9 : k });
-      if (Math.floor(k / 3) !== job._k) { job._k = Math.floor(k / 3); if (Math.random() < 0.5) app.sfx?.stab?.(); }
+      if (Math.floor(k / 3) !== job._k) { job._k = Math.floor(k / 3); if (Math.random() < 0.5) app.sfx?.play?.('tile'); }
     }]];
     new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); v.setAnim(r.id, null); }, commit: () => {
       app.objects.update(r.id, { done: { ...(app.objects.get(r.id).done || {}), pave: 1 } });
@@ -436,7 +436,7 @@ export class LandWork {
       const f = a0 - 300 + (a1 - a0 + 600) * u;
       this.view.setAnim('L' + r.id, { soil: f });
       if (u < 1 && Math.random() < 0.7) { const [x, z] = frameW(r, MM(f), MM(b0 + (b1 - b0) * Math.random())); app.particles?.emit(new THREE.Vector3(x, r.g + MM(400), z), new THREE.Vector3(0, -0.15, 0), 0, MM(25), 0, 0, 0); }
-      if (u < 1 && Math.random() < 0.15) app.sfx?.pour?.(0.3);
+      if (u < 1 && Math.random() < 0.15) app.sfx?.pour?.(0.3, 'soil_pour');
     }]];
     this._lJob(r, 'soil', steps, `Плодородный грунт 100 мм на ${f1(A)} м² (${f1(A * 0.1)} м³). Дальше «3 · Грабли»`);
   }
@@ -485,7 +485,7 @@ export class LandWork {
       const lay = q * n, k = Math.min(n - 1, Math.floor(lay)), f = lay - k, R = rolls[k];
       const a = R.a0 + MM(LAWN.roll[0]) * f;
       this.view.setAnim('L' + r.id, { lay: q >= 1 ? 1e9 : lay, rollAt: q < 1 ? { a: Math.min(a, R.a1), b: R.b, y: r.g + MM(10 + 130 * (1 - f * 0.6)), yaw, s: 1 - f * 0.6 } : null });
-      if (k !== job._k) { job._k = k; app.sfx?.stab?.(); }
+      if (k !== job._k) { job._k = k; app.sfx?.play?.('turf'); }
     }]];
     this._lJob(r, 'grass', steps, `Рулонный газон: ${n} рулонов 2 × 0,4 м на ${f1(A)} м², швы вразбежку. Дальше «6 · Полив»`);
   }
@@ -495,7 +495,7 @@ export class LandWork {
       this.view.setAnim('L' + r.id, { water: q, wet: Math.min(1, q * 3), sprAt: q < 1 ? { a: MM(am), b: MM(bm), y: r.g + MM(10) } : null });
       const [x, z] = frameW(r, MM(am), MM(bm));
       for (let i = 0; i < 4; i++) { const ang = q * 40 + i * 1.57, v = 0.5 + Math.random() * 0.5; app.particles?.emit(new THREE.Vector3(x, r.g + MM(220), z), new THREE.Vector3(Math.cos(ang) * MM(R) * 1.4 * v, 0.25, Math.sin(ang) * MM(R) * 1.4 * v), 0, MM(6), 0, 0, 1); }
-      if (Math.random() < 0.2) app.sfx?.pour?.(0.2);
+      app.sfx?.loop?.('lawn-water', 'sprinkler', 0.6, 1, null, true);
     }]];
     void c;
     this._lJob(r, 'water', steps, r.how === 'seed' ? 'Полито — газон густой и зелёный. Готово' : 'Полито — рулоны укоренились, швы сомкнулись. Газон готов');
@@ -552,7 +552,7 @@ export class LandWork {
         t.scoop(x, z, R, rec.g - D * u, rec.g, () => true, k);
         t.heapTo(heaps[k], vol * u, M_SOIL);
         if (Math.random() < 0.4) app.particles?.emit(new THREE.Vector3(x, rec.g, z), new THREE.Vector3((Math.random() - 0.5) * 0.08, 0.15, (Math.random() - 0.5) * 0.08), 0, MM(25), 0, 0, 0);
-        if (Math.random() < 0.15) app.sfx?.stab?.();
+        if (Math.random() < 0.15) app.sfx?.play?.(P.pot ? 'pot' : 'plant_dig');
       }]);
       // (lowered in)
       steps.push([per * 0.3, (u) => { const e = u * u * (3 - 2 * u); v.setAnim(key, { n: k + 1, drop: 600 * (1 - e) }); }]);
@@ -569,7 +569,7 @@ export class LandWork {
     });
     // watered in, then the bark round it
     const [cx, cz] = spots[Math.floor(spots.length / 2)];
-    if (!P.light && P.mulch) steps.push([1, (u) => { for (let i = 0; i < 3; i++) { const [x, z] = spots[Math.floor(Math.random() * spots.length)]; app.particles?.emit(new THREE.Vector3(x + (Math.random() - 0.5) * R, rec.g + MM(500), z + (Math.random() - 0.5) * R), new THREE.Vector3(0, -0.3, 0), 0, MM(6), 0, 0, 1); } if (u < 1 && Math.random() < 0.2) app.sfx?.pour?.(0.2); }]);
+    if (!P.light && P.mulch) steps.push([1, (u) => { for (let i = 0; i < 3; i++) { const [x, z] = spots[Math.floor(Math.random() * spots.length)]; app.particles?.emit(new THREE.Vector3(x + (Math.random() - 0.5) * R, rec.g + MM(500), z + (Math.random() - 0.5) * R), new THREE.Vector3(0, -0.3, 0), 0, MM(6), 0, 0, 1); } if (u < 1 && Math.random() < 0.2) app.sfx?.loop?.('plant-water', 'watering', 0.6, 1, null, true); }]);
     steps.push([P.light ? 0.1 : 0.6, (u) => v.setAnim(key, { n: 1e9, drop: 0, mulch: u })]);
     void cx; void cz;
     new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); v.setAnim(key, null); }, commit: () => {
@@ -666,7 +666,7 @@ export class LandWork {
         filled.add(i);
         const [x, z] = P[i], box = [x - R, z - R, x + R, z + R];
         t.levelTo((wx, wz) => Math.hypot(wx - x, wz - z) < R, r.g, box);
-        if (job) app.sfx?.stab?.();
+        if (job) app.sfx?.play?.('pipe');
       }
       if (u >= 1) for (let i = 0; i < P.length; i++) { const [x, z] = P[i]; t.levelTo((wx, wz) => Math.hypot(wx - x, wz - z) < R, r.g, [x - R, z - R, x + R, z + R]); }
     }]];
@@ -685,7 +685,7 @@ export class LandWork {
     const steps = [[Math.max(2.5, Math.min(14, n * (kind === 'mesh' || kind === 'chain' ? 0.45 : 0.06))), (u, job) => {
       const k = u * (n + 1);
       this.view.setAnim('F' + r.id, { fill: u >= 1 ? 1e9 : k });
-      if (Math.floor(k) !== job._k) { job._k = Math.floor(k); app.sfx?.stab?.(); }
+      if (Math.floor(k) !== job._k) { job._k = Math.floor(k); app.sfx?.play?.(kind === 'mesh' || kind === 'chain' ? 'wire' : kind === 'prof' ? 'sheet' : 'hammer_nail'); }
     }]];
     // (the gates' leaves hung after it, each lowered onto its hinges and tried once)
     (rr.gates || []).forEach((q, gi) => { if (!q.hung) steps.push(...this._hang(r, gi)); });
@@ -700,7 +700,7 @@ export class LandWork {
   // a gate's leaves going on: lowered onto the hinges (or the rollers), then opened and closed once
   _hang(r, gi) {
     const app = this.app, key = 'F' + r.id;
-    return [[1.0, (u, job) => { this.view.setAnim(key, { gate: gi, gu: u, gopen: 0 }); if (u > 0.9 && !job['_g' + gi]) { job['_g' + gi] = 1; app.sfx?.stab?.(); } }],
+    return [[1.0, (u, job) => { this.view.setAnim(key, { gate: gi, gu: u, gopen: 0 }); if (u > 0.9 && !job['_g' + gi]) { job['_g' + gi] = 1; app.sfx?.play?.('gate_latch'); } }],
       [1.6, (u) => this.view.setAnim(key, { gate: gi, gu: 1, gopen: Math.sin(Math.PI * u) })],
       [0, () => this.view.setAnim(key, { gate: null })]];
   }

@@ -318,6 +318,7 @@ let concAcc = 0, shadowT = 0;   // (the time since the concrete last flowed / th
 function step(dt, time, render = true) {
   if (!document.hidden) app.clock += dt;
   const { terrain } = app;
+  app.sfx.listen?.(app.camera.position);   // (what is near the camera is loud)
   app.shovelTool.update(dt);
   for (const t of Object.values(app.materialTools)) t.update(dt);
   for (const t of Object.values(app.concreteTools)) t.update(dt);

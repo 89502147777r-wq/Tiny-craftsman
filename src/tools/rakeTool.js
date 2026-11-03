@@ -36,7 +36,7 @@ export class RakeTool {
     this.hdir.set(cam.x - p.x, cam.z - p.z).normalize();
     this.dir.copy(this.hdir);
     this._pose(p);
-    app.sfx.scrapeStart();
+    app.sfx.scrapeStart('rake_loop');
     return true;
   }
 

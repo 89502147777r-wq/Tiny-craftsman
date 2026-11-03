@@ -283,6 +283,16 @@ export class MachineTool {
     };
     if (L?.loaded) one('loader', L, this.state !== 'idle', 'loader');
     if (T?.loaded) one('truck', T, this.state === 'haul' || (this.state === 'drive' && this.drv === 'truck'), 'truck');
+    // (the excavator: its engine as hard as the sticks work it, the hydraulics whining while a ram moves;
+    // the truck backing up beeps)
+    const E = this.exc, inE = this.state === 'drive' && this.drv === 'excavator';
+    if (E?.loaded) {
+      const [a, b] = this.stick?.l ?? [0, 0], [c, d] = this.stick?.r ?? [0, 0], work = inE ? Math.min(1, Math.abs(a) + Math.abs(b) + Math.abs(c) + Math.abs(d)) : 0;
+      const loud = inE ? 1 / (1 + cam.distanceTo(E.root.position) / R(14)) : 0;
+      app.sfx.engine('excavator', loud * 0.6, 0.15 + 0.7 * work);
+      app.sfx.engine('hydraulic', inE && this.excMode !== 'drive' ? loud * 0.5 * work : 0);
+    }
+    if (T?.loaded) app.sfx.engine('backup', this.state === 'drive' && this.drv === 'truck' && this.v < -R(0.1) ? 0.35 : 0);
     this._flushPush();
     P.update(dt);
     (this.streams ||= new Streams(app.scene)).update(dt);
@@ -539,6 +549,7 @@ export class MachineTool {
         const v = g.realVolume(), into = Math.min(v, Math.max(0, (1 - T.load) * TRUCK_LOAD));
         const mw = this._mixW(); if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let m = 0; m < 4; m++) T.mix[m] += mw[m] * into; T.soil.material.setMix?.(T.mix);
         this._dumpV = { v, into, done: 0, col: this._mix().clone() };
+        app.sfx.play(into > 0 ? 'dump_truck' : 'soil_dump', { at: L.root.position });
       }
       const D = this._dumpV;
       L.load = Math.max(0, L.load - dt * 1.4);
@@ -1051,7 +1062,7 @@ export class MachineTool {
         const s = t.nat[i] + t.loose[i], d = Math.min(s - p.y, cap - g.load);
         if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
       }
-      if (any) { t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); if (Math.random() < 0.3) app.particles?.emit(p.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.3), R(0.4), (Math.random() - 0.5) * R(0.3)), 0, R(0.03), 0, 0, 0); app.sfx.scrapeLevel(0.45); }
+      if (any) { app.sfx.play('gravel_dig', { gap: 0.45, at: p }); t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); if (Math.random() < 0.3) app.particles?.emit(p.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.3), R(0.4), (Math.random() - 0.5) * R(0.3)), 0, R(0.03), 0, 0, 0); app.sfx.scrapeLevel(0.45); }
     }
     // (opened: it runs out — into the body of the truck under it, else onto the ground)
     if (E.open && g.load > 1e-9) {
@@ -1060,6 +1071,7 @@ export class MachineTool {
       if (T?.loaded && T.root.visible) { const q = T.root.worldToLocal(m.clone()), b = T.bodyBox; into = q.x > b.min.x && q.x < b.max.x && q.z > b.min.z && q.z < b.max.z && m.y > T.y + b.min.y; }
       const take = [0, 0, 0, 0, 0]; for (let k = 0; k < 5; k++) { take[k] = g.carry[k] * (g.load * part < 1e-9 ? 1 : part); g.carry[k] -= take[k]; }
       const v = take.reduce((a, b) => a + b, 0);
+      app.sfx.play(into ? 'dump_truck' : 'soil_dump', { gap: 1.6, at: m });
       if (into) {
         const vol = v * t.cellArea * MODEL_SCALE ** 3, room = Math.max(0, (1 - T.load) * TRUCK_LOAD), inT = Math.min(vol, room);
         if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let k = 0; k < 4; k++) T.mix[k] += (take[k] + (k ? 0 : take[4])) / Math.max(1e-12, v) * inT; T.soil.material.setMix?.(T.mix);
@@ -1084,6 +1096,7 @@ export class MachineTool {
     const r = this.recOf('truck'), got = T.load * TRUCK_LOAD, total = (r?.hauled || 0) + got;
     this._tipT = 1;
     T.load = 0; T.tip = T.tipGoal = 0; T.mix = [1, 0, 0, 0]; T.soil.material.setMix?.(T.mix);
+    app.sfx.play('truck_tip', { vol: 0.5 });
     if (app.journal.pending?.type === 'drive') this._commitDrive();
     app.journal.act('truck-out', {}, app.clock, () => this._saveTruck({ load: 0, hauled: +total.toFixed(3) }));
     app.ui?.toast(LANGX() ? `The truck took ${got.toFixed(1)} m³ to the tip and came back empty — ${total.toFixed(1)} m³ hauled in all` : `Самосвал отвёз на полигон ${got.toFixed(1).replace('.', ',')} м³ и вернулся пустым — всего вывезено ${total.toFixed(1).replace('.', ',')} м³`);
@@ -1314,6 +1327,7 @@ export class MachineTool {
   _tipOut(dt) {
     const app = this.app, t = app.terrain, T = this.truck, v = T.outflow || 0;
     T.outflow = 0;
+    this.app.sfx.engine('tip', v > 0 || T.tipGoal > T.tip + 0.01 ? 0.6 : 0);
     if (!(v > 0)) return;
     const lip = T.tailLip(new THREE.Vector3()), fx = Math.cos(T.yaw), fz = -Math.sin(T.yaw), r = Math.random;
     const gx = lip.x - fx * R(0.25), gz = lip.z - fz * R(0.25);

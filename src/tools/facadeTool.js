@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { FitJob, bring, wait, drill, drive, hammer, part, at } from './fitJob.js';
 import { buildFacade, epsTrim, epsOn, W, epsDowels, woolDowels, FACADE, LAYERS, VLAYERS, VENT_SUB, VENT, railCols, bracketRows, ventSlot, railsHold, OFF, CELL, PANELS, panelMod, PLASTER_COLOURS, PLASTER_KINDS, ext, recOf, cutPiece, area, slotAt, sameSlot, inR, ck, cij, cellsOf, runsOf } from '../world/facade.js';
+// what each layer of the facade sounds like going on
+const FACADE_SND = { eps: 'plank', glue: 'trowel_tap', mesh: 'tap', base: 'trowel_tap', plaster: 'trowel_tap', paint: 'tap', pan: 'sheet', vp: 'sheet', mb: 'stone', brick: 'brick', tile: 'tile' };
 
 // The facade done by hand (facade.js), on the outside of the walls:
 //   eps  – the boards carried from the tray, one by one, staggered, cut at the openings and
@@ -102,7 +104,7 @@ export class FacadeWork {
     this.drag = { F: h.F, rec, off, a0: h.a, y0: h.y, a: h.a, y: h.y, cells: new Set(), da: 0, dy: 0 };
     if (L !== 'mesh' && L !== 'mb') { this.drag.ok = this._under(h.F, rec, L, this.drag.cells); this._dab(h.a, h.y); }
     this._show();
-    app.sfx?.stab?.();
+    app.sfx?.play?.(FACADE_SND[L] || 'tap');
     return true;
   }
   move(p, e) {
@@ -365,7 +367,7 @@ export class FacadeWork {
     if (!d.slots?.length) { app.ui.toast('Здесь класть нечего: участок уже закрыт, проём или нет основания'); return; }
     const slots = d.slots, key = d.key, list = L === 'pan' || L === 'vp' ? slots.map((q) => [...q, key]) : slots;
     let shown = 0;
-    const steps = list.map((_, i) => [0.14, (u) => { if (u >= 1 && shown <= i) { shown = i + 1; this._live(F, { layer: L, extra: list.slice(0, shown) }); app.sfx?.stab?.(); } }]);
+    const steps = list.map((_, i) => [0.14, (u) => { if (u >= 1 && shown <= i) { shown = i + 1; this._live(F, { layer: L, extra: list.slice(0, shown) }); app.sfx?.play?.(FACADE_SND[L] || 'tap'); } }]);
     new FitJob(app, {
       steps,
       cleanup: () => this._live(null),

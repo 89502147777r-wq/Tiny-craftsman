@@ -18,7 +18,7 @@ Tiny Craftsman — браузерная 3D-игра-стройка на Three.js
 
 ## Как выпускать сборку
 1. Поднять `BUILD` в `src/config.js`.
-2. `timeout 900 node tests/quick.mjs` — все тесты должны пройти (сейчас 70/70, ~8 мин).
+2. `timeout 900 node tests/quick.mjs` — все тесты должны пройти (сейчас 73/73, ~9 мин).
    Тест «sand: … undo» изредка мигает — перезапустить.
 3. Ветка от свежего main: `git fetch -q origin main && git checkout -q -B build-NNN origin/main`
    (локальные правки: `git stash -u` → checkout → `git stash pop`). Никогда не force-push.
@@ -65,7 +65,7 @@ Tiny Craftsman — браузерная 3D-игра-стройка на Three.js
 - Профилирование: CDP Profiler через Playwright (скрипты были в scratchpad: `ux/prof*.mjs`) —
   при необходимости написать заново.
 
-## Состояние на BUILD 260 (3 ноября 2026)
+## Состояние на BUILD 261 (3 ноября 2026)
 Сделано недавно: модели окон/дверей/ворот (239), план этажа и UI (240), гараж и утечки
 интерьера (241), стопоры GPU/кровля (242), кладка без пауз и резкость (243).
 244: «Колонны и сваи» — отдельный инструмент во вкладке «Фундамент» (`app.columnTool`, логика —
@@ -142,6 +142,10 @@ scratchpad — при надобности написать заново). За�
 козырёк разворачивается от дома), светильники-модели Poly Haven (`FLIGHTS.*.model`, `lenses`).
 260: калитки/ворота забора v2 — на лице столбов со стороны прожилин (`fenceGates(r, {side, z})`), `gate.hinge` 'L'|'R',
 `gate.swing` 'front'|'back' (чипы в «6 · Ворота и калитки», `FenceWork.setGateWay` — и для последней тронутой).
+261: звук — записи Freesound (CC0/CC-BY, ключ `FREESOUND_API_KEY` в секретах; разовый workflow в ветке `fetch-sounds`),
+нарезка `cut.py` (scratchpad: онсеты/циклы/громкость → mp3 80k) в `assets/sounds/<звук>-<n>.mp3`, каталог `src/audio/sounds.js`;
+`Sfx.play(name, {at, vol, gap})`, `loop(id, name, vol, rate, at, auto)` (auto — сам затухает без обновления), `engine(id)` →
+`ENGINES`, `ambience(day, night, wind)` из `sky.js`, `listen(camera)` в `step`. Тест 2j — каждый звук из кода есть в каталоге.
 Модели Sketchfab качать разовым workflow на своей ветке (push → `.github/workflows/fetch-models.yml`, секрет
 `SKETCHFAB_TOKEN`), как в ветке `fetch-sketchfab-wf`.
 Ждём отзыва хозяина: колонны/сваи на телефоне, лаги при кладке, мраморные панели, гараж.

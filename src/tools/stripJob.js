@@ -73,7 +73,7 @@ export class StripJob {
     this.end = order.length ? order.at(-1).carry + CARRY : this.carryAt;
     this.t = 0;
     this.done = false;
-    app.sfx?.stab?.();
+    app.sfx?.play?.('crowbar');
     this._show();
   }
 

@@ -56,8 +56,8 @@ export class ScoopTool {
     this.last = p.clone();
     // the blade scrapes level: one cut height for the whole stroke
     this.cutY = this._snapHeight(p.x, p.z) - imp.bite;
-    app.sfx.stab();
-    app.sfx.scrapeStart();
+    app.sfx.play(this.imp?.kind === 'scoop' ? 'gravel_dig' : 'shovel_dig');
+    app.sfx.scrapeStart('rake_loop');
     this._pose(p, true);
     this._stamp(p);
     return true;
@@ -187,7 +187,7 @@ export class ScoopTool {
     this.total = Math.round(70 + 170 * Math.min(1, this.load / this.capacity));
     const app = this.app;
     this.imp.poseDump(this.dir, this.lastP);
-    app.sfx.pour(Math.min(1, this.load / this.capacity));
+    app.sfx.pour(Math.min(1, this.load / this.capacity), 'soil_dump');
     const m = app.journal.pending?.meta;
     if (m) { m.path = this.path; m.dump = [+this.lastP.x.toFixed(5), +this.lastP.z.toFixed(5)]; m.volume = this.load; }
     app.onShovelState?.();

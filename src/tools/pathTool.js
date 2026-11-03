@@ -185,6 +185,7 @@ export class PathWork {
       const why = lineWhy(base, this.W);
       if (why) { this.toast(why); return; }
       const round = this.roundOn ? this.R : 0, pts = filletLine(base, round);
+      app.sfx?.play?.('stake');
       const rec = { type: 'path', v: 2, base, pts, round, W: this.W, g: +this.land._groundOf(pts).toFixed(6), done: {}, kerbs: [], geo: [], laid: [] };
       const fit = this.land._fits(rec);
       if (fit) { this.toast(fit); return; }
@@ -274,7 +275,7 @@ export class PathWork {
         if (!laidNow.includes(i)) { laidNow.push(i); this.view.setAnim(r.id, { kerbs: [...laidNow] }); }
         const f = (u * 2) % 1, sw = f < 0.6 ? Math.sin(f / 0.6 * Math.PI / 2) : Math.cos((f - 0.6) / 0.4 * Math.PI / 2);
         gear.malletSwing = sw * 0.75; gear.set('mallet', new THREE.Vector3(cx, r.g + MM(PATH.kerbUp), cz), 0, u === 0);
-        if (Math.floor(u * 2) !== job['_k' + i]) { job['_k' + i] = Math.floor(u * 2); app.sfx?.stab?.(); }
+        if (Math.floor(u * 2) !== job['_k' + i]) { job['_k' + i] = Math.floor(u * 2); app.sfx?.play?.('mallet'); }
       }]);
     }
     steps.push([0.05, () => gear.set(null)]);
@@ -305,7 +306,7 @@ export class PathWork {
     all.forEach((q, i) => { if (has.has(i)) return; const cx = q.p.reduce((s, v) => s + v[0], 0) / q.p.length, cz = q.p.reduce((s, v) => s + v[1], 0) / q.p.length; if (Math.hypot(cx - p.x, cz - p.z) < MM(380)) near.push([q.ord, i]); });
     near.sort((a, b) => a[0] - b[0]);
     for (const [, i] of near.slice(0, 8)) d.laid.push(i);
-    if (near.length) { if (Math.random() < 0.5) app.sfx?.stab?.(); this.view.setAnim(r.id, { laid: d.laid.slice((r.laid || []).length), pave: d.laid.length }); }
+    if (near.length) { app.sfx?.play?.('tile', { gap: 0.12 }); this.view.setAnim(r.id, { laid: d.laid.slice((r.laid || []).length), pave: d.laid.length }); }
     const A = d.laid.reduce((s, i) => s + (all[i]?.area || 0), 0) / 1e6, T = all.reduce((s, q) => s + q.area, 0) / 1e6;
     app.ui?.showMeasure?.(EN() ? `Laid ${f1(A)} of ${f1(T)} m²` : `Уложено ${f1(A)} из ${f1(T)} м²`);
   }

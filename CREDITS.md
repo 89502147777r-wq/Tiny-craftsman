@@ -315,3 +315,142 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | `assets/models/interior/vase4.glb` | ceramic_vase_04 | Poly Haven | CC0 | https://polyhaven.com/a/ceramic_vase_04 |
 | `assets/models/interior/wardrobe_white.glb` | Modern Wardrobe IKEA Style (White colors) | Relowsky | CC BY 4.0 | https://sketchfab.com/3d-models/b1c75cea276f4239b65d08d34c5eabe5 |
 | `assets/models/interior/wardrobe_wood.glb` | Modern Wooden Wardrobe | M4nt1core | CC BY 4.0 | https://sketchfab.com/3d-models/aff452c30e724283ae2c4f17297e0ef7 |
+
+## Звуки (Freesound, CC0 / CC BY)
+
+Записи нарезаны на отдельные звуки и циклы, громкость выровнена, mp3 80 кбит/с (`assets/sounds/<звук>-<n>.mp3`).
+
+| Файлы в проекте | Запись | Автор | Лицензия | Источник |
+|---|---|---|---|---|
+| `assets/sounds/` — gravel_pour | rocks1.wav | mystiscool | CC BY 4.0 | https://freesound.org/people/mystiscool/sounds/7135/ |
+| `assets/sounds/` — gravel_pour | rocks2.wav | mystiscool | CC BY 4.0 | https://freesound.org/people/mystiscool/sounds/7136/ |
+| `assets/sounds/` — birds | morning_birds_ambience.wav | vibe_crc | CC0 | https://freesound.org/people/vibe_crc/sounds/50619/ |
+| `assets/sounds/` — loader | Bobcat idling 080320.wav | BoilingSand | CC BY 3.0 | https://freesound.org/people/BoilingSand/sounds/50661/ |
+| `assets/sounds/` — loader_work | Bobcat moving pallets etc Part 1 080320.wav | BoilingSand | CC BY 3.0 | https://freesound.org/people/BoilingSand/sounds/50662/ |
+| `assets/sounds/` — hammer_nail | HammerNailWood.wav | mikaelfernstrom | CC BY 4.0 | https://freesound.org/people/mikaelfernstrom/sounds/68696/ |
+| `assets/sounds/` — paint | Painting 02 090420.wav | LG | CC BY 4.0 | https://freesound.org/people/LG/sounds/71431/ |
+| `assets/sounds/` — concrete, concrete_splat | HandsOnConcreteWithDirt.wav | prozaciswack | CC0 | https://freesound.org/people/prozaciswack/sounds/82723/ |
+| `assets/sounds/` — stake | Pounding a metal stake with hammer.wav | CGEffex | CC BY 4.0 | https://freesound.org/people/CGEffex/sounds/99964/ |
+| `assets/sounds/` — drill | drilling in concrete wall.wav | longshot | CC0 | https://freesound.org/people/longshot/sounds/104817/ |
+| `assets/sounds/` — door | wooden_door_close.wav | joedeshon | CC BY 4.0 | https://freesound.org/people/joedeshon/sounds/117415/ |
+| `assets/sounds/` — sheet | Sheet Metal 6.wav | ingudios | CC0 | https://freesound.org/people/ingudios/sounds/119490/ |
+| `assets/sounds/` — sheet | Sheet Metal 7.wav | ingudios | CC0 | https://freesound.org/people/ingudios/sounds/119491/ |
+| `assets/sounds/` — gravel_pour | gravel-01.wav | jakobthiesen | CC BY 3.0 | https://freesound.org/people/jakobthiesen/sounds/120738/ |
+| `assets/sounds/` — foam | polyurethane foam - the last portion.wav | Zabuhailo | CC0 | https://freesound.org/people/Zabuhailo/sounds/143254/ |
+| `assets/sounds/` — nailgun | industrial_nailgun_1shot+ring | gilly11 | CC BY 3.0 | https://freesound.org/people/gilly11/sounds/143615/ |
+| `assets/sounds/` — hammer_nail | Hammering Wood | JZProductions | CC BY 4.0 | https://freesound.org/people/JZProductions/sounds/147382/ |
+| `assets/sounds/` — tile | clinking_tiles_01.wav | mannhawks | CC0 | https://freesound.org/people/mannhawks/sounds/148355/ |
+| `assets/sounds/` — thunder | Distant Thunder and Rain from Half Open Window 1.aif | RutgerMuller | CC0 | https://freesound.org/people/RutgerMuller/sounds/158692/ |
+| `assets/sounds/` — hydraulic | 09-Bakken_HydraulicSwing.wav | JorgenJak | CC BY 3.0 | https://freesound.org/people/JorgenJak/sounds/159473/ |
+| `assets/sounds/` — rebar | Metal handling bars in container 2 | jorickhoofd | CC BY 4.0 | https://freesound.org/people/jorickhoofd/sounds/160060/ |
+| `assets/sounds/` — auger_dig | post_hole_digging.flac | wjoojoo | CC0 | https://freesound.org/people/wjoojoo/sounds/179726/ |
+| `assets/sounds/` — digger | digger working.mp3 | soundmary | CC BY 4.0 | https://freesound.org/people/soundmary/sounds/194954/ |
+| `assets/sounds/` — backup | Truck Reverse Beeper.wav | Disasteradio | CC0 | https://freesound.org/people/Disasteradio/sounds/197166/ |
+| `assets/sounds/` — sand_pour | sand pour on sand FF662.aif | martinimeniscus | CC0 | https://freesound.org/people/martinimeniscus/sounds/199332/ |
+| `assets/sounds/` — rain | Rain light 2 (rural) | jmbphilmes | CC0 | https://freesound.org/people/jmbphilmes/sounds/200273/ |
+| `assets/sounds/` — quake | EARTHQUAKE OR DISTANT SPACE SHUTTLE RUMBLE.WAV | metrostock99 | CC0 | https://freesound.org/people/metrostock99/sounds/203281/ |
+| `assets/sounds/` — concrete_splat | MudSquelch.wav | ahill86 | CC0 | https://freesound.org/people/ahill86/sounds/207142/ |
+| `assets/sounds/` — soil_dump, soil_pour | Falling In Dirt.wav | FocusBay | CC0 | https://freesound.org/people/FocusBay/sounds/210867/ |
+| `assets/sounds/` — quake | earth rumble.wav | Reitanna | CC0 | https://freesound.org/people/Reitanna/sounds/217657/ |
+| `assets/sounds/` — glass_break | Glass Break | unfa | CC0 | https://freesound.org/people/unfa/sounds/221528/ |
+| `assets/sounds/` — sprinkler | Sprinkler 1_R.wav | ibirdfilm | CC BY 4.0 | https://freesound.org/people/ibirdfilm/sounds/244418/ |
+| `assets/sounds/` — glass | knocking on a window or glass | launemax | CC0 | https://freesound.org/people/launemax/sounds/249932/ |
+| `assets/sounds/` — pot | Ceramic clank and sliding over wooden table.wav | kessir | CC0 | https://freesound.org/people/kessir/sounds/264757/ |
+| `assets/sounds/` — welding | MIG Welding | unfa | CC0 | https://freesound.org/people/unfa/sounds/264827/ |
+| `assets/sounds/` — sand_pour | sandfall5.wav | Wagna | CC0 | https://freesound.org/people/Wagna/sounds/326304/ |
+| `assets/sounds/` — water | water hose.wav | einaveinav23 | CC0 | https://freesound.org/people/einaveinav23/sounds/328879/ |
+| `assets/sounds/` — birds | january morning birds.wav | cybergrrl | CC0 | https://freesound.org/people/cybergrrl/sounds/334526/ |
+| `assets/sounds/` — metal_hit | small-metal-hit-04.wav | newagesoup | CC0 | https://freesound.org/people/newagesoup/sounds/337844/ |
+| `assets/sounds/` — metal_hit | small-metal-hit-05.wav | newagesoup | CC0 | https://freesound.org/people/newagesoup/sounds/337845/ |
+| `assets/sounds/` — sprinkler | BlaccardSprinklerLoop.wav | blaccard | CC0 | https://freesound.org/people/blaccard/sounds/347025/ |
+| `assets/sounds/` — plaster | Cimento na Parede | sonatorio | CC BY 3.0 | https://freesound.org/people/sonatorio/sounds/348180/ |
+| `assets/sounds/` — shovel_dig | Shovel_dirt.wav | dr19 | CC0 | https://freesound.org/people/dr19/sounds/353907/ |
+| `assets/sounds/` — mallet | Rubber mallet, claw hammer, concrete floor.wav | This_Is_A_Hoax | CC0 | https://freesound.org/people/This_Is_A_Hoax/sounds/354111/ |
+| `assets/sounds/` — turf | Rustling Grass | alegemaate | CC0 | https://freesound.org/people/alegemaate/sounds/364712/ |
+| `assets/sounds/` — stake | Hammering wood | felix.blume | CC0 | https://freesound.org/people/felix.blume/sounds/369813/ |
+| `assets/sounds/` — block, stone | Stone dropping to ground_northern87 | northern87 | CC0 | https://freesound.org/people/northern87/sounds/369981/ |
+| `assets/sounds/` — cash | 16. Cash-register_closing.wav | 13GPanska_Jirova_Tereza | CC0 | https://freesound.org/people/13GPanska_Jirova_Tereza/sounds/378269/ |
+| `assets/sounds/` — vibrator | Vibrator.wav | 13GPanska_Tatar_Filip | CC BY 3.0 | https://freesound.org/people/13GPanska_Tatar_Filip/sounds/378596/ |
+| `assets/sounds/` — saw | Hand Saw Sawing Wood | deleted_user_7146007 | CC0 | https://freesound.org/people/deleted_user_7146007/sounds/383725/ |
+| `assets/sounds/` — screed | Metal Scraping on Concrete | deleted_user_7146007 | CC0 | https://freesound.org/people/deleted_user_7146007/sounds/383794/ |
+| `assets/sounds/` — footstep | Right Gravel Footstep 4 | Ali_6868 | CC0 | https://freesound.org/people/Ali_6868/sounds/384878/ |
+| `assets/sounds/` — welding | Arc Welding.wav | kev_durr | CC BY 4.0 | https://freesound.org/people/kev_durr/sounds/396511/ |
+| `assets/sounds/` — mallet | Max mallet hit.mp3 | wormletter | CC0 | https://freesound.org/people/wormletter/sounds/427432/ |
+| `assets/sounds/` — circular | Circular Saw | derjuli | CC0 | https://freesound.org/people/derjuli/sounds/448133/ |
+| `assets/sounds/` — compactor | Operating a Plate Compactor.wav | SampleDiaries | CC0 | https://freesound.org/people/SampleDiaries/sounds/449121/ |
+| `assets/sounds/` — hacksaw | Hacksaw and File | NearTheAtmoshphere | CC0 | https://freesound.org/people/NearTheAtmoshphere/sounds/449843/ |
+| `assets/sounds/` — block | concrete cinder block drop on gravel.wav | kyles | CC0 | https://freesound.org/people/kyles/sounds/452579/ |
+| `assets/sounds/` — crowbar | crowbar fall on ground concrete pavement ring2.wav | kyles | CC0 | https://freesound.org/people/kyles/sounds/452583/ |
+| `assets/sounds/` — glass_break | window break with axe glass shatter in trailer.wav | kyles | CC0 | https://freesound.org/people/kyles/sounds/452667/ |
+| `assets/sounds/` — truck | truck mack diesel semi engine close4.flac | kyles | CC0 | https://freesound.org/people/kyles/sounds/453631/ |
+| `assets/sounds/` — pot | Tea pot set down.mp3 | TheHiraHira | CC0 | https://freesound.org/people/TheHiraHira/sounds/460243/ |
+| `assets/sounds/` — foam | Spray_Can_Hiss.wav | michael_grinnell | CC0 | https://freesound.org/people/michael_grinnell/sounds/464424/ |
+| `assets/sounds/` — mixer | Concrete Mixer | Breviceps | CC0 | https://freesound.org/people/Breviceps/sounds/464647/ |
+| `assets/sounds/` — sand_pour | Sand slidding out of shovel slowly.wav | XfiXy8 | CC0 | https://freesound.org/people/XfiXy8/sounds/467301/ |
+| `assets/sounds/` — brick | Brick handling sounds.aiff | vintage2005 | CC0 | https://freesound.org/people/vintage2005/sounds/483403/ |
+| `assets/sounds/` — brick | Brick pick up and put down - laminate floor | vintage2005 | CC0 | https://freesound.org/people/vintage2005/sounds/483408/ |
+| `assets/sounds/` — collapse | R29-04-Crashing Collapse of Wood Building.wav | craigsmith | CC0 | https://freesound.org/people/craigsmith/sounds/487142/ |
+| `assets/sounds/` — stone | Brick Sliding Across Concrete Floor_DanielMarais_190266_OWI.wav | DanielMarais | CC BY 4.0 | https://freesound.org/people/DanielMarais/sounds/492585/ |
+| `assets/sounds/` — rake | 03-1 Raking dirt, fast | 16GPanskaKomarkova_Marina | CC0 | https://freesound.org/people/16GPanskaKomarkova_Marina/sounds/496721/ |
+| `assets/sounds/` — soil_pour | dirt being poored .wav | Quezthepoet | CC BY 3.0 | https://freesound.org/people/Quezthepoet/sounds/496923/ |
+| `assets/sounds/` — grinder | Angle Grinder On Metal (2).wav | shelbyshark | CC0 | https://freesound.org/people/shelbyshark/sounds/501172/ |
+| `assets/sounds/` — drill | drill in concrete 191013_0075.wav | klankbeeld | CC BY 4.0 | https://freesound.org/people/klankbeeld/sounds/501283/ |
+| `assets/sounds/` — bucket_pour | Water Pouring Out of Bucket | Breviceps | CC0 | https://freesound.org/people/Breviceps/sounds/508178/ |
+| `assets/sounds/` — creak | Old_Truck_Metal_Squeaks-Creaks-Rattle-Impact_Door_Hollow_Open_Close_Impact.wav | dilsun | CC0 | https://freesound.org/people/dilsun/sounds/508274/ |
+| `assets/sounds/` — shovel_dig | Shoveling | andersmmg | CC BY 4.0 | https://freesound.org/people/andersmmg/sounds/516318/ |
+| `assets/sounds/` — crickets | Crickets Close and Distant Night | Clearwavsound | CC BY 3.0 | https://freesound.org/people/Clearwavsound/sounds/523438/ |
+| `assets/sounds/` — gate_open | Opening and closing a gate 1 | fthgurdy | CC0 | https://freesound.org/people/fthgurdy/sounds/528947/ |
+| `assets/sounds/` — flood | Rapidly Flowing Water (loopable).wav | Osiruswaltz | CC0 | https://freesound.org/people/Osiruswaltz/sounds/530168/ |
+| `assets/sounds/` — watering | Watering with a Watering Can.mp3 | Bricklover | CC0 | https://freesound.org/people/Bricklover/sounds/532890/ |
+| `assets/sounds/` — tile_cut | Tile cutting.wav | Chelly01 | CC0 | https://freesound.org/people/Chelly01/sounds/541111/ |
+| `assets/sounds/` — screwdriver | Bosch cordless screwdriver | D4XX | CC0 | https://freesound.org/people/D4XX/sounds/541908/ |
+| `assets/sounds/` — trowel_tap | Drawing Garden Trowel Down Workbench 5.wav | F.M.Audio | CC BY 4.0 | https://freesound.org/people/F.M.Audio/sounds/554086/ |
+| `assets/sounds/` — explosion | Explosion_Debris_Short_Stereo.wav | Nox_Sound | CC0 | https://freesound.org/people/Nox_Sound/sounds/560510/ |
+| `assets/sounds/` — tape | Tape Measure_1.wav | NinjaSharkStudios | CC0 | https://freesound.org/people/NinjaSharkStudios/sounds/565501/ |
+| `assets/sounds/` — rebar | Dropping rebar | SamsterBirdies | CC0 | https://freesound.org/people/SamsterBirdies/sounds/581593/ |
+| `assets/sounds/` — door | FX SaSc Squeak 01 High Old Wood Door Wooden Close.wav | Profispiesser | CC0 | https://freesound.org/people/Profispiesser/sounds/583239/ |
+| `assets/sounds/` — plank | Planks Dropped.wav | EugeneEverett | CC0 | https://freesound.org/people/EugeneEverett/sounds/596484/ |
+| `assets/sounds/` — excavator | Excavator 3.wav | eZZin | CC0 | https://freesound.org/people/eZZin/sounds/606940/ |
+| `assets/sounds/` — excavator | Excavator.wav | eZZin | CC0 | https://freesound.org/people/eZZin/sounds/606942/ |
+| `assets/sounds/` — fire | Fire_Burning_01.flac | wwstudioswastaken | CC0 | https://freesound.org/people/wwstudioswastaken/sounds/613591/ |
+| `assets/sounds/` — glass | 2022-01-14-rec-inside-knock-glass-door.flac | arseniiv | CC0 | https://freesound.org/people/arseniiv/sounds/614846/ |
+| `assets/sounds/` — wind | Strong Winds inside house 01 | khenshom | CC0 | https://freesound.org/people/khenshom/sounds/623604/ |
+| `assets/sounds/` — wood_crack | snapped wood | markdalderup | CC0 | https://freesound.org/people/markdalderup/sounds/624150/ |
+| `assets/sounds/` — pump | Động Cơ Xe Tải Bơm Bê Tông | SieuAmThanh | CC0 | https://freesound.org/people/SieuAmThanh/sounds/629185/ |
+| `assets/sounds/` — car_door | car door close from outside.wav | greatsoundstube | CC0 | https://freesound.org/people/greatsoundstube/sounds/629315/ |
+| `assets/sounds/` — turf | grass rustling.wav | instinctual777 | CC0 | https://freesound.org/people/instinctual777/sounds/636945/ |
+| `assets/sounds/` — dump_truck | construction backho dump chunks of pavement debris into truck thuds2.flac | kyles | CC0 | https://freesound.org/people/kyles/sounds/637380/ |
+| `assets/sounds/` — truck | engine idle van diesel exhaust CBC microwave truck back1.flac | kyles | CC0 | https://freesound.org/people/kyles/sounds/637515/ |
+| `assets/sounds/` — gate_open | gate big rusty metal door garage open heavy creak rattle.flac | kyles | CC0 | https://freesound.org/people/kyles/sounds/637583/ |
+| `assets/sounds/` — jackhammer | Plumber with jackhammer 2 | Artematiko | CC0 | https://freesound.org/people/Artematiko/sounds/641508/ |
+| `assets/sounds/` — shovel_dig | Shovel_hitting_dirt_1.wav | Glen_Dorner | CC BY 4.0 | https://freesound.org/people/Glen_Dorner/sounds/654113/ |
+| `assets/sounds/` — shovel_dig | Shovel_hitting_dirt_2.wav | Glen_Dorner | CC BY 4.0 | https://freesound.org/people/Glen_Dorner/sounds/654114/ |
+| `assets/sounds/` — rake, rake_loop | Rake tool on my garden | frenkfurth | CC0 | https://freesound.org/people/frenkfurth/sounds/654571/ |
+| `assets/sounds/` — tap | Low Click 1 | CJspellsfish | CC0 | https://freesound.org/people/CJspellsfish/sounds/669468/ |
+| `assets/sounds/` — wire | 230104-018_normalized_and_low_pass_twist_wire.wav | mmmtoop | CC0 | https://freesound.org/people/mmmtoop/sounds/674023/ |
+| `assets/sounds/` — pipe | Metal pipe drop | gamer500 | CC0 | https://freesound.org/people/gamer500/sounds/680841/ |
+| `assets/sounds/` — pipe | Metal Pipe Drop 2 | gamer500 | CC0 | https://freesound.org/people/gamer500/sounds/682736/ |
+| `assets/sounds/` — plant_dig | Digging Into Soft Soil with Small Trowell.wav | dhallcomposer | CC0 | https://freesound.org/people/dhallcomposer/sounds/696531/ |
+| `assets/sounds/` — rebar | Metal_Grid_Hit_04 | Valenspire | CC0 | https://freesound.org/people/Valenspire/sounds/699589/ |
+| `assets/sounds/` — debris | Big falling debris (crash) | xkeril | CC0 | https://freesound.org/people/xkeril/sounds/703247/ |
+| `assets/sounds/` — debris | Fall debris (crash) | xkeril | CC0 | https://freesound.org/people/xkeril/sounds/703248/ |
+| `assets/sounds/` — plant_dig | Small Garden fork digging.wav | LiezelDippenaar | CC0 | https://freesound.org/people/LiezelDippenaar/sounds/707538/ |
+| `assets/sounds/` — brick | SFXBrick-EXT_Brick dropped on ground-Mia_OwSfx | rvdw2004 | CC0 | https://freesound.org/people/rvdw2004/sounds/709665/ |
+| `assets/sounds/` — gate_latch | Metal Gate Latch 02 | NapierFreesound | CC0 | https://freesound.org/people/NapierFreesound/sounds/710871/ |
+| `assets/sounds/` — chisel | Stone or Brick Chisel Writing | black_trillium | CC0 | https://freesound.org/people/black_trillium/sounds/718918/ |
+| `assets/sounds/` — tornado | Wind - Tornado, digital | Vrymaa | CC0 | https://freesound.org/people/Vrymaa/sounds/735349/ |
+| `assets/sounds/` — hurricane | Wind - Hurricane Typhoon Storm | Vrymaa | CC0 | https://freesound.org/people/Vrymaa/sounds/735350/ |
+| `assets/sounds/` — trowel | Notched metal trowel scraping | Fwughox_Official | CC0 | https://freesound.org/people/Fwughox_Official/sounds/746796/ |
+| `assets/sounds/` — footstep | Dirt Footsteps 1 | simonjeffery13 | CC0 | https://freesound.org/people/simonjeffery13/sounds/750794/ |
+| `assets/sounds/` — auger | Two-stroke saw idling, revving, shutting off. | Mihacappy | CC0 | https://freesound.org/people/Mihacappy/sounds/753527/ |
+| `assets/sounds/` — gravel_dig | Shoveling Gravel | Charisma_Vigoureux_241085 | CC0 | https://freesound.org/people/Charisma_Vigoureux_241085/sounds/764821/ |
+| `assets/sounds/` — screwdriver | electric_screwdriver, screwdriver, cordless_screwdriver | treesound1951 | CC0 | https://freesound.org/people/treesound1951/sounds/784470/ |
+| `assets/sounds/` — gravel_dig | Gravels lifting with a Shovel | Zeinel-2-and-Hope-sounds-3 | CC0 | https://freesound.org/people/Zeinel-2-and-Hope-sounds-3/sounds/787858/ |
+| `assets/sounds/` — waves | WATRSurf-EXT_WATER-Aggressive Ocean Waves Crashing Onto Coral Reef With Ocean Roars And Crashes Ongoing_YMLT_NONE_51006000 | YouMightLikeThis | CC0 | https://freesound.org/people/YouMightLikeThis/sounds/789510/ |
+| `assets/sounds/` — debris | artninja__custom_rock_impact_sound_pt4_03122026 | Artninja | CC BY 4.0 | https://freesound.org/people/Artninja/sounds/847898/ |
+| `assets/sounds/` — hammer_nail | nailing.wav | Mihacappy | CC0 | https://freesound.org/people/Mihacappy/sounds/850175/ |
+| `assets/sounds/` — soil_dump | TOOLGrdn-Samsung Galaxy Smartphone, CU_Shovel, Into Dirt, Throw on Ground_Nicholas Judy_TDC | designerschoice | CC BY 4.0 | https://freesound.org/people/designerschoice/sounds/852797/ |
+| `assets/sounds/` — plank | Boards Fall 4 | AleXZavesa | CC BY 4.0 | https://freesound.org/people/AleXZavesa/sounds/853904/ |
+| `assets/sounds/` — wood_crack | Dead tree cracking & falling to ground in forest #2 | ozymandias37 | CC0 | https://freesound.org/people/ozymandias37/sounds/867720/ |
+| `assets/sounds/` — truck_tip | Hydraulic Dump Truck Dumping Dirt | MillennialGhost | CC0 | https://freesound.org/people/MillennialGhost/sounds/872390/ |
+| `assets/sounds/` — gravel_pour | Tractor Dumping Cobblestones – Stone Drop 02 | ReflektWave | CC BY 4.0 | https://freesound.org/people/ReflektWave/sounds/876047/ |
