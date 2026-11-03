@@ -1715,7 +1715,7 @@ export default {
 "Опалубка здесь уже стоит": "There is formwork here already",
 "Поднесите каркас к опалубке колонны или на основание": "Bring the cage to a column's formwork or onto a base",
 "Поднесите опалубку к месту колонны": "Bring the formwork to the column's place",
-"Тяните каркас в опалубку или на основание: на бетон, в скважину сваи, в арматуру фундамента (привяжется к ней); тап по колонне — выбрать её": "Drag the cage into a formwork or onto a base: onto concrete, into a pile's hole, into the foundation's bars (it is tied to them); tap a column to pick it",
+"Тяните каркас в опалубку или на основание: на бетон; на грунт или щебень — сначала пробурят яму; в арматуру фундамента (привяжется к ней); тап по колонне — выбрать её": "Drag the cage into a formwork or onto a base: onto concrete; onto the ground or gravel — a hole is bored first; into the foundation's bars (it is tied to them); tap a column to pick it",
 "Шире не поставить — рядом другая колонна": "No wider — another column is next to it",
 "Эта колонна уже залита": "This column is cast already",
 "Сваю бурят в грунт — поставьте её на землю или щебень (сейчас {0})": "A pile is bored into the ground — put it on the soil or the gravel (now {0})",

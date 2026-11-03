@@ -55,6 +55,11 @@ export const COURSES = {
 export const COL_STAGES = [['form', 'Опалубка'], ['cage', 'Каркас'], ['strip', 'Распалубка']];
 export const TILTS = [0, 2, 5, 10, 15];
 export const PILE_DEP = 2000;
+// a column's cage set on the ground / loose fill: a hole bored for it first, 1,2 m (below the frost),
+// round, wide enough for the square cage's corners
+export const BORE_DEP = 1200;
+export const holeR = (r) => { const q = secOf(r); return q.round ? q.a / 2 : Math.round(q.a * 0.72); };   // mm
+export const bored = (r) => secOf(r).pile || !!r.bored;
 const STARTER = 500, COVER = 30, STEP = 200;
 export const courseH = (course, n) => { const c = COURSES[course] || COURSES.block; return c.bed0 + n * c.H + (n - 1) * c.bed; };   // mm
 // the axis at a height: the middle of the column's section at y (it leans by tilt)
@@ -294,10 +299,10 @@ export class ColumnView {
     const g = new THREE.Group(), add = (geo, m, shadow = true) => { if (!geo) return; const o = new THREE.Mesh(geo, m); o.castShadow = shadow; o.receiveShadow = true; o.userData.uOwner = r.id ?? null; g.add(o); return o; };
     const sec = secOf(r);
     // a pile's hole while it is empty: the dark hole and the spoil round it
-    if (sec.pile && (r.stage ?? 0) < 3) {
-      const [x, z] = axisAt(r, r.y0);
-      if (fill <= 0) { const h = new THREE.CircleGeometry(MM(sec.a / 2 + 10), 24); h.rotateX(-Math.PI / 2); h.translate(x, r.y0 + MM(4), z); add(h, this.mats.hole, false); }
-      const sp = new THREE.TorusGeometry(MM(sec.a / 2 + 180), MM(80), 6, 20); sp.rotateX(Math.PI / 2); sp.scale(1, 0.45, 1); sp.translate(x, r.y0 + MM(10), z); add(sp, this.mats.spoil);
+    if ((sec.pile || r.bored) && (r.stage ?? 0) < 3) {
+      const [x, z] = axisAt(r, r.y0), hr = holeR(r);
+      if (fill <= 0) { const h = new THREE.CircleGeometry(MM(hr + 10), 24); h.rotateX(-Math.PI / 2); h.translate(x, r.y0 + MM(4), z); add(h, this.mats.hole, false); }
+      const sp = new THREE.TorusGeometry(MM(hr + 180), MM(80), 6, 20); sp.rotateX(Math.PI / 2); sp.scale(1, 0.45, 1); sp.translate(x, r.y0 + MM(10), z); add(sp, this.mats.spoil);
     }
     if (cageOn(r)) g.add(this.cageGroup(r));
     if (fill > 0) { const c = add(concreteGeo(r, fill, r.pourT), this.concMat); c.userData.conc = 1; }
