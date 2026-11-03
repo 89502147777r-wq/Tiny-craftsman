@@ -943,6 +943,36 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2k. Catastrophes: a house of blocks; a weak quake leaves it, a strong one brings it down; every kind runs; all back as it was ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, t = tc.terrain, M = 1 / 1000 / 10.4651, o = {};
+    // a box of aerated blocks 6 × 5 m, 9 courses (2,25 m), on the ground
+    const g = t.heightAt(0, 0), add = (x, y, z, ax) => tc.objects.add({ type: 'unit', kind: 'block', free: true, p: [x, y, z], s: ax ? [600 * M, 250 * M, 300 * M] : [300 * M, 250 * M, 600 * M], q: [0, 0, 0, 1] });
+    for (let k = 0; k < 9; k++) { const y = g + (125 + 250 * k) * M, sh = (k % 2) * 300 * M;
+      for (let a = -3000 * M + 300 * M + sh; a < 3000 * M - 299 * M; a += 600 * M) { add(a, y, -2500 * M, true); add(a, y, 2500 * M, true); }
+      for (let b = -2500 * M + 450 * M + sh; b < 2500 * M - 449 * M; b += 600 * M) { add(-2850 * M, y, b, false); add(2850 * M, y, b, false); } }
+    for (let i = 0; i < 6; i++) tc.simulate(0.1);
+    // (free blocks are tinted like the others — a NaN tint drew them black)
+    { const ic = tc.wallView.blocks.instanceColor?.array; o.tint = !!ic && Array.from(ic.slice(0, tc.wallView.blocks.count * 3)).every(Number.isFinite); }
+    tc.setTool('disaster'); tc.ui.navLevel = 'chips'; tc.ui.navPath = []; tc.ui.refresh();
+    o.chips = tc.ui.navNodes().list.map((c) => c.label).join('|'); o.slider = !!document.getElementById('p-cat-r');
+    const D = tc.disasterTool, run = async (kind, power, secs) => { Object.assign(tc.settings, { catKind: kind, catPower: power }); const st = await D.run(); const t0 = performance.now(); for (let i = 0; i < secs * 30; i++) tc.simulate(1 / 30); const ms = (performance.now() - t0) / (secs * 30); const s = D.sim.stats(); D.reset(); return { pieces: st.pieces, share: +s.share.toFixed(2), ms: Math.round(ms) }; };
+    o.weak = await run('quake', 1, 18);
+    o.strong = await run('quake', 10, 18);
+    o.back = tc.wallView.blocks.visible && !tc.scene.getObjectByName('disaster') && !tc.wallView.frozen;
+    o.kinds = {};
+    for (const k of ['hurricane', 'tornado', 'tsunami', 'flood', 'fire', 'meteor']) o.kinds[k] = (await run(k, 10, 14)).share;
+    return o;
+  });
+  check('catastrophes: 7 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 9 && o.slider && o.back && o.tint, JSON.stringify(o));
+  check('catastrophes: a M 4 quake leaves the house standing, a M 9 one brings it down', o.weak.pieces > 250 && o.weak.share < 0.05 && o.strong.share > 0.4, JSON.stringify([o.weak, o.strong]));
+  check('catastrophes: the tornado, the tsunami and the meteor at full power break the house', o.kinds.tornado > 0.1 && o.kinds.tsunami > 0.1 && o.kinds.meteor > 0.1, JSON.stringify(o.kinds));
+  check('catastrophes: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 3. WebKit (Safari's engine), if installed ------------------------------------------------------
 if (process.env.WEBKIT) {
   try {

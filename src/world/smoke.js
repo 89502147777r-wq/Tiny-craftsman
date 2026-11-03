@@ -7,6 +7,10 @@ const R = (m) => m / MODEL_SCALE;
 const KIND = {
   smoke: { color: 0x3c3a38, opacity: 0.42, size0: 0.15, size1: 1.1, rise: 0.55, life: 2.4 },
   dust: { color: 0xb59a78, opacity: 0.32, size0: 0.35, size1: 1.8, rise: 0.12, life: 2.2 },
+  // (the catastrophes: a cloud of dust off a fall of masonry; the flames and the black smoke of a fire)
+  cloud: { color: 0xa89478, opacity: 0.5, size0: 1.2, size1: 7, rise: 0.25, life: 4.5 },
+  flame: { color: 0xff8a2a, opacity: 0.85, size0: 0.6, size1: 1.6, rise: 2.2, life: 0.9, add: true },
+  soot: { color: 0x1c1a19, opacity: 0.6, size0: 1.0, size1: 8, rise: 1.6, life: 5 },
 };
 
 export class Puffs {
@@ -29,7 +33,7 @@ export class Puffs {
     const it = this.pool[this.next++ % this.pool.length], k = KIND[kind];
     it.k = k; it.age = 0; it.life = k.life * (0.8 + Math.random() * 0.4); it.str = strength;
     it.s.position.copy(p); it.v.copy(v).add(new THREE.Vector3((Math.random() - 0.5) * R(0.15), R(k.rise) * (0.7 + Math.random() * 0.6), (Math.random() - 0.5) * R(0.15)));
-    it.s.material.color.setHex(k.color); it.s.visible = true;
+    it.s.material.color.setHex(k.color); it.s.material.blending = k.add ? THREE.AdditiveBlending : THREE.NormalBlending; it.s.visible = true;
   }
   update(dt) {
     for (const it of this.pool) {
