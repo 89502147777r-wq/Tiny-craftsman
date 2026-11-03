@@ -1886,4 +1886,12 @@ export default {
 "односкатный, металлочерепица": "single slope, metal tiles",
 "двускатный деревянный": "gabled, timber",
 "плоский модерн с подсветкой": "flat modern with lights",
+"◧ Петли слева": "◧ Hinges left",
+"◨ Петли справа": "◨ Hinges right",
+"↗ Открывать вперёд": "↗ Opens to the front",
+"↙ Открывать назад": "↙ Opens to the back",
+"{0}: петли справа, открывается назад": "{0}: hinges right, opens to the back",
+"{0}: петли справа, открывается вперёд": "{0}: hinges right, opens to the front",
+"{0}: петли слева, открывается назад": "{0}: hinges left, opens to the back",
+"{0}: петли слева, открывается вперёд": "{0}: hinges left, opens to the front",
 };
