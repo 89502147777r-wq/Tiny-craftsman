@@ -14,15 +14,23 @@ import { MODEL_SCALE } from '../config.js';
 //   path { pts: [[x, z]…] (its middle line), W (between the kerbs), g (the ground's level),
 //          paver, col (laid with), done: { dig, kerb, geo, grav, sand, pave, joint } }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const PATH = { dig: 300, kerbW: 80, kerbH: 200, kerbL: 1000, room: 150, bed: 100, haunch: 100, grav: 200, sand: 40, paver: 60, joint: 3 };
+export const PATH = { dig: 300, kerbW: 80, kerbH: 200, kerbL: 1000, room: 150, bed: 100, haunch: 100, grav: 200, sand: 40, paver: 60, joint: 3, kerbUp: 50 };
+// the path laid by hand (v: 2): the stages, the joints filled with the pavers (sand swept in as they go)
+export const PATH_LAYERS2 = [['set', 'Разметка'], ['dig', 'Корыто'], ['kerb', 'Бордюр'], ['geo', 'Геотекстиль'], ['grav', 'Щебень'], ['sand', 'Песок'], ['pave', 'Плитка']];
 export const PATH_LAYERS = [['set', 'Разметка'], ['dig', 'Корыто'], ['kerb', 'Бордюр'], ['geo', 'Геотекстиль'], ['grav', 'Щебень'], ['sand', 'Песок'], ['pave', 'Плитка'], ['joint', 'Швы']];
 export const PATH_WIDTHS = [800, 1000, 1200, 1500, 2000];
 // the pavers: the piece (mm, along the row × across it) and how they are laid
+// (the ones laid most in the US and in Europe: the Holland stone in running bond, herringbone and
+// basketweave; the tumbled «old town» cobble of three sizes; squares, large slabs, planks, hexagons)
 export const PAVERS = {
-  brick: { name: 'Кирпичик 200 × 100', a: 100, c: 200, lay: 'bond', usd: 26 },
+  brick: { name: 'Холланд 200 × 100, перевязка', a: 100, c: 200, lay: 'bond', usd: 26 },
   herring: { name: 'Ёлочка 200 × 100', a: 100, c: 200, lay: 'herring', usd: 29 },
+  basket: { name: 'Плетёнка 200 × 100', a: 100, c: 200, lay: 'basket', usd: 29 },
+  cobble: { name: 'Старый город, 3 размера', a: 140, c: 140, lay: 'random', sizes: [140, 210, 280], usd: 33, ch: 9 },
   square: { name: 'Квадрат 300 × 300', a: 300, c: 300, lay: 'grid', usd: 31 },
   slab: { name: 'Плита 600 × 300', a: 300, c: 600, lay: 'bond', usd: 34 },
+  plank: { name: 'Доска 900 × 150', a: 150, c: 900, lay: 'third', usd: 39 },
+  hex: { name: 'Шестигранник 200', a: 200, c: 200, lay: 'hex', usd: 35 },
 };
 // the colours (concrete pavers, through-dyed): the base and the spread from piece to piece; the mix: of three
 export const PAVE_COLS = {
@@ -32,8 +40,32 @@ export const PAVE_COLS = {
   brown: ['Коричневая', [0.42, 0.29, 0.21], 0.07],
   sand: ['Песочная', [0.73, 0.65, 0.5], 0.06],
   mix: ['Осенний микс', null, 0.05],
+  duo: ['Дуо: графит и серая', null, 0.05],
+  trio: ['Трио: песок, серая, графит', null, 0.05],
+  terra: ['Терракота: красная, коричневая, песок', null, 0.05],
 };
 const MIX = [[0.6, 0.29, 0.23], [0.42, 0.29, 0.21], [0.73, 0.62, 0.45]];
+// the blends: the colours of their pieces (each piece one of them)
+const MIXES = { mix: MIX, duo: [[0.3, 0.31, 0.33], [0.56, 0.55, 0.53]], trio: [[0.73, 0.65, 0.5], [0.56, 0.55, 0.53], [0.3, 0.31, 0.33]], terra: [[0.62, 0.3, 0.22], [0.42, 0.29, 0.21], [0.72, 0.6, 0.44]] };
+
+// the corners of a line rounded (R mm, the middle line's radius): each turn an arc of short chords
+// (≤ 12° each) between the tangent points; a turn too close to the next keeps a smaller radius
+export function filletLine(base, R) {
+  if (!R || base.length < 3) return base;
+  const out = [base[0]];
+  for (let i = 1; i < base.length - 1; i++) {
+    const [ax, az] = base[i - 1], [bx, bz] = base[i], [cx, cz] = base[i + 1];
+    const l1 = Math.hypot(bx - ax, bz - az), l2 = Math.hypot(cx - bx, cz - bz), u1 = [(bx - ax) / l1, (bz - az) / l1], u2 = [(cx - bx) / l2, (cz - bz) / l2];
+    let th = Math.atan2(u1[0] * u2[1] - u1[1] * u2[0], u1[0] * u2[0] + u1[1] * u2[1]);
+    if (Math.abs(th) < 0.02) { out.push(base[i]); continue; }
+    const r = Math.min(MM(R), Math.min(l1, l2) * 0.45 / Math.tan(Math.abs(th) / 2)), t = r * Math.tan(Math.abs(th) / 2);
+    const p0 = [bx - u1[0] * t, bz - u1[1] * t], sg = th > 0 ? 1 : -1, nrm = [-u1[1] * sg, u1[0] * sg], C = [p0[0] + nrm[0] * r, p0[1] + nrm[1] * r];
+    const a0 = Math.atan2(p0[1] - C[1], p0[0] - C[0]), n = Math.max(2, Math.ceil(Math.abs(th) / (12 * Math.PI / 180)));
+    for (let k = 0; k <= n; k++) { const a = a0 + th * k / n; out.push([C[0] + Math.cos(a) * r, C[1] + Math.sin(a) * r]); }
+  }
+  out.push(base.at(-1));
+  return out.map(([x, z]) => [+x.toFixed(5), +z.toFixed(5)]);
+}
 // the tops of the layers, mm from the ground's level
 export const TOPS = { floor: -PATH.dig, geo: -PATH.dig + 2, grav: -PATH.paver - PATH.sand, sand: -PATH.paver, pave: 0 };
 
@@ -210,10 +242,31 @@ export function paversOf(r, key = r.paver || 'brick', col = r.col || 'grey') {
           rects.push(pts);
         }
       }
+    } else if (P.lay === 'basket') {
+      // pairs of pieces side by side in squares 2a × 2a, each square turned from its neighbours'
+      const A = P.a, Q = 2 * A, i0 = Math.floor(aLo / Q) - 1, i1 = Math.ceil(aHi / Q) + 1, j0 = Math.floor(-h / Q) - 1, j1 = Math.ceil(h / Q) + 1;
+      for (let i = i0; i <= i1; i++) for (let jj = j0; jj <= j1; jj++) for (let k = 0; k < 2; k++) {
+        const a = i * Q, c = jj * Q;
+        rects.push((i + jj) % 2 ? [[a + k * A, c], [a + k * A + A, c], [a + k * A + A, c + Q], [a + k * A, c + Q]] : [[a, c + k * A], [a + Q, c + k * A], [a + Q, c + k * A + A], [a, c + k * A + A]]);
+      }
+    } else if (P.lay === 'random') {
+      // rows across the path; in each, pieces of the three lengths in a random order (a seeded row)
+      const A = P.a, r0 = Math.floor(aLo / A) - 1, r1 = Math.ceil(aHi / A) + 1;
+      for (let row = r0; row <= r1; row++) {
+        let sd = (row * 7919 + 13) >>> 0; const rr = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+        for (let c = -h - rr() * P.sizes[0]; c < h;) { const w = P.sizes[Math.floor(rr() * P.sizes.length)]; rects.push([[row * A, c], [row * A + A, c], [row * A + A, c + w], [row * A, c + w]]); c += w; }
+      }
+    } else if (P.lay === 'hex') {
+      // hexagons flat to flat a, in rows along the path
+      const s = P.a / Math.sqrt(3), dx = 1.5 * s, i0 = Math.floor(aLo / dx) - 1, i1 = Math.ceil(aHi / dx) + 1, j0 = Math.floor(-h / P.a) - 2, j1 = Math.ceil(h / P.a) + 2;
+      for (let i = i0; i <= i1; i++) for (let jj = j0; jj <= j1; jj++) {
+        const ca = i * dx, cc = jj * P.a + (i % 2 ? P.a / 2 : 0);
+        rects.push(Array.from({ length: 6 }, (_, k) => [ca + s * Math.cos(k * Math.PI / 3), cc + s * Math.sin(k * Math.PI / 3)]));
+      }
     } else {
       const A = P.a, Cw = P.c, r0 = Math.floor(aLo / A) - 1, r1 = Math.ceil(aHi / A) + 1;
       for (let row = r0; row <= r1; row++) {
-        const sh = P.lay === 'bond' && row % 2 ? Cw / 2 : 0;
+        const sh = P.lay === 'bond' && row % 2 ? Cw / 2 : P.lay === 'third' ? (((row % 3) + 3) % 3) * Cw / 3 : 0;
         for (let c = -h - sh; c < h; c += Cw) rects.push([[row * A, c], [row * A + A, c], [row * A + A, c + Cw], [row * A, c + Cw]]);
       }
     }
@@ -223,8 +276,8 @@ export function paversOf(r, key = r.paver || 'brick', col = r.col || 'grey') {
       const ar = polyArea(p);
       if (ar < full * 0.04) continue;
       const ca = p.reduce((s, v) => s + v[0], 0) / p.length, cc = p.reduce((s, v) => s + v[1], 0) / p.length;
-      const base = C[1] || MIX[Math.floor(rnd() * 3)], v = (rnd() - 0.5) * 2 * C[2];
-      out.push({ p: p.map(([a, c]) => legW(g, a * S, c * S)), cut: ar < full * 0.97, ord: ca + (cc + h) / (2 * h + 1) * 0.5 * P.a, rgb: base.map((x) => Math.max(0, Math.min(1, x * (1 + v)))) });
+      const M = MIXES[col] || MIX, base = C[1] || M[Math.floor(rnd() * M.length)], v = (rnd() - 0.5) * 2 * C[2];
+      out.push({ p: p.map(([a, c]) => legW(g, a * S, c * S)), area: ar, cut: ar < full * 0.97, ord: ca + (cc + h) / (2 * h + 1) * 0.5 * P.a, rgb: base.map((x) => Math.max(0, Math.min(1, x * (1 + v)))) });
     }
   });
   out.sort((a, b) => a.ord - b.ord);

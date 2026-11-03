@@ -362,17 +362,8 @@ console.log('—', sec());
     const drag = (pts) => { wt.down(pts[0], e(pts[0])); for (const p of pts) wt.move(p, e(p)); wt.up(); };
     const tap = (p) => { wt.down(p, e(p)); wt.up(); for (let i = 0; i < 4000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
     tc.rig.setState({ target: [0, 0.1, 0], yaw: 0.5, pitch: 0.9, dist: 1.6 }); tc.simulate(0.05);
-    // a path with a turn
-    Object.assign(tc.settings, { wallKind: 'land', landWhat: 'path', pathLayer: 'set', pathW: 1200 });
-    const P = []; for (let i = 0; i <= 20; i++) P.push(new V(-0.4 + 0.3 * i / 20, 0.1, 0.3)); for (let i = 1; i <= 15; i++) P.push(new V(-0.1, 0.1, 0.3 - 0.2 * i / 15));
-    drag(P);
-    const v0 = tc.terrain.totalVolume();
-    for (const k of ['dig', 'kerb', 'geo', 'grav', 'sand', 'pave', 'joint']) { tc.settings.pathLayer = k; tap(P[10]); }
-    const path = tc.objects.all('path')[0];
-    out.path = { legs: path?.pts.length, done: Object.keys(path?.done || {}).join(), dug: v0 > tc.terrain.totalVolume() - 1 };
-    // undo the joints and the pavers, redo
-    tc.journal.undo(); tc.journal.undo(); const und = tc.objects.all('path')[0].done; out.undo = !und.joint && !und.pave; tc.journal.redo(); tc.journal.redo();
-    out.redo = !!tc.objects.all('path')[0].done.joint;
+    // (the path by hand: its own section, 2f)
+    tc.settings.wallKind = 'land';
     // a lawn round it
     Object.assign(tc.settings, { landWhat: 'lawn', lawnLayer: 'area', lawnHow: 'turf' });
     const L = [], C = [[-0.55, 0.45], [0.15, 0.45], [0.15, -0.05], [-0.55, -0.05]];
@@ -478,7 +469,6 @@ console.log('—', sec());
     return out;
   });
   check('«Готово»: rooms furnished behind the windows, another interior, off again, undo', land.interior.on && land.interior.rooms >= 1 && land.interior.rerolled && land.interior.off && land.interior.back, JSON.stringify(land.interior));
-  check('garden: a path set out, dug, kerbed, stoned, sanded, paved, jointed; undo / redo', land.path.legs === 3 && land.path.done === 'dig,kerb,geo,grav,sand,pave,joint' && land.path.dug && land.undo && land.redo, JSON.stringify(land.path) + ` undo ${land.undo} redo ${land.redo}`);
   check('garden: a lawn round it (topsoil, rake, roller, turf, water), a fence (holes, posts, slats), plants and a light', land.lawn.done === 'soil,rake,roll,grass,water' && land.lawn.cells >= 2 && land.fence.done === 'holes,posts,fill' && land.fence.gate === 'wicket:hung:open' && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
   check('exterior: a porch cast to a door (pit, stone, forms, concrete, stripped, tiled) and a canopy over it', land.porch.steps === 3 && land.porch.done === 'dig,grav,form,conc,strip,tile' && land.porch.canopy === 1 && land.porch.lights === 'steps', JSON.stringify(land.porch));
   check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
@@ -731,6 +721,52 @@ console.log('—', sec());
   check('fence: rails welded post to post (two rows), the railed bays filled, a wicket in the bay left (a gate too wide refused), undo', f.tray === 'Прожилина' && f.rails === '0-4000@300,0-4000@1500,5000-7953@300,5000-7953@1500' && f.otherSide === -1 && f.postG && f.fillTabs && f.filled === 3 && f.swingRefused && f.gates === 'wicket:1000' && f.undo, JSON.stringify(f));
   check('fence: on brick pillars (the pegs set on them, no holes, the rails between them on the plates), corrugated sheet in its colour; a post anchored on the strip\'s concrete', f.pillarPegs === 2 && f.noHole && /^in:pillar-pillar@300,in:pillar-pillar@\d+$/.test(f.inline) && f.prof === 'prof:wine:1' && f.anchor === 'anchor:true:true', JSON.stringify(f));
   check('fence: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2f. The garden path by hand: the string, the trough, the kerbs, the geotextile, the stone, the sand, the pavers ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, pw = wt.land.pw, o = {}, toasts = [];
+    const t0 = tc.ui.toast.bind(tc.ui); tc.ui.toast = (m) => { toasts.push(m); t0(m); };
+    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); tc.camera.updateProjectionMatrix(); wt._rc = null; const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
+    const run = () => { for (let i = 0; i < 6000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
+    const G = (x, z) => new V(x, tc.terrain.heightAt(x, z), z);
+    tc.rig.setState({ target: [0, 0.05, 0.1], yaw: 0.2, pitch: 0.9, dist: 1.6 }); for (let k = 0; k < 8; k++) tc.simulate(0.25);
+    tc.ui.openGroup('landG'); Object.assign(tc.settings, { wallKind: 'land', landWhat: 'path', pathLayer: 'set', pathW: 1200, pathCorner: 'round', pathR: 1500 }); tc.ui.refresh();
+    o.chips = tc.ui.navNodes().list.map((c) => c.label).join('|');
+    tc.ui.navPath = ['land', 'path']; o.pathChips = tc.ui.navNodes().list.map((c) => c.label).join('|');
+    o.cord = !document.getElementById('fence-cord').hidden; o.sliders = document.getElementById('params').textContent;
+    pw.cord = true;
+    const pts = []; for (let k = 0; k <= 12; k++) pts.push(G(-0.3 + 0.3 * k / 12, 0.0)); for (let k = 1; k <= 12; k++) pts.push(G(0.0, 0.0 + 0.25 * k / 12));
+    wt.down(pts[0], e(pts[0])); for (const p of pts) wt.move(p, e(p)); wt.up(); pw.cord = false;
+    const r = () => pw.rec; o.base = r()?.base?.length; o.ptsN = r()?.pts?.length; o.round = r()?.round;
+    // a corner moved
+    { const q = r().base[1], p = new V(q[0], r().g, q[1]); wt.down(p, e(p)); const p2 = new V(q[0] + 0.02, r().g, q[1]); wt.move(p2, e(p2)); wt.up(); o.moved = +(r().base[1][0] - q[0]).toFixed(3); }
+    tc.settings.pathLayer = 'dig'; { const P = r().pts[3], p = G(P[0], P[1]); wt.down(p, e(p)); wt.up(); run(); } o.dug = pw.troughOK(r());
+    tc.settings.pathLayer = 'kerb'; tc.ui.refresh(); o.tray = document.getElementById('wall-tray').hidden ? '' : document.getElementById('wall-tray-label').textContent;
+    const K = (await import('/src/world/garden.js')).kerbsOf(r()), cen = (k) => new V(k.p.reduce((s, q) => s + q[0], 0) / k.p.length, r().g, k.p.reduce((s, q) => s + q[1], 0) / k.p.length);
+    o.K = K.length;
+    // one by one from the tray, then rows for the rest
+    { const p = cen(K[0]); pw.trayDown(p, e(p)); pw.move(p, e(p)); pw.up(); run(); } o.one = r().kerbs.length;
+    pw.row = true; for (let guard = 0; guard < 30 && r().kerbs.length < K.length; guard++) { const left = K.map((k, i) => i).filter((i) => !r().kerbs.includes(i)); const a = cen(K[left[0]]), b = cen(K[left.at(-1)]); wt.down(a, e(a)); wt.move(b, e(b)); wt.up(); run(); } pw.row = false;
+    o.kerbs = `${r().kerbs.length}/${K.length}:${!!r().done.kerb}`;
+    tc.settings.pathLayer = 'geo'; { const L = (await import('/src/world/garden.js')).lengthOf(r()) * 10465; const GV = await import('/src/world/gardenView.js'); const P0 = GV.pointAt(r(), 0), P1 = GV.pointAt(r(), L); const a = new V(P0[0], r().g, P0[1]); wt.down(a, e(a)); for (let k = 1; k <= 20; k++) { const P = GV.pointAt(r(), L * k / 20), p = new V(P[0], r().g, P[1]); wt.move(p, e(p)); } wt.up(); void P1; }
+    o.geo = +pw.geoCover(r()).toFixed(2);
+    tc.settings.pathLayer = 'grav'; { const P = r().pts[3], p = G(P[0], P[1]); wt.down(p, e(p)); wt.up(); run(); } o.grav = pw.stageDone(r(), 'grav');
+    tc.settings.pathLayer = 'sand'; { const P = r().pts[3], p = G(P[0], P[1]); wt.down(p, e(p)); wt.up(); run(); } o.sand = pw.stageDone(r(), 'sand');
+    Object.assign(tc.settings, { pathLayer: 'pave', pathPaver: 'cobble', pathCol: 'trio' });
+    { const GA = await import('/src/world/garden.js'), GV = await import('/src/world/gardenView.js'), L = GA.lengthOf(r()) * 10465; for (const c of [-0.3, 0, 0.3]) { const P0 = GV.pointAt(r(), 0); const a = new V(P0[0] - P0[3] * c * 0.057, r().g, P0[1] + P0[2] * c * 0.057); wt.down(a, e(a)); for (let k = 0; k <= 60; k++) { const P = GV.pointAt(r(), L * k / 60), p = new V(P[0] - P[3] * c * 0.057, r().g, P[1] + P[2] * c * 0.057); wt.move(p, e(p)); } wt.up(); } }
+    o.laid = `${r().laid.length}/${(await import('/src/world/garden.js')).paversOf(r()).length}:${r().paver}:${r().col}`;
+    tc.renderer.render(tc.scene, tc.camera);
+    o.toasts = toasts.slice(-6); o.missed = [...(window.__i18nMissed || [])].slice(0, 5);
+    return o;
+  });
+  check('path: «Благоустройство» opens on «Дорожка», 7 stages (no joints); the string with the width and the corners\' radius', o.chips.startsWith('Дорожка|') && o.pathChips === '1 · Разметка|2 · Корыто|3 · Бордюр|4 · Геотекстиль|5 · Щебень|6 · Песок|7 · Плитка' && o.cord && o.sliders.includes('Радиус') && o.round === 1500 && o.ptsN > o.base && o.moved === 0.02, JSON.stringify(o));
+  check('path: the trough, the kerbs one from the tray then in rows (all in), the geotextile rolled by the finger, the stone and the sand', o.dug && o.one === 1 && /^(\d+)\/\1:true$/.test(o.kerbs) && o.geo > 0.95 && o.grav && o.sand, JSON.stringify(o));
+  check('path: the pavers laid by the finger (a three-size cobble in a three-colour blend), the area counted', /^\d+\/\d+:cobble:trio$/.test(o.laid) && +o.laid.split('/')[0] > 150 && o.toasts.some((t) => /Уложено \d+,\d из \d+,\d м²/.test(t)), JSON.stringify(o));
+  check('path: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 
