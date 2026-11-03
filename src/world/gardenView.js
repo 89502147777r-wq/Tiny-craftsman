@@ -248,7 +248,7 @@ export class GardenView {
       let e = this.parts.get(key);
       if (!e) { e = { g: new THREE.Group(), keys: {}, sub: {}, canopy: true }; this.group.add(e.g); this.parts.set(key, e); }
       e.rec = r;
-      this._part(e, 'body', [r.o, r.y, r.W, r.P].join('|'), () => canopyMesh(r));
+      this._part(e, 'body', [r.o, r.y, r.W, r.P, r.style, r.nrm].join('|'), () => canopyMesh(r));
     }
     for (const r of this.objects.all('flight')) {
       const key = 'X' + r.id; seen.add(key);
@@ -308,7 +308,7 @@ export class GardenView {
     if (!P) return;
     P.anchors.forEach((o, i) => { o.visible = !a || i < (a.anchors ?? 4); });
     for (const o of P.brackets) { o.visible = !a || (a.brackets ?? 1) > 0.01; o.scale.setScalar(a ? Math.max(0.01, a.brackets ?? 1) : 1); }
-    P.glass.visible = !a || (a.glass ?? 1) > 0.01; P.glass.position.y = MM(39) + (a ? MM(400) * (1 - (a.glass ?? 1)) : 0);
+    P.glass.visible = !a || (a.glass ?? 1) > 0.01; P.glass.position.y = (P.glass.userData.y0 || 0) + (a ? MM(400) * (1 - (a.glass ?? 1)) : 0);
   }
   // a plant going in: each one dropping into its hole in turn (a: { n (how many in), drop (mm, the
   // one going in), ball, mulch (0…1) }); once planted, all of them in place

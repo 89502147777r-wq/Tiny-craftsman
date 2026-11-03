@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { MODEL_SCALE, M_G20 } from '../config.js';
 import { FitJob, drill } from './fitJob.js';
 import { isDoor, DOORS } from '../world/doors.js';
-import { PORCH, PORCH_LAYERS, PORCH_TILES, porchFor, blocksOf, footprint, inPorch, PW, canopyFor } from '../world/porch.js';
+import { PORCH, PORCH_LAYERS, PORCH_TILES, porchFor, blocksOf, footprint, inPorch, PW, canopyFor, canopyMesh, CANOPIES } from '../world/porch.js';
+import { houseOutside } from './pitchedTool.js';
 import { FLIGHTS, FLIGHT_TEMPS } from '../world/facadeLights.js';
 const _ray = new THREE.Raycaster();
 
@@ -214,20 +215,22 @@ export class ExtWork {
     const app = this.app, door = this._door(p);
     if (!door) { this.toast('Коснитесь у входной двери — козырёк вешают над ней'); return; }
     if (app.objects.all('canopy').some((q) => q.door === door.id)) { this.toast('Над этой дверью козырёк уже есть'); return; }
-    const rec = { type: 'canopy', door: door.id, ...canopyFor(door) };
+    const style = CANOPIES[app.settings.canopyStyle] ? app.settings.canopyStyle : 'glass', rec = { type: 'canopy', door: door.id, ...canopyFor(door, style) };
+    // (its out side: away from the house — a door's turn may look in)
+    const out = houseOutside(app), tx = rec.o[0] + rec.nrm[0] * MM(800), tz = rec.o[1] + rec.nrm[1] * MM(800);
+    if (out && out(tx, tz) !== true && out(rec.o[0] - rec.nrm[0] * MM(1100), rec.o[1] - rec.nrm[1] * MM(1100)) === true) { const th = MM(door.t || 300); rec.nrm = rec.nrm.map((v) => -v); rec.u = rec.u.map((v) => -v); rec.o = [+(rec.o[0] + rec.nrm[0] * th).toFixed(6), +(rec.o[1] + rec.nrm[1] * th).toFixed(6)]; }
     app.journal.begin('canopy', {}, app.clock);
     const r = app.objects.add(rec), key = 'C' + r.id, n = new THREE.Vector3(rec.nrm[0], 0, rec.nrm[1]), steps = [];
     this.view.setAnim(key, { anchors: 0, brackets: 0, glass: 0 });
-    let k = 0;
-    for (const s of [-1, 1]) for (const yy of [120, 380]) {
-      const a = s * (rec.W / 2 - 250), p0 = new THREE.Vector3(rec.o[0] + rec.u[0] * MM(a), rec.y + MM(yy), rec.o[1] + rec.u[1] * MM(a)), kk = ++k;
-      steps.push(drill(app, p0, n, 0.4, 90), [0, () => this.view.setAnim(key, { anchors: kk })]);
-    }
-    steps.push([1, (u) => this.view.setAnim(key, { anchors: 4, brackets: u })]);
-    steps.push([1.2, (u) => this.view.setAnim(key, { anchors: 4, brackets: 1, glass: u })]);
+    // (the holes where its anchors go: drilled one by one)
+    const tmp = canopyMesh(rec); tmp.updateMatrixWorld(true);
+    tmp.userData.parts.anchors.forEach((o, i) => { const p0 = o.getWorldPosition(new THREE.Vector3()); steps.push(drill(app, p0, n, 0.4, 90), [0, () => this.view.setAnim(key, { anchors: i + 1 })]); });
+    const nA = tmp.userData.parts.anchors.length;
+    steps.push([1, (u) => this.view.setAnim(key, { anchors: nA, brackets: u })]);
+    steps.push([1.2, (u) => this.view.setAnim(key, { anchors: nA, brackets: 1, glass: u })]);
     new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); this.view.setAnim(key, null); }, commit: () => {
       app.journal.commit(app.clock); this.view.setAnim(key, null);
-      this.toast(`Козырёк ${(rec.W / 1000).toFixed(1)} × ${(rec.P / 1000).toFixed(1)} м: 4 химических анкера М12, кронштейны из нержавейки с тягами, триплекс 8+8 мм`.replace(/(\d)\.(\d)/g, '$1,$2'));
+      this.toast(`${CANOPIES[style].name} ${(rec.W / 1000).toFixed(1)} × ${(rec.P / 1000).toFixed(1)} м: ${({ glass: 'кронштейны из нержавейки с тягами, триплекс 8+8 мм', arch: 'стальные арки, поликарбонат 8 мм', metal: 'каркас из трубы 40 × 40, металлочерепица', gable: 'брус, подкосы, гибкая черепица', slab: 'скрытый стальной каркас, композитные панели, подсветка' })[style]}; химические анкеры М12`.replace(/(\d)\.(\d)/g, '$1,$2'));
     } });
   }
   next(r = this.app.objects.all('porch').at(-1)) {
@@ -239,8 +242,8 @@ export class ExtWork {
     return [null, 'Крыльцо готово'];
   }
   status() {
-    if (this.what === 'canopy') return 'Коснитесь у входной двери — над ней повесят стеклянный козырёк';
-    if (this.what === 'light') return { sconce: 'Коснитесь стены — бра светит вверх и вниз', cube: 'Коснитесь стены — настенный куб светит вниз', downlight: 'Коснитесь низа свеса или плиты — врежут точечный светильник', uplight: 'Коснитесь стены у земли — прожектор в землю подсветит фасад снизу', led: 'Ведите пальцем по фасаду, под свесом или по краю плиты — ляжет светодиодная лента', steps: 'Коснитесь крыльца — свет в каждый подступенок' }[this.lightKind];
+    if (this.what === 'canopy') return `Коснитесь у входной двери — над ней повесят козырёк: ${(CANOPIES[this.app.settings.canopyStyle] || CANOPIES.glass).name.toLowerCase()}`;
+    if (this.what === 'light') return { sconce: 'Коснитесь стены — бра светит вверх и вниз', cube: 'Коснитесь стены — настенный куб светит вниз', downlight: 'Коснитесь низа свеса или плиты — врежут точечный светильник', uplight: 'Коснитесь стены у земли — прожектор в землю подсветит фасад снизу', led: 'Ведите пальцем по фасаду, под свесом или по краю плиты — ляжет светодиодная лента', steps: 'Коснитесь крыльца — свет в каждый подступенок' }[this.lightKind] || 'Коснитесь стены дома — туда повесят светильник (дрель, анкеры, провод в стене)';
     return {
       dig: 'Коснитесь у входной двери — крыльцо по её порогу: площадка 1,2 м и ступени до земли; котлован 300 мм',
       grav: 'Коснитесь крыльца — щебень 150 мм с трамбовкой',

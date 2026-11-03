@@ -10,7 +10,7 @@ import { PATH_LAYERS, PATH_LAYERS2, PATH_WIDTHS, PAVERS, PAVE_COLS, filletLine }
 import { LAWN_LAYERS, LAWN_HOW } from '../world/lawn.js';
 import { FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES } from '../world/fence.js';
 import { PLANTS } from '../world/plants.js';
-import { PORCH_LAYERS, PORCH_TILES } from '../world/porch.js';
+import { PORCH_LAYERS, PORCH_TILES, CANOPIES } from '../world/porch.js';
 import { FLIGHTS, FLIGHT_TEMPS } from '../world/facadeLights.js';
 import { COURSES, COL_TYPES, courseH } from '../world/columns.js';
 import { COL_TABS, DIRS, TYPE_NAMES } from '../tools/columnTool.js';
@@ -484,11 +484,7 @@ export class UI {
         C('＋ Котлован', m.mode === 'rect', () => m.setMode('rect')),
         C('＋ Траншея', m.mode === 'trench', () => m.setMode('trench')),
       ];
-      const pj = app.settings.project || 'off', setP = (v) => { app.settings.project = v; app.applySettings(); app.ui.refresh(); };
-      out.push(G('proj', '📐 Проект', [
-        ...[['off', 'Скрыть'], ['site', 'Участок'], ['f1', '1 этаж'], ['f2', '2 этаж'], ['all', 'Весь дом']].map(([k, l]) => C(l, pj === k, () => setP(k))),
-        C('Вынести котлованы', false, () => m.setOut()),
-      ], 'Проект', { on: pj !== 'off' }));
+      // («Проект»: its sub-tabs off the menu for now)
       if (m.trench) out.push(C('✓ Готово', true, () => m.finishTrench()));
       if (m.selected && !m.trench) out.push(C('Удалить контур', false, () => m.deleteSelected(), 'warn'));
       return out;
@@ -518,7 +514,7 @@ export class UI {
       const has = (...ks) => L && ks.includes(wk);
       // the masonry
       const masonry = [K('block', 'Газоблок'), K('brick', 'Кирпич'), K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];
-      if (has('block', 'brick', 'ublock', 'cinder')) masonry.push(C('↻ Повернуть', !!s.wallTurn, () => set({ wallTurn: !s.wallTurn })));
+      // («↻ Повернуть»: a button on the right, over «Ряд»)
       if (has('block', 'brick', 'cinder')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
       // the budget: pallets bought onto the plot (the units laid come off them)
       if (app.budget?.on) masonry.push(G('shop', '🛒 Купить поддон', Object.entries(PALLETS).map(([k, P]) => C(`${P.short} · ${P.n} шт · $${P.usd} (на участке ${app.budget.stockOf(k)})`, false, () => { app.budget.buy(k); this.refresh(); })), 'Купить'));
@@ -653,8 +649,8 @@ export class UI {
           del(),
         ], null, C('', has('proof', 'roof', 'rwin')))),
         hid(G('blind', 'Отмостка', [...blind, del()], null, C('', has('blind'), () => lay({ wallKind: 'blind' })))),
-        hid(G('pool', 'Бассейн', [(() => { const [nk, nw] = wt.pool.next(); return C(`➜ ${nw}`, false, () => { if (nk === 'concrete') { app.setTool?.('hose'); app.ui.toast(nw); } else if (nk) plset({ poolLayer: nk }); else app.ui.toast(nw); }, 'next'); })(), ...pool, del()], null, C('', has('pool'), () => lay({ wallKind: 'pool' })))),
-        hid(G('ext', 'Экстерьер', [G('flights', 'Освещение фасада', [...Object.entries(FLIGHTS).map(([q, F]) => C(F.name, has('ext') && ew.what === 'light' && ew.lightKind === q, () => eset({ extWhat: 'light', flKind: q }))), ...Object.entries(FLIGHT_TEMPS).map(([q, [n]]) => C('◐ ' + n, ew.lightTemp === q, () => eset({ extWhat: 'light', flTemp: q })))], null, C('', has('ext') && ew.what === 'light', () => eset({ extWhat: 'light' }))), G('canopies', 'Козырьки', [C('Стеклянный над входом', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' }))], null, C('', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' }))), del()], null, C('', has('ext'), () => lay({ wallKind: 'ext' })))),
+        hid(G('pool', 'Бассейн', [...pool, del()], null, C('', has('pool'), () => lay({ wallKind: 'pool' })))),
+        hid(G('ext', 'Экстерьер', [G('flights', 'Освещение фасада', [...Object.entries(FLIGHTS).map(([q, F]) => C(F.name, has('ext') && ew.what === 'light' && ew.lightKind === q, () => eset({ extWhat: 'light', flKind: q }))), ...Object.entries(FLIGHT_TEMPS).map(([q, [n]]) => C('◐ ' + n, ew.lightTemp === q, () => eset({ extWhat: 'light', flTemp: q })))], null, C('', has('ext') && ew.what === 'light', () => eset({ extWhat: 'light' }))), G('canopies', 'Козырьки', Object.entries(CANOPIES).map(([q, K]) => C(K.name, has('ext') && ew.what === 'canopy' && (app.settings.canopyStyle || 'glass') === q, () => eset({ extWhat: 'canopy', canopyStyle: q }))), null, C('', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' }))), del()], null, C('', has('ext'), () => lay({ wallKind: 'ext' })))),
         hid(G('fence', 'Забор', (() => {
           const fw = wt.fence, FL = fw.L, fz = (o) => lay({ wallKind: 'fence', ...o }), tab = (k, i) => C(`${i + 1} · ${F2_TABS[i][1]}`, has('fence') && FL === k, () => fz({ f2Layer: k }));
           return [
@@ -680,7 +676,7 @@ export class UI {
       const b = t === 'form' ? app.formTool : app.rebarTool;
       const modes = t === 'form'
         ? [['outline', 'По контуру'], ['board', 'Доска'], ['strip', 'Распалубить'], ['delete', 'Удалить']]
-        : [['cage', 'Каркас'], ['bar', 'Пруток'], ['mesh', 'Сетка'], ['tie', 'Вязать'], ['delete', 'Удалить']];
+        : [['cage', 'Каркас'], ['bar', 'Пруток'], ['mesh', 'Сетка'], ['delete', 'Удалить']];
       return modes.map(([k, l]) => C(l, b.mode === k, () => b.setMode(k), k === 'delete' ? 'warn' : ''));
     }
     if (t === 'machine') {
@@ -700,15 +696,14 @@ export class UI {
     const { list, crumbs } = show ? this.navNodes() : { list: [], crumbs: [] };
     const key = JSON.stringify([show, crumbs, list.map((c) => [c.label, c.on, c.cls, !!c.kids])]);
     if (key === this._chipKey) return;
+    const keepScroll = $('subbar').scrollLeft;
     this._chipKey = key;
     const bar = $('subbar');
-    bar.innerHTML = '';
+    bar.innerHTML = ''; this._rowScroll = keepScroll;
     if (!show) return;
     const add = (label, cls, fn) => { const b = document.createElement('button'); b.className = `chip-btn ${cls}`; b.textContent = label; if (fn) b.addEventListener('click', fn); bar.appendChild(b); return b; };
     add('‹', 'back', () => this.navBack());
-    const tool = this.virt ? '' : document.querySelector(`#toolrow [data-tool="${this.app.tool}"] span`)?.textContent || '';
-    // (only the name of what is open: the tabs before it are not shown)
-    add(crumbs.length ? crumbs[crumbs.length - 1] : tool, 'crumb');
+    // (only what is in the tab: no names of the tabs before it)
     for (const c of list) {
       if (c.hidden) continue;
       add(c.label + (c.kids ? ' ›' : ''), `${c.on ? 'on' : ''} ${c.cls || ''} ${c.kids ? 'group' : ''}`, () => {
@@ -718,7 +713,12 @@ export class UI {
         this.refresh();
       });
     }
-    bar.scrollLeft = 0;
+    // (the same row again — a chip in it touched: it stays scrolled where it was; another row: from its start)
+    const rowKey = JSON.stringify([this.app.tool, this.virt?.id, this.navPath]);
+    if (rowKey === this._rowKey) bar.scrollLeft = this._rowScroll || 0; else bar.scrollLeft = 0;
+    this._rowKey = rowKey;
+    if (!bar._kept) { bar._kept = true; bar.addEventListener('scroll', () => { this._rowScroll = bar.scrollLeft; }, { passive: true }); }
+    this._rowScroll = bar.scrollLeft;
   }
 
   // sliders for the selected outline (depth, trench width)

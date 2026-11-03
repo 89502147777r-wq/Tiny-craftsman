@@ -268,7 +268,7 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 
 /* walls: the tray of blocks — drag one out onto the wall (always on screen) */
 .wall-tray {
-  position: absolute; right: 10px; bottom: calc(var(--safe-b) + 190px); width: 64px; height: 64px; border-radius: 14px;
+  position: absolute; right: 10px; bottom: calc(var(--safe-b) + 209px); width: 48px; height: 48px; border-radius: 11px;
   border: 1px solid var(--line); background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--ink);
   touch-action: none; user-select: none; -webkit-user-select: none; z-index: 22;
@@ -276,21 +276,23 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .wall-tray[hidden] { display: none; }
 /* under the tray: a course along a line drawn by the finger */
 .wall-row {
-  position: absolute; right: 10px; bottom: calc(var(--safe-b) + 138px); width: 64px; height: 46px; border-radius: 13px;
+  position: absolute; right: 10px; bottom: calc(var(--safe-b) + 127px); width: 48px; height: 35px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: var(--ink);
   touch-action: none; user-select: none; -webkit-user-select: none; z-index: 22;
 }
 .wall-row[hidden] { display: none; }
-.wall-row b { font-size: 10px; font-weight: 600; } .wall-row small { display: none; }
+.wall-row b { font-size: 8px; font-weight: 600; } .wall-row svg { transform: scale(.75); margin: -2px 0; }
+.wall-turn { bottom: calc(var(--safe-b) + 168px); } .wall-turn svg path { stroke: currentColor; }
+.wall-turn.active { outline: 2px solid var(--accent, #f0a53a); background: rgba(240,165,58,.28); } .wall-row small { display: none; }
 .wall-row svg rect { fill: #a9533d; } .wall-row svg path { stroke: currentColor; }
 .wall-row.active { outline: 2px solid var(--accent, #f0a53a); background: rgba(240,165,58,.28); }
 .fence-cord svg path:first-child { stroke: #c49a62; } .fence-cord svg path:last-child { stroke: #fff3c4; }
 /* the fence's tray: a profile pipe */
 .wall-tray.fence-rail .tray-stack i { height: 7px; background: #4a4f55; box-shadow: inset 0 -2px 0 rgba(0,0,0,.35), inset 0 2px 0 rgba(255,255,255,.18); left: 0; width: 52px; }
-.wall-tray b { font-size: 10px; font-weight: 600; line-height: 1.1; text-align: center; }
+.wall-tray b { font-size: 8px; font-weight: 600; line-height: 1.1; text-align: center; }
 .wall-tray small { display: none; }
-.wall-tray .tray-stack { position: relative; width: 52px; height: 34px; transform: scale(.62); margin: -7px 0 -9px; }
+.wall-tray .tray-stack { position: relative; width: 52px; height: 34px; transform: scale(.47); margin: -10px 0 -12px; }
 .wall-tray .tray-stack i { position: absolute; left: 0; width: 52px; height: 10px; border-radius: 2px; background: #e9e6df; box-shadow: inset 0 -2px 0 rgba(0,0,0,.12); }
 .wall-tray .tray-stack i:nth-child(1) { top: 22px; } .wall-tray .tray-stack i:nth-child(2) { top: 11px; } .wall-tray .tray-stack i:nth-child(3) { top: 0; left: 8px; width: 40px; }
 .wall-tray.brick .tray-stack i { background: #a9533d; }
@@ -326,11 +328,11 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 @keyframes touch-ring { from { transform: scale(.5); opacity: .9; } to { transform: scale(1.9); opacity: 0; } }
 
 /* the delete under them: one tap — taking off, again — laying */
-.wall-del { position: absolute; right: 10px; bottom: calc(var(--safe-b) + 86px); width: 64px; height: 46px; border-radius: 13px;
+.wall-del { position: absolute; right: 10px; bottom: calc(var(--safe-b) + 86px); width: 48px; height: 35px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #ff9b86; touch-action: none; z-index: 22; }
 .wall-del[hidden] { display: none; }
-.wall-del svg { width: 18px; height: 18px; } .wall-del b { font-size: 10px; font-weight: 600; }
+.wall-del svg { width: 14px; height: 14px; } .wall-del b { font-size: 8px; font-weight: 600; }
 .wall-del.active { outline: 2px solid #ff9b86; background: rgba(255, 120, 100, .25); }
 
 /* ---- the budget: the money in the top bar, the «−$…» popups ------------------------------------ */

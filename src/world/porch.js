@@ -135,26 +135,122 @@ export function porchTiles(r, U) {
 export const porchUniforms = () => ({ fill: { value: -1e9 }, tile: { value: -1 } });
 
 // the canopy: two stainless brackets (a plate on the wall, a rod to the glass's front edge) and the glass
-export function canopyFor(door) {
-  const out = [Math.sin(door.yaw), Math.cos(door.yaw)], along = [out[1], -out[0]], half = (door.t || 300) / 2;
-  return { o: [+(door.x + out[0] * MM(half)).toFixed(6), +(door.z + out[1] * MM(half)).toFixed(6)], u: along, nrm: out, y: +(door.y + MM(door.h + PORCH.canopyAbove)).toFixed(6), W: Math.max(1400, door.w + 600), P: PORCH.canopyP };
+// the canopies over a door (all hung on 4 chemical anchors M12 in the wall): style — how it is made
+export const CANOPIES = {
+  glass: { name: 'Стеклянный на тягах', usd: 320, P: 1200 },
+  arch: { name: 'Арочный, поликарбонат', usd: 190, P: 1000 },
+  metal: { name: 'Односкатный, металлочерепица', usd: 240, P: 1100 },
+  gable: { name: 'Двускатный деревянный', usd: 380, P: 1200 },
+  slab: { name: 'Плоский модерн с подсветкой', usd: 450, P: 1300 },
+};
+export function canopyFor(door, style = 'glass') {
+  const out = [Math.sin(door.yaw), Math.cos(door.yaw)], along = [out[1], -out[0]], half = (door.t || 300) / 2, C = CANOPIES[style] || CANOPIES.glass;
+  return { style: CANOPIES[style] ? style : 'glass', o: [+(door.x + out[0] * MM(half)).toFixed(6), +(door.z + out[1] * MM(half)).toFixed(6)], u: along, nrm: out, y: +(door.y + MM(door.h + PORCH.canopyAbove)).toFixed(6), W: Math.max(1400, door.w + 600), P: C.P };
 }
+// a straight bar from a to b (mm, the canopy's frame), w × h across
+function bar(a, b, w, h, m) {
+  const A = new THREE.Vector3(...a.map(MM)), B = new THREE.Vector3(...b.map(MM)), L = A.distanceTo(B);
+  const o = new THREE.Mesh(new THREE.BoxGeometry(MM(w), MM(h), L), m); o.position.copy(A).add(B).multiplyScalar(0.5); o.lookAt(o.position.clone().add(B.clone().sub(A))); return o;
+}
+function rod(a, b, r, m) {
+  const A = new THREE.Vector3(...a.map(MM)), B = new THREE.Vector3(...b.map(MM)), o = new THREE.Mesh(new THREE.CylinderGeometry(MM(r), MM(r), A.distanceTo(B), 12), m);
+  o.position.copy(A).add(B).multiplyScalar(0.5); o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize()); return o;
+}
+// a corrugated / tiled sheet: a strip of quads along x (W) and down the slope (L), its profile wave(x)
+function sheet(W, L, wave, m, nx = 80, nz = 24, stepWave = null) {
+  const g = new THREE.PlaneGeometry(MM(W), MM(L), nx, nz); g.rotateX(-Math.PI / 2);
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) { const x = pos.getX(i) / MM(1), z = pos.getZ(i) / MM(1); pos.setY(i, MM(wave(x) + (stepWave ? stepWave(z) : 0))); }
+  g.computeVertexNormals(); const o = new THREE.Mesh(g, m); return o;
+}
+let _shingle = null;
+function shingleTex() {
+  if (_shingle) return _shingle;
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256; const g = c.getContext('2d');
+  g.fillStyle = '#3c2f2a'; g.fillRect(0, 0, 256, 256);
+  for (let row = 0; row < 8; row++) for (let k = -1; k < 5; k++) {
+    const x = k * 64 + (row % 2) * 32, y = row * 32, sh = 0.75 + Math.random() * 0.35;
+    g.fillStyle = `rgb(${92 * sh | 0},${52 * sh | 0},${40 * sh | 0})`; g.beginPath(); g.moveTo(x + 2, y); g.lineTo(x + 62, y); g.lineTo(x + 62, y + 22); g.lineTo(x + 32, y + 31); g.lineTo(x + 2, y + 22); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x + 2, y + 26, 60, 3);
+  }
+  _shingle = new THREE.CanvasTexture(c); _shingle.colorSpace = THREE.SRGBColorSpace; _shingle.wrapS = _shingle.wrapT = THREE.RepeatWrapping; _shingle.anisotropy = 4;
+  return _shingle;
+}
+// the canopy: in its frame — x along the wall, z out of it, y up, (0, 0, 0) at the wall under its middle;
+// parts: anchors (4), brackets (what holds it), glass (the cover: laid on last)
 export function canopyMesh(r, U) {
   const G = new THREE.Group(); G.position.set(r.o[0], r.y, r.o[1]); G.rotation.y = Math.atan2(r.nrm[0], r.nrm[1]);
-  const st = new THREE.MeshStandardMaterial({ color: 0xc8ccd0, roughness: 0.25, metalness: 0.9 });
-  const glass = new THREE.MeshPhysicalMaterial({ color: 0xdfeee9, roughness: 0.05, metalness: 0, transmission: 0.6, transparent: true, opacity: 0.45, thickness: MM(17) });
-  const parts = { anchors: [], brackets: [], glass: null };
-  for (const s of [-1, 1]) {
-    const a = s * (r.W / 2 - 250);
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(MM(80), MM(250), MM(10)), st); plate.position.set(MM(a), MM(250), MM(5)); G.add(plate);
-    const p0 = new THREE.Vector3(MM(a), MM(475), MM(10)), p1 = new THREE.Vector3(MM(a), MM(30), MM(r.P - 100));
-    const rod = new THREE.Mesh(new THREE.CylinderGeometry(MM(12), MM(12), p0.distanceTo(p1), 10), st);
-    rod.position.copy(p0).add(p1).multiplyScalar(0.5); rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p1.clone().sub(p0).normalize()); G.add(rod);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(MM(40), MM(30), MM(r.P - 60)), st); arm.position.set(MM(a), MM(15), MM((r.P - 60) / 2)); G.add(arm);
-    parts.brackets.push(plate, rod, arm);
-    for (const y of [120, 380]) { const b = new THREE.Mesh(new THREE.CylinderGeometry(MM(9), MM(9), MM(16), 8), st); b.rotation.x = Math.PI / 2; b.position.set(MM(a), MM(y), MM(14)); G.add(b); parts.anchors.push(b); }
+  const W = r.W, P = r.P, style = r.style || 'glass';
+  const st = new THREE.MeshStandardMaterial({ color: 0xc8ccd0, roughness: 0.22, metalness: 0.95 });
+  const blk = new THREE.MeshStandardMaterial({ color: 0x2c2f33, roughness: 0.45, metalness: 0.6 });
+  const parts = { anchors: [], brackets: [], glass: new THREE.Group() };
+  const B = (o) => { G.add(o); parts.brackets.push(o); return o; };
+  const xs = [-(W / 2 - 200), W / 2 - 200];
+  // (the anchors: two per bracket, their nuts on the wall plate)
+  const anchor = (x, y, m = st) => { const b = new THREE.Mesh(new THREE.CylinderGeometry(MM(11), MM(11), MM(14), 6), m); b.rotation.x = Math.PI / 2; b.position.set(MM(x), MM(y), MM(14)); G.add(b); parts.anchors.push(b); };
+  if (style === 'glass') {
+    // triplex 8+8 on stainless arms, each held by a tie rod to a plate above, the glass on point fixings
+    const glass = new THREE.MeshPhysicalMaterial({ color: 0xd8ece8, roughness: 0.04, metalness: 0, transmission: 0.7, transparent: true, opacity: 0.38, thickness: MM(17) });
+    for (const x of xs) {
+      B(bar([x, 0, 0], [x, 0, P - 80], 40, 40, st));
+      B(new THREE.Mesh(new THREE.BoxGeometry(MM(100), MM(160), MM(12)), st)).position.set(MM(x), MM(0), MM(6));
+      B(new THREE.Mesh(new THREE.BoxGeometry(MM(90), MM(140), MM(12)), st)).position.set(MM(x), MM(560), MM(6));
+      B(rod([x, 560, 20], [x, 20, P - 120], 9, st));
+      for (const z of [150, P - 200]) { const f = new THREE.Mesh(new THREE.CylinderGeometry(MM(22), MM(22), MM(30), 14), st); f.position.set(MM(x), MM(35), MM(z)); B(f); }
+      anchor(x, -40); anchor(x, 600);
+    }
+    const gl = new THREE.Mesh(new THREE.BoxGeometry(MM(W), MM(17), MM(P)), glass); gl.position.set(0, MM(58), MM(P / 2)); parts.glass.add(gl);
+  } else if (style === 'arch') {
+    // bronze polycarbonate 8 mm bent over three arched steel ribs, an aluminium edge
+    const poly = new THREE.MeshPhysicalMaterial({ color: 0xb88a4e, roughness: 0.25, transmission: 0.35, transparent: true, opacity: 0.72, side: THREE.DoubleSide });
+    const H = 420, arc = (t) => [P * Math.sin(t * Math.PI / 2), H * Math.cos(t * Math.PI / 2) - H * 0.15];   // (z, y) along the arch
+    for (const x of [...xs, 0]) {
+      for (let k = 0; k < 12; k++) { const [z0, y0] = arc(k / 12), [z1, y1] = arc((k + 1) / 12); B(bar([x, y0, Math.max(10, z0)], [x, y1, z1], 30, 30, blk)); }
+      B(bar([x, -H * 0.15, 10], [x, -H * 0.15 - 260, 10], 60, 30, blk)); B(rod([x, -H * 0.15 - 240, 20], [x, arc(0.62)[1], arc(0.62)[0]], 10, blk));
+      anchor(x, H * 0.7); anchor(x, -H * 0.15 - 200, blk);
+    }
+    const g = new THREE.PlaneGeometry(MM(W), 1, 1, 24), pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) { const t = 1 - (pos.getY(i) + 0.5), [z, y] = arc(t); pos.setXYZ(i, pos.getX(i), MM(y + 18), MM(z)); }
+    g.computeVertexNormals(); parts.glass.add(new THREE.Mesh(g, poly));
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(MM(W + 20), MM(30), MM(20)), st); edge.position.set(0, MM(arc(1)[1] + 15), MM(P + 5)); parts.glass.add(edge);
+  } else if (style === 'metal') {
+    // a single slope of metal tiles (wine red) on a frame of 40 × 40 tubes, two triangle brackets under it
+    const red = new THREE.MeshStandardMaterial({ color: 0x6d1f24, roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide });
+    const drop = 300, slope = Math.atan2(drop, P);
+    for (const x of xs) {
+      B(bar([x, 0, 0], [x, -drop, P], 40, 40, blk));
+      B(bar([x, -drop - 0, 10], [x, -620, 10], 40, 40, blk)); B(bar([x, -600, 15], [x, -drop * 0.6, P * 0.6], 30, 30, blk));
+      for (let k = 0; k < 3; k++) { const c = new THREE.Mesh(new THREE.TorusGeometry(MM(60), MM(8), 6, 16, Math.PI * 1.5), blk); c.rotation.y = Math.PI / 2; c.position.set(MM(x), MM(-420 + k * 60), MM(150 + k * 90)); B(c); }
+      anchor(x, -50, blk); anchor(x, -560, blk);
+    }
+    B(bar([-W / 2, -drop, P], [W / 2, -drop, P], 40, 40, blk)); B(bar([-W / 2, 0, 20], [W / 2, 0, 20], 40, 40, blk));
+    const tiles = sheet(W + 100, P / Math.cos(slope) + 100, (x) => 14 * Math.abs(Math.sin(x / 350 * Math.PI)), red, 120, 30, (z) => ((z % 350) + 350) % 350 < 40 ? -18 : 0);
+    tiles.rotation.x = slope; tiles.position.set(0, MM(25 - drop / 2), MM(P / 2)); parts.glass.add(tiles);
+  } else if (style === 'gable') {
+    // two slopes of bitumen shingles on timber rafters, a ridge out from the wall, knee braces under it
+    const wood = new THREE.MeshStandardMaterial({ color: 0x9a6a3e, roughness: 0.75 });
+    const sh = new THREE.MeshStandardMaterial({ map: shingleTex(), roughness: 0.9, side: THREE.DoubleSide });
+    const rise = 450, half = W / 2 + 80, pitch = Math.atan2(rise, half), L = Math.hypot(rise, half);
+    for (const x of xs) { B(bar([x, 0, 30], [x, 0, P], 90, 90, wood)); B(bar([x, -650, 40], [x, -650, 100], 90, 140, wood)); B(bar([x, -620, 60], [x, -30, P * 0.62], 70, 70, wood)); anchor(x, -60); anchor(x, -620); }
+    B(bar([-half, 0, P], [half, 0, P], 90, 90, wood));
+    for (const s of [-1, 1]) {
+      B(bar([0, rise, P + 60], [s * half, 0, P + 60], 60, 120, wood)); B(bar([0, rise, 40], [s * half, 0, 40], 60, 120, wood));
+      const roof = new THREE.Mesh(new THREE.PlaneGeometry(MM(L + 60), MM(P + 160)), sh); roof.geometry.rotateX(-Math.PI / 2);
+      const uv = roof.geometry.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (L + 60) / 600, uv.getY(i) * (P + 160) / 600);
+      roof.rotation.z = s * -pitch; roof.position.set(MM(s * half / 2), MM(rise / 2 + 70), MM(P / 2 + 40)); parts.glass.add(roof);
+    }
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(MM(120), MM(40), MM(P + 170)), new THREE.MeshStandardMaterial({ color: 0x4a2c22, roughness: 0.8 })); ridge.position.set(0, MM(rise + 92), MM(P / 2 + 40)); parts.glass.add(ridge);
+    // (the gable boards, the front triangle)
+    const tri = new THREE.Shape(); tri.moveTo(MM(-half), 0); tri.lineTo(MM(half), 0); tri.lineTo(0, MM(rise)); tri.closePath();
+    const gab = new THREE.Mesh(new THREE.ShapeGeometry(tri), new THREE.MeshStandardMaterial({ color: 0xb98a56, roughness: 0.8, side: THREE.DoubleSide })); gab.position.set(0, MM(50), MM(P + 70)); parts.glass.add(gab);
+  } else {
+    // a flat box of composite panels 140 thick, cantilevered on a hidden steel frame; downlights under it
+    const pan = new THREE.MeshStandardMaterial({ color: 0x33363a, roughness: 0.35, metalness: 0.4 }), lit = new THREE.MeshStandardMaterial({ color: 0xfff4e0, emissive: 0xffd9a0, emissiveIntensity: 0.6 });
+    for (const x of xs) { B(bar([x, 40, 0], [x, 40, P - 60], 60, 100, blk)); B(new THREE.Mesh(new THREE.BoxGeometry(MM(140), MM(120), MM(12)), blk)).position.set(MM(x), MM(40), MM(6)); anchor(x, 0, blk); anchor(x, 80, blk); }
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(MM(W + 200), MM(140), MM(P)), pan); slab.position.set(0, MM(40), MM(P / 2)); parts.glass.add(slab);
+    for (const x of [-W / 4, W / 4]) { const d = new THREE.Mesh(new THREE.CircleGeometry(MM(40), 18), lit); d.rotation.x = Math.PI / 2; d.position.set(MM(x), MM(-31), MM(P * 0.55)); parts.glass.add(d); }
   }
-  const gl = new THREE.Mesh(new THREE.BoxGeometry(MM(r.W), MM(17.5), MM(r.P)), glass); gl.position.set(0, MM(30 + 9), MM(r.P / 2)); G.add(gl); parts.glass = gl;
+  G.add(parts.glass); parts.glass.userData.y0 = parts.glass.position.y;
   G.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   G.userData.parts = parts;
   void U;

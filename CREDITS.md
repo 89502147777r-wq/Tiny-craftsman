@@ -78,6 +78,10 @@
 | `assets/models/plants/pot2.glb` — фикус в кашпо (упрощено, текстуры 512) | Potted Plant 01 | Rico Cilliers | CC0 | https://polyhaven.com/a/potted_plant_01 |
 | `assets/models/plants/pot3.glb` — алоэ в горшке (упрощено, текстуры 512) | Potted Plant 04 | James Ray Cock | CC0 | https://polyhaven.com/a/potted_plant_04 |
 | `assets/models/lights/street1.glb` — фонарный столб (упрощено, текстуры 512) | Street Lamp 01 | Josh Dean | CC0 | https://polyhaven.com/a/street_lamp_01 |
+| `assets/models/lights/wall_lantern.glb` — фонарь на кронштейне (текстуры 512 webp, meshopt) | Street Lamp 02 | Josh Dean | CC0 | https://polyhaven.com/a/street_lamp_02 |
+| `assets/models/lights/bulkhead.glb` — светильник-бочонок (текстуры 512 webp, meshopt) | Industrial Wall Lamp | Kuutti Siitonen | CC0 | https://polyhaven.com/a/industrial_wall_lamp |
+| `assets/models/lights/wall_sconce.glb` — бра с открытой лампой (текстуры 512 webp, meshopt) | Industrial Wall Sconce | Ulan Cabanilla | CC0 | https://polyhaven.com/a/industrial_wall_sconce |
+| `assets/models/lights/flood.glb` — прожектор с датчиком (текстуры 512 webp, meshopt) | Security Light | Maximilian Schuster | CC0 | https://polyhaven.com/a/security_light |
 | `assets/models/lights/lantern.glb` — фонарь «летучая мышь» (упрощено, текстуры 512) | Lantern 01 | Rajil Jose Macatangay | CC0 | https://polyhaven.com/a/Lantern_01 |
 | `assets/models/lights/wlantern.glb` — фонарь деревянный (упрощено, текстуры 512) | Wooden Lantern 01 | James Ray Cock | CC0 | https://polyhaven.com/a/wooden_lantern_01 |
 
