@@ -14,6 +14,7 @@ import { PORCH_LAYERS, PORCH_TILES } from '../world/porch.js';
 import { FLIGHTS, FLIGHT_TEMPS } from '../world/facadeLights.js';
 import { COURSES, COL_TYPES, courseH } from '../world/columns.js';
 import { COL_TABS, DIRS, TYPE_NAMES } from '../tools/columnTool.js';
+import { LAWN_LAYERS2 } from '../tools/lawnTool.js';
 import { F2_TABS } from '../tools/fenceTool.js';
 import { RAIL_SECS } from '../world/fence2.js';
 import { PALLETS } from '../core/budget.js';
@@ -605,8 +606,8 @@ export class UI {
         if (k === 'pave') return G('lpave', c.label, Object.entries(PAVERS).map(([q, P]) => G('lp' + q, '▦ ' + P.name, Object.entries(PAVE_COLS).map(([cq, [n]]) => C('◼ ' + n, pw.paver === q && pw.col === cq, () => lset({ pathLayer: 'pave', pathPaver: q, pathCol: cq }))), null, C('', pw.paver === q, () => lset({ pathLayer: 'pave', pathPaver: q })))), null, c);
         return c;
       });
-      const lawn = LAWN_LAYERS.map(([k, l], i) => {
-        const c = C(`${i + 1} · ${l}`, has('land') && isLawn && lw.lawnLayer === k, () => gset({ lawnLayer: k }));
+      const lawn = LAWN_LAYERS2.map(([k, l], i) => {
+        const c = C(`${i + 1} · ${l}`, has('land') && isLawn && lw.lw.L === k, () => gset({ lawnLayer: k }));
         if (k === 'grass') return G('lgrass', c.label, Object.entries(LAWN_HOW).map(([q, n]) => C(n, lw.how === q, () => gset({ lawnLayer: 'grass', lawnHow: q }))), null, c);
         return c;
       });

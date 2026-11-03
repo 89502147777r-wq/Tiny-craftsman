@@ -56,7 +56,7 @@ export function bays2(r) {
   const P = (r.pegs || []), out = [];
   for (let i = 1; i < P.length; i++) {
     const a = P[i - 1], b = P[i], mid = (a.s + b.s) / 2, h = Math.min(a.post?.h || a.pillar?.h || r.H, b.post?.h || b.pillar?.h || r.H);
-    const railed = !!((a.post || a.pillar) && (b.post || b.pillar)) && railRows(h).every((y) => (r.rails || []).some((q) => Math.abs(q.y - y) < 5 && q.a <= a.s + 1 && q.b >= b.s - 1));
+    const railed = !!((a.post || a.pillar) && (b.post || b.pillar)) && new Set((r.rails || []).filter((q) => q.a <= a.s + 1 && q.b >= b.s - 1).map((q) => Math.round(q.y))).size >= railRows(h).length;   // (its rows: at their heights over what is under it)
     const gi = (r.gates || []).findIndex((q) => Math.abs(q.s - mid) < 2);
     out.push({ i, a, b, mid, L: b.s - a.s, railed, gate: gi, filled: (r.filled || []).some((m) => Math.abs(m - mid) < 2) });
   }

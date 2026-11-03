@@ -364,14 +364,12 @@ console.log('—', sec());
     tc.rig.setState({ target: [0, 0.1, 0], yaw: 0.5, pitch: 0.9, dist: 1.6 }); tc.simulate(0.05);
     // (the path by hand: its own section, 2f)
     tc.settings.wallKind = 'land';
-    // a lawn round it
-    Object.assign(tc.settings, { landWhat: 'lawn', lawnLayer: 'area', lawnHow: 'turf' });
-    const L = [], C = [[-0.55, 0.45], [0.15, 0.45], [0.15, -0.05], [-0.55, -0.05]];
-    for (let k = 0; k < 4; k++) for (let i = 0; i < 10; i++) L.push(new V(C[k][0] + (C[(k + 1) % 4][0] - C[k][0]) * i / 10, 0.1, C[k][1] + (C[(k + 1) % 4][1] - C[k][1]) * i / 10));
-    drag(L);
-    for (const k of ['soil', 'rake', 'roll', 'grass', 'water']) { tc.settings.lawnLayer = k; tap(new V(0.05, 0.1, 0.0)); }
+    // a lawn (by hand: the string, the black topsoil, the turf, the water)
+    Object.assign(tc.settings, { landWhat: 'lawn', lawnLayer: 'area', lawnHow: 'turf' }); tc.wallTool.land.lw.cord = true;
+    drag([new V(-0.55, 0.1, -0.05), new V(0.15, 0.1, 0.45)]); tc.wallTool.land.lw.cord = false;
+    for (const k of ['soil', 'grass', 'water']) { tc.settings.lawnLayer = k; tap(new V(0.05, 0.1, 0.0)); }
     const lawn = tc.objects.all('lawn')[0];
-    out.lawn = { done: Object.keys(lawn?.done || {}).join(), cells: tc.gardenView.parts.get('L' + lawn.id)?.sub.body?.children.length };
+    out.lawn = { done: Object.keys(lawn?.done || {}).join(), cells: tc.gardenView.parts.get('L' + lawn?.id)?.sub.body?.children.length };
     // a fence
     Object.assign(tc.settings, { landWhat: 'fence', fenceLayer: 'line', fenceKind: 'slat', fenceH: 1800 });
     const F = []; for (let i = 0; i <= 20; i++) F.push(new V(-0.6 + 0.8 * i / 20, 0.1, 0.55));
@@ -469,7 +467,7 @@ console.log('—', sec());
     return out;
   });
   check('«Готово»: rooms furnished behind the windows, another interior, off again, undo', land.interior.on && land.interior.rooms >= 1 && land.interior.rerolled && land.interior.off && land.interior.back, JSON.stringify(land.interior));
-  check('garden: a lawn round it (topsoil, rake, roller, turf, water), a fence (holes, posts, slats), plants and a light', land.lawn.done === 'soil,rake,roll,grass,water' && land.lawn.cells >= 2 && land.fence.done === 'holes,posts,fill' && land.fence.gate === 'wicket:hung:open' && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
+  check('garden: a lawn (topsoil, turf, water), a fence (holes, posts, slats), plants and a light', land.lawn.done === 'soil,grass,water' && land.lawn.cells >= 2 && land.fence.done === 'holes,posts,fill' && land.fence.gate === 'wicket:hung:open' && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
   check('exterior: a porch cast to a door (pit, stone, forms, concrete, stripped, tiled) and a canopy over it', land.porch.steps === 3 && land.porch.done === 'dig,grav,form,conc,strip,tile' && land.porch.canopy === 1 && land.porch.lights === 'steps', JSON.stringify(land.porch));
   check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
   check('ring beam over hollow piers: one beam as wide as the piers; cast, one building (one wall plate)', land.span?.spans === 1 && land.span.wide[0] >= 350 && land.span.tied,JSON.stringify(land.span));
@@ -767,6 +765,40 @@ console.log('—', sec());
   check('path: the trough, the kerbs one from the tray then in rows (all in), the geotextile rolled by the finger, the stone and the sand', o.dug && o.one === 1 && /^(\d+)\/\1:true$/.test(o.kerbs) && o.geo > 0.95 && o.grav && o.sand, JSON.stringify(o));
   check('path: the pavers laid by the finger (a three-size cobble in a three-colour blend), the area counted', /^\d+\/\d+:cobble:trio$/.test(o.laid) && +o.laid.split('/')[0] > 150 && o.toasts.some((t) => /Уложено \d+,\d из \d+,\d м²/.test(t)), JSON.stringify(o));
   check('path: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2g. The lawn by hand ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, lw = wt.land.lw, o = {};
+    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); tc.camera.updateProjectionMatrix(); wt._rc = null; const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
+    const run = () => { for (let i = 0; i < 8000 && tc.physJob; i++) tc.simulate(1 / 30); tc.simulate(0.05); };
+    const G = (x, z) => new V(x, tc.terrain.heightAt(x, z), z);
+    tc.rig.setState({ target: [0, 0.05, 0.1], yaw: 0.2, pitch: 0.9, dist: 1.6 }); for (let k = 0; k < 8; k++) tc.simulate(0.25);
+    tc.ui.openGroup('landG'); Object.assign(tc.settings, { wallKind: 'land', landWhat: 'lawn', lawnLayer: 'area', lawnHow: 'turf' }); tc.ui.refresh();
+    tc.ui.navPath = ['land', 'lawn']; o.chips = tc.ui.navNodes().list.map((c) => c.label).join('|');
+    o.cord = !document.getElementById('fence-cord').hidden;
+    // a pit dug in it and a heap left on it (the rake must make them good)
+    tc.terrain.scoop(-0.1, 0.05, 0.02, tc.terrain.heightAt(-0.1, 0.05) - 0.01, tc.terrain.heightAt(-0.1, 0.05), () => true, 1);
+    lw.cord = true; { const a = G(-0.25, -0.05), b = G(0.1, 0.2); wt.down(a, e(a)); wt.move(b, e(b)); wt.up(); } lw.cord = false;
+    const r = () => lw.rec; o.poly = r()?.poly.length;
+    // a corner peg dragged out, a touch on a string: a new peg, dragged
+    { const q = r().poly[2], p = new V(q[0], r().g, q[1]); wt.down(p, e(p)); const p2 = new V(q[0] + 0.03, r().g, q[1] + 0.02); wt.move(p2, e(p2)); wt.up(); }
+    { const [a, b] = [r().poly[0], r().poly[1]], m = G((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); wt.down(m, e(m)); const m2 = new V(m.x, m.y, m.z - 0.04); wt.move(m2, e(m2)); wt.up(); }
+    o.poly2 = r().poly.length;
+    const pitY = tc.terrain.heightAt(-0.1, 0.05);
+    tc.settings.lawnLayer = 'soil'; { const p = G(-0.05, 0.07); wt.down(p, e(p)); wt.up(); run(); }
+    o.soil = lw.soilOn(r()); o.pitFilled = tc.terrain.heightAt(-0.1, 0.05) > pitY + 0.005; o.top = tc.terrain.topMat(tc.terrain.index(-0.05, 0.07));
+    tc.settings.lawnLayer = 'grass'; { const p = G(-0.05, 0.07); wt.down(p, e(p)); wt.up(); run(); } o.grass = !!r().done.grass;
+    tc.settings.lawnLayer = 'water'; { const p = G(-0.05, 0.07); wt.down(p, e(p)); wt.up(); run(); } o.water = !!r().done.water;
+    tc.renderer.render(tc.scene, tc.camera);
+    return o;
+  });
+  check('lawn: 4 stages (no rake, no roller); a rectangle by the string, a corner peg dragged, a new peg put in a string', o.chips === '1 · Разметка|2 · Чернозём|3 · Газон|4 · Полив' && o.cord && o.poly === 4 && o.poly2 === 5, JSON.stringify(o));
+  check('lawn: the black topsoil tipped in heaps and raked level (a pit filled), the turf, the sprinkler', o.soil && o.pitFilled && o.top === 4 && o.grass && o.water, JSON.stringify(o));
+  check('lawn: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 

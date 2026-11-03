@@ -72,7 +72,7 @@ export class WallTool {
     this.fence = new FenceWork(app);
     // «Шнур» (the fence's setting-out): on — the finger pulls a new string; off — the pegs are moved
     this.cordBtn = typeof document !== 'undefined' ? document.getElementById('fence-cord') : null;
-    this.cordBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (this.kind === 'land') { const pw = this.land.pw; pw.cord = !pw.cord; app.ui.toast(pw.cord ? 'Шнур: тяните пальцем разметку дорожки' : 'Шнур убран: угловые колышки двигают пальцем'); app.ui.refresh(); return; } this.fence.cord = !this.fence.cord; app.ui.toast(this.fence.cord ? 'Шнур: тяните пальцем разметку забора' : 'Шнур убран: колышки двигают пальцем вдоль шнура'); app.ui.refresh(); });
+    this.cordBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (this.kind === 'land') { const lawn = this.land.what === 'lawn', pw = lawn ? this.land.lw : this.land.pw; pw.cord = !pw.cord; app.ui.toast(pw.cord ? (lawn ? 'Шнур: растяните пальцем место под газон' : 'Шнур: тяните пальцем разметку дорожки') : (lawn ? 'Шнур убран: колышки двигают пальцем, тап по шнуру — новый колышек' : 'Шнур убран: угловые колышки двигают пальцем')); app.ui.refresh(); return; } this.fence.cord = !this.fence.cord; app.ui.toast(this.fence.cord ? 'Шнур: тяните пальцем разметку забора' : 'Шнур убран: колышки двигают пальцем вдоль шнура'); app.ui.refresh(); });
     this.ext = new ExtWork(app);
     this.col = new ColumnWork(app);
     this.proof = new PitchedWork(app);
@@ -141,7 +141,7 @@ export class WallTool {
     }
   }
 
-  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || !!this.pool.drag || !!this.land.drag || !!this.land.pw.drag || !!this.ext.drag || !!this.col.drag || !!this.fence.drag; }
+  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || !!this.pool.drag || !!this.land.drag || !!this.land.pw.drag || !!this.land.lw.drag || !!this.ext.drag || !!this.col.drag || !!this.fence.drag; }
   // one finger works on the wall in every mode (the camera: two fingers)
   blocksOrbit() { return true; }
 
@@ -272,7 +272,7 @@ export class WallTool {
     if (this.blind.drag) { this.blind.move(p, e); return; }
     if (this.pool.drag) { this.pool.move(p, e); return; }
     if (this.ext.drag) { this.ext.move(p, e); return; }
-    if (this.land.drag || this.land.pw.drag) { this.land.move(p, e); return; }
+    if (this.land.drag || this.land.pw.drag || this.land.lw.drag) { this.land.move(p, e); return; }
     if (this.fence.drag) { this.fence.move(p, e); return; }
     if (this.col.drag) { this.col.move(p, e); return; }
     if (this.proof.drag) { this.proof.move(p, e); return; }
@@ -319,7 +319,7 @@ export class WallTool {
     if (this.blind.drag) { this.blind.up(); return; }
     if (this.pool.drag) { this.pool.up(); return; }
     if (this.ext.drag) { this.ext.up(); return; }
-    if (this.land.drag || this.land.pw.drag) { this.land.up(); return; }
+    if (this.land.drag || this.land.pw.drag || this.land.lw.drag) { this.land.up(); return; }
     if (this.fence.drag) { this.fence.up(); return; }
     if (this.col.drag) { this.col.up(); return; }
     if (this.proof.drag) { this.proof.up(); return; }
@@ -1128,7 +1128,8 @@ export class WallTool {
     }
     this.tray.classList.remove('col-form', 'col-cage', 'col-round', 'fence-rail');
     const pathOn = this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'land' && this.land.what === 'path', pw = this.land.pw;
-    if (this.cordBtn) { this.cordBtn.hidden = !((this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'fence' && this.fence.L === 'line') || (pathOn && pw.L === 'set')); this.cordBtn.classList.toggle('active', pathOn ? !!pw.cord : !!this.fence.cord); }
+    const lawnOn = this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'land' && this.land.what === 'lawn' && this.land.lw.L === 'area';
+    if (this.cordBtn) { this.cordBtn.hidden = !((this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'fence' && this.fence.L === 'line') || (pathOn && pw.L === 'set') || lawnOn); this.cordBtn.classList.toggle('active', lawnOn ? !!this.land.lw.cord : pathOn ? !!pw.cord : !!this.fence.cord); }
     // «Дорожка → Бордюр»: the tray holds a kerb, «Ряд» lays them along a side
     if (pathOn) {
       this.tray.hidden = pw.L !== 'kerb';
