@@ -410,7 +410,7 @@ export class WallView {
     // the formwork under a floor slab: deck, beams, props (slabForm.js)
     this.slabForm = new SlabFormView(this.group, tex);
     // the cast columns and the piles (columns.js)
-    this.columns = new ColumnView(this.group, this.slabForm.deckMat); this.columns.setConcreteUniforms(this.concU);
+    this.columns = new ColumnView(this.group, this.slabForm.deckMat, tex); this.columns.setConcreteUniforms(this.concU);
     // the bitumen mastic brushed on any of it (bitumen.js)
     for (const m of [block, brick, this.lintels.material, this.fill.material, this.columns.concMat]) withBitumen(m);
     // corner U-blocks: the side wall cut where the channel across comes in (one mesh each)

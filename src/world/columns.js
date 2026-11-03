@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
 import { makeCastConcreteMaterial } from './terrainMaterial.js';
+import { variant } from './assets.js';
 import { beltContains } from '../tools/belt.js';
 
 // Cast columns (монолитные колонны) and bored piles (буронабивные сваи), as on site («Фундамент →
@@ -179,68 +180,95 @@ function arcShell(r, y0, y1, rad, a0, a1, seg = 14) {
   return g;
 }
 
-// The formwork, as a set of pieces (each one brought in / taken off on its own):
-//   square – four boards of film-faced plywood 18 mm, each with two upright timbers 50 × 50 on its
-//            back; the steel clamps every 500 mm and two braces to the floor (one piece);
-//   round  – two half shells of steel 3 mm, split along the column, each with its flanges
-//            (40 mm) bolted to the other's every 300 mm; the clamp rings every 500 mm.
+// The formwork, as a set of pieces (each one brought in / taken off on its own), as a column is shuttered:
+//   square – four panels of film-faced plywood 18 mm, each on two upright timbers 50 × 100; steel column
+//            clamps (flat bars 60 × 10 crossing at the corners, a wedge driven in at each) every 500 mm,
+//            two at the least; two push-pull props (an outer tube Ø 60 painted, the inner Ø 48 galvanised,
+//            a spindle) from two thirds up to a base plate bolted to the floor;
+//   round  – two half shells of 3 mm steel split along the column, each with its flanges (40 mm) bolted to
+//            the other's every 300 mm, flat stiffening bands every 500 mm, a lifting lug at the top; the
+//            same two props.
 // piece: { dir: [dx, dz] (it comes in / goes off that way), drop (it comes down from above),
-//          ply / steel / wood / shell / bolt: [geometries] }
+//          ply / wood / steel / shell / bolt / prop / galv: [geometries] }
 export function formPieces(r) {
   const sec = secOf(r), a = MM(sec.a / 2), y0 = r.y0, y1 = colTop(r) + MM(sec.round ? 20 : 30), H = y1 - y0;
-  const pieces = [], piece = (o) => { const p = { ply: [], steel: [], wood: [], shell: [], bolt: [], dir: [0, 0], drop: false, ...o }; pieces.push(p); return p; };
+  const pieces = [], piece = (o) => { const p = { ply: [], steel: [], wood: [], shell: [], bolt: [], prop: [], galv: [], dir: [0, 0], drop: false, ...o }; pieces.push(p); return p; };
+  const at = (x, y, z, g) => { g.translate(x, y, z); return g; };
+  let reachOut;
   if (sec.round) {
     const t = MM(3), R = a + t, fl = MM(40), ft = MM(8);
     for (const sd of [1, -1]) {
       // (the half on the +z side: the arc 0…π; its flanges at ±x)
-      const P = piece({ dir: [0, sd] });
-      P.shell.push(arcShell(r, y0, y1, R, sd > 0 ? 0 : Math.PI, sd > 0 ? Math.PI : Math.PI * 2, 16));
+      const P = piece({ dir: [0, sd] }), a0 = sd > 0 ? 0 : Math.PI;
+      P.shell.push(arcShell(r, y0, y1, R, a0, a0 + Math.PI, 24));
       for (const sx of [1, -1]) {
         P.shell.push(prism(r, sx * (R + fl / 2), sd * ft / 2, fl / 2, ft / 2, y0, y1));
-        // the bolts through the two flanges, every 300 mm
+        // the bolts through the two flanges, every 300 mm: the head, the nut and the washer each side
         if (sd > 0) for (let y = y0 + MM(120); y < y1 - MM(60); y += MM(300)) {
-          const [cx, cz] = axisAt(r, y), b = new THREE.CylinderGeometry(MM(7), MM(7), ft * 2 + MM(24), 6); b.rotateX(Math.PI / 2); b.translate(cx + sx * (R + fl * 0.6), y, cz); P.bolt.push(b);
-          const n = new THREE.BoxGeometry(MM(20), MM(20), MM(10)); n.translate(cx + sx * (R + fl * 0.6), y, cz + ft + MM(5)); P.bolt.push(n);
+          const [cx, cz] = axisAt(r, y), bx = cx + sx * (R + fl * 0.6);
+          const b = new THREE.CylinderGeometry(MM(6), MM(6), ft * 2 + MM(30), 8); b.rotateX(Math.PI / 2); P.bolt.push(at(bx, y, cz, b));
+          for (const zz of [ft + MM(4), -ft - MM(4)]) { const n = new THREE.CylinderGeometry(MM(11), MM(11), MM(9), 6); n.rotateX(Math.PI / 2); P.bolt.push(at(bx, y, cz + zz, n)); }
         }
       }
-      // (stiffening ribs round the half, every 500 mm)
+      // the stiffening bands: flat bars 60 × 6 round the half, every 500 mm
       for (let y = y0 + MM(150); y < y1 - MM(60); y += MM(500)) {
-        const [cx, cz] = axisAt(r, y), ring = new THREE.TorusGeometry(R + MM(6), MM(7), 4, 16, Math.PI); ring.rotateX(sd > 0 ? Math.PI / 2 : -Math.PI / 2); ring.translate(cx, y, cz); ring.deleteAttribute('uv'); P.shell.push(ring);
+        const [cx, cz] = axisAt(r, y), band = new THREE.CylinderGeometry(R + MM(6), R + MM(6), MM(60), 24, 1, true, sd > 0 ? -Math.PI / 2 : Math.PI / 2, Math.PI);
+        P.shell.push(at(cx, y, cz, band));
+        const lip = new THREE.CylinderGeometry(R + MM(12), R + MM(12), MM(6), 24, 1, true, sd > 0 ? -Math.PI / 2 : Math.PI / 2, Math.PI); P.shell.push(at(cx, y + MM(30), cz, lip));
+      }
+      // the lifting lug at the top of the half
+      const [tx, tz] = axisAt(r, y1), lug = new THREE.TorusGeometry(MM(30), MM(7), 6, 12, Math.PI); P.bolt.push(at(tx, y1, tz + sd * (R + MM(4)), lug));
+    }
+    reachOut = R + MM(12);
+  } else {
+    const t = MM(18), tw = MM(25), td = MM(50);
+    // (the panels: two across the full width, two between them; each on two upright timbers 50 × 100)
+    for (const [nx, nz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+      const P = piece({ dir: [nx, nz] }), across = nx === 0, hl = across ? a + t : a;
+      P.ply.push(prism(r, nx * (a + t / 2), nz * (a + t / 2), across ? hl : t / 2, across ? t / 2 : hl, y0, y1));
+      for (const s of [-0.62, 0.62]) {
+        const o = a + t + td, w = s * hl;
+        P.wood.push(prism(r, across ? w : nx * o, across ? nz * o : w, across ? tw : td, across ? td : tw, y0 - MM(20), y1 + MM(40)));
       }
     }
-    return pieces;
-  }
-  const t = MM(18), rib = MM(25);
-  // (the boards: two across the full width, two between them; each with two timbers on its back)
-  for (const [nx, nz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
-    const P = piece({ dir: [nx, nz] }), across = nx === 0, hl = across ? a + t : a;
-    P.ply.push(prism(r, nx * (a + t / 2), nz * (a + t / 2), across ? hl : t / 2, across ? t / 2 : hl, y0, y1));
-    for (const s of [-0.55, 0.55]) {
-      const o = a + t + rib, w = s * hl;
-      P.wood.push(prism(r, across ? w : nx * o, across ? nz * o : w, rib, rib, y0, y1));
+    // the clamps: two flat bars round the timbers each way, crossing at the corners, a wedge in each slot
+    const C = piece({ drop: true }), nC = Math.max(2, Math.round(H / MM(500)) + 1), o = a + t + 2 * td + MM(6), ext = MM(140);
+    for (let k = 0; k < nC; k++) {
+      const y = y0 + MM(180) + (H - MM(360)) * k / Math.max(1, nC - 1), [cx, cz] = axisAt(r, y), dy = k % 2 ? MM(64) : 0;
+      for (const [sx, sz, lx, lz] of [[0, -o, o + ext, MM(5)], [0, o, o + ext, MM(5)], [-o, 0, MM(5), o + ext], [o, 0, MM(5), o + ext]]) C.galv.push(at(cx + sx, y + dy, cz + sz, new THREE.BoxGeometry(lx * 2, MM(60), lz * 2)));
+      for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const w = new THREE.BoxGeometry(MM(16), MM(90), MM(30)); w.rotateZ(0.12);
+        C.bolt.push(at(cx + sx * (o + MM(70)), y + dy + MM(8), cz + sz * (o + MM(12)), w));
+      }
     }
+    reachOut = a + t + 2 * td;
   }
-  // the clamps: a steel frame every 500 mm up (two at the least), round the timbers
-  const C = piece({ drop: true }), nC = Math.max(2, Math.round(H / MM(500)) + 1), o = a + t + 2 * rib + MM(25);
-  for (let k = 0; k < nC; k++) {
-    const y = y0 + MM(150) + (H - MM(300)) * k / Math.max(1, nC - 1), [cx, cz] = axisAt(r, y);
-    for (const [sx, sz, lx, lz] of [[0, -o, o + MM(60), MM(25)], [0, o, o + MM(60), MM(25)], [-o, 0, MM(25), o + MM(60)], [o, 0, MM(25), o + MM(60)]]) {
-      const g = new THREE.BoxGeometry(lx * 2, MM(50), lz * 2); g.translate(cx + sx, y, cz + sz); C.steel.push(g);
-    }
-  }
-  // the braces: from two thirds up to the floor at 45° (two sides), a plate under each foot
-  const yb = y0 + H * 0.66, [bx, bz] = axisAt(r, yb), reach = H * 0.66;
+  // the push-pull props: from two thirds up to the floor at ~55°, on the two sides away from the lean
+  const Pp = pieces.find((q) => q.drop) || piece({ drop: true }), yb = y0 + H * 0.66, [bx, bz] = axisAt(r, yb), reach = Math.max(MM(900), H * 0.5);
   for (const [dx, dz] of [[1, 0], [0, 1]]) {
-    const s = r.tilt[0] * dx + r.tilt[1] * dz >= 0 ? -1 : 1;   // (on the side it leans away from — it holds it)
-    const top = [bx + dx * s * (o - MM(25)), yb, bz + dz * s * (o - MM(25))], foot = [bx + dx * s * (a + t + reach), y0 + MM(20), bz + dz * s * (a + t + reach)];
-    C.wood.push(rod(top, foot, MM(30), 4));
-    const pl = new THREE.BoxGeometry(MM(120), MM(40), MM(120)); pl.translate(foot[0], y0 + MM(20), foot[2]); C.wood.push(pl);
+    const s = r.tilt[0] * dx + r.tilt[1] * dz >= 0 ? -1 : 1;
+    const top = [bx + dx * s * reachOut, yb, bz + dz * s * reachOut], foot = [bx + dx * s * (reachOut + reach), y0 + MM(30), bz + dz * s * (reachOut + reach)];
+    const mid = top.map((v, i) => v + (foot[i] - v) * 0.45);
+    Pp.prop.push(rodUV(foot, mid, MM(30), 10));                        // (the outer tube, painted)
+    Pp.galv.push(rodUV(mid, top, MM(24), 10));                         // (the inner tube)
+    Pp.bolt.push(rodUV(mid.map((v, i) => v + (top[i] - v) * 0.02), mid.map((v, i) => v + (top[i] - v) * 0.14), MM(36), 8));   // (the spindle's nut)
+    Pp.galv.push(at(foot[0], y0 + MM(5), foot[2], new THREE.BoxGeometry(MM(160), MM(10), MM(160))));   // (the base plate)
+    for (const q of [-1, 1]) Pp.bolt.push(at(foot[0] + q * MM(55), y0 + MM(14), foot[2] + q * MM(55), new THREE.CylinderGeometry(MM(10), MM(10), MM(16), 6)));
+    Pp.galv.push(at(top[0], top[1], top[2], new THREE.BoxGeometry(MM(80), MM(80), MM(80))));          // (the head bracket on the form)
   }
   return pieces;
 }
+// a rod with its uv (the props' tubes take the dirt texture)
+function rodUV(a, b, r, seg = 8) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), L = A.distanceTo(B);
+  const g = new THREE.CylinderGeometry(r, r, L, seg, 1, false);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(_Y, B.clone().sub(A).normalize()));
+  g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
+  return g;
+}
 // (the old flat list of all of them, by material)
 export function formParts(r) {
-  const out = { ply: [], steel: [], wood: [], shell: [], bolt: [] };
+  const out = { ply: [], steel: [], wood: [], shell: [], bolt: [], prop: [], galv: [] };
   for (const p of formPieces(r)) for (const k of Object.keys(out)) out[k].push(...p[k]);
   return out;
 }
@@ -252,17 +280,23 @@ export const fillOf = (r) => ((r.stage ?? 0) >= 3 ? 1 : Math.max(0, Math.min(1, 
 export const castDone = (r) => (r.stage ?? 0) >= 3;
 
 export class ColumnView {
-  constructor(group, plyMat) {
+  constructor(group, plyMat, tex = null) {
     this.group = new THREE.Group(); this.group.name = 'columns'; group.add(this.group);
     this.concU = null;
+    // (the formwork as it looks on site: the photographs of plywood and of sawn timber; the steel worn,
+    // splashed with concrete — a drawn texture of stains over its paint / its zinc)
+    const dirt = dirtTex(), T = (t, rx = 1, ry = rx) => (t ? variant(t, rx, ry) : null);
     this.mats = {
       rebar: new THREE.MeshStandardMaterial({ color: 0x4f4338, roughness: 0.62, metalness: 0.55 }),
       plastic: new THREE.MeshStandardMaterial({ color: 0xd9d6cc, roughness: 0.6 }),
-      ply: plyMat || new THREE.MeshStandardMaterial({ color: 0xb8714a, roughness: 0.55 }),
-      steel: new THREE.MeshStandardMaterial({ color: 0x3d6fb0, roughness: 0.45, metalness: 0.6 }),
-      wood: new THREE.MeshStandardMaterial({ color: 0xc89a5c, roughness: 0.8 }),
-      shell: new THREE.MeshStandardMaterial({ color: 0x8e9aa4, roughness: 0.42, metalness: 0.7, side: THREE.DoubleSide }),
+      // film-faced plywood: the dark brown phenolic film, a dull sheen, the grain under it
+      ply: tex?.ply ? new THREE.MeshStandardMaterial({ map: T(tex.ply.diff, 0.8, 1.6), normalMap: T(tex.ply.nor, 0.8, 1.6), normalScale: new THREE.Vector2(0.35, 0.35), color: 0x8a5436, roughness: 0.4 }) : plyMat || new THREE.MeshStandardMaterial({ color: 0x7a4a2c, roughness: 0.45 }),
+      steel: new THREE.MeshStandardMaterial({ color: 0x5c6166, roughness: 0.5, metalness: 0.6, map: dirt }),
+      wood: tex?.plank ? new THREE.MeshStandardMaterial({ map: T(tex.plank.diff, 0.25, 1.2), normalMap: T(tex.plank.nor, 0.25, 1.2), roughnessMap: T(tex.plank.arm, 0.25, 1.2), color: 0xe6d0ad, roughness: 1 }) : new THREE.MeshStandardMaterial({ color: 0xb98d58, roughness: 0.85 }),
+      shell: new THREE.MeshStandardMaterial({ color: 0x7b8790, roughness: 0.55, metalness: 0.55, map: dirt, side: THREE.DoubleSide }),
       bolt: new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.5, metalness: 0.8 }),
+      galv: new THREE.MeshStandardMaterial({ color: 0xb3b8bc, roughness: 0.48, metalness: 0.75, map: dirt }),
+      prop: new THREE.MeshStandardMaterial({ color: 0xc2401f, roughness: 0.55, metalness: 0.3, map: dirt }),
       hole: new THREE.MeshStandardMaterial({ color: 0x241c15, roughness: 1 }),
       spoil: new THREE.MeshStandardMaterial({ color: 0x6b5641, roughness: 1 }),
     };
@@ -277,10 +311,16 @@ export class ColumnView {
     const G = new THREE.Group();
     for (const P of formPieces(r)) {
       const g = new THREE.Group(); g.userData.dir = P.dir; g.userData.drop = P.drop;
-      for (const k of ['ply', 'steel', 'wood', 'shell', 'bolt']) {
+      for (const k of ['ply', 'steel', 'wood', 'shell', 'bolt', 'prop', 'galv']) {
         if (!P[k].length) continue;
-        const geo = mergeGeometries(P[k].map((q) => (q.index ? q.toNonIndexed() : q)).map((q) => { for (const n of Object.keys(q.attributes)) if (!['position', 'normal', ...(k === 'ply' && !mat ? ['uv'] : [])].includes(n)) q.deleteAttribute(n); return q; }));
-        if (k === 'ply' && !mat && !geo.attributes.uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+        // (every piece with its uv — the photographs and the stains need them; a piece made without: mapped
+        // by its place, 1 m to a repeat)
+        const geo = mergeGeometries(P[k].map((q) => (q.index ? q.toNonIndexed() : q)).map((q) => {
+          for (const n of Object.keys(q.attributes)) if (!['position', 'normal', 'uv'].includes(n)) q.deleteAttribute(n);
+          if (!q.attributes.uv) { const ps = q.attributes.position, uv = new Float32Array(ps.count * 2); for (let i = 0; i < ps.count; i++) { uv[i * 2] = (ps.getX(i) + ps.getZ(i)) / MM(1000); uv[i * 2 + 1] = ps.getY(i) / MM(1000); } q.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); }
+          if (!q.attributes.normal) q.computeVertexNormals();
+          return q;
+        }));
         const o = new THREE.Mesh(geo, mat || this.mats[k]); o.castShadow = !mat; o.receiveShadow = !mat; o.userData.uOwner = r.id ?? null; if (mat) o.renderOrder = 5; g.add(o);
       }
       G.add(g);
@@ -366,4 +406,19 @@ function covered(r, objects) {
   for (const b of objects.all('belt')) if (b.kind === 'slab' && Math.abs(b.top - top) < MM(40) && b.fill > 0.05 && beltContains(b, x, z)) return true;
   for (const u of objects.all('unit')) if (u.p && u.s && Math.abs(u.p[1] - u.s[1] / 2 - top) < MM(40) && Math.abs(u.p[0] - x) < u.s[0] / 2 + near && Math.abs(u.p[2] - z) < u.s[0] / 2 + near) return true;
   return false;
+}
+
+// the stains on site steel: concrete splashes and laitance (light grey), rust and oil (brown), scuffs —
+// over white (the material's colour shows through), drawn once
+let _dirt = null;
+function dirtTex() {
+  if (_dirt || typeof document === 'undefined') return _dirt;
+  const n = 256, c = document.createElement('canvas'); c.width = c.height = n;
+  const g = c.getContext('2d', { willReadFrequently: true }), R = (k) => Math.random() * k;
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, n, n);
+  for (let k = 0; k < 140; k++) { g.globalAlpha = 0.05 + R(0.1); g.fillStyle = Math.random() < 0.6 ? '#d4d2cb' : '#8a6a4a'; g.beginPath(); g.ellipse(R(n), R(n), 3 + R(18), 2 + R(10), R(3), 0, 7); g.fill(); }
+  for (let k = 0; k < 900; k++) { g.globalAlpha = 0.15 + R(0.3); g.fillStyle = Math.random() < 0.5 ? '#bfbcb4' : '#6f6a62'; g.fillRect(R(n), R(n), 1 + R(2), 1 + R(2)); }
+  for (let k = 0; k < 30; k++) { g.globalAlpha = 0.12; g.strokeStyle = '#e8e6e0'; g.lineWidth = 0.6; g.beginPath(); const x = R(n), y = R(n); g.moveTo(x, y); g.lineTo(x + R(40) - 20, y + R(8) - 4); g.stroke(); }
+  _dirt = new THREE.CanvasTexture(c); _dirt.wrapS = _dirt.wrapT = THREE.RepeatWrapping; _dirt.colorSpace = THREE.SRGBColorSpace; _dirt.anisotropy = 4;
+  return _dirt;
 }
