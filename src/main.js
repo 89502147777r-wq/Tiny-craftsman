@@ -37,6 +37,7 @@ import { BuildTool } from './tools/buildTool.js';
 import { WallTool } from './tools/wallTool.js';
 import { ColumnTool } from './tools/columnTool.js';
 import { MachineTool } from './tools/machineTool.js';
+import { DisasterTool } from './tools/disasterTool.js';
 import { Sfx } from './audio/sfx.js';
 import { UI } from './ui/ui.js';
 import { ProjectView } from './world/projectView.js';
@@ -151,6 +152,7 @@ async function main() {
   app.wallTool = new WallTool(app);
   app.columnTool = new ColumnTool(app);
   app.machineTool = new MachineTool(app);
+  app.disasterTool = new DisasterTool(app);
   app.backdrop = new Backdrop(app);
   app.sky = new Sky(app);   // the time of day and the weather (sky.js)
   app.budget = new Budget(app);
@@ -323,6 +325,7 @@ function step(dt, time, render = true) {
   for (const t of Object.values(app.materialTools)) t.update(dt);
   for (const t of Object.values(app.concreteTools)) t.update(dt);
   app.machineTool.update(dt);
+  app.disasterTool.update(dt);
   app.physJob?.update(dt);
   app.wallTool.update(dt);
   app.particles.update(dt);
@@ -463,7 +466,7 @@ function resize() {
 }
 
 // ---- tools ------------------------------------------------------------------------------
-app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, ...app.concreteTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, wall: app.wallTool, column: app.columnTool, machine: app.machineTool }[app.tool] || null);
+app.activeTool = () => ({ shovel: app.shovelTool, rake: app.rakeTool, ...app.materialTools, ...app.concreteTools, mark: app.markTool, form: app.formTool, rebar: app.rebarTool, wall: app.wallTool, column: app.columnTool, machine: app.machineTool, disaster: app.disasterTool }[app.tool] || null);
 app.busy = () => !!app.physJob || app.wallTool?.busy || !!app.physLoading || app.shovelTool.busy || app.rakeTool.busy || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy();
 
 function setTool(t) {
@@ -476,6 +479,7 @@ function setTool(t) {
   else if (app.concreteGear.show !== t) app.concreteGear.set(t, app.rig.target.clone().setY(app.terrain.heightAt(app.rig.target.x, app.rig.target.z)));
   if (app.tool === 'mark' && t !== 'mark' && app.markTool.trench) app.markTool.finishTrench();
   if (app.tool === 'machine' && t !== 'machine') app.machineTool.finish();
+  if (app.tool === 'disaster' && t !== 'disaster') app.disasterTool.finish();
   app.tool = t;
   app.outlineView.setHandles(t === 'mark', app.markTool.selected);
   if (t !== 'shovel' && app.shovelTool.state === 'idle') {

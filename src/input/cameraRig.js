@@ -89,6 +89,8 @@ export class CameraRig {
       look.x += a * 0.5 * Math.sin(t * 0.71 + 4);
       look.y += a * 0.5 * Math.sin(t * 1.13 + 3);
     }
+    // (a catastrophe: the ground shaking — a hard, quick jitter as strong as it shakes)
+    if (this.shakeAmp > 0) { const a = this.dist * 0.012 * this.shakeAmp; cam.position.x += a * (Math.random() - 0.5); cam.position.y += a * (Math.random() - 0.5) * 0.6; cam.position.z += a * (Math.random() - 0.5); }
     cam.lookAt(look);
     this.focus += (this.focusGoal - this.focus) * (1 - Math.exp(-dt * 6));
   }

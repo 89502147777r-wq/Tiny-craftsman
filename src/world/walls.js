@@ -483,6 +483,7 @@ export class WallView {
   }
 
   update() {
+    if (this.frozen) return;   // (a catastrophe is on: the house is shown by it)
     if (this._kitsAt !== kitsLoaded()) { this._kitsAt = kitsLoaded(); if (this._win) this._buildWindows(); }
     if (this.railDirty || this.liveRail !== this._liveRailAt) this._buildRails();
     if (this.blindStream !== this._streamAt) { this._streamAt = this.blindStream; setStream(this.stream, this.blindStream?.r, this.blindStream); }
@@ -509,7 +510,7 @@ export class WallView {
     for (const c of [...this.ucut.children]) this.ucut.remove(c);
     const put = (u, id) => {
       P.fromArray(u.p); Q.fromArray(u.q); Sv.fromArray(u.s);
-      const h = hash(u.row * 131 + u.i * 17 + (id || 0) * 7 + Math.round(u.off || 0));
+      const h = hash((u.row || 0) * 131 + (u.i || 0) * 17 + (id || 0) * 7 + Math.round(u.off || 0));   // (a free unit has no row / place: 0 — a NaN tint drew it black)
       if (u.lintel) {
         if (nl < this.max.lintel) { this.lintels.setMatrixAt(nl, m.compose(P, Q, Sv)); this.owner.lintels[nl++] = id; }
       } else if (u.kind === 'ublock') {

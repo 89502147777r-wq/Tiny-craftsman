@@ -10,6 +10,7 @@ import { PATH_LAYERS, PATH_LAYERS2, PATH_WIDTHS, PAVERS, PAVE_COLS, filletLine }
 import { LAWN_LAYERS, LAWN_HOW } from '../world/lawn.js';
 import { FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES } from '../world/fence.js';
 import { PLANTS } from '../world/plants.js';
+import { CATS } from '../world/disaster.js';
 import { PORCH_LAYERS, PORCH_TILES, CANOPIES } from '../world/porch.js';
 import { FLIGHTS, FLIGHT_TEMPS } from '../world/facadeLights.js';
 import { COURSES, COL_TYPES, courseH } from '../world/columns.js';
@@ -48,6 +49,7 @@ const GROUPS = [
   { id: 'fenceG', label: 'Забор', svg: '<svg viewBox="0 0 24 24"><path d="M5 21V7l2-3 2 3v14M15 21V7l2-3 2 3v14"/><path d="M3 10h18M3 16h18"/><path d="M2 21h20"/></svg>', virt: { kinds: ['fence'], path: ['fence'] } },
   { id: 'landG', label: 'Благоустройство', svg: '<svg viewBox="0 0 24 24"><path d="M9 21l2-9h2l2 9"/><path d="M10.4 15h3.2M9.6 18.5h4.8"/><circle cx="18" cy="7" r="3"/><path d="M18 10v5"/><path d="M3 9c1.5-3 4.5-3 6 0-1.5 1.5-4.5 1.5-6 0zM6 10v5"/><path d="M2 21h20"/></svg>', virt: { kinds: ['land'], path: ['land'] } },
   { id: 'machines', label: 'Техника', icon: 'machine' },
+  { id: 'disaster', label: 'Катаклизмы', icon: 'disaster' },
 ];
 const m3 = (v) => `${String(v).replace('.', ',')} м³`;
 
@@ -679,6 +681,14 @@ export class UI {
         : [['cage', 'Каркас'], ['bar', 'Пруток'], ['mesh', 'Сетка'], ['delete', 'Удалить']];
       return modes.map(([k, l]) => C(l, b.mode === k, () => b.setMode(k), k === 'delete' ? 'warn' : ''));
     }
+    if (t === 'disaster') {
+      const dt = app.disasterTool, s = app.settings, set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
+      return [
+        ...Object.entries(CATS).map(([k, K]) => C(`${K.icon} ${K.name}`, dt.kind === k, () => set({ catKind: k }))),
+        C(dt.running ? '■ Идёт…' : '▶ Запустить', dt.running, () => { dt.run().then(() => app.ui.refresh()); }, 'next'),
+        C('↺ Вернуть как было', false, () => { dt.reset(); app.ui.refresh(); }, 'warn'),
+      ];
+    }
     if (t === 'machine') {
       const s = app.settings, mt = app.machineTool, set = (o) => { if (mt.driving) mt.exit(); Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
       return [
@@ -724,6 +734,7 @@ export class UI {
   // sliders for the selected outline (depth, trench width)
   renderParams() {
     const app = this.app, el = $('params');
+    if (this._catSlider(el)) return;
     if (this._fenceSlider(el)) return;
     if (this._pathSliders(el)) return;
     if (this._colSliders(el)) return;
@@ -805,6 +816,22 @@ export class UI {
     return true;
   }
 
+  // «Катаклизмы»: the power, shown in the catastrophe's own units
+  _catSlider(el) {
+    const app = this.app, on = app.tool === 'disaster' && this.navLevel === 'chips';
+    if (!on) { if (this._paramKey?.startsWith?.('cat')) { this._paramKey = null; el.hidden = true; } return false; }
+    const dt = app.disasterTool, en = LANG === 'en', K = CATS[dt.kind], key = 'cat' + dt.kind;
+    el.hidden = false;
+    if (this._paramKey !== key) {
+      this._paramKey = key;
+      el.innerHTML = `<label data-notr><span>${en ? 'Power' : 'Мощность'} · ${en ? K.en : K.name}</span> <output id="p-cat"></output><input id="p-cat-r" type="range" min="1" max="10" step="1"></label>`;
+      const r = $('p-cat-r'), show = () => { $('p-cat').textContent = K.unit(+r.value, en); };
+      r.addEventListener('input', () => { app.settings.catPower = +r.value; show(); });
+      r.addEventListener('change', () => { app.settings.catPower = +r.value; app.applySettings?.(); show(); });
+      r.value = dt.power; show();
+    }
+    return true;
+  }
   _fenceSlider(el) {
     const app = this.app, fw = app.wallTool?.fence, on = app.tool === 'wall' && app.wallTool.mode === 'lay' && app.settings.wallKind === 'fence' && fw && ['line', 'posts', 'rails'].includes(fw.L);
     if (!on) { if (this._paramKey?.startsWith?.('f2')) { this._paramKey = null; el.hidden = true; } return false; }
