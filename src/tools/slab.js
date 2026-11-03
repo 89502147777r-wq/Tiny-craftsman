@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { COL_SECS, axisAt, colTop, castDone } from '../world/columns.js';
+import { COL_SECS, secOf, axisAt, colTop, castDone } from '../world/columns.js';
 import { findBelt, plan, toWorld, toFrame, beltContains, rle, unrle, snapS } from './belt.js';
 import { boxOf } from './freeBrick.js';
 
@@ -135,14 +135,14 @@ export function findPileSlab(app, p, screen, finger, belts = app.objects.all('be
     const top = colTop(r), [x, z] = axisAt(r, top);
     let d;
     if (finger) { const sp = screen(new THREE.Vector3(x, top, z)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 110) continue; }
-    else { d = Math.hypot(p.x - x, p.z - z); if (d > MM(COL_SECS[r.sec].a)) continue; }
+    else { d = Math.hypot(p.x - x, p.z - z); if (d > MM(secOf(r).a)) continue; }
     if (d < bd) bd = d, pick = r;
   }
   if (!pick) return null;
   const T = colTop(pick), same = cols.filter((r) => Math.abs(colTop(r) - T) < MM(30)), grp = [pick];
   for (let grew = true; grew;) { grew = false; for (const r of same) if (!grp.includes(r) && grp.some((q) => Math.hypot(q.x - r.x, q.z - r.z) < MM(6000))) { grp.push(r); grew = true; } }
   if (grp.length < 3) return null;
-  const c = MM(SLAB.cell), tops = grp.map((r) => { const [x, z] = axisAt(r, colTop(r)); return { x, z, a: MM(COL_SECS[r.sec].a / 2), round: COL_SECS[r.sec].round }; });
+  const c = MM(SLAB.cell), tops = grp.map((r) => { const [x, z] = axisAt(r, colTop(r)); return { x, z, a: MM(secOf(r).a / 2), round: secOf(r).round }; });
   const x0 = Math.min(...tops.map((t) => t.x - t.a)) - MM(100), x1 = Math.max(...tops.map((t) => t.x + t.a)) + MM(100);
   const z0 = Math.min(...tops.map((t) => t.z - t.a)) - MM(100), z1 = Math.max(...tops.map((t) => t.z + t.a)) + MM(100);
   const ni = Math.max(1, Math.round((x1 - x0) / c)), nj = Math.max(1, Math.round((z1 - z0) / c)), n = ni * nj;

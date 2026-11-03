@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { KINDS } from '../world/walls.js';
 import { cellAt, plan } from './belt.js';
-import { COL_SECS, axisAt, colTop, castDone } from '../world/columns.js';
+import { COL_SECS, secOf, axisAt, colTop, castDone } from '../world/columns.js';
 
 // Free masonry: bricks (and blocks next to other blocks) are laid one by one, anywhere —
 // no wall records, no planned courses. Where a carried unit goes is worked out from what
@@ -95,7 +95,7 @@ export function colTopAt(app, x, z) {
   let h = -Infinity;
   for (const r of app.objects.all('column')) {
     if (!castDone(r)) continue;
-    const top = colTop(r), [cx, cz] = axisAt(r, top), sec = COL_SECS[r.sec] || COL_SECS.sq250, a = sec.a / 2 / 1000 / MODEL_SCALE;
+    const top = colTop(r), [cx, cz] = axisAt(r, top), sec = secOf(r), a = sec.a / 2 / 1000 / MODEL_SCALE;
     if (sec.round ? Math.hypot(x - cx, z - cz) <= a : Math.abs(x - cx) <= a && Math.abs(z - cz) <= a) h = Math.max(h, top);
   }
   return h;

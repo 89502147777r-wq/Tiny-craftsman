@@ -388,7 +388,7 @@ export class FenceWork {
       steps: [[1.0, (u, job) => { this.view.setAnim(key, { gate: gi, gu: u, gopen: 0 }); if (u > 0.9 && !job._g) { job._g = 1; app.sfx?.stab?.(); } }],
         [1.6, (u) => this.view.setAnim(key, { gate: gi, gu: 1, gopen: Math.sin(Math.PI * u) })]],
       onAbort: () => { app.journal.cancel(); this.view.setAnim(key, null); },
-      commit: () => { app.journal.commit(app.clock); this.view.setAnim(key, null); this.toast(EN() ? `${T.name}, ${m1(b.L)} m: hung on the posts and tried. Tap it — open or close` : `${T.name}, ${m1(b.L)} м: ${T.gate ? 'навешены' : 'навешена'} на столбы и опробованы. Коснитесь — открыть или закрыть`); },
+      commit: () => { app.journal.commit(app.clock); this.view.setAnim(key, null); this.toast(EN() ? `${T.name}, ${m1(b.L)} m: hung on the posts and tried. Tap it — open or close` : `${T.name}, ${m1(b.L)} м: ${T.gate ? 'навешены на столбы и опробованы' : 'навешена на столбы и опробована'}. Коснитесь — открыть или закрыть`); },
     });
   }
 

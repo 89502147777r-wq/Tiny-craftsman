@@ -12,8 +12,8 @@ import { FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES } from '../
 import { PLANTS } from '../world/plants.js';
 import { PORCH_LAYERS, PORCH_TILES } from '../world/porch.js';
 import { FLIGHTS, FLIGHT_TEMPS } from '../world/facadeLights.js';
-import { COL_SECS, COURSES, TILTS, courseH } from '../world/columns.js';
-import { COL_TABS, DIRS } from '../tools/columnTool.js';
+import { COURSES, COL_TYPES, courseH } from '../world/columns.js';
+import { COL_TABS, DIRS, TYPE_NAMES } from '../tools/columnTool.js';
 import { F2_TABS } from '../tools/fenceTool.js';
 import { RAIL_SECS } from '../world/fence2.js';
 import { PALLETS } from '../core/budget.js';
@@ -493,19 +493,13 @@ export class UI {
       // «Фундамент → Колонны и сваи»: the sizes first (the section, the height by the courses, the
       // slope and its side), then the stages; the concrete — «Бетон»
       const cw = app.wallTool.col, s = app.settings, CS = cw.stage;
-      const cset = (o) => { Object.assign(s, o); app.applySettings(); if ('colN' in o || 'colCourse' in o || 'colTilt' in o || 'colDir' in o) cw.restyle(cw.rec); this.refresh(); };
+      const cset = (o) => { Object.assign(s, o); app.applySettings(); if ('colCourse' in o || 'colType' in o) { cw.preview(); cw.restyle(); } this.refresh(); };
       return [
+        // (the kind and the masonry the height goes by: chips; the section, the height, the slope and its
+        // side: the sliders under them — they show the picked column's own sizes)
         G('csize', 'Размеры', [
-          G('csec', `Сечение: ${COL_SECS[cw.sec].name}`, Object.entries(COL_SECS).map(([k, q]) => C(q.name, cw.sec === k, () => cset({ colSec: k, colStage: 'form' }))), 'Сечение'),
-          G('cheight', `Высота: ${courseH(cw.course, cw.n)} мм`, [
-            ...Object.entries(COURSES).map(([k, q]) => C('По кладке: ' + q.name, cw.course === k, () => cset({ colCourse: k, colN: null }))),
-            C(`− ряд (${cw.n})`, false, () => cset({ colN: Math.max(1, cw.n - 1) })),
-            C(`+ ряд → ${courseH(cw.course, cw.n + 1)} мм`, false, () => cset({ colN: cw.n + 1 })),
-          ], 'Высота'),
-          G('ctilt', `Наклон: ${cw.tiltDeg}°`, [
-            ...TILTS.map((d) => C(d ? `${d}°` : 'Вертикально', cw.tiltDeg === d, () => cset({ colTilt: d }))),
-            ...(cw.tiltDeg ? DIRS.map(([d, a]) => C(`${a} ${d}°`, cw.dirDeg === d, () => cset({ colDir: d }))) : []),
-          ], 'Наклон'),
+          ...Object.entries(TYPE_NAMES).map(([k, l]) => C(l, cw.type === k, () => cset({ colType: k }))),
+          ...Object.entries(COURSES).map(([k, q]) => C('По кладке: ' + q.name, cw.course === k, () => cset({ colCourse: k, colN: null }))),
         ]),
         ...COL_TABS.map(([k, l], i) => C(`${i + 1} · ${l}`, CS === k, () => cset({ colStage: k }))),
         C('Удалить', CS === 'del', () => cset({ colStage: 'del' }), 'warn'),
@@ -725,6 +719,7 @@ export class UI {
   renderParams() {
     const app = this.app, el = $('params');
     if (this._fenceSlider(el)) return;
+    if (this._colSliders(el)) return;
     const o = app.tool === 'mark' ? app.markTool.rec : null;
     el.hidden = !o;
     if (!o) { this._paramKey = null; return; }
@@ -748,6 +743,33 @@ export class UI {
     $('p-depth').textContent = `${o.depth} мм · ${real(o.depth).toFixed(0)} см`;
     const w = $('p-width-r');
     if (w) { if (document.activeElement !== w) w.value = Math.round(o.width * 1000); $('p-width').textContent = `${(o.width * 1000).toFixed(0)} мм · ${(o.width * MODEL_SCALE * 100).toFixed(0)} см`; }
+  }
+
+  // «Колонны и сваи → Размеры»: the sliders — the section, the height (courses), the slope, its side —
+  // set to the picked column's sizes; moved: it is shown so at once, let go: saved (while it has no concrete)
+  _colSliders(el) {
+    const app = this.app, cw = app.wallTool?.col, on = app.tool === 'column' && cw && this.navLevel === 'chips' && this.navPath.includes('csize');
+    if (!on) { if (this._paramKey?.startsWith?.('col')) { this._paramKey = null; el.hidden = true; } return false; }
+    const en = LANG === 'en', T = COL_TYPES[cw.type], mm = en ? 'mm' : 'мм', dir = (d) => (DIRS.find(([v]) => v === d) || DIRS[0])[1];
+    const specs = [
+      { k: 'colA', t: cw.type === 'sq' ? (en ? 'Section' : 'Сечение') : (en ? 'Diameter' : 'Диаметр'), min: T.min, max: T.max, step: 10, v: () => cw.a, out: (v) => (cw.type === 'sq' ? `${v} × ${v} ${mm}` : `Ø ${v} ${mm}`) },
+      { k: 'colN', t: en ? 'Height, courses' : 'Высота, рядов', min: 1, max: 60, step: 1, v: () => cw.n, out: (v) => `${v} → ${courseH(cw.course, v)} ${mm}` },
+      { k: 'colTilt', t: en ? 'Tilt' : 'Наклон', min: 0, max: 15, step: 1, v: () => cw.tiltDeg, out: (v) => (v ? `${v}°` : (en ? 'upright' : 'вертикально')) },
+      { k: 'colDir', t: en ? 'Side of the tilt' : 'Сторона наклона', min: 0, max: 315, step: 45, v: () => cw.dirDeg, out: (v) => `${dir(v)} ${v}°` },
+    ];
+    el.hidden = false;
+    const key = 'col' + cw.type;
+    if (this._paramKey !== key) {
+      this._paramKey = key;
+      el.innerHTML = specs.map((q, i) => `<label data-notr><span>${q.t}</span> <output id="p-c${i}"></output><input id="p-c${i}-r" type="range" min="${q.min}" max="${q.max}" step="${q.step}"></label>`).join('');
+      specs.forEach((q, i) => {
+        const r = $(`p-c${i}-r`);
+        r.addEventListener('input', () => { app.settings[q.k] = +r.value; $(`p-c${i}`).textContent = q.out(+r.value); cw.preview(); });
+        r.addEventListener('change', () => { app.settings[q.k] = +r.value; cw.restyle(); app.applySettings?.(); this.refresh(); });
+      });
+    }
+    specs.forEach((q, i) => { const r = $(`p-c${i}-r`); if (document.activeElement !== r && +r.value !== q.v()) r.value = q.v(); $(`p-c${i}`).textContent = q.out(q.v()); });
+    return true;
   }
 
   // «Забор»: a slider for the stage open — the pegs' spacing (1 … 5 m), the post's size (40 … 100), the

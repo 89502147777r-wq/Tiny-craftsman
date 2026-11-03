@@ -10,7 +10,7 @@ import { BLIND, layerSet } from '../world/blind.js';
 import { BIT, dab } from '../world/bitumen.js';
 import { LANG } from '../i18n/i18n.js';
 import { isV2, pegXZ, HOLE } from '../world/fence2.js';
-import { COL_SECS, colTop, colBot, axisAt, fillOf, formOn, cageOn, castDone } from '../world/columns.js';
+import { COL_SECS, secOf, colTop, colBot, axisAt, fillOf, formOn, cageOn, castDone } from '../world/columns.js';
 
 // the concrete cast in place on the walls: a run of U-blocks or a ring beam (or a column's formwork)
 const makeChannel = (app, t) => (t.type === 'fpost' ? new PostChannel(app, t) : t.type === 'column' ? new ColumnChannel(app, t) : t.type === 'belt' ? new BeltChannel(app, t) : t.type === 'blind' ? new BlindChannel(app, t) : new Channel(app, t));
@@ -58,7 +58,7 @@ class PostChannel {
 // of the first concrete; full — cast (stage 3).
 class ColumnChannel {
   constructor(app, r) {
-    const sec = COL_SECS[r.sec] || COL_SECS.sq250, a = sec.a / 1000;
+    const sec = secOf(r), a = sec.a / 1000;
     this.r = r; this.app = app;
     this.area = sec.round ? Math.PI * a * a / 4 : a * a;   // m²
     this.cap = (colTop(r) - colBot(r)) * MODEL_SCALE * 1000;   // mm
@@ -79,7 +79,7 @@ class ColumnChannel {
     const full = this.full, f = full ? 1 : this.h[0] / this.cap;
     app.objects.update(this.r.id, { fill: +Math.min(1, f).toFixed(4), ...(this.r.pourT == null ? { pourT: +app.clock.toFixed(3) } : {}), ...(full ? { stage: 3, fill: 1 } : {}) });
     if (!full) app.ui?.toast(LANG === 'en' ? `In the column: ${Math.round(f * 100)} % — pour on` : `В колонне ${Math.round(f * 100)} % — лейте дальше`);
-    if (full) app.ui?.toast(COL_SECS[this.r.sec]?.pile ? 'Свая залита до отметки — верх по уровню, выпуски по оси. Бетон набирает прочность, потом «Распалубка» (Фундамент → Колонны и сваи)' : 'Колонна залита до отметки среза — верх ровный, выпуски по оси. Бетон набирает прочность, потом «Распалубка» (Фундамент → Колонны и сваи)');
+    if (full) app.ui?.toast(secOf(this.r).pile ? 'Свая залита до отметки — верх по уровню, выпуски по оси. Бетон набирает прочность, потом «Распалубка» (Фундамент → Колонны и сваи)' : 'Колонна залита до отметки среза — верх ровный, выпуски по оси. Бетон набирает прочность, потом «Распалубка» (Фундамент → Колонны и сваи)');
   }
 }
 const _ray = new THREE.Raycaster();
