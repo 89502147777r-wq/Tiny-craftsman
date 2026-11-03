@@ -23,7 +23,7 @@ const _t = new THREE.Color();
 
 // crumbs / stones / the load of other materials (the particle texture is the brown
 // cut-soil photo, so stone greys are pushed a little towards blue to come out grey)
-const MAT_TINT = MATERIALS.map((m, k) => (k === 0 ? null : new THREE.Color(m.color).multiplyScalar(k === 4 ? 1.7 : 1)));   // (black topsoil: lifted — the particle photo is dark brown already)
+const MAT_TINT = MATERIALS.map((m, k) => (k === 0 ? null : new THREE.Color(m.color).multiplyScalar(k === 4 ? 1.1 : 1)));   // (black topsoil: near black — the particle photo is dark brown, the tint takes it to black)
 const STONE = new THREE.Color(0.62, 0.8, 1.15);
 const CONC = new THREE.Color(0.24, 0.36, 0.7);   // grey after the brown particle texture
 export function materialTint(mat, depth, out = new THREE.Color()) {

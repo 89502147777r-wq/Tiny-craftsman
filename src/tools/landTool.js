@@ -464,7 +464,9 @@ export class LandWork {
     this._lJob(r, 'roll', steps, 'Укатано садовым катком — грунт осел и не продавится. Дальше «5 · Газон»', () => this.app.sfx?.scrapeLevel?.(0));
   }
   _lGrass(r) {
-    const app = this.app, how = this.how, { c } = this._lExtent(r), A = c.length * (LAWN.cell / 1000) ** 2, u = r.u || [1, 0], yaw = Math.atan2(-u[0], -u[1]);
+    const app = this.app, how = this.how, { c } = this._lExtent(r);
+    if (!c.length) { this.toast('Внутри разметки нет свободной земли'); return; }
+    const A = c.length * (LAWN.cell / 1000) ** 2, u = r.u || [1, 0], yaw = Math.atan2(-u[0], -u[1]);
     // (the record takes the way at once: the grass is built for it)
     app.journal.begin('lawn-grass', {}, app.clock);
     if (r.how !== how) app.objects.update(r.id, { how });

@@ -1424,7 +1424,7 @@ export class WallTool {
     if (id && app.objects.get(id)?.type === 'pool') { this.pool.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'path') { this.land.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'lawn') { this.land.removeLawn(id); return; }
-    if (id && app.objects.get(id)?.type === 'fence') { this.land.removeFence(id); return; }
+    if (id && app.objects.get(id)?.type === 'fence') { const r = app.objects.get(id); if (r.v === 2 && app.lastPick?.point) this.fence.removePart(r, app.lastPick.point); else this.land.removeFence(id); return; }
     if (id && app.objects.get(id)?.type === 'plant') { this.land.removePlant(id); return; }
     if (id && ['porch', 'canopy', 'flight'].includes(app.objects.get(id)?.type)) { this.ext.remove(id); return; }
     if (id && app.objects.get(id)?.type === 'column') { this.col.remove(id); return; }

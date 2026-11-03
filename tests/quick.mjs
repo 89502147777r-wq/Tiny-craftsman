@@ -690,6 +690,11 @@ console.log('—', sec());
     o.gates = fw.rec.gates.map((q) => `${q.type}:${q.w}`).join();
     tc.renderer.render(tc.scene, tc.camera);
     tc.undo(); o.undo = fw.rec.gates.length === 0;
+    // «Удалить» a part at a time: the wicket, a section, a rail (refused while a section hangs on it), a post (refused while rails are welded to it), its hole
+    { tc.redo(); const Mm = 1 / 1000 / 10.4651, at2 = (s, y) => { const q = sAt(s); q.y = fw.rec.g + y * Mm; return q; }, R = () => fw.rec, log = [];
+      const del = (s, y) => { fw.removePart(R(), at2(s, y)); log.push(`${R().gates.length}/${R().filled.length}/${R().rails.length}/${R().pegs.filter((q) => q.post).length}/${R().pegs.filter((q) => q.hole).length}`); };
+      del(4500, 1000); del(1000, 1000); del(1000, 1500); del(3000, 1000); del(1000, 1500); del(1000, 300); del(2000, 900); del(2000, 900);
+      o.del = log.join(' '); o.delFence = !!R(); }
     // a fence on brick pillars laid on a strip: the pegs set on the pillars, no holes; the rails between them on
     // the embedded plates; corrugated sheet (its colour) in the bay
     { const M = 1 / 1000 / 10.4651, zP = -0.25, g2 = tc.terrain.heightAt(-0.1, zP);
@@ -717,6 +722,7 @@ console.log('—', sec());
   check('fence: its own group (6 stages), not under «Благоустройство»; the string with pegs every 2 m, a peg moved for a wicket', f.chips === '1 · Разметка|2 · Ямы|3 · Столбы|4 · Прожилины|5 · Наполнение|6 · Ворота и калитки|Удалить' && !f.inLand && f.ui && f.pegs === '0,2000,4000,6000,7953' && f.moved === 5000, JSON.stringify(f));
   check('fence: holes one by one, round posts Ø80 in each, concrete by the bucket and the hose', f.holes === '11111' && f.posts === 'rd80,rd80,rd80,rd80,rd80' && f.pail > 0.3 && f.pail < 1 && f.conc, JSON.stringify(f));
   check('fence: rails welded post to post (two rows), the railed bays filled, a wicket in the bay left (a gate too wide refused), undo', f.tray === 'Прожилина' && f.rails === '0-4000@300,0-4000@1500,5000-7953@300,5000-7953@1500' && f.otherSide === -1 && f.postG && f.fillTabs && f.filled === 3 && f.swingRefused && f.gates === 'wicket:1000' && f.undo, JSON.stringify(f));
+  check('fence: «Удалить» takes a part at a time — the wicket, a section, a rail, a post, its hole (not the whole fence)', f.del === '0/3/4/5/5 0/2/4/5/5 0/2/4/5/5 0/1/4/5/5 0/1/3/5/5 0/1/2/5/5 0/1/2/4/5 0/1/2/4/4' && f.delFence, JSON.stringify(f));
   check('fence: on brick pillars (the pegs set on them, no holes, the rails between them on the plates), corrugated sheet in its colour; a post anchored on the strip\'s concrete', f.pillarPegs === 2 && f.noHole && /^in:pillar-pillar@300,in:pillar-pillar@\d+$/.test(f.inline) && f.prof === 'prof:wine:1' && f.anchor === 'anchor:true:true', JSON.stringify(f));
   check('fence: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
@@ -787,17 +793,27 @@ console.log('—', sec());
     // a corner peg dragged out, a touch on a string: a new peg, dragged
     { const q = r().poly[2], p = new V(q[0], r().g, q[1]); wt.down(p, e(p)); const p2 = new V(q[0] + 0.03, r().g, q[1] + 0.02); wt.move(p2, e(p2)); wt.up(); }
     { const [a, b] = [r().poly[0], r().poly[1]], m = G((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); wt.down(m, e(m)); const m2 = new V(m.x, m.y, m.z - 0.04); wt.move(m2, e(m2)); wt.up(); }
-    o.poly2 = r().poly.length;
+    o.poly2 = r().poly.length; o.firstId = r().id;
     const pitY = tc.terrain.heightAt(-0.1, 0.05);
     tc.settings.lawnLayer = 'soil'; { const p = G(-0.05, 0.07); wt.down(p, e(p)); wt.up(); run(); }
     o.soil = lw.soilOn(r()); o.pitFilled = tc.terrain.heightAt(-0.1, 0.05) > pitY + 0.005; o.top = tc.terrain.topMat(tc.terrain.index(-0.05, 0.07));
     tc.settings.lawnLayer = 'grass'; { const p = G(-0.05, 0.07); wt.down(p, e(p)); wt.up(); run(); } o.grass = !!r().done.grass;
     tc.settings.lawnLayer = 'water'; { const p = G(-0.05, 0.07); wt.down(p, e(p)); wt.up(); run(); } o.water = !!r().done.water;
+    // a second lawn: the black topsoil tipped by hand in a heap (as from «Материалы»), then «Газон»: raked level first, the turf on it, the sprinkler
+    tc.settings.lawnLayer = 'area'; lw.cord = true; { const a = G(0.2, -0.05), b = G(0.42, 0.15); wt.down(a, e(a)); wt.move(b, e(b)); wt.up(); } lw.cord = false;
+    { const t = tc.terrain, M = 1 / 1000 / 10.4651, r2 = r(); o.second = r2 && r2.id !== o.firstId;
+      for (let dx = -0.06; dx <= 0.06; dx += 0.005) for (let dz = -0.06; dz <= 0.06; dz += 0.005) { const d = Math.hypot(dx, dz); if (d > 0.06) continue; const i = t.index(0.31 + dx, 0.05 + dz); t._push(i, 600 * M * (1 - (d / 0.06) ** 2), 4); }
+      t._touch(0, 0, t.rx, t.rz);
+      tc.settings.lawnLayer = 'grass'; { const p = G(0.25, 0.0); wt.down(p, e(p)); wt.up(); run(); run(); }
+      const hs = []; for (let x = 0.24; x <= 0.38; x += 0.02) for (let z = 0.0; z <= 0.1; z += 0.02) hs.push(t.heightAt(x, z));
+      o.byHand = { grass: !!r().done.grass, bump: Math.round((Math.max(...hs) - Math.min(...hs)) / M), black: lw.soilOn(r()) };
+      tc.settings.lawnLayer = 'water'; { const p = G(0.25, 0.0); wt.down(p, e(p)); wt.up(); run(); } o.byHand.water = !!r().done.water; }
     tc.renderer.render(tc.scene, tc.camera);
     return o;
   });
   check('lawn: 4 stages (no rake, no roller); a rectangle by the string, a corner peg dragged, a new peg put in a string', o.chips === '1 · Разметка|2 · Чернозём|3 · Газон|4 · Полив' && o.cord && o.poly === 4 && o.poly2 === 5, JSON.stringify(o));
   check('lawn: the black topsoil tipped in heaps and raked level (a pit filled), the turf, the sprinkler', o.soil && o.pitFilled && o.top === 4 && o.grass && o.water, JSON.stringify(o));
+  check('lawn: black topsoil tipped by hand in a heap — «Газон» rakes it level first, the turf and the sprinkler go on it', o.second && o.byHand?.grass && o.byHand.bump < 60 && o.byHand.water, JSON.stringify(o.byHand));
   check('lawn: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

@@ -466,6 +466,44 @@ export class FenceWork {
   }
 
   // ---- a gate / a wicket into a bay left without rails (its width: the bay's), or opened / closed ----
+  // ---- «Удалить»: a part at a time, as it is taken down on a site — the gate / the wicket, then the
+  // section (the fill of a bay), the rail, the post (with its concrete; the hole stays), the hole (the peg
+  // back in); the string last, with the whole fence once nothing is left on it. `p` — the touched point
+  removePart(r, p) {
+    const app = this.app, [s] = sOf(r, p.x, p.z), y = Math.round((p.y - r.g) / S), pegs = r.pegs || [];
+    const bay = bays2(r).find((q) => s >= q.a.s - 1 && s <= q.b.s + 1);
+    const pi = pegs.findIndex((q) => Math.abs(q.s - s) < 180 && (q.post || q.hole) && !q.pillar);
+    const railsAt = (a, b) => (r.rails || []).filter((q) => q.a < b - 1 && q.b > a + 1);
+    const done = (label, patch, msg) => { this._save(label, () => app.objects.update(r.id, patch)); this.toast(msg); };
+    // (a post or a hole touched)
+    if (pi >= 0) {
+      const q = pegs[pi], gate = (r.gates || []).some((g) => Math.abs(Math.abs(g.s - q.s) - g.w / 2) < 5), rails = railsAt(q.s - 1, q.s + 1).concat((r.rails || []).filter((o) => Math.abs(o.a - q.s) < 2 || Math.abs(o.b - q.s) < 2));
+      if (q.post) {
+        if (gate) { this.toast('На этом столбе висят ворота или калитка — сначала снимите их'); return; }
+        if (rails.length) { this.toast('К столбу приварены прожилины — сначала срежьте их'); return; }
+        done('fence-post-remove', { pegs: pegs.map((x, i) => (i === pi ? { s: x.s, hole: x.hole === 'anchor' ? undefined : x.hole } : x)) }, q.hole === 'anchor' ? 'Столб открутили с анкеров' : 'Столб выдернули вместе с бетоном — яма осталась');
+        return;
+      }
+      done('fence-hole-remove', { pegs: pegs.map((x, i) => (i === pi ? { s: x.s } : x)) }, 'Яму засыпали — колышек снова на шнуре');
+      return;
+    }
+    if (bay) {
+      const gi = (r.gates || []).findIndex((g) => Math.abs(g.s - bay.mid) < 2);
+      if (gi >= 0) { const T = GATES[r.gates[gi].type]; done('fence-gate-remove', { gates: r.gates.filter((_, i) => i !== gi) }, `${T.name}: ${T.gate ? 'сняты' : 'снята'} с петель`); return; }
+      if (bay.filled) { done('fence-bay-remove', { filled: (r.filled || []).filter((m) => Math.abs(m - bay.mid) >= 2) }, 'Секцию сняли — прожилины остались'); return; }
+      const rs = railsAt(bay.a.s, bay.b.s);
+      if (rs.length) {
+        const q = rs.reduce((b, o) => (Math.abs(o.y - y) < Math.abs(b.y - y) ? o : b));
+        if ((r.filled || []).some((m) => m > q.a && m < q.b)) { this.toast('На этой прожилине держатся секции — сначала снимите их'); return; }
+        done('fence-rail-remove', { rails: r.rails.filter((o) => o !== q) }, `Прожилину срезали болгаркой (${m1(q.b - q.a)} м)`);
+        return;
+      }
+    }
+    // (only the string left — or a touch away from every part of it)
+    if (pegs.some((q) => q.post || q.hole) || (r.rails || []).length || (r.gates || []).length) { this.toast('Коснитесь детали забора: калитки, ворот, секции, прожилины, столба или ямы'); return; }
+    this._save('fence-remove', () => app.objects.remove(r.id)); this.toast('Шнур с колышками убрали — забора нет');
+  }
+
   _gate(r, s) {
     const app = this.app, gates = r.gates || [], key = 'F' + r.id;
     const hit = gates.findIndex((q) => Math.abs(q.s - s) < q.w / 2);

@@ -15,6 +15,21 @@ import { LAWN, LAWN_HOW, areaOf, inside as inPoly, mainDir, cellsOf, frameW } fr
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 const EN = () => LANG === 'en';
 const f1 = (v) => (EN() ? v.toFixed(1) : v.toFixed(1).replace('.', ','));
+// every cell of the ground (≈ 31 mm) under the lawn's cells (100 mm) — what the heaps, the rake and the
+// leveller work on; one ground cell per lawn cell left the rest of the ground brown between black dots
+function groundCells(t, r, c) {
+  const u = r.u || [1, 0], n = [-u[1], u[0]], H = MM(LAWN.cell) / 2, seen = new Set(), out = [];
+  for (const q of c) {
+    const ix0 = Math.max(0, Math.ceil(t.toCellX(q.x - H * 1.5))), ix1 = Math.min(t.rx, Math.floor(t.toCellX(q.x + H * 1.5))), iz0 = Math.max(0, Math.ceil(t.toCellZ(q.z - H * 1.5))), iz1 = Math.min(t.rz, Math.floor(t.toCellZ(q.z + H * 1.5)));
+    for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      const i = iz * t.nx + ix; if (seen.has(i)) continue;
+      const x = t.toWorldX(ix), z = t.toWorldZ(iz), a = x * u[0] + z * u[1], b = x * n[0] + z * n[1];
+      if (Math.abs(a - q.a) > H + 1e-9 || Math.abs(b - q.b) > H + 1e-9) continue;
+      seen.add(i); out.push({ i, a, b, x, z });
+    }
+  }
+  return out;
+}
 export const LAWN_LAYERS2 = [['area', 'Разметка'], ['soil', 'Чернозём'], ['grass', 'Газон'], ['water', 'Полив']];
 const NAME = Object.fromEntries(LAWN_LAYERS2);
 
@@ -73,8 +88,8 @@ export class LawnWork {
     const r = this.pick(p);
     if (!r) { this.toast('Коснитесь газона (сначала «1 · Разметка»)'); return true; }
     if (L === 'soil') { if (this.soilOn(r)) { this.toast('Чернозём уже лежит — дальше «3 · Газон»'); return true; } this._soil(r); return true; }
-    if (L === 'grass') { this.land._lGrass(r); return true; }
-    if (L === 'water') { this._water(r); return true; }
+    if (L === 'grass') { this.levelFirst(r, () => this.land._lGrass(app.objects.get(r.id) || r)); return true; }
+    if (L === 'water') { if (r.done?.grass) this._water(r); else this.levelFirst(r, () => this._water(app.objects.get(r.id) || r)); return true; }
     return true;
   }
   move(p, e) {
@@ -136,30 +151,13 @@ export class LawnWork {
     return best;
   }
 
-  // ---- the black topsoil: heaps tipped over the area, raked level lane by lane ----
-  _soil(r) {
-    const app = this.app, t = app.terrain, c = cellsOf(app, r), A = c.length * (LAWN.cell / 1000) ** 2;
-    if (!c.length) { this.toast('Внутри разметки нет свободной земли'); return; }
-    const y = r.g + MM(LAWN.soil), nH = Math.max(2, Math.min(9, Math.round(A / 6)));
-    // the heaps: spread over the area (the cells' middles of nH parts)
-    const heaps = [];
-    for (let k = 0; k < nH; k++) { const q = c[Math.floor((k + 0.5) / nH * c.length)]; heaps.push({ x: q.x, z: q.z, R: MM(700 + Math.random() * 300), h: MM(350 + Math.random() * 120), p: 0 }); }
-    const cells = c.map((q) => ({ i: t.index(q.x, q.z), a: q.a, b: q.b, x: q.x, z: q.z })), box = cellsBox(t, c);
+  // the rake drawn along the lanes over the cells: the soil level at y (the heaps down, the pits filled)
+  _rakeSteps(r, c, cells, y, box) {
+    const app = this.app, t = app.terrain;
     const a0 = c.a0, a1 = c.a1, b0 = c.b0, b1 = c.b1, lanes = Math.max(2, Math.ceil((b1 - b0) / MM(900)));
     const rk = app.rake, vis = rk.root.visible, pos0 = rk.target.pos.clone(), dir0 = rk.target.dir.clone(), lift0 = rk.target.lift;
     const back = () => { rk.setPose({ pos: pos0, dir: dir0, lift: lift0 }, true); rk.root.visible = vis; };
-    app.journal.begin('lawn-soil', {}, app.clock);
     const steps = [];
-    // 1 · the heaps tipped one after another
-    for (const H of heaps) steps.push([0.6, (u) => {
-      const want = Math.min(1, u * 1.1);
-      if (want <= H.p) return;
-      H.p = want;
-      for (const q of cells) { const d = Math.hypot(q.x - H.x, q.z - H.z); if (d >= H.R) continue; const top = r.g + H.h * want * (1 - (d / H.R) ** 2); const h = t.hAt(q.i); if (h < top) t._push(q.i, top - h, M_BLACK); }
-      t._touch(...box);
-      if (Math.random() < 0.7) app.particles?.emit(new THREE.Vector3(H.x, r.g + H.h + MM(300), H.z), new THREE.Vector3((Math.random() - 0.5) * 0.1, -0.2, (Math.random() - 0.5) * 0.1), 0, MM(30), 0, 0, M_BLACK);   // (no clods left lying: raked away)
-      if (Math.random() < 0.2) app.sfx?.pour?.(0.35);
-    }]);
     // 2 · the rake along the lanes: the soil drawn level (the heaps down, the pits and the ditch filled)
     const u = r.u || [1, 0], dur = Math.max(3, Math.min(14, lanes * (a1 - a0) / MM(1000) * 0.35));
     steps.push([0, () => { rk.root.visible = true; }]);
@@ -176,6 +174,49 @@ export class LawnWork {
       if (Math.random() < 0.12) app.sfx?.scrapeLevel?.(0.25);
     }]);
     steps.push([0.05, () => { for (const q of cells) { const h = t.hAt(q.i); if (h < y) t._push(q.i, y - h, M_BLACK); else if (h > y) t._pop(q.i, h - y); } t._touch(...box); back(); app.sfx?.scrapeLevel?.(0); }]);
+    return { steps, back };
+  }
+  // the ground under the lawn not level (the topsoil tipped by hand from «Материалы» in heaps): raked
+  // level first — at the height its soil gives over the area — then `then`
+  levelFirst(r, then) {
+    const app = this.app, t = app.terrain, c = cellsOf(app, r);
+    if (!c.length) { this.toast('Внутри разметки нет свободной земли'); return; }
+    const cells = groundCells(t, r, c), hs = cells.map((q) => t.hAt(q.i));
+    const lo = Math.min(...hs), hi = Math.max(...hs);
+    if (hi - lo < MM(60)) { then(); return; }
+    const y = hs.reduce((a, b) => a + b, 0) / hs.length, box = cellsBox(t, c), { steps, back } = this._rakeSteps(r, c, cells, y, box);
+    app.journal.begin('lawn-rake', {}, app.clock);
+    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); back(); }, commit: () => {
+      app.objects.update(r.id, { g: +y.toFixed(6), done: { ...(app.objects.get(r.id).done || {}), ...(this.soilOn(r) ? { soil: 1 } : {}) } });
+      app.journal.commit(app.clock);
+      this.toast(EN() ? `Raked level first: the heaps spread, ${f1((hi - lo) / S)} mm of bumps made good` : `Сначала разровняли граблями: кучи растянуты, перепад ${Math.round((hi - lo) / S)} мм выровнен`);
+      then();   // (the job is off app.physJob by now: the next one starts straight away)
+    } });
+  }
+
+  // ---- the black topsoil: heaps tipped over the area, raked level lane by lane ----
+  _soil(r) {
+    const app = this.app, t = app.terrain, c = cellsOf(app, r), A = c.length * (LAWN.cell / 1000) ** 2;
+    if (!c.length) { this.toast('Внутри разметки нет свободной земли'); return; }
+    const y = r.g + MM(LAWN.soil), nH = Math.max(2, Math.min(9, Math.round(A / 6)));
+    // the heaps: spread over the area (the cells' middles of nH parts)
+    const heaps = [];
+    for (let k = 0; k < nH; k++) { const q = c[Math.floor((k + 0.5) / nH * c.length)]; heaps.push({ x: q.x, z: q.z, R: MM(700 + Math.random() * 300), h: MM(350 + Math.random() * 120), p: 0 }); }
+    const cells = groundCells(t, r, c), box = cellsBox(t, c);
+    const { steps: rake, back } = this._rakeSteps(r, c, cells, y, box);
+    app.journal.begin('lawn-soil', {}, app.clock);
+    const steps = [];
+    // 1 · the heaps tipped one after another
+    for (const H of heaps) steps.push([0.6, (u) => {
+      const want = Math.min(1, u * 1.1);
+      if (want <= H.p) return;
+      H.p = want;
+      for (const q of cells) { const d = Math.hypot(q.x - H.x, q.z - H.z); if (d >= H.R) continue; const top = r.g + H.h * want * (1 - (d / H.R) ** 2); const h = t.hAt(q.i); if (h < top) t._push(q.i, top - h, M_BLACK); }
+      t._touch(...box);
+      if (Math.random() < 0.7) app.particles?.emit(new THREE.Vector3(H.x, r.g + H.h + MM(300), H.z), new THREE.Vector3((Math.random() - 0.5) * 0.1, -0.2, (Math.random() - 0.5) * 0.1), 0, MM(30), 0, 0, M_BLACK);   // (no clods left lying: raked away)
+      if (Math.random() < 0.2) app.sfx?.pour?.(0.35);
+    }]);
+    steps.push(...rake);
     new FitJob(app, {
       steps, parts: [],
       onAbort: () => { app.journal.cancel(); back(); },
