@@ -125,7 +125,7 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | Файл | Модель | Автор | Лицензия | Источник |
 |---|---|---|---|---|
 | `assets/models/loader.glb` — мини-погрузчик | Skid Steer Loader | jeandiz | CC BY 4.0 | https://sketchfab.com/3d-models/91948c1f514141fc82fee40ea56cc8df |
-| `assets/models/excavator.glb` — мини-экскаватор (материалы переведены в metal-rough, meshopt; ходовая отделена от башни по высоте, стрела, рукоять и ковш на своих шарнирах) | Mini Excavator | doty_aecom | CC BY 4.0 | https://sketchfab.com/3d-models/ff658f6d9c054dbd814233a24c70df6a |
+| `assets/models/excavator.glb` — экскаватор (разобран на ходовую, башню, стрелу, рукоять и ковш по деталям модели, на своих шарнирах; текстуры 1024 webp, meshopt; в игре 0,8 размера) | Hitachi excavator | thesidekick | CC BY 4.0 | https://sketchfab.com/3d-models/3dde2c846cc54a4d9fabcc821c9b9caa |
 | `assets/models/canter.glb` — бортовой грузовик-самосвал | 1975 FUSO Canter T200 | thejinjinjin | CC BY 4.0 | https://sketchfab.com/3d-models/4fe39804350e463795bf5404aef22138 |
 | `assets/models/bucket.glb` — ведро для бетона | Plasticbucket | Alexander.Treiner | CC BY 4.0 | https://sketchfab.com/3d-models/10d60b25c7ac4c0c9de056686ed01002 |
 | `assets/models/trowel.glb` — кельма каменщика | Trowel | vcotta | CC BY 4.0 | https://sketchfab.com/3d-models/b22da70bd64a49539d6226950c5355ca |

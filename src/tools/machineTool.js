@@ -81,7 +81,9 @@ export class MachineTool {
     return E.ready.then(() => {
       app.scene.add(E.root);
       const r = this.recOf('excavator');
-      E.place(t, r?.x ?? t.toWorldX(t.rx) - R(3.5), r?.z ?? t.toWorldZ(t.rz) - R(3), r?.yaw ?? Math.PI * 0.75);
+      E.place(t, r?.x ?? t.toWorldX(t.rx) - R(2), r?.z ?? t.toWorldZ(t.rz) - R(5.5), r?.yaw ?? Math.PI / 2);
+      // (all of its tracks on the plot, clear of the houses: else the nearest place it fits)
+      if (!this._fits('excavator', E.x, E.z, E.yaw)) { const q = this._clearNear(E.x, E.z, E.yaw, 'excavator'); if (q) E.place(t, q.x, q.z, q.yaw); }
       if (r) { for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = r[k] || 0; E.load = r.load || 0; }
       E.update(0);
     });
@@ -717,10 +719,10 @@ export class MachineTool {
     return true;
   }
   // the nearest place the loader fits (rings round, 25 cm apart)
-  _clearNear(x, z, yaw) {
+  _clearNear(x, z, yaw, kind = 'loader') {
     for (let r = R(0.25); r < R(12); r += R(0.25)) for (let k = 0, n = Math.ceil(r / R(0.25)) * 6; k < n; k++) {
       const a = k / n * Math.PI * 2, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
-      if (this._fits('loader', px, pz, yaw)) return { x: px, z: pz, yaw };
+      if (this._fits(kind, px, pz, yaw)) return { x: px, z: pz, yaw };
     }
     return null;
   }
@@ -991,10 +993,11 @@ export class MachineTool {
     if (this.view === 'free') { this._mirrors(null); return; }   // (the camera left where it is)
     if (this.view === 'cab' || this.view === 'roof') {
       // from the driver's seat: looking ahead and down at where the bucket works (held still, no lag)
-      const f = new THREE.Vector3(Math.cos(yawV), 0, -Math.sin(yawV)), roof = this.view === 'roof', seat = this.seatAt || (ex ? (roof ? [-0.9, 2.3] : [-0.3, 1.25]) : roof ? (this.drv === 'truck' ? [1.3, 2.75] : [0.85, 2.55]) : this.drv === 'truck' ? [1.45, 1.6] : [0.62, 1.75]);
+      const f = new THREE.Vector3(Math.cos(yawV), 0, -Math.sin(yawV)), roof = this.view === 'roof', seat = this.seatAt || (ex ? (roof ? [-0.6, 2.5, 0.3] : [-1.3, 1.6, 1.2]) : roof ? (this.drv === 'truck' ? [1.3, 2.75] : [0.85, 2.55]) : this.drv === 'truck' ? [1.45, 1.6] : [0.62, 1.75]);
       if (ex) M.root.updateMatrixWorld(true);
-      const e = new THREE.Vector3(seat[0] * R(1), seat[1] * R(1), 0).applyMatrix4(ex ? this.exc.house.matrixWorld : M.root.matrixWorld);
-      const [la, ld] = this.lookAt || (ex ? (roof ? [3.2, 2.6] : [3.0, 1.7]) : roof ? (this.drv === 'truck' ? [5.5, 2.3] : [1.35, 2.4]) : this.drv === 'truck' ? [8, 1.2] : [2.6, 1.8]), ahead = R(la), drop = R(ld);   // (the loader: steep down — the bucket in the middle of the picture)
+      // (the excavator's seat: in the cab on the house's left, in the model's metres — the house's own frame)
+      const e = ex ? new THREE.Vector3(seat[0], seat[1], seat[2]).applyMatrix4(this.exc.house.matrixWorld) : new THREE.Vector3(seat[0] * R(1), seat[1] * R(1), 0).applyMatrix4(M.root.matrixWorld);
+      const [la, ld] = this.lookAt || (ex ? (roof ? [5, 3.2] : [5, 2.4]) : roof ? (this.drv === 'truck' ? [5.5, 2.3] : [1.35, 2.4]) : this.drv === 'truck' ? [8, 1.2] : [2.6, 1.8]), ahead = R(la), drop = R(ld);   // (the loader: steep down — the bucket in the middle of the picture)
       rig.setState({ target: [e.x + f.x * ahead, e.y - drop, e.z + f.z * ahead], yaw: yawV - Math.PI / 2, pitch: Math.atan2(drop, ahead), dist: Math.hypot(ahead, drop) }, true);
       this._camYaw = null; rig.shakeKeep ??= rig.shake; rig.shake = false;
       this._fov(this.drv === 'truck' ? 70 : ex ? 80 : 92);   // (wide, as a camera in a cab: the bucket below and the way ahead both in sight)
@@ -1006,7 +1009,7 @@ export class MachineTool {
     // the camera behind it (a finger turning it round keeps its turn)
     if (this._camYaw != null) this.camOff += rig.goal.yaw - this._camYaw;
     rig.goal.yaw = this._camYaw = yawV - Math.PI / 2 + this.camOff;
-    const ahead = R(this.drv === 'truck' ? 1.5 : ex ? 2.5 : 2);   // (a little ahead of it: what it goes into is in sight)
+    const ahead = R(this.drv === 'truck' ? 1.5 : ex ? 3.5 : 2);   // (a little ahead of it: what it goes into is in sight)
     rig.goal.target.set(M.x + Math.cos(yawV) * ahead, M.y + R(0.8), M.z - Math.sin(yawV) * ahead); rig.clampTarget();
   }
 
@@ -1015,12 +1018,12 @@ export class MachineTool {
   // back — in); the right one the boom (up / down) and the bucket (left — curl in, right — open).
   // «Ход»: the left stick drives on the tracks (forward / back, turning on the spot), the right one
   // still the boom and the bucket. The teeth under the ground cut what is over them into the bucket
-  // (up to its 0,08 m³); opened, the bucket lets it go — into the truck's body under it, else in a heap.
+  // (up to its 0,4 m³); opened, the bucket lets it go — into the truck's body under it, else in a heap.
   _excStep(dt, lx, ly, rx, ry) {
     const app = this.app, t = app.terrain, E = this.exc;
     const g = (this.digG ||= new Grader(app));
     g.free = (i, x, z) => t.zone[i] !== 1 && t.conc[i] <= 1e-6 && t.top[i] <= 0 && (!this.out || this.out(x, z) === true);
-    const cap = R(1) ** 3 * 0.08 / t.cellArea;
+    const cap = R(1) ** 3 * 0.4 / t.cellArea;   // (a 13 t machine's bucket: 0,4 m³)
     if (this.excMode === 'drive') {
       this.v += (-ly * R(1.3) - this.v) * (1 - Math.exp(-dt * 3));
       if (Math.abs(this.v) < R(0.01) && !ly) this.v = 0;
