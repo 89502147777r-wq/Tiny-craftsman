@@ -541,6 +541,8 @@ export class LandWork {
     v.setAnim(key, { n: 0, drop: 600, mulch: 0 });
     const heaps = [], per = hedge ? 0.55 : 2.2, steps = [];
     spots.forEach(([x, z], k) => {
+      // (a pot or a lantern: carried and set down — no hole)
+      if (P.pot) { steps.push([0.8, (u) => { const e = u * u * (3 - 2 * u); v.setAnim(key, { n: k + 1, drop: 600 * (1 - e) }); }]); return; }
       const hx = x + R * 1.6, hz = z + R * 0.4, vol = Math.PI * R * R * D * 0.6;
       // (dug)
       steps.push([per * 0.35, (u) => {
@@ -565,17 +567,17 @@ export class LandWork {
     });
     // watered in, then the bark round it
     const [cx, cz] = spots[Math.floor(spots.length / 2)];
-    if (!P.light) steps.push([1, (u) => { for (let i = 0; i < 3; i++) { const [x, z] = spots[Math.floor(Math.random() * spots.length)]; app.particles?.emit(new THREE.Vector3(x + (Math.random() - 0.5) * R, rec.g + MM(500), z + (Math.random() - 0.5) * R), new THREE.Vector3(0, -0.3, 0), 0, MM(6), 0, 0, 1); } if (u < 1 && Math.random() < 0.2) app.sfx?.pour?.(0.2); }]);
+    if (!P.light && P.mulch) steps.push([1, (u) => { for (let i = 0; i < 3; i++) { const [x, z] = spots[Math.floor(Math.random() * spots.length)]; app.particles?.emit(new THREE.Vector3(x + (Math.random() - 0.5) * R, rec.g + MM(500), z + (Math.random() - 0.5) * R), new THREE.Vector3(0, -0.3, 0), 0, MM(6), 0, 0, 1); } if (u < 1 && Math.random() < 0.2) app.sfx?.pour?.(0.2); }]);
     steps.push([P.light ? 0.1 : 0.6, (u) => v.setAnim(key, { n: 1e9, drop: 0, mulch: u })]);
     void cx; void cz;
     new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); v.setAnim(key, null); }, commit: () => {
       app.journal.commit(app.clock);
       v.setAnim(key, null);
-      this.toast(P.light ? `${P.name}: установлен, кабель 12 В проложен в траншее — включится в сумерках` : hedge ? `Живая изгородь: ${spots.length} туй через 500 мм, полита, замульчирована корой` : `${P.name}: посажено с комом в яму ${P.hole[0]} × ${P.hole[1]} мм, полито, приствольный круг замульчирован корой${rec.kind === 'tree' ? ', две опоры с подвязкой' : ''}`);
+      this.toast(P.pot ? (P.light ? `${P.name}: поставлен — ночью светит` : `${P.name}: поставлено`) : P.light ? `${P.name}: установлен, кабель 12 В проложен в траншее — включится в сумерках` : hedge ? `Живая изгородь: ${spots.length} туй через 500 мм, полита, замульчирована корой` : `${P.name}: посажено с комом в яму ${P.hole[0]} × ${P.hole[1]} мм, полито, приствольный круг замульчирован корой${P.stakes ? ', две опоры с подвязкой' : ''}`);
     } });
   }
   plantStatus() {
-    return { bollard: 'Коснитесь у дорожки — встанет светильник-столбик (кабель 12 В в траншее); ночью светит', spot: 'Коснитесь у дерева — грунтовый прожектор подсветит его снизу', tree: 'Коснитесь земли — посадится дерево с опорами', ball: 'Коснитесь земли — посадится самшит, стриженный шаром', thuja: 'Коснитесь земли — посадится туя «Смарагд»', hedge: 'Ведите пальцем — вдоль линии посадится живая изгородь из туй' }[this.plantKind];
+    return { bollard: 'Коснитесь у дорожки — встанет светильник-столбик (кабель 12 В в траншее); ночью светит', spot: 'Коснитесь у дерева — грунтовый прожектор подсветит его снизу', tree: 'Коснитесь земли — посадится дерево с опорами', ball: 'Коснитесь земли — посадится самшит, стриженный шаром', thuja: 'Коснитесь земли — посадится туя «Смарагд»', hedge: 'Ведите пальцем — вдоль линии посадится живая изгородь из туй' }[this.plantKind] || (PLANTS[this.plantKind].pot ? 'Коснитесь земли — поставится там' : PLANTS[this.plantKind].light ? 'Коснитесь земли — светильник встанет там (кабель 12 В в траншее); ночью светит' : 'Коснитесь земли — посадится там, с комом, полито и замульчировано');
   }
   removePlant(id) {
     if (!this.app.objects.get(id)) return;
