@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:10.47 (860 mm = 9 m).
-export const BUILD = 255;
+export const BUILD = 256;
 export const STAGE = 3;
 export const MODEL_SCALE = 9000 / 860;   // 1:10.47 — 860 mm of the model is 9 m
 // how much finer everything is than at the old 1:3.5 (texture sizes of stones, pores …)
@@ -52,7 +52,7 @@ export const MATERIALS = [
   { id: 'g5', name: 'Щебень 5–20', repose: Math.tan(37 * Math.PI / 180), tile: 1.0 / MODEL_SCALE, color: 0xa3a29e },   // tile: real metres per repeat of the photo
   { id: 'g20', name: 'Щебень 20–40', repose: Math.tan(39 * Math.PI / 180), tile: 2.6 / MODEL_SCALE, color: 0x86847f },   // stones ~2.5× those of 5–20
   // black topsoil (for the lawn, the beds): fine, crumbly, almost black when moist
-  { id: 'black', name: 'Чернозём', repose: Math.tan(40 * Math.PI / 180), color: 0x3b2d23 },
+  { id: 'black', name: 'Чернозём', repose: Math.tan(40 * Math.PI / 180), color: 0x1f1a17 },
 ];
 export const M_SOIL = 0, M_SAND = 1, M_G5 = 2, M_G20 = 3, M_BLACK = 4;
 // deliveries (real m³ → model volume: ÷ scale³) — a tipper truck brings 3–10 m³ — and the
