@@ -1,0 +1,84 @@
+shovel_dig|shovel digging dirt
+shovel_dump|dirt dump shovel throw soil
+soil_fall|soil dirt falling pour
+gravel_pour|gravel pour tipping
+gravel_shovel|shovel gravel
+sand_pour|sand pouring
+rake|rake gravel raking
+rake_soil|raking soil garden rake
+wheelbarrow|wheelbarrow
+concrete_pour|concrete pouring pump
+concrete_slosh|wet concrete mud slosh
+bucket_pour|bucket pour water mud
+vibrator|concrete vibrator
+trowel|trowel concrete plaster scraping
+mortar|mortar trowel brick
+screed|screed concrete leveling
+plate_compactor|plate compactor
+brick_place|brick placing laying
+brick_drop|brick drop
+block_place|cinder block concrete block drop
+stone_place|stone slab placing heavy
+mallet|rubber mallet hit
+hammer_nail|hammer nail wood
+hammer_metal|hammer metal hit
+wood_plank|wood plank drop board
+wood_saw|hand saw wood
+circular_saw|circular saw cutting wood
+rebar|rebar steel bars clank
+metal_rod|metal pipe drop
+wire_tie|pliers wire twist
+welding|arc welding
+grinder|angle grinder metal
+drill|hammer drill concrete wall
+screwdriver|impact driver screw
+auger|earth auger post hole
+diesel_idle|diesel engine idle tractor
+loader|skid steer loader
+excavator|excavator hydraulic working
+excavator_engine|excavator engine
+hydraulic|hydraulic pump whine
+truck_engine|truck diesel engine
+truck_tipper|dump truck tipping
+backup_beep|reversing beeper truck
+bucket_scrape|excavator bucket scrape gravel
+dirt_into_truck|dirt dumped into truck bed
+paver|paving stones placing
+kerb|concrete curb stone
+turf|sod lawn turf
+sprinkler|lawn sprinkler
+watering|watering can garden
+plant_dig|digging hole garden trowel
+pot_place|ceramic pot place down
+metal_sheet|corrugated metal sheet
+gate_latch|metal gate latch close
+gate_creak|gate creak open
+roof_tile|roof tiles clatter
+glass_place|glass pane placing
+window_install|window frame install
+door_close|door close wooden
+foam_spray|spray can hiss
+tape_measure|tape measure
+peg_hammer|wooden stake hammer ground
+string_line|string pull taut
+cash|cash register
+ui_click|soft click button
+rain|rain on ground
+wind|wind gusts outdoor
+birds|birds morning ambience countryside
+crickets|crickets night
+thunder|thunder rumble distant
+water_fill|water filling pool hose
+footsteps|footsteps gravel
+collapse|building collapse debris
+rubble|rubble falling concrete debris
+glass_break|glass shatter window
+wood_crack|wood cracking breaking
+earthquake|earthquake rumble
+storm_wind|hurricane wind storm
+tsunami|big wave crash
+flood|flood water rushing
+tornado|tornado
+fire|fire burning crackling
+explosion|explosion debris
+metal_creak|metal creaking stress
