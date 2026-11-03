@@ -29,6 +29,7 @@ export class StripJob {
     for (const pc of pieces) { x0 = Math.min(x0, pc.p.x); x1 = Math.max(x1, pc.p.x); z0 = Math.min(z0, pc.p.z); z1 = Math.max(z1, pc.p.z); }
     const pad = M(1.2), maxLen = Math.max(...pieces.filter((p) => p.k === 'board').map((p) => p.s.x), 0.1);
     this.ep = new Episode(t, x0 - pad - maxLen / 2, z0 - pad - maxLen / 2, x1 + pad + maxLen / 2, z1 + pad + maxLen / 2);
+    this.ep.onLand = (b, v, at) => app.sfx?.play?.('plank', { vol: Math.min(1, v / 2.5), at, gap: 0.09 });
     this.spot = spot;
     // bodies: half sizes in model units, centred
     for (const pc of pieces) {

@@ -103,6 +103,7 @@ export class UI {
     this.statT = 0;
     $('build').textContent = `BUILD ${BUILD}`;
     document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => {
+      app.sfx?.play?.('tap', { vol: 0.35 });
       app.setTool(b.dataset.tool);
       this.navPath = []; this.navLevel = this.chips().length ? 'chips' : 'tools';
       if (this.fanOpen && !this.chips().length) this.fan(false);   // quiet mode: done choosing
@@ -113,7 +114,7 @@ export class UI {
     this.navPath = []; this.navLevel = 'groups';
     const back = document.createElement('button');
     back.className = 'tool nav-back'; back.innerHTML = '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Назад</span>';
-    back.addEventListener('click', () => this.navBack());
+    back.addEventListener('click', () => { app.sfx?.play?.('tap', { vol: 0.3 }); this.navBack(); });
     $('toolrow').prepend(back);
     this.lastTool = {};
     // (the camera: its button on the top bar, by the menu)
@@ -123,7 +124,7 @@ export class UI {
       b.className = 'tool';
       b.dataset.gid = g.id;
       b.innerHTML = this.groupSvg(g) + `<span>${g.label}</span>`;
-      b.addEventListener('click', () => this.openGroup(g.id));
+      b.addEventListener('click', () => { app.sfx?.play?.('tap', { vol: 0.35 }); this.openGroup(g.id); });
       $('groups').appendChild(b);
     }
     $('btn-cam').addEventListener('click', () => this.openGroup('camera'));
@@ -137,8 +138,8 @@ export class UI {
       this.readyRow = true; this.navLevel = 'chips'; this.navPath = []; this.refresh();
     });
     $('groups').appendChild(rb);
-    $('btn-undo').addEventListener('click', () => app.undo());
-    $('btn-redo').addEventListener('click', () => app.redo());
+    $('btn-undo').addEventListener('click', () => { app.sfx?.play?.('tap', { vol: 0.35 }); app.undo(); });
+    $('btn-redo').addEventListener('click', () => { app.sfx?.play?.('tap', { vol: 0.35 }); app.redo(); });
     $('btn-level').addEventListener('click', () => { app.settings.level = !app.settings.level; app.applySettings(); });
     $('btn-menu').addEventListener('click', () => this.openMenu(true));
     // the numbers in the corner: shown / hidden by the small button over them (remembered)
@@ -711,7 +712,7 @@ export class UI {
     const bar = $('subbar');
     bar.innerHTML = ''; this._rowScroll = keepScroll;
     if (!show) return;
-    const add = (label, cls, fn) => { const b = document.createElement('button'); b.className = `chip-btn ${cls}`; b.textContent = label; if (fn) b.addEventListener('click', fn); bar.appendChild(b); return b; };
+    const add = (label, cls, fn) => { const b = document.createElement('button'); b.className = `chip-btn ${cls}`; b.textContent = label; if (fn) b.addEventListener('click', (ev) => { this.app.sfx?.play?.('tap', { vol: 0.35 }); fn(ev); }); bar.appendChild(b); return b; };
     add('‹', 'back', () => this.navBack());
     // (only what is in the tab: no names of the tabs before it)
     for (const c of list) {

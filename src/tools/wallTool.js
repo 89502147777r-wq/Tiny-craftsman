@@ -154,6 +154,7 @@ export class WallTool {
       loadPhysics().catch(() => {});
       // walls laid out before the pallets existed get theirs now
       const bare = this.app.objects.all('wall').filter((w) => !w.pallet && !w.palletOff);
+      if (bare.length) this.app.sfx?.seq?.(['block','block','plank']);
       if (bare.length) this.app.journal.act('pallets', {}, this.app.clock, () => { for (const w of bare) this.app.objects.update(w.id, { pallet: this._palletSpot(w) }); });
     }
     this.app.ui.refresh();
@@ -347,7 +348,7 @@ export class WallTool {
       if (!b || !H) return;
       if (!H.patch) { app.ui.toast(H.why); return; }
       const cage = app.objects.all('cage').find((r) => r.beltId === b.id);
-      app.journal.act('slab-hole', {}, app.clock, () => {
+      app.sfx?.seq?.(['jackhammer','debris']); app.journal.act('slab-hole', {}, app.clock, () => {
         app.objects.update(b.id, H.patch);
         // the bars laid already: laid again round the opening
         if (cage) { app.objects.remove(cage.id); app.objects.add(slabCage(app.objects.get(b.id))); }
@@ -607,7 +608,7 @@ export class WallTool {
     if (app.objects.all('unit').some((u) => u.wall === w.id && u.row >= r0 && u.row < l1 && u.s0 < d.s1 && u.s1 > d.s0)) {
       app.ui.toast('Здесь уже выложено — проём размечают до кладки этих рядов'); return;
     }
-    app.journal.act('opening', { wall: w.id, kind: rec.kind }, app.clock, () => app.objects.add(rec));
+    app.sfx?.seq?.(['tap']); app.journal.act('opening', { wall: w.id, kind: rec.kind }, app.clock, () => app.objects.add(rec));
     app.ui.toast(`${o.name} ${width} мм: ряды ${r0 + 1}–${r1}, перемычка в ряду ${r1 + 1}`);
     void k;
   }
@@ -1237,21 +1238,21 @@ export class WallTool {
       if (sb.studs?.length) { app.ui.toast('В этом поясе шпильки уже стоят'); return; }
       if (sb.fill >= 0.95 && uStrength(sb, app.clock) > 0.25) { app.ui.toast('Бетон уже схватился — шпильки ставят в каркас до заливки или в свежий бетон'); return; }
       const st = beltStuds(sb);
-      app.journal.act('belt-studs', {}, app.clock, () => app.objects.update(sb.id, { studs: st }));
+      app.sfx?.seq?.(['metal_hit','metal_hit','metal_hit']); app.journal.act('belt-studs', {}, app.clock, () => app.objects.update(sb.id, { studs: st }));
       app.ui.toast(`Шпильки М12 под мауэрлат: ${st.length} шт. по оси стен — через ≤ 1 м и по 300 мм от углов, загнутым концом в бетон, 200 мм над поясом (мауэрлат 150 + шайба и гайка)`);
       return;
     }
     if (ck === 'lform') {
       if (!lf) { app.ui.toast('Опалубку перемычки — к проёму: промежутку 300…6000 мм между блоками одного ряда'); return; }
       if (!lf.ok) { app.ui.toast(lformWhy(lf)); return; }
-      app.journal.act('lintel-form', {}, app.clock, () => app.objects.add(lf.rec));
+      app.sfx?.seq?.(['plank','hammer_nail','hammer_nail','hammer_nail']); app.journal.act('lintel-form', {}, app.clock, () => app.objects.add(lf.rec));
       app.ui.toast(`Опалубка перемычки над проёмом ${lf.gapMm} мм: днище на стойках, доски по бокам, длина ${lf.lenMm} мм (опора по 250 мм), высота ${lf.hMm} мм — теперь «Каркас», потом бетон`);
       return;
     }
     if (ck === 'belt') {
       if (!belt) { app.ui.toast('Опалубку пояса — на верх стены: коснитесь верхнего ряда кладки'); return; }
       if (belt.exists) { app.ui.toast('На этих стенах опалубка пояса уже стоит'); return; }
-      app.journal.act('belt-form', {}, app.clock, () => app.objects.add(belt.rec));
+      app.sfx?.seq?.(['plank','hammer_nail','hammer_nail','plank','hammer_nail','hammer_nail']); app.journal.act('belt-form', {}, app.clock, () => app.objects.add(belt.rec));
       app.ui.hideMeasure();
       const sp = belt.rec.spans || [], deep = sp.filter((q) => q[4] > 0);
       app.ui.toast(`Опалубка пояса: доски по обе стороны стен, ${belt.lenM.toFixed(1).replace('.', ',')} м стен, высота пояса 250 мм${sp.length ? `; над пролётами (${sp.length}) — днище на стойках до плиты${deep.length ? `, ригель до ${Math.max(...deep.map((q) => q[4])) + 250} мм высотой` : ''}` : ''} — теперь каркас («Каркас»), потом бетон${belt.long ? `. Пролёт ${(belt.long / 1000).toFixed(1).replace('.', ',')} м не перекрыт — нужен промежуточный столб` : ''}`);
@@ -1261,7 +1262,7 @@ export class WallTool {
       const R = railR; app.ui.hideMeasure();
       if (!R) { app.ui.toast('Стеклянное ограждение — на край залитого перекрытия: балкон, консоль, проём лестницы или второго света'); return; }
       if (R.why) { app.ui.toast(R.why); return; }
-      app.journal.act('rail', {}, app.clock, () => app.objects.add(R.rec));
+      app.sfx?.seq?.(['glass','screwdriver']); app.journal.act('rail', {}, app.clock, () => app.objects.add(R.rec));
       app.ui.toast(`Стеклянное ограждение ${(R.len / 1000).toFixed(2).replace('.', ',')} м: профиль-основание на анкерах в 50 мм от края, триплекс 10+10 мм на клиньях, высота ${RAIL.H} мм, поручень из нержавейки`);
       return;
     }
@@ -1285,7 +1286,7 @@ export class WallTool {
     if (ck === 'slab') {
       if (!belt) { app.ui.toast('Перекрытие — на верх стен, армопояс или залитые колонны и сваи (от трёх, верх на одной отметке): коснитесь верха стены или колонны'); return; }
       if (belt.exists) { app.ui.toast('Здесь опалубка перекрытия уже стоит'); return; }
-      app.journal.act('slab-form', {}, app.clock, () => app.objects.add(belt.rec));
+      app.sfx?.seq?.(['pipe','pipe','plank','plank','hammer_nail']); app.journal.act('slab-form', {}, app.clock, () => app.objects.add(belt.rec));
       app.ui.toast(`Опалубка перекрытия${belt.rec.piles ? ` на ${belt.rec.piles} колоннах/сваях` : ''}: ${belt.area.toFixed(1).replace('.', ',')} м², ${cantText(belt.rec)}; фанера на балках и стойках, по краю доски, толщина плиты 200 мм — теперь каркас («Каркас»), потом бетон шлангом`);
       return;
     }
@@ -1295,12 +1296,12 @@ export class WallTool {
       if (bc.fill > 0.05) { app.ui.toast(sl ? 'Перекрытие уже залито — арматуру кладут до бетона' : 'Пояс уже залит — каркас кладут до бетона'); return; }
       if (sl) {
         const rec = slabCage(bc);
-        app.journal.act('slab-cage', {}, app.clock, () => app.objects.add(rec));
+        app.sfx?.seq?.(['rebar','rebar','wire','wire']); app.journal.act('slab-cage', {}, app.clock, () => app.objects.add(rec));
         app.ui.toast(`Арматура перекрытия: две сетки Ø${SLAB.bar} с шагом ${SLAB.step} мм в обе стороны, нижняя на стульчиках (защитный слой ${SLAB.cover} мм), верхняя на «лягушках»${bc.cant ? `; над консолью — дополнительные верхние прутки Ø${SLAB.cantBar}: консоль работает на растяжение по верху` : ''} — теперь бетон (шланг)`);
         return;
       }
       const rec = beltCage(bc);
-      app.journal.act('belt-cage', {}, app.clock, () => app.objects.add(rec));
+      app.sfx?.seq?.(['rebar','wire','wire']); app.journal.act('belt-cage', {}, app.clock, () => app.objects.add(rec));
       if (bc.lform) { app.ui.toast('Каркас перемычки: 4 прутка Ø12 на всю длину с опорами, хомуты Ø6 через ≤ 350 мм, звёздочки 40 мм — теперь бетон (ведро или шланг), потом вибратор и правило'); return; }
       app.ui.toast(`Каркас пояса: 4 прутка Ø12 вдоль каждой стены, на углах — внахлёст до дальней стороны, хомуты Ø6 через ≤ 350 мм, звёздочки — теперь бетон (ведро или шланг)`);
       return;
@@ -1309,7 +1310,7 @@ export class WallTool {
       if (!cage) { app.ui.toast('Каркас — в лоток U-блоков или в опалубку пояса: поднесите к ним'); return; }
       if (cage.has) { app.ui.toast('В этих U-блоках каркас уже есть'); return; }
       const rec = cageRec(cage, app);
-      app.journal.act('u-cage', {}, app.clock, () => app.objects.add(rec));
+      app.sfx?.seq?.(['rebar','wire']); app.journal.act('u-cage', {}, app.clock, () => app.objects.add(rec));
       app.ui.toast(`Каркас ${((cage.s1 - cage.s0) / S / 1000).toFixed(2).replace('.', ',')} м: 4 прутка Ø12, хомуты Ø6 через ≤ 350 мм, звёздочки 30 мм — теперь бетон в лоток: «Бетон → Ведро»`);
       return;
     }
@@ -1422,7 +1423,7 @@ export class WallTool {
     if (id && app.objects.get(id)?.type === 'opening') {
       const o = app.objects.get(id);
       if (app.objects.all('unit').some((u) => u.wall === o.wall && u.lintel && u.s0 < o.s1 && u.s1 > o.s0)) { app.ui.toast('Над проёмом уже перемычка — сначала снимите её'); return; }
-      app.journal.act('opening-remove', {}, app.clock, () => app.objects.remove(id));
+      app.sfx?.seq?.(['tap']); app.journal.act('opening-remove', {}, app.clock, () => app.objects.remove(id));
       app.ui.toast('Проём убран — ряды будут сплошными');
       return;
     }
@@ -1439,10 +1440,10 @@ export class WallTool {
     if (id && app.objects.get(id)?.type === 'stock') { app.budget.remove(id); return; }
     if (id && isPoolBelt(app.objects.get(id))) { this.pool.belt(app.objects.get(id)); return; }
     if (id && app.objects.get(id)?.type === 'proof') { this.proof.remove(id); return; }
-    if (id && app.objects.get(id)?.type === 'rail') { app.journal.act('rail-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Ограждение сняли'); return; }
-    if (id && app.objects.get(id)?.type === 'rwin') { app.journal.act('rwin-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Окно сняли — кровля снова сплошная'); return; }
+    if (id && app.objects.get(id)?.type === 'rail') { app.sfx?.seq?.(['glass', 'screwdriver']); app.journal.act('rail-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Ограждение сняли'); return; }
+    if (id && app.objects.get(id)?.type === 'rwin') { app.sfx?.seq?.(['crowbar', 'glass']); app.journal.act('rwin-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Окно сняли — кровля снова сплошная'); return; }
     if (id && app.objects.get(id)?.type === 'window') {
-      app.journal.act('window-remove', {}, app.clock, () => app.objects.remove(id));
+      app.sfx?.seq?.(['crowbar','glass']); app.journal.act('window-remove', {}, app.clock, () => app.objects.remove(id));
       app.ui.toast('Сняли — проём снова пустой');
       return;
     }
@@ -1450,7 +1451,7 @@ export class WallTool {
       // a ring beam / a slab: the formwork comes off once the concrete has set; empty — it goes
       const b = app.objects.get(id), sl = isSlab(b);
       if (!(b.fill > 0.05)) {
-        app.journal.act('belt-remove', {}, app.clock, () => { for (const c of app.objects.all('cage').filter((r) => r.beltId === b.id)) app.objects.remove(c.id); app.objects.remove(b.id); });
+        app.sfx?.seq?.(['crowbar','plank']); app.journal.act('belt-remove', {}, app.clock, () => { for (const c of app.objects.all('cage').filter((r) => r.beltId === b.id)) app.objects.remove(c.id); app.objects.remove(b.id); });
         app.ui.toast(sl ? 'Опалубку перекрытия разобрали' : b.lform ? 'Опалубку перемычки разобрали' : 'Опалубку пояса разобрали');
         return;
       }
@@ -1459,7 +1460,7 @@ export class WallTool {
         const now = performance.now();
         if (this._breakAsk?.id === b.id && now - this._breakAsk.t < 4000) {
           this._breakAsk = null;
-          app.journal.act('belt-break', {}, app.clock, () => { for (const c of app.objects.all('cage').filter((r) => r.beltId === b.id)) app.objects.remove(c.id); app.objects.remove(b.id); });
+          app.sfx?.seq?.(['jackhammer','debris']); app.journal.act('belt-break', {}, app.clock, () => { for (const c of app.objects.all('cage').filter((r) => r.beltId === b.id)) app.objects.remove(c.id); app.objects.remove(b.id); });
           app.ui.toast(sl ? 'Перекрытие разбили отбойником и вывезли' : b.lform ? 'Перемычку разбили отбойником — проём снова открыт' : 'Пояс разбили отбойником и вывезли');
           return;
         }
@@ -1469,7 +1470,7 @@ export class WallTool {
       }
       const k = uStrength(b, app.clock);
       if (!(b.fill >= 0.95) || k < 1) { app.ui.toast(!(b.fill >= 0.95) ? (sl ? 'Перекрытие залито не доверху — долейте бетон' : 'Пояс залит не доверху — долейте бетон') : `Бетон набирает прочность: ${Math.round(k * 100)} % — ${sl ? (b.cant ? 'стойки рано убирать: консоль без них просядет' : 'стойки рано убирать: плита прогнётся') : 'опалубку рано снимать'}`); return; }
-      app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, { stripped: true, set: true }));
+      app.sfx?.seq?.(['crowbar','plank','plank']); app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, { stripped: true, set: true }));
       app.ui.toast(sl ? 'Стойки, балки и фанеру сняли — перекрытие готово' + (b.cant ? ', консоль держится сама' : '') : b.lform ? 'Стойки, днище и доски сняли — монолитная перемычка готова, на неё можно класть дальше' : 'Опалубку сняли — армопояс готов');
       return;
     }
@@ -1491,7 +1492,7 @@ export class WallTool {
           app.ui.toast(weak.kind !== 'ublock' ? 'На подпорке лежит не U-блок — сначала снимите его' : !(weak.fill >= 0.95) ? 'U-блоки на подпорке не залиты бетоном доверху' : `Бетон набирает прочность: ${Math.round(uStrength(weak, app.clock) * 100)} % — подпорку рано снимать`);
           return;
         }
-        app.journal.act('prop-remove', {}, app.clock, () => { for (const o of onIt) app.objects.update(o.id, { set: true }); app.objects.remove(id); });
+        app.sfx?.seq?.(['pipe']); app.journal.act('prop-remove', {}, app.clock, () => { for (const o of onIt) app.objects.update(o.id, { set: true }); app.objects.remove(id); });
         app.ui.toast('Подпорку сняли — перемычка держит');
         return;
       }
@@ -1501,7 +1502,7 @@ export class WallTool {
         || (o.p[1] - o.s[1] / 2 > top - 1e-4 && o.p[1] - o.s[1] / 2 - top < 0.003 && Math.hypot(o.p[0] - u.p[0], o.p[2] - u.p[2]) < (u.s[0] + o.s[0]) / 2 - 0.001)));
       if (above) { app.ui.toast('Сверху лежит следующий ряд — сначала снимите его'); return; }
       // the mortar spread for it goes with it (the bed of a wall course is a record of its own)
-      app.journal.act('unit-remove', {}, app.clock, () => {
+      app.sfx?.seq?.(['block']); app.journal.act('unit-remove', {}, app.clock, () => {
         if (!u.free) for (const b of app.objects.all('bed')) if (b.wall === u.wall && b.row === u.row && b.s0 >= u.s0 - 1 && b.s1 <= u.s1 + 1) app.objects.remove(b.id);
         app.objects.remove(id);
       });
@@ -1510,7 +1511,7 @@ export class WallTool {
     const n = this.nearest(p);
     if (n && app.objects.all('wall').some((o) => o.on === n.w.id)) { app.ui.toast('На этой стене стоит следующий ярус — сначала уберите его'); return; }
     if (n && !app.objects.all('unit').some((u) => u.wall === n.w.id)) {
-      app.journal.act('wall-remove', {}, app.clock, () => { for (const b of [...app.objects.all('bed'), ...app.objects.all('opening')].filter((b) => b.wall === n.w.id)) app.objects.remove(b.id); app.objects.remove(n.w.id); });
+      app.sfx?.seq?.(['debris']); app.journal.act('wall-remove', {}, app.clock, () => { for (const b of [...app.objects.all('bed'), ...app.objects.all('opening')].filter((b) => b.wall === n.w.id)) app.objects.remove(b.id); app.objects.remove(n.w.id); });
       app.ui.toast('Линия стены убрана');
     } else app.ui.toast('Коснитесь блока / кирпича, чтобы снять его');
   }
@@ -1609,6 +1610,7 @@ class LayJob {
       g.ktrowelLump = Math.cbrt(sq.lump * 0.75 / Math.PI) * 1.4;
       // (its +z out of the face: yaw from the normal)
       g.set('ktrowel', at.p, Math.atan2(at.n[0], at.n[1]), this.trimT < dt * 1.5);
+      if (this.trimT < dt * 1.5) this.app.sfx?.play?.('trowel_tap', { vol: 0.5, gap: 0.15, at: at.p });   // (the trowel's edge drawn along the joint)
       if (this.trimT > lead + T + 0.03) {
         this.trimK++; this.trimT = 0;
         if (this.trimK >= order.length) { this._commit(); return; }

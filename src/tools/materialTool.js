@@ -66,6 +66,8 @@ export class MaterialTool {
     const app = this.app;
     if (this.state === 'pour' || this.state === 'bucket') {
       this.t += dt;
+      // (the stream of it running out of the body / the barrow while it goes)
+      app.sfx?.loop?.('mat-pour', this.mat === 1 ? 'sand_pour' : this.mat === 2 || this.mat === 3 ? 'gravel_pour' : 'soil_pour', 0.5, 1, this.p, true);
       let want;
       if (this.state === 'pour') want = Math.min(this.total, this.total * Math.min(1, this.t / this.duration));
       else want = this.poured + this.rate * dt;

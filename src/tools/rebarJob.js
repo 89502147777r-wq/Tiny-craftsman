@@ -29,6 +29,7 @@ export class RebarJob {
     // a cage is laid bar by bar from a finger's height (60 Hz is enough); a bar or a sheet
     // is let go from higher: finer steps, or a thin fast bar would slip through
     this.ep = new Episode(t, x0 - pad, z0 - pad, x1 + pad, z1 + pad, 2, rec.type === 'cage' ? 60 : 120);
+    this.ep.onLand = (b, v, at) => app.sfx?.play?.('rebar', { vol: Math.min(1, v / 2.5), at, gap: 0.09 });
     this.ep.maxV = 1;   // bars are lowered, not thrown
     // what is already there holds it up
     const near = (b) => Math.max(b[0], b[3]) > x0 - pad && Math.min(b[0], b[3]) < x1 + pad && Math.max(b[2], b[5]) > z0 - pad && Math.min(b[2], b[5]) < z1 + pad;

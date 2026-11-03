@@ -58,6 +58,7 @@ export class Episode {
     this.acc = 0;
     this.time = 0;
     this.maxV = 3; this.maxW = 8;   // m/s, rad/s
+    this._vy = new WeakMap(); this.onLand = null;
   }
 
   // a box (half sizes in model units) of wood or steel at a model position / rotation
@@ -132,6 +133,10 @@ export class Episode {
         const v = b.linvel(), w = b.angvel(), lv = Math.hypot(v.x, v.y, v.z), lw = Math.hypot(w.x, w.y, w.z);
         if (lv > this.maxV) { const k = this.maxV / lv; b.setLinvel({ x: v.x * k, y: v.y * k, z: v.z * k }, true); }
         if (lw > this.maxW) { const k = this.maxW / lw; b.setAngvel({ x: w.x * k, y: w.y * k, z: w.z * k }, true); }
+        // (a piece that was falling and has been stopped short: it landed — onLand(body, m/s), its sound)
+        const vy = b.linvel().y, prev = this._vy.get(b) ?? 0;
+        if (prev < -0.6 && vy > prev * 0.35 && this.onLand) { const t = b.translation(); this.onLand(b, -prev, { x: t.x / S, y: t.y / S, z: t.z / S }); }
+        this._vy.set(b, vy);
       }
       this.acc -= h; this.time += h; n++;
     }

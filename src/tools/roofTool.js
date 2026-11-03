@@ -272,7 +272,7 @@ export class RoofWork {
       const patch = { ...r, [k]: v === 'all' ? [] : k === 'grav' ? [] : v.slice(0, -1) };
       delete patch.stage; delete patch.look; delete patch.id;
       const empty = ['vap', 'xps', 'wedge', 'memS', 'copS', 'grav'].every((q) => !patch[q] || !patch[q].length);
-      app.journal.act('roof-remove', {}, app.clock, () => { if (empty) app.objects.remove(id); else app.objects.update(id, patch); });
+      app.sfx?.seq?.(['crowbar','sheet']); app.journal.act('roof-remove', {}, app.clock, () => { if (empty) app.objects.remove(id); else app.objects.update(id, patch); });
       app.ui.toast(`Сняли ${nm}`);
       return;
     }

@@ -69,7 +69,7 @@ export class LawnWork {
     if (app.physJob?.fit) app.physJob.finish();
     if (app.physJob) return true;
     if (L === 'area') {
-      if (this.cord) { this.drag = { L: 'rect', a: [p.x, p.z], b: [p.x, p.z] }; app.ui?.showMeasure?.(EN() ? 'Pull the string out — a rectangle' : 'Тяните шнур — прямоугольник'); return true; }
+      if (this.cord) { app.sfx?.play?.('stake'); this.drag = { L: 'rect', a: [p.x, p.z], b: [p.x, p.z] }; app.ui?.showMeasure?.(EN() ? 'Pull the string out — a rectangle' : 'Тяните шнур — прямоугольник'); return true; }
       const P = this._peg(p, e);
       if (P) { app.journal.begin('lawn-peg', {}, app.clock); this.drag = { L: 'peg', id: P.r.id, k: P.k }; return true; }
       // (a touch on a string: a new peg in it, dragged straight away)
@@ -111,6 +111,7 @@ export class LawnWork {
   }
   up() {
     const app = this.app, d = this.drag;
+    if (this.drag && (this.drag.L === 'cord' || this.drag.L === 'rect')) this.app.sfx?.play?.('cord');
     this.drag = null;
     app.ui?.hideMeasure?.();
     if (!d) return;
@@ -161,7 +162,7 @@ export class LawnWork {
     const steps = [];
     // 2 · the rake along the lanes: the soil drawn level (the heaps down, the pits and the ditch filled)
     const u = r.u || [1, 0], dur = Math.max(3, Math.min(14, lanes * (a1 - a0) / MM(1000) * 0.35));
-    steps.push([0, () => { rk.root.visible = true; }]);
+    steps.push([0, () => { rk.root.visible = true; app.sfx?.scrapeStart?.('rake_loop'); app.sfx?.scrapeLevel?.(0.6); }]);
     steps.push([dur, (q) => {
       const L = Math.min(lanes - 1, Math.floor(q * lanes)), f = q * lanes - L, back2 = L % 2, a = back2 ? a1 - (a1 - a0) * f : a0 + (a1 - a0) * f, bl0 = b0 + (b1 - b0) * L / lanes, bl1 = b0 + (b1 - b0) * (L + 1) / lanes, sw = Math.sin(q * 160), b = (bl0 + bl1) / 2 + sw * (bl1 - bl0) * 0.3;
       const [x, z] = frameW(r, a, b);
@@ -174,7 +175,7 @@ export class LawnWork {
       t._touch(...box);
       if (Math.random() < 0.12) app.sfx?.scrapeLevel?.(0.25);
     }]);
-    steps.push([0.05, () => { for (const q of cells) { const h = t.hAt(q.i); if (h < y) t._push(q.i, y - h, M_BLACK); else if (h > y) t._pop(q.i, h - y); } t._touch(...box); back(); app.sfx?.scrapeLevel?.(0); }]);
+    steps.push([0.05, () => { for (const q of cells) { const h = t.hAt(q.i); if (h < y) t._push(q.i, y - h, M_BLACK); else if (h > y) t._pop(q.i, h - y); } t._touch(...box); back(); app.sfx?.scrapeStop?.(); }]);
     return { steps, back };
   }
   // the ground under the lawn not level (the topsoil tipped by hand from «Материалы» in heaps): raked
