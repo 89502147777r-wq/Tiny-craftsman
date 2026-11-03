@@ -1,5 +1,5 @@
 # One-off (removed after use): searches Freesound (the key: the repository secret FREESOUND_API_KEY, never
-# printed) for each line of sound-queries.txt — CC0 and CC BY only — and commits the candidates found.
+# printed) for each line of sound-queries.txt — CC0 and CC BY only — and downloads the two best of each.
 name: Fetch Freesound sounds
 on:
   push:
@@ -7,30 +7,36 @@ on:
 permissions:
   contents: write
 jobs:
-  search:
+  fetch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download
+      - name: Search and download
         env:
           KEY: ${{ secrets.FREESOUND_API_KEY }}
         run: |
           python3 - <<'PY'
-          import json, os, time, urllib.request
-          key = os.environ['KEY']; os.makedirs('incoming/snd', exist_ok=True); meta = {}
-          for sid in open('sound-ids.txt').read().split():
-              try:
-                  d = json.load(urllib.request.urlopen(f'https://freesound.org/apiv2/sounds/{sid}/?fields=id,name,username,license,url,duration,previews&token={key}', timeout=30))
-                  lic = d['license']
-                  if 'nc' in lic.lower().split('/licenses/')[-1].split('/')[0]: print('skip NC', sid); continue
-                  urllib.request.urlretrieve(d['previews']['preview-hq-ogg'], f'incoming/snd/{sid}.ogg')
-                  meta[sid] = {k: d[k] for k in ('name', 'username', 'license', 'url', 'duration')}
-              except Exception as e: meta[sid] = {'error': str(e)}
-              time.sleep(0.6)
-          json.dump(meta, open('incoming/snd/meta.json', 'w'), indent=1)
-          print(len(meta))
+          import json, os, time, math, urllib.parse, urllib.request
+          key = os.environ['KEY']; os.makedirs('incoming/snd2', exist_ok=True); meta = {}
+          lic = '(license:"Creative Commons 0" OR license:"Attribution")'
+          for line in open('sound-queries.txt'):
+              line = line.strip()
+              if '|' not in line: continue
+              name, q = line.split('|', 1)
+              u = 'https://freesound.org/apiv2/search/text/?' + urllib.parse.urlencode({'query': q, 'filter': lic + ' duration:[0.5 TO 60]', 'sort': 'score', 'page_size': 15, 'fields': 'id,name,username,license,url,duration,avg_rating,num_ratings,num_downloads,previews', 'token': key})
+              try: res = json.load(urllib.request.urlopen(u, timeout=30))['results']
+              except Exception as e: meta[name] = {'error': str(e)}; continue
+              res.sort(key=lambda r: -(r['avg_rating'] * min(1, r['num_ratings'] / 5) + math.log10(1 + r['num_downloads']) / 2))
+              for r in res[:2]:
+                  sid = str(r['id'])
+                  try:
+                      urllib.request.urlretrieve(r['previews']['preview-hq-ogg'], f'incoming/snd2/{sid}.ogg')
+                      meta[sid] = {'for': name, **{k: r[k] for k in ('name', 'username', 'license', 'url', 'duration')}}
+                  except Exception as e: meta[sid] = {'error': str(e)}
+              time.sleep(1)
+          json.dump(meta, open('incoming/snd2/meta.json', 'w'), indent=1)
           PY
       - name: Commit
         run: |
           git config user.name "github-actions"; git config user.email "github-actions@users.noreply.github.com"
-          git add incoming; git commit -m "Freesound sounds" || true; git push
+          git add incoming; git commit -m "Freesound sounds 2" || true; git push

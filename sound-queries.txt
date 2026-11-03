@@ -1,70 +1,8 @@
-shovel_dump|dumping dirt
-shovel_dump2|dirt throw
-soil_fall|falling dirt
-gravel_pour|gravel dump
-gravel_pour2|gravel falling
-rake|rake
-rake2|raking leaves gravel
-concrete_slosh|wet concrete
-concrete_slosh2|mud squelch
-concrete_pour|cement mixer pour
-bucket_pour|pouring water bucket
-trowel|trowel
-trowel2|plastering wall
-mortar|brick laying
-screed|scraping concrete
-brick_place|bricks
-stone_place|stone drop heavy
-stone_place2|paving slab
-rebar|rebar
-rebar2|metal bars
-wire_tie|wire twist
-drill|hammer drill
-drill2|drilling concrete
-screwdriver|cordless screwdriver
-screwdriver2|electric screwdriver
-auger|post hole digger
-auger2|chainsaw engine idle
-loader|bobcat
-loader2|tractor engine
-hydraulic|hydraulic
-truck_tipper|dump truck
-truck_tipper2|truck unloading gravel
-bucket_scrape|digger bucket
-dirt_into_truck|rocks into metal container
-paver|paving
-paver2|stone tile placing
-kerb|concrete slab drop
-turf|grass rustle
-turf2|carpet roll unroll
-plant_dig|garden digging
-plant_dig2|trowel soil
-metal_sheet|sheet metal
-metal_sheet2|tin roof
-roof_tile|roof tile
-roof_tile2|ceramic tiles clink
-glass_place|glass pane
-glass_place2|glass knock
-window_install|window
-peg_hammer|stake hammer
-peg_hammer2|wooden mallet
-string_line|rope stretch
-rain|rain
-rain2|light rain
-water_fill|hose water running
-water_fill2|filling water
-concrete_mixer|concrete mixer
-pump|concrete pump truck
-nail_gun|nail gun
-chisel|chisel stone
-crowbar|crowbar
-jackhammer|jackhammer
-level_click|spirit level
-bitumen|tar brush
-paint_roller|paint roller
-spray_foam|polyurethane foam
-tile_cut|tile cutter
-saw_metal|hacksaw metal
-crane|crane
-walk_soil|footsteps dirt
-car_door|car door close
+fabric|tarp unfold
+fabric2|plastic sheet rustle
+fabric3|unrolling
+cord|rope stretch
+cord2|string snap
+mixer2|cement mixer
+pool_water|pouring water large
+peg|wooden stake hammer
