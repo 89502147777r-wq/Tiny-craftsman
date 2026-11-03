@@ -848,12 +848,17 @@ console.log('—', sec());
       const P = PLANTS[k]; if (!P.model) continue;
       try { const { scene } = await M.loadModel(P.model); let n = 0; scene.traverse((q) => { if (q.isMesh) n++; }); if (!n) o.bad.push(k + ':empty'); if (P.light === 'model') { let g = 0; scene.traverse((q) => { if (q.isMesh && /glass|bulb/i.test(q.material?.name || '')) g++; }); if (!g) o.bad.push(k + ':noglass'); } } catch (err) { o.bad.push(k + ':' + err); }
     }
+    // the exterior: every canopy built whole (nothing NaN, over the door, out of the wall), the photographed wall lights load
+    { const Pm = await import('/src/world/porch.js'), T = await import('three'), Fl = await import('/src/world/facadeLights.js'); o.canopies = [];
+      for (const k of Object.keys(Pm.CANOPIES)) { const c = Pm.canopyMesh({ style: k, o: [0, 0], nrm: [0, 1], u: [1, 0], y: 0.1, W: 1600, P: Pm.CANOPIES[k].P }); c.updateMatrixWorld(true); const b = new T.Box3().setFromObject(c); o.canopies.push(`${k}:${[b.min.z, b.max.z, b.min.y].every(Number.isFinite) && b.min.z > -0.01 && b.max.z > 0.09 && c.userData.parts.anchors.length >= 4 ? 'ok' : 'bad'}`); }
+      o.wallModels = []; for (const [k, F] of Object.entries(Fl.FLIGHTS)) if (F.model) { try { const { scene } = await M.loadModel(F.model); let g = 0; scene.traverse((q) => { if (q.isMesh && /glass|bulb/i.test(q.material?.name || '')) g++; }); o.wallModels.push(k + (g ? '' : ':noglass')); } catch (err) { o.wallModels.push(k + ':' + err); } } }
     // night: the lamps' lenses glow
     const B = await import('/src/world/plants.js'); const g = B.plantBody('globe5'); let lens = null; g.traverse((q) => { if (q.userData.lens) lens = q; }); o.lens = !!lens;
     return o;
   });
   check('plants: 4 groups, ≥ 15 kinds; lights: 4 groups, ≥ 15 kinds', o.groups === 'Деревья|Кустарники|Цветы и клумбы|В кашпо' && o.lgroups === 'У дорожки|Подсветка|Декоративные|Фонарные столбы' && o.plants >= 15 && o.lights >= 15, JSON.stringify(o));
   check('plants: every kind planted or set (a pot with no hole), every model loads, a lamp has its lens', o.n === o.want && o.potLevel && !o.bad.length && o.lens, JSON.stringify(o));
+  check('exterior: 5 canopies built whole, 4 photographed wall lights with glass that glows', o.canopies?.length === 5 && o.canopies.every((q) => q.endsWith(':ok')) && o.wallModels?.length === 4 && o.wallModels.every((q) => !q.includes(':')), JSON.stringify([o.canopies, o.wallModels]));
   check('plants: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

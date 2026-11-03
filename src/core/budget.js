@@ -5,6 +5,8 @@ import { lengthOf, PAVERS } from '../world/garden.js';
 import { areaOf } from '../world/lawn.js';
 import { postsOf, fenceLength, FENCE, GATES, kindOf } from '../world/fence.js';
 import { PLANTS, spotsOf } from '../world/plants.js';
+import { CANOPIES } from '../world/porch.js';
+import { FLIGHTS } from '../world/facadeLights.js';
 import { blocksOf as porchBlocks } from '../world/porch.js';
 
 // The budget (a mode of play): the money to build the house with, in US dollars.
@@ -286,8 +288,8 @@ export class Budget {
       if (d1.tile && !d0.tile && a.n > 3) add(260 * 2 * (a.D + a.n * a.run) / 1000, 'Поручни из нержавейки');
     } else if (type === 'flight' && isNew) {
       if (a.kind === 'led') { let m = 0; for (let i = 1; i < (a.pts || []).length; i++) m += Math.hypot(a.pts[i][0] - a.pts[i - 1][0], a.pts[i][1] - a.pts[i - 1][1], a.pts[i][2] - a.pts[i - 1][2]) * M1; add(18 * m + 40, `Светодиодная лента · ${m.toFixed(1)} м с профилем и блоком питания`); }
-      else add(a.kind === 'steps' ? 40 * 8 : ({ sconce: 85, cube: 65, downlight: 35, uplight: 95 }[a.kind] || 60), 'Светильник');
-    } else if (type === 'canopy' && isNew) add(320 * a.W / 1000 * a.P / 1000 + 160, 'Козырёк: стекло-триплекс, кронштейны, анкеры');
+      else add(a.kind === 'steps' ? 40 * 8 : (FLIGHTS[a.kind]?.usd || 60), 'Светильник');
+    } else if (type === 'canopy' && isNew) add((CANOPIES[a.style] || CANOPIES.glass).usd * a.W / 1000 * a.P / 1000 + 160, `Козырёк: ${(CANOPIES[a.style] || CANOPIES.glass).name.toLowerCase()}, анкеры`);
     else if (type === 'plant' && isNew) {
       const K = PLANTS[a.kind], n = spotsOf(a).length;
       if (K) add((K.usd + 6) * n, `${K.name} · ${n} шт с корой для мульчи`);

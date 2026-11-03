@@ -84,6 +84,9 @@ export class WallTool {
     this.tray = typeof document !== 'undefined' ? document.getElementById('wall-tray') : null;
     // under the tray: a course along a line
     this.rowBtn = typeof document !== 'undefined' ? document.getElementById('wall-row') : null;
+    // «↻ Повернуть» (over «Ряд»): the next block / brick turned 90° — for a corner
+    this.turnBtn = typeof document !== 'undefined' ? document.getElementById('wall-turn') : null;
+    this.turnBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); app.settings.wallTurn = !app.settings.wallTurn; app.applySettings(); app.ui.toast(app.settings.wallTurn ? 'Следующий ляжет повёрнутым на 90° — для угла' : 'Без поворота'); app.ui.refresh(); });
     this.rowBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (this.kind === 'land') { this.land.pw.row = !this.land.pw.row; app.ui.toast(this.land.pw.row ? 'Ряд: ведите пальцем вдоль края дорожки — бордюры лягут один за другим' : 'По одному: бордюр из лотка к краю'); app.ui.refresh(); return; } this.toggleRow(); });
     // and the delete: straight from laying and back (no going back through the menu)
     this.delBtn = typeof document !== 'undefined' ? document.getElementById('wall-del') : null;
@@ -1116,6 +1119,7 @@ export class WallTool {
       const L = this.col.stage, round = this.col.spec.round;
       if (this.delBtn) this.delBtn.hidden = true;
       if (this.rowBtn) this.rowBtn.hidden = true;
+      if (this.turnBtn) this.turnBtn.hidden = true;
       if (this.cordBtn) this.cordBtn.hidden = true;
       this.tray.hidden = L !== 'form' && L !== 'cage';
       this.tray.classList.remove('brick', 'cinder');
@@ -1134,6 +1138,7 @@ export class WallTool {
     if (pathOn) {
       this.tray.hidden = pw.L !== 'kerb';
       if (this.rowBtn) { this.rowBtn.hidden = pw.L !== 'kerb'; this.rowBtn.classList.toggle('active', !!pw.row); }
+      if (this.turnBtn) this.turnBtn.hidden = true;
       this.tray.classList.remove('brick', 'cinder', 'fence-rail'); this.tray.classList.add('cinder');
       const lab = document.getElementById('wall-tray-label'), sm = this.tray.querySelector('small');
       if (lab) lab.textContent = 'Бордюр';
@@ -1144,6 +1149,7 @@ export class WallTool {
     // «Забор → Прожилины»: the tray holds a rail (a profile pipe)
     if (this.app.tool === 'wall' && this.mode === 'lay' && this.kind === 'fence') {
       if (this.rowBtn) this.rowBtn.hidden = true;
+      if (this.turnBtn) this.turnBtn.hidden = true;
       this.tray.hidden = this.fence.L !== 'rails';
       this.tray.classList.remove('brick', 'cinder'); this.tray.classList.add('fence-rail');
       const lab = document.getElementById('wall-tray-label'), sm = this.tray.querySelector('small');
@@ -1158,6 +1164,7 @@ export class WallTool {
     if (this.delBtn) { this.delBtn.hidden = !(this.app.tool === 'wall' && (this.mode === 'lay' || this.mode === 'delete')); this.delBtn.classList.toggle('active', this.mode === 'delete'); }
     this.tray.hidden = !on || this.kind === 'pool' || this.kind === 'land' || this.kind === 'ext' || this.kind === 'column';
     if (this.rowBtn) { this.rowBtn.hidden = !(on && (this.kind === 'block' || this.kind === 'brick' || this.kind === 'cinder')); this.rowBtn.classList.toggle('active', !!this.rowMode); }
+    if (this.turnBtn) { this.turnBtn.hidden = !(on && ['block', 'brick', 'cinder', 'ublock'].includes(this.kind)); this.turnBtn.classList.toggle('active', !!this.app.settings.wallTurn); }
     if (!on) return;
     const kind = this.kind;
     this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { blocksOf as porchBlocks } from './porch.js';
+import { loadModel } from './machines/models.js';
 
 // The lights of the house's outside, put up as an electrician puts them up: a fixture screwed to the
 // wall (the holes drilled first), downlights let into the soffit, an LED strip in its aluminium channel
@@ -11,6 +12,12 @@ import { blocksOf as porchBlocks } from './porch.js';
 //            pts: [[x, y, z, nx, ny, nz]…] (a strip), porch (its id: the step lights) }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const FLIGHTS = {
+  // (photographed fixtures, Poly Haven CC0 — CREDITS.md: model, k its size against the real one; their glass
+  // and bulbs glow; down / up — the cones of light they throw on the wall)
+  lantern: { name: 'Фонарь на кронштейне', usd: 140, on: 'wall', model: 'lights/wall_lantern', k: 0.55, down: 2200 },
+  bulkhead: { name: 'Светильник-бочонок', usd: 70, on: 'wall', model: 'lights/bulkhead', k: 0.8, down: 1500, up: 900 },
+  bulb: { name: 'Бра с открытой лампой', usd: 60, on: 'wall', model: 'lights/wall_sconce', k: 0.9, down: 1600, up: 1200 },
+  flood: { name: 'Прожектор с датчиком движения', usd: 55, on: 'wall', model: 'lights/flood', k: 0.7, down: 3200, flood: true },
   sconce: { name: 'Бра вверх-вниз', usd: 85, on: 'wall' },
   cube: { name: 'Настенный куб, свет вниз', usd: 65, on: 'wall' },
   downlight: { name: 'Точечный в софит', usd: 35, on: 'ceiling' },
@@ -82,7 +89,22 @@ export function buildLight(r, app, porch = null) {
   G.add(body, glows);
   const box = (w, h, d, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(MM(w), MM(h), MM(d)), m); o.position.set(MM(x), MM(y), MM(z)); o.castShadow = true; body.add(o); return o; };
   const groundY = (x, z) => (app.terrain.inside(x, z) ? app.terrain.heightAt(x, z) : p.y - MM(2500));
-  if (r.kind === 'sconce' || r.kind === 'cube') {
+  const F = FLIGHTS[r.kind] || {};
+  if (F.model) {
+    const fx = new THREE.Group(); body.add(fx); const up = onSurface(fx, p, n), lenses = (G.userData.lenses = []);
+    loadModel(F.model).then(({ scene }) => {
+      scene.scale.setScalar(S * 1000 * (F.k || 1));
+      scene.traverse((o) => {
+        if (!o.isMesh) return; o.castShadow = true;
+        if (/glass|bulb/i.test(o.material?.name || '')) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(col); o.material.emissiveIntensity = G.userData.lens.emissiveIntensity; lenses.push(o.material); }
+      });
+      fx.add(scene);
+    }).catch(() => {});
+    glows.add(quadOn(p.clone().addScaledVector(up, MM(-60)), n, up.clone().negate(), MM(F.down), MM(F.flood ? 2600 : 1200), coneTex(), col));
+    if (F.up) glows.add(quadOn(p.clone().addScaledVector(up, MM(120)), n, up, MM(F.up), MM(900), coneTex(), col));
+    const out = F.flood ? 2200 : 450, gy = groundY(p.x + n.x * MM(out), p.z + n.z * MM(out)), d = new THREE.Mesh(new THREE.CircleGeometry(MM(F.flood ? 2600 : 1000), 24).rotateX(-Math.PI / 2), glowMat(discTex(), col));
+    d.position.set(p.x + n.x * MM(out), gy + MM(15), p.z + n.z * MM(out)); d.renderOrder = 7; glows.add(d);
+  } else if (r.kind === 'sconce' || r.kind === 'cube') {
     const fx = new THREE.Group(); body.add(fx); const up = onSurface(fx, p, n);
     const prev = body; body.remove(fx); prev.add(fx);
     const b = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(MM(w), MM(h), MM(d)), m); o.position.set(MM(x), MM(y), MM(z)); o.castShadow = true; fx.add(o); };
@@ -152,6 +174,7 @@ export function buildLight(r, app, porch = null) {
 // the light of one at the night's level k (0 day … 1 night); a strip shown up to len (mm·S) as it goes on
 export function lightLevel(G, k, shown = Infinity) {
   G.userData.lens.emissiveIntensity = 0.15 + 3.2 * k;
+  for (const m of G.userData.lenses || []) m.emissiveIntensity = 0.15 + 3.2 * k;
   G.userData.glows.traverse((o) => { if (!o.isMesh) return; const vis = !(o.userData.s0 > shown); o.visible = vis; o.material.opacity = (o.userData.beam ? 0.22 : 0.95) * k; });
   G.userData.body.traverse((o) => { if (o.isMesh && o.userData.s0 != null) o.visible = o.userData.s0 <= shown; });
 }
