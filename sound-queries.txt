@@ -1,84 +1,70 @@
-shovel_dig|shovel digging dirt
-shovel_dump|dirt dump shovel throw soil
-soil_fall|soil dirt falling pour
-gravel_pour|gravel pour tipping
-gravel_shovel|shovel gravel
-sand_pour|sand pouring
-rake|rake gravel raking
-rake_soil|raking soil garden rake
-wheelbarrow|wheelbarrow
-concrete_pour|concrete pouring pump
-concrete_slosh|wet concrete mud slosh
-bucket_pour|bucket pour water mud
-vibrator|concrete vibrator
-trowel|trowel concrete plaster scraping
-mortar|mortar trowel brick
-screed|screed concrete leveling
-plate_compactor|plate compactor
-brick_place|brick placing laying
-brick_drop|brick drop
-block_place|cinder block concrete block drop
-stone_place|stone slab placing heavy
-mallet|rubber mallet hit
-hammer_nail|hammer nail wood
-hammer_metal|hammer metal hit
-wood_plank|wood plank drop board
-wood_saw|hand saw wood
-circular_saw|circular saw cutting wood
-rebar|rebar steel bars clank
-metal_rod|metal pipe drop
-wire_tie|pliers wire twist
-welding|arc welding
-grinder|angle grinder metal
-drill|hammer drill concrete wall
-screwdriver|impact driver screw
-auger|earth auger post hole
-diesel_idle|diesel engine idle tractor
-loader|skid steer loader
-excavator|excavator hydraulic working
-excavator_engine|excavator engine
-hydraulic|hydraulic pump whine
-truck_engine|truck diesel engine
-truck_tipper|dump truck tipping
-backup_beep|reversing beeper truck
-bucket_scrape|excavator bucket scrape gravel
-dirt_into_truck|dirt dumped into truck bed
-paver|paving stones placing
-kerb|concrete curb stone
-turf|sod lawn turf
-sprinkler|lawn sprinkler
-watering|watering can garden
-plant_dig|digging hole garden trowel
-pot_place|ceramic pot place down
-metal_sheet|corrugated metal sheet
-gate_latch|metal gate latch close
-gate_creak|gate creak open
-roof_tile|roof tiles clatter
-glass_place|glass pane placing
-window_install|window frame install
-door_close|door close wooden
-foam_spray|spray can hiss
-tape_measure|tape measure
-peg_hammer|wooden stake hammer ground
-string_line|string pull taut
-cash|cash register
-ui_click|soft click button
-rain|rain on ground
-wind|wind gusts outdoor
-birds|birds morning ambience countryside
-crickets|crickets night
-thunder|thunder rumble distant
-water_fill|water filling pool hose
-footsteps|footsteps gravel
-collapse|building collapse debris
-rubble|rubble falling concrete debris
-glass_break|glass shatter window
-wood_crack|wood cracking breaking
-earthquake|earthquake rumble
-storm_wind|hurricane wind storm
-tsunami|big wave crash
-flood|flood water rushing
-tornado|tornado
-fire|fire burning crackling
-explosion|explosion debris
-metal_creak|metal creaking stress
+shovel_dump|dumping dirt
+shovel_dump2|dirt throw
+soil_fall|falling dirt
+gravel_pour|gravel dump
+gravel_pour2|gravel falling
+rake|rake
+rake2|raking leaves gravel
+concrete_slosh|wet concrete
+concrete_slosh2|mud squelch
+concrete_pour|cement mixer pour
+bucket_pour|pouring water bucket
+trowel|trowel
+trowel2|plastering wall
+mortar|brick laying
+screed|scraping concrete
+brick_place|bricks
+stone_place|stone drop heavy
+stone_place2|paving slab
+rebar|rebar
+rebar2|metal bars
+wire_tie|wire twist
+drill|hammer drill
+drill2|drilling concrete
+screwdriver|cordless screwdriver
+screwdriver2|electric screwdriver
+auger|post hole digger
+auger2|chainsaw engine idle
+loader|bobcat
+loader2|tractor engine
+hydraulic|hydraulic
+truck_tipper|dump truck
+truck_tipper2|truck unloading gravel
+bucket_scrape|digger bucket
+dirt_into_truck|rocks into metal container
+paver|paving
+paver2|stone tile placing
+kerb|concrete slab drop
+turf|grass rustle
+turf2|carpet roll unroll
+plant_dig|garden digging
+plant_dig2|trowel soil
+metal_sheet|sheet metal
+metal_sheet2|tin roof
+roof_tile|roof tile
+roof_tile2|ceramic tiles clink
+glass_place|glass pane
+glass_place2|glass knock
+window_install|window
+peg_hammer|stake hammer
+peg_hammer2|wooden mallet
+string_line|rope stretch
+rain|rain
+rain2|light rain
+water_fill|hose water running
+water_fill2|filling water
+concrete_mixer|concrete mixer
+pump|concrete pump truck
+nail_gun|nail gun
+chisel|chisel stone
+crowbar|crowbar
+jackhammer|jackhammer
+level_click|spirit level
+bitumen|tar brush
+paint_roller|paint roller
+spray_foam|polyurethane foam
+tile_cut|tile cutter
+saw_metal|hacksaw metal
+crane|crane
+walk_soil|footsteps dirt
+car_door|car door close
