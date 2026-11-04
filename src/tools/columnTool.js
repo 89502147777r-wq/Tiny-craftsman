@@ -198,14 +198,14 @@ export class ColumnWork {
   // a column that has one: the cabin rides to the other stop
   _lift(r, p) {
     const app = this.app, has = app.objects.all('lift').find((q) => q.col === r.id);
-    if (has) { const T = app.wallView.rideLift(has.id); if (T) { app.sfx?.play?.('door', { gap: 1 }); this.toast(EN() ? (has.at ? 'The cabin goes down' : 'The cabin goes up to the floor') : (has.at ? 'Кабина едет вниз' : 'Кабина едет в этаж')); } return; }
+    if (has) { const T = app.wallView.rideLift(has.id); if (T) { app.sfx?.play?.('door', { gap: 1 }); const n = has.stops?.length || 1, to = (has.at || 0) >= n ? 0 : (has.at || 0) + 1; this.toast(EN() ? (to ? `The cabin goes up to stop ${to}` : 'The cabin goes down to the ground') : (to ? `Кабина едет на остановку ${to}` : 'Кабина едет вниз')); } return; }
     const P = planLift(app, r, p);
-    if (P.why) { this.toast(EN() ? 'The lift goes beside a cast column into the floor slab over it — the slab needs its opening there (made in the formwork)' : P.why); return; }
+    if (P.why) { this.toast(EN() ? 'The lift goes by a cast column with the house on it: outside, along the facade on the side you tap' : P.why); return; }
     app.sfx?.seq?.(['drill', 'metal_hit', 'screwdriver', 'glass', 'screwdriver', 'metal_hit'], 0.25);
     app.journal.act('lift', {}, app.clock, () => app.objects.add({ ...P.rec, lattice: true }));
-    const h = ((P.rec.y1 - P.rec.y0) / MM(1) / 1000).toFixed(1);
-    this.toast(EN() ? `A panoramic lift, ${h} m up into the floor: a steel frame on a base slab over its pit, laminated glass 8+8, the guide rails, a glass cabin 1100 × 1400; a steel lattice round the column (cladding — it carries nothing). Tap the column: the cabin rides`
-      : `Панорамный лифт на ${h.replace('.', ',')} м в этаж: стальной каркас на плите над приямком, триплекс 8+8, направляющие, стеклянная кабина 1100 × 1400; вокруг колонны — стальная решётка (облицовка, она ничего не несёт). Тап по колонне — кабина едет`);
+    const h = ((P.rec.y1 - P.rec.y0) / MM(1) / 1000).toFixed(1), ns = P.rec.stops.length;
+    this.toast(EN() ? `A panoramic lift, ${ns} stop${ns > 1 ? 's' : ''} up to ${h} m: outside along the facade (no opening by the only column: its punching zone), hydraulic (the cylinder in a tanked pit, no machine room), laminated glass 8+8 on a steel frame, a door into each floor, slotted brackets 50 mm off each slab (the cantilever deflects), the headroom over the top. A steel lattice round the column — cladding. Tap the column: the cabin rides`
+      : `Панорамный лифт, остановок ${ns}, до ${h.replace('.', ',')} м: снаружи вдоль фасада (у единственной колонны проём нельзя — зона продавливания), гидравлический (цилиндр в гидроизолированном приямке, без машинного), триплекс 8+8 на стальном каркасе, двери в каждый этаж, у каждой плиты скользящие кронштейны с зазором 50 мм (консоль прогибается), оголовок над верхней остановкой. Вокруг колонны — стальная решётка, облицовка. Тап по колонне — кабина едет`);
   }
   // the tray (the corner of the screen): the formwork / the cage taken from it
   trayDown(p, e) {
@@ -402,7 +402,7 @@ export class ColumnWork {
       : `${sec.name}, ${courseH(this.course, this.n)} мм${this.tiltDeg ? `, наклон ${this.tiltDeg}°` : ''}: ведите опалубку (или из лотка) на место или вокруг каркаса — зелёная встанет; тап по колонне — выбрать её`;
     if (L === 'cage') return 'Тяните каркас в опалубку или на основание: на бетон; на грунт или щебень — сначала пробурят яму; в арматуру фундамента (привяжется к ней); тап по колонне — выбрать её';
     if (L === 'strip') return 'Коснитесь залитой колонны — опалубку снимут, когда бетон наберёт прочность';
-    if (L === 'lift') return 'Коснитесь залитой колонны под перекрытием с той стороны, где встанет лифт — стеклянная шахта в этаж и решётка вокруг колонны; ещё тап — кабина едет';
+    if (L === 'lift') return 'Коснитесь залитой колонны под домом с той стороны, где встанет лифт — стеклянная шахта снаружи вдоль фасада в каждый этаж и решётка вокруг колонны; ещё тап — кабина едет';
     return 'Коснитесь колонны без бетона — её уберут';
   }
   remove(id) {

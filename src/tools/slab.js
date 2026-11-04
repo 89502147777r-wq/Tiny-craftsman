@@ -21,7 +21,7 @@ import { boxOf } from './freeBrick.js';
 //   belt { kind: 'slab', … , deck (run lengths: the cells over the open, on the props),
 //          cant: [ds, dt, mm] (the side of the cantilever in the frame, its length) }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const SLAB = { cell: 100, H: 200, cover: 25, bar: 12, step: 200, cantBar: 14, deck: 18, sec: 500, prim: 1500, prop: 1200, beamH: 200, beamW: 80, Hc: 350 };
+export const SLAB = { cell: 100, H: 200, cover: 25, bar: 12, step: 200, cantBar: 14, deck: 18, sec: 500, prim: 1500, prop: 1200, beamH: 200, beamW: 80, Hc: 350, cap: 500 };   // (cap: the capital under a slab on one or two columns — walls.js)
 // the cantilevers of a slab: one side ([ds, dt, mm]) or all round (a slab on one column)
 export const cantsOf = (b) => b?.cants || (b?.cant ? [b.cant] : []);
 export const isSlab = (b) => b?.kind === 'slab';

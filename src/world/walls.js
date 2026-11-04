@@ -7,6 +7,8 @@ import { withBitumen } from './bitumen.js';
 import { PALLETS } from '../core/budget.js';
 import { buildWindow, buildCorner } from './windows.js';
 import { buildRail } from './railing.js';
+import { castDone, colTop, secOf, axisAt } from './columns.js';
+import { SLAB } from '../tools/slab.js';
 import { buildLift, buildLattice, ride, rideTime, rideEase } from './lift.js';
 import { buildDoor, isDoor } from './doors.js';
 import { kitsLoaded } from './openingKits.js';
@@ -69,6 +71,7 @@ export const OPENINGS = {
 };
 const BEAR = 250;   // a lintel rests 250 mm on the masonry each side
 const S = 1 / 1000 / MODEL_SCALE;   // real mm → model m
+const MM = (v) => v * S;
 
 export function axis(w) {
   const dx = w.b[0] - w.a[0], dz = w.b[1] - w.a[1], len = Math.hypot(dx, dz);
@@ -928,6 +931,20 @@ export class WallView {
         }
       });
     }
+    // the capitals: a slab carried by its cantilevers all round on one or two columns is thickened over each
+    // (the realist: a 3,5 m cantilever at 350 does not pass L/d ≤ 8 — the depth at the support 350 + SLAB.cap);
+    // a flared head cast with the slab, 45° from the column's face, as the slab's concrete gets in
+    for (const b of this.objects.all('belt')) {
+      if (!b.cants || !(b.fill > 0.3)) continue;
+      const tw = Math.max(b.wetT ?? -1e9, b.pourT ?? -1e9, b.castT ?? -1e9), tp = tw > -1e9 ? tw : 1e9;
+      for (const c of this.objects.all('column')) {
+        if (!castDone(c) || Math.abs(colTop(c) - b.top) > MM(30)) continue;
+        const sec = secOf(c), [cx, cz] = axisAt(c, colTop(c)), r0 = MM(sec.a / 2), h = MM(SLAB.cap) * Math.min(1, b.fill), r1 = r0 + h, y1 = b.top + MM(2), y0 = y1 - h;
+        const n = sec.round ? 32 : 4, o = pos.length / 3, ang = (k) => (sec.round ? k / n * Math.PI * 2 : Math.PI / 4 + k / n * Math.PI * 2), R = (rr) => (sec.round ? rr : rr * Math.SQRT2);
+        for (let k = 0; k <= n; k++) for (const [rr, y] of [[r0, y0], [r1, y1]]) { pos.push(cx + Math.cos(ang(k)) * R(rr), y, cz + Math.sin(ang(k)) * R(rr)); col.push(0.96, 0.96, 0.96); pt.push(tp); ws.push(0.3); }
+        for (let k = 0; k < n; k++) { const a0 = o + k * 2, a1 = a0 + 2; idx.push(a0, a1, a0 + 1, a1, a1 + 1, a0 + 1); own.push(b.id, b.id); }
+      }
+    }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -965,11 +982,12 @@ export class WallView {
     for (const [id, e] of [...this._win]) if (!seen.has(id)) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); this._win.delete(id); }
   }
 
-  // a lift's cabin sent to the other stop (its ride takes rideTime)
+  // a lift's cabin sent on: up a stop, from the top down to the ground (its ride takes rideTime)
   rideLift(id) {
     const r = this.objects.get(id); if (!r || this._ride) return 0;
-    const from = r.at || 0, T = rideTime(r);
-    this._ride = { id, from, to: from ? 0 : 1, t0: this.clock ?? 0, T };
+    // (up one stop at a time; from the top, back down to the ground)
+    const n = r.stops?.length || 1, from = r.at || 0, to = from >= n ? 0 : from + 1, T = rideTime(r, from, to);
+    this._ride = { id, from, to, t0: this.clock ?? 0, T };
     return T;
   }
   get liftBusy() { return !!this._ride; }

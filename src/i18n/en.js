@@ -1941,4 +1941,6 @@ export default {
 "Над лифтом должно быть перекрытие — лифт ведёт в первый этаж": "There must be a slab over the lift — it goes up into the first floor",
 "У этой колонны лифт уже есть": "This column has its lift already",
 "Сначала проём в перекрытии над лифтом (его делают в опалубке, до бетона) — лифт выйдет в этаж через него": "First an opening in the slab over the lift (made in the formwork, before the concrete) — the lift comes up into the floor through it",
+"Коснитесь залитой колонны под домом с той стороны, где встанет лифт — стеклянная шахта снаружи вдоль фасада в каждый этаж и решётка вокруг колонны; ещё тап — кабина едет": "Tap a cast column under the house on the side the lift goes — a glass shaft outside along the facade into each floor and a lattice round the column; tap again — the cabin rides",
+"Над колонной должно быть перекрытие — лифт ведёт в этажи": "There must be a slab over the column — the lift goes into the floors",
 };

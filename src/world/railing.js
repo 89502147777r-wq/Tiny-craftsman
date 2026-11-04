@@ -108,30 +108,32 @@ function mats() {
   };
   return MATS;
 }
-// The fascia over a slab's edge (the dark band round each floor): aluminium composite panels (ACM, 4 mm,
-// coil-coated) on an aluminium subframe — L brackets anchored into the slab's face every 600, a rail on
+// The fascia over a slab's edge (the dark band round each floor): aluminium composite panels (ACM 4 mm with a
+// mineral core — A2-s1,d0: a polyethylene core is banned on facades since Grenfell — coil-coated) over mineral
+// wool 100 on the slab's face (the slab's edge is a cold bridge into the rooms), on an aluminium subframe — L brackets anchored into the slab's face every 600, a rail on
 // them; the panel folded into a cassette (its top and bottom returns back to the wall), 150 below the
 // slab's soffit (a drip edge) and 120 over its top (the floor build-up, the window's sill), 30 off the
 // concrete (the air gap), in pieces of up to 3 m with 12 mm open joints; at a corner the ends run on past
 // the edge by the gap — the cassettes meet there. A rail with `fascia` (its colour) and `h` (the slab's).
-export const FASCIA = { below: 150, over: 120, gap: 30, t: 4, piece: 3000, joint: 12, bracket: 600 };
+export const FASCIA = { below: 150, over: 120, wool: 100, air: 30, gap: 130, t: 4, piece: 3000, joint: 12, bracket: 600 };
 export const FASCIA_COLOURS = { ral7016: ['Антрацит', 0x30353a, 0.55], ral9005: ['Чёрный', 0x141518, 0.5], bronze: ['Бронза', 0x4e3c2c, 0.65], ral9006: ['Серебро', 0xa6a9ac, 0.85], ral9003: ['Белый', 0xe9eae6, 0.3] };
 const FMATS = {};
 function fmat(k) {
   if (FMATS[k]) return FMATS[k];
   const [, c, m] = FASCIA_COLOURS[k] || FASCIA_COLOURS.ral7016;
   // (coil-coated metal: a smooth, slightly glossy face — the light runs along it)
-  return (FMATS[k] = { face: new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: 0.34 }), sub: new THREE.MeshStandardMaterial({ color: 0x9a9ea2, metalness: 0.8, roughness: 0.45 }), dark: new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.9 }) });
+  return (FMATS[k] = { face: new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: 0.34 }), sub: new THREE.MeshStandardMaterial({ color: 0x9a9ea2, metalness: 0.8, roughness: 0.45 }), dark: new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.9 }), wool: new THREE.MeshStandardMaterial({ color: 0x8f8a72, roughness: 1 }) });
 }
 function buildFascia(r, ghost) {
-  const M = fmat(r.fascia), F = FASCIA, L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, H = (r.h || MM(200)) / S, G = { face: [], sub: [], dark: [] };
+  const M = fmat(r.fascia), F = FASCIA, L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, H = (r.h || MM(200)) / S, G = { face: [], sub: [], dark: [], wool: [] };
   const box = (k, x0, x1, y0, y1, z0, z1) => G[k].push(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
   const yb = -H - F.below, yt = F.over, z0 = F.gap, z1 = F.gap + F.t, ext = F.gap + F.t;   // (the slab's top at y 0, its face at z 0)
   // the subframe: brackets on the face, the rails along them (seen through the joints, in the shadow)
   for (let x = 150; x < L - 100; x += F.bracket) { box('sub', x - 20, x + 20, -H + 40, -H + 100, 0, F.gap); box('sub', x - 20, x + 20, -60, -20, 0, F.gap); }
   box('sub', 0, L, -H + 60, -H + 80, F.gap - 4, F.gap); box('sub', 0, L, -50, -30, F.gap - 4, F.gap);
-  // the air gap's back: dark (the joints show it)
-  box('dark', -ext, L + ext, yb + 10, yt - 10, 1, 3);
+  // the mineral wool on the face (dowelled), the air gap in front of it: dark through the joints
+  box('wool', -F.wool, L + F.wool, yb + 10, yt - 10, 0, F.wool);
+  box('dark', -ext, L + ext, yb + 10, yt - 10, F.wool + 1, F.wool + 3);
   // the cassettes: the face, its returns at the top and the bottom (back to the wall), the joints open
   const n = Math.max(1, Math.ceil((L + 2 * ext) / F.piece)), pw = (L + 2 * ext - (n - 1) * F.joint) / n;
   for (let k = 0; k < n; k++) {
