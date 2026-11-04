@@ -118,7 +118,7 @@ console.log('—', sec());
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.evaluate(() => { localStorage.clear(); indexedDB.deleteDatabase('tiny-craftsman'); });
-  await page.reload();
+  await page.reload({ timeout: 120000 });
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const play = await page.evaluate(async () => {
     const SC = (await import('/src/config.js')).MODEL_SCALE;   // real = model × SC
