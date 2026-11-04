@@ -366,7 +366,8 @@ export class HoseTool extends ConcreteTool {
     // the stream: where it lands (it lags behind the spout when swept), the concrete goes — a splat ~5 cm
     // (real) across, as much as the pump's stroke gives just now; the flow spreads it
     const pump0 = this.gear.pump, land = pump0.ready ? pump0.setStream(true, (x, z) => t.heightAt(t.clampX(x), t.clampZ(z)), app.clock, dt) : null, lp = land || at;
-    t.depositConc(t.clampX(lp.x), t.clampZ(lp.z), vol * (pump0.ready ? pump0.pulse() : 1), 0.014);
+    const vNow = vol * (pump0.ready ? pump0.pulse() : 1);   // (the pump's stroke: a lull, a surge — the same on the average)
+    t.depositConc(t.clampX(lp.x), t.clampZ(lp.z), vNow, 0.014);
     // full to the top of the formwork here? say so once per pour
     if (!this.warned) {
       const i = t.index(at.x, at.z), b = t.cellBox(at.x, at.z, 0.12);
@@ -374,7 +375,7 @@ export class HoseTool extends ConcreteTool {
       for (let iz = b.z0; iz <= b.z1; iz += 2) for (let ix = b.x0; ix <= b.x1; ix += 2) top = Math.max(top, t.wall[iz * t.nx + ix]);
       if (top && t.hAt(i) >= top - 0.0008) { this.warned = true; app.ui?.toast('Здесь опалубка заполнена до верха — ведите шланг дальше или отпустите'); }
     }
-    this.poured += vol;
+    this.poured += vNow;
     // the stream out of the spout (looks only: the volume is poured above), and a few
     // splashes where it lands
     const r = Math.random;

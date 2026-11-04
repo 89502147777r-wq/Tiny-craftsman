@@ -145,7 +145,12 @@ export class ColumnWork {
     // (a column's cage on the ground / loose fill: its hole bored first — the formwork alone does not go there)
     const bore = !sec.pile && what === 'cage' && GROUND.has(H.on);
     if (why) { /* (said above) */ } else if (!sec.pile && !bore && LOOSE.has(H.on)) why = `Колонну ставят на фундамент, плиту, перекрытие, кладку или щебёночную подушку — ${ON[H.on]} нужна свая`;
-    if (app.objects.all('column').some((r) => Math.hypot(r.x - q.x, r.z - q.z) < MM((secOf(r).a + sec.a) / 2 + 120))) why = 'Здесь уже стоит колонна';
+    // (a column in the way: one standing where this one would be — not one under a slab it stands on: a frame
+    // building goes up so, column over column, floor by floor)
+    const near = app.objects.all('column').filter((r) => Math.hypot(r.x - q.x, r.z - q.z) < MM((secOf(r).a + sec.a) / 2 + 120));
+    if (near.some((r) => y0 < colTop(r) - MM(30) && y0 + this.sizes().h > r.y0 - (r.dep || 0))) why = 'Здесь уже стоит колонна';
+    else if (near.length && (H.on === 'slab' || H.on === 'belt')) snap = 'over';   // (over the column under the slab: its continuation)
+    else if ((H.on === 'slab' || H.on === 'belt') && !near.length && app.objects.all('column').some((r) => colTop(r) < y0 && colTop(r) > y0 - MM(450) && Math.hypot(r.x - q.x, r.z - q.z) < MM(2500))) snap = 'off';   // (not over one: the slab takes it)
     if (!app.terrain.inside(q.x, q.z) && !['slab', 'belt', 'masonry', 'column'].includes(H.on)) why = 'За краем участка';
     const rec = { type: 'column', ...this.sizes(), x: +q.x.toFixed(6), z: +q.z.toFixed(6), y0: +y0.toFixed(6), dep: sec.pile ? +MM(PILE_DEP).toFixed(6) : bore ? +MM(BORE_DEP).toFixed(6) : 0, stage: what === 'form' ? 2 : 0, cage: what === 'cage', fill: 0, on: H.on };
     if (H.on === 'fcage') rec.anc = H.anc;
@@ -241,8 +246,8 @@ export class ColumnWork {
 
   _label(r, snap, what = 'form') {
     const sec = secOf(r), c = COURSES[r.course], mm = Math.round(r.h / S), cage = what === 'cage';
-    if (EN()) return `${cage ? 'Cage' : sec.round ? 'Two-half formwork' : 'Board formwork'} — ${SEC_EN(sec)} ${ON_EN[r.on] || ''}: height ${mm} mm = ${r.n} course${r.n > 1 ? 's' : ''} (${COURSE_EN[r.course]})${snap ? ', foot at the foot of the first course nearby' : ''}${this.tiltDeg ? `, tilt ${this.tiltDeg}°` : ''}${sec.pile || r.bored ? `, a hole ${Math.round(r.dep / S)} mm bored first` : ''}${r.anc ? `, ${r.anc} mm into the foundation` : ''}`;
-    return `${cage ? 'Каркас' : sec.round ? 'Опалубка из двух половин' : 'Щитовая опалубка'} — ${sec.name} ${ON[r.on] || ''}: высота ${mm} мм = ${r.n} ${rows(r.n)} (${c.name})${snap ? ', низ — по низу первого ряда кладки рядом' : ''}${this.tiltDeg ? `, наклон ${this.tiltDeg}°` : ''}${sec.pile || r.bored ? `, сначала яма ${Math.round(r.dep / S)} мм` : ''}${r.anc ? `, в фундамент на ${r.anc} мм` : ''}`;
+    if (EN()) return `${cage ? 'Cage' : sec.round ? 'Two-half formwork' : 'Board formwork'} — ${SEC_EN(sec)} ${ON_EN[r.on] || ''}: height ${mm} mm = ${r.n} course${r.n > 1 ? 's' : ''} (${COURSE_EN[r.course]})${snap === 'over' ? ', over the column below — its continuation (its bars lapped through the slab)' : snap === 'off' ? ', not over a column below — the slab carries it (punching!)' : snap ? ', foot at the foot of the first course nearby' : ''}${this.tiltDeg ? `, tilt ${this.tiltDeg}°` : ''}${sec.pile || r.bored ? `, a hole ${Math.round(r.dep / S)} mm bored first` : ''}${r.anc ? `, ${r.anc} mm into the foundation` : ''}`;
+    return `${cage ? 'Каркас' : sec.round ? 'Опалубка из двух половин' : 'Щитовая опалубка'} — ${sec.name} ${ON[r.on] || ''}: высота ${mm} мм = ${r.n} ${rows(r.n)} (${c.name})${snap === 'over' ? ', над колонной ниже — её продолжение (арматура внахлёст через перекрытие)' : snap === 'off' ? ', не над колонной ниже — нагрузку берёт плита (продавливание!)' : snap ? ', низ — по низу первого ряда кладки рядом' : ''}${this.tiltDeg ? `, наклон ${this.tiltDeg}°` : ''}${sec.pile || r.bored ? `, сначала яма ${Math.round(r.dep / S)} мм` : ''}${r.anc ? `, в фундамент на ${r.anc} мм` : ''}`;
   }
 
   // ---- the stages ----
