@@ -1,19 +1,25 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 
-// drawn 2.5 × larger than true scale, so it reads on the screen beside the house
-const G = 2.5 / MODEL_SCALE;
-
-// The end hose of a boom concrete pump: a heavy rubber hose (DN125, ~140 mm outside,
-// 3.5 m long real) hanging from the boom tip. Simulated as a rope
-// (Verlet points with length constraints and gravity): the end is pulled towards
-// the finger, so the hose swings and lags when it is moved; the boom tip follows
-// slowly. Ribbed rubber, dirty with concrete towards the end; a steel end coupling
-// with a handle bar to hold it by.
-const N = 26;                 // rope points
-const LEN = 3.5 * G;        // hose length (model m)
-const R = 0.07 * G;         // outer radius
+// The end hose of a boom concrete pump, as on a site (checked by the realist, .claude/agents/realist.md):
+//   the hose — rubber DN125 (Ø 140 outside), 4 m, hanging from a 90° steel elbow at the boom's tip, drawn
+//     at 1,35 × true size (so it reads on a phone beside the house — no more: at 2,5 × it was a pipe, not a
+//     hose); a rope of Verlet points (lengths, gravity, a bending stiffness — no kink tighter than ~0,8 m);
+//   the hand — a worker holds the end ~0,5 m over the concrete and walks it: it follows the finger no faster
+//     than ~1,2 m/s, with ~4 m/s² to get going or to stop (150 kg of hose full of concrete); the boom's tip
+//     is moved by the operator only when the hand has gone > 1,2 m from under it, slowly;
+//   the pump — two pistons, a stroke every ~3 s: at the switch the flow nearly stops for a quarter second,
+//     then comes out in a surge, and the hose jerks;
+//   the stream — a column of concrete out of the spout (~1 m/s), in pieces that keep the spout's own speed
+//     as they fall: swept, it lags and bends; stopped short, its foot goes on a little and comes back; it lands
+//     where it falls — that place (not the finger) is where the concrete goes (`landing`).
+const G = 1.35 / MODEL_SCALE, M = 1 / MODEL_SCALE;
+const N = 24;                 // rope points
+const LEN = 4.0 * G;          // hose length (model units)
+const R = 0.07 * G;           // outer radius
 const SEG = LEN / (N - 1);
+const VMAX = 1.2 * M, AMAX = 4 * M, GRAV = 9.81 * M, OUT = 1.0 * M;   // the hand's speed / acceleration; g; the concrete's exit speed
+const STROKE = 3.0;           // s between the pistons' switches
 
 export class PumpHose {
   constructor() {
@@ -24,9 +30,12 @@ export class PumpHose {
     this.ready = false;
     this.anchor = new THREE.Vector3();
     this.target = new THREE.Vector3();
+    this.hand = new THREE.Vector3(); this.hv = new THREE.Vector3();
+    this.t = 0; this.drops = []; this.landing = null;
     const rubber = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.86, metalness: 0, envMapIntensity: 0.5 });
     this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), rubber);
     const steel = new THREE.MeshStandardMaterial({ color: 0x8e9398, roughness: 0.38, metalness: 0.85 });
+    const paint = new THREE.MeshStandardMaterial({ color: 0x9a9da0, roughness: 0.55, metalness: 0.5 });
     const grip = new THREE.MeshStandardMaterial({ color: 0xd8641e, roughness: 0.65 });
     // end: coupling ring + short steel spout, and a bent handle bar on one side
     this.end = new THREE.Group();
@@ -41,39 +50,70 @@ export class PumpHose {
     const gripM = new THREE.Mesh(new THREE.CylinderGeometry(0.017 * G, 0.017 * G, 0.11 * G, 12), grip);
     gripM.position.set(R * 1.1 + 0.14 * G, 0.1 * G, 0);
     this.end.add(ring, spout, bar, gripM);
-    // the concrete coming out: a heavy, slightly wobbling stream down to the surface
-    const wet = new THREE.MeshStandardMaterial({ color: 0x65635e, roughness: 0.22, metalness: 0 });   // wet cement paste
-    this.stream = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.72, R * 0.9, 1, 18, 10, true), wet);
-    this.stream.geometry.translate(0, -0.5, 0);   // hangs down from its top
-    this._sBase = this.stream.geometry.attributes.position.array.slice();
-    this.stream.visible = false;
-    this.group.add(this.mesh, this.end, this.stream);
+    // the boom's tip: the last steel pipe of the boom, a 90° elbow down, the clamp the hose hangs from
+    this.tip = new THREE.Group();
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.95, R * 0.95, 1.6 * G, 18), paint);
+    pipe.rotation.z = Math.PI / 2; pipe.position.set(-0.8 * G - R * 2, R * 2, 0);
+    const elbow = new THREE.Mesh(new THREE.TorusGeometry(R * 2, R * 0.95, 12, 18, Math.PI / 2), paint);
+    elbow.rotation.set(0, 0, Math.PI); elbow.position.set(0, R * 2, 0);
+    const clamp = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.2, R * 1.2, 0.08 * G, 20), steel);
+    this.tip.add(pipe, elbow, clamp);
+    // the concrete coming out: a tube along the falling pieces, remade every frame
+    this.wet = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.25, metalness: 0 });   // wet, fresh: dark and shining
+    this.stream = new THREE.Mesh(new THREE.BufferGeometry(), this.wet);
+    this.stream.visible = false; this.stream.frustumCulled = false;
+    this.group.add(this.mesh, this.end, this.tip, this.stream);
     this.group.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
-    this._q = new THREE.Quaternion();
   }
 
   // where the spout should be (a little above the concrete) and from where the camera looks
   aim(tip, camPos, snap = false) {
     this.target.copy(tip);
-    // the boom tip: high above, away from the camera so the hose comes into view from above
-    const away = new THREE.Vector3(tip.x - camPos.x, 0, tip.z - camPos.z).normalize();
-    const goal = new THREE.Vector3(tip.x + away.x * 0.25, tip.y + LEN * 0.92, tip.z + away.z * 0.25);
     if (snap || !this.ready) {
-      this.anchor.copy(goal);
+      // (the boom's tip high over the hand, a little away from the camera: the hose comes into view from above)
+      const away = new THREE.Vector3(tip.x - camPos.x, 0, tip.z - camPos.z).normalize();
+      this.anchor.set(tip.x + away.x * 0.3 * M, tip.y + LEN * 0.9, tip.z + away.z * 0.3 * M);
+      this.anchorGoal = this.anchor.clone();
+      this.hand.copy(tip); this.hv.set(0, 0, 0);
       for (let i = 0; i < N; i++) {
         const f = i / (N - 1);
         this.p[i].lerpVectors(this.anchor, tip, f);
         this.p[i].y -= Math.sin(f * Math.PI) * 0.06;
         this.o[i].copy(this.p[i]);
       }
+      this.drops.length = 0;
       this.ready = true;
-    } else this.anchorGoal = goal;
+    }
   }
+  // the flow just now (×, 1 on the average): nearly nothing at a stroke's switch, a surge after it
+  pulse() { const u = (this.t % STROKE) / STROKE; return u < 0.08 ? 0.1 : u < 0.2 ? 1.6 : 1 - 0.06 * Math.sin(u * Math.PI); }
 
   update(dt) {
     if (!this.ready || !this.group.visible) return;
     dt = Math.min(dt, 1 / 20);
-    if (this.anchorGoal) this.anchor.lerp(this.anchorGoal, 1 - Math.exp(-dt * 1.5));   // the boom moves slowly
+    const t0 = this.t; this.t += dt;
+    // the hand: toward the finger no faster than a man walks a full hose, getting going and stopping as he can
+    {
+      const want = this.target.clone().sub(this.hand), d = want.length();
+      const vGoal = d > 1e-9 ? want.multiplyScalar(Math.min(VMAX, d * 3) / d) : want.set(0, 0, 0);
+      const dv = vGoal.sub(this.hv), a = dv.length(), amax = AMAX * dt;
+      if (a > amax) dv.multiplyScalar(amax / a);
+      this.hv.add(dv); this.hand.addScaledVector(this.hv, dt);
+    }
+    // the boom's tip: moved only when the hand is far from under it, slowly
+    {
+      const dx = this.hand.x - this.anchor.x, dz = this.hand.z - this.anchor.z, off = Math.hypot(dx, dz);
+      if (off > 1.2 * M) { this.anchorGoal = new THREE.Vector3(this.hand.x - dx / off * 0.6 * M, this.anchor.y, this.hand.z - dz / off * 0.6 * M); }
+      this.anchorGoal.y = this.hand.y + LEN * 0.9;
+      const step = this.anchorGoal.clone().sub(this.anchor), l = step.length(), vmax = 0.5 * M * dt;
+      if (l > vmax) step.multiplyScalar(vmax / l);
+      this.anchor.add(step);
+    }
+    // a piston's stroke: the hose jerks (its lower part kicked along and aside)
+    if (Math.floor(t0 / STROKE) !== Math.floor(this.t / STROKE) && this.stream.visible) {
+      const side = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize().multiplyScalar(0.08 * M);
+      for (let i = N - 8; i < N - 1; i++) { const k = (i - (N - 8)) / 7; this.o[i].addScaledVector(side, -k).y -= 0.04 * M * k; }
+    }
     const steps = 3, h = dt / steps, g = -9.81 * h * h;
     for (let s = 0; s < steps; s++) {
       for (let i = 1; i < N; i++) {
@@ -82,9 +122,8 @@ export class PumpHose {
         o.copy(p);
         p.x += vx; p.y += vy + g; p.z += vz;
       }
-      // the end is held (pulled firmly towards the finger, but not rigidly)
-      const e = this.p[N - 1];
-      e.lerp(this.target, 0.35);
+      // the end is in the worker's hands
+      this.p[N - 1].lerp(this.hand, 0.5);
       this.p[0].copy(this.anchor);
       for (let it = 0; it < 14; it++) {
         for (let i = 0; i < N - 1; i++) {
@@ -96,23 +135,26 @@ export class PumpHose {
           a.x += dx * k * wa / sum; a.y += dy * k * wa / sum; a.z += dz * k * wa / sum;
           b.x -= dx * k * wb / sum; b.y -= dy * k * wb / sum; b.z -= dz * k * wb / sum;
         }
+        // (stiff to bend: each point drawn a little toward the line between its neighbours — no kinks)
+        if (it % 2 === 0) for (let i = 1; i < N - 1; i++) { const a = this.p[i - 1], b = this.p[i + 1], q = this.p[i]; q.x += ((a.x + b.x) / 2 - q.x) * 0.12; q.y += ((a.y + b.y) / 2 - q.y) * 0.12; q.z += ((a.z + b.z) / 2 - q.z) * 0.12; }
         this.p[0].copy(this.anchor);
         this._hold();
       }
     }
-    // rebuild the mesh only when the hose has moved
     let moved = 0;
     for (let i = 0; i < N; i += 5) moved = Math.max(moved, this.p[i].distanceToSquared(this._last?.[i] || _far));
     if (moved > 1e-8) { this._last = this.p.map((v) => v.clone()); this._build(); }
+    this.tip.position.copy(this.anchor);
+    this.tip.rotation.set(0, Math.atan2(this.anchor.x - this.hand.x, this.anchor.z - this.hand.z) - Math.PI / 2, 0);
   }
 
-  // the worker holds the last ~40 cm (real) of the hose upright: the spout points down
+  // the worker holds the last ~0,5 m of the hose: it hangs down from the hands, leaning with the walk (≤ ~25°)
   _hold() {
     const e = this.p[N - 1];
     for (let k = 1; k <= 2; k++) {
       const q = this.p[N - 1 - k];
-      q.x += (e.x - q.x) * 0.7; q.z += (e.z - q.z) * 0.7;
-      q.y = Math.max(q.y, e.y + SEG * k * 0.95);
+      q.x += (e.x - this.hv.x * 0.12 - q.x) * 0.35; q.z += (e.z - this.hv.z * 0.12 - q.z) * 0.35;
+      q.y = Math.max(q.y, e.y + SEG * k * 0.85);
     }
   }
 
@@ -126,11 +168,11 @@ export class PumpHose {
     for (let j = 0; j < rings; j++) {
       const u = j / (rings - 1), along = u * LEN / G;   // real metres from the boom
       const rib = 1 + 0.035 * Math.pow(Math.max(0, Math.cos(along / 0.05 * Math.PI * 2)), 6);
-      const dirt = Math.max(0, (along - 2.4) / 1.1);
+      const dirt = Math.max(0, (along - 2.9) / 1.1);
       for (let k = 0; k < radial; k++) {
         const v = j * radial + k;
         pos.setXYZ(v, pos.getX(v) + nor.getX(v) * R * (rib - 1), pos.getY(v) + nor.getY(v) * R * (rib - 1), pos.getZ(v) + nor.getZ(v) * R * (rib - 1));
-        if (same) continue;   // (the colours stay: they go with the rings, not the shape)
+        if (same) continue;
         const n = hash(j * 31 + k * 7);
         const splash = dirt * dirt * (0.3 + 0.7 * n) * (nor.getY(v) > -0.2 ? 1 : 0.5) * 0.6;
         const base = 0.022 + 0.01 * n;   // black rubber
@@ -138,7 +180,6 @@ export class PumpHose {
       }
     }
     if (same) {
-      // (the buffers on the GPU stay: only the positions and normals are sent)
       old.attributes.position.array.set(pos.array); old.attributes.normal.array.set(nor.array);
       old.attributes.position.needsUpdate = old.attributes.normal.needsUpdate = true;
       old.computeBoundingSphere(); geo.dispose();
@@ -147,31 +188,62 @@ export class PumpHose {
       old.dispose();
       this.mesh.geometry = geo;
     }
-    // the end coupling follows the last piece of hose
     const e = this.p[N - 1], d = new THREE.Vector3().subVectors(this.p[N - 1], this.p[N - 2]).normalize();
     this.end.position.copy(e);
-    // spout straight down, leaning a little with the hose
-    this.end.quaternion.setFromUnitVectors(_down, d.lerp(_down, 0.75).normalize());
+    this.end.quaternion.setFromUnitVectors(_down, d.lerp(_down, 0.6).normalize());
   }
 
-  // the stream: on while pumping, down to the surface at groundY
-  setStream(on, groundY, time) {
-    this.stream.visible = on;
-    if (!on) return;
-    const top = this.spout();
-    const h = Math.max(0.005, top.y - groundY);
-    this.stream.position.copy(top);
-    this.stream.scale.set(1, h, 1);
-    // a little wobble and bulge travelling down
-    const p = this.stream.geometry.attributes.position, b = this._sBase;
-    for (let i = 0; i < p.count; i++) {
-      const y = b[i * 3 + 1], a = Math.atan2(b[i * 3 + 2], b[i * 3]);
-      const k = 1 + 0.05 * Math.sin(y * 9 + time * 14 + a * 2) + 0.04 * Math.sin(a * 3 - time * 5);   // lumpy, not ribbed
-      p.setX(i, b[i * 3] * k + Math.sin(time * 7 + y * 6) * 0.0008);
-      p.setZ(i, b[i * 3 + 2] * k);
+  // the stream: on while pumping; groundAt(x, z) → the height it lands on there. Returns where it lands (the
+  // first piece to reach the surface this frame — or under the spout before any has), or null when off
+  setStream(on, groundAt = null, time = 0, dt = 1 / 60) {
+    if (!on) { this.stream.visible = false; this.drops.length = 0; this.landing = null; return null; }
+    // (the worker keeps the spout pointing down: the concrete goes out mostly downward, whatever the hose's lean)
+    const sp = this.spout(), fl = this.flow().lerp(_down, 0.7).normalize(), gAt = groundAt || (() => sp.y - 0.5 * M);
+    dt = Math.min(dt, 1 / 20);
+    // (the spout's own speed: the pieces keep it)
+    const sv = this._sp0 ? sp.clone().sub(this._sp0).divideScalar(Math.max(1e-4, dt)) : new THREE.Vector3(); this._sp0 = sp.clone();
+    const pu = this.pulse();
+    if (pu > 0.2) this.drops.push({ p: sp.clone(), v: sv.clone().multiplyScalar(0.8).addScaledVector(fl, OUT * pu), r: 0.89 * R * (0.9 + 0.2 * Math.min(1.3, pu)) * (0.92 + 0.16 * Math.random()), age: 0 });
+    let land = null;
+    for (const q of this.drops) {
+      q.age += dt; q.v.y -= GRAV * dt;
+      // (the foot of the column drags in the heap: its sideways speed dies there)
+      const gy = gAt(q.p.x, q.p.z);
+      if (q.p.y - gy < 0.12 * M) { q.v.x *= 0.8; q.v.z *= 0.8; }
+      q.p.addScaledVector(q.v, dt);
+      if (q.p.y <= gy) { q.p.y = gy; q.landed = true; if (!land) land = q.p.clone(); }
     }
-    p.needsUpdate = true;
-    this.stream.geometry.computeVertexNormals();
+    // (kept: the landed piece nearest the spout stays as the column's foot, the rest go)
+    const alive = this.drops.filter((q) => !q.landed);
+    const foot = this.drops.filter((q) => q.landed).sort((a, b) => b.age - a.age).at(-1);
+    this.drops = alive.slice(-24);
+    const chain = [sp.clone(), ...this.drops.slice().sort((a, b) => a.age - b.age).map((q) => q.p.clone())];
+    if (foot) chain.push(foot.p.clone()); else if (!this.drops.length) chain.push(new THREE.Vector3(sp.x, gAt(sp.x, sp.z), sp.z));
+    if (land || foot) this.landing = (land || foot.p).clone();
+    else if (!this.landing) this.landing = new THREE.Vector3(sp.x, gAt(sp.x, sp.z), sp.z);
+    // the tube along it: as thick as the spout's bore at the top, a little thinner and lumpy below
+    const pts = chain.filter((q, i) => i === 0 || q.distanceToSquared(chain[i - 1]) > 1e-12);
+    if (pts.length >= 2) {
+      const curve = new THREE.CatmullRomCurve3(pts), segs = 16, rad = 10, P = [], I = [];
+      for (let j = 0; j <= segs; j++) {
+        const u = j / segs, c = curve.getPointAt(u), tg = curve.getTangentAt(u), nx = new THREE.Vector3(1, 0, 0);
+        if (Math.abs(tg.x) > 0.9) nx.set(0, 0, 1);
+        const b1 = new THREE.Vector3().crossVectors(tg, nx).normalize(), b2 = new THREE.Vector3().crossVectors(tg, b1).normalize();
+        const r = 0.89 * R * (1 - 0.2 * u) * (pu < 0.2 ? 0.45 : 1);
+        for (let k = 0; k <= rad; k++) {
+          const a = k / rad * Math.PI * 2, lump = 1 + 0.08 * Math.sin(a * 3 + u * 11 - time * 9) + 0.06 * Math.sin(u * 23 + time * 13);
+          P.push(c.x + (b1.x * Math.cos(a) + b2.x * Math.sin(a)) * r * lump, c.y + (b1.y * Math.cos(a) + b2.y * Math.sin(a)) * r * lump, c.z + (b1.z * Math.cos(a) + b2.z * Math.sin(a)) * r * lump);
+        }
+      }
+      for (let j = 0; j < segs; j++) for (let k = 0; k < rad; k++) { const a = j * (rad + 1) + k; I.push(a, a + rad + 1, a + 1, a + 1, a + rad + 1, a + rad + 2); }
+      const g = this.stream.geometry;
+      if (!g.attributes.position || g.attributes.position.count !== P.length / 3) { g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setIndex(I); }
+      else { g.attributes.position.array.set(P); g.attributes.position.needsUpdate = true; }
+      g.computeVertexNormals(); g.computeBoundingSphere();
+      this.stream.visible = true;
+    }
+    this.stream.userData.bottomR = 0.89 * R * 0.8; this.stream.userData.topR = 0.89 * R;
+    return this.landing;
   }
 
   // where the concrete comes out, and in which direction

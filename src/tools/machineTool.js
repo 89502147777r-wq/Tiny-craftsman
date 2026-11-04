@@ -1055,8 +1055,8 @@ export class MachineTool {
     const pose0 = E.pose(), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
     E.update(dt);
     const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
-    // (digging: the teeth leading — down the way they point or dragged across — not full, not tipped)
-    const edge = E.edgeDir(new THREE.Vector3()), cutting = moving && !E.open && g.load < cap && mv.dot(edge) > -mv.length() * 0.25;   // (not the bucket's back first: that only pushes)
+    // (digging: the teeth leading — the way they go as it curls in — not full, not tipped)
+    const edge = E.cutDir(new THREE.Vector3()), cutting = moving && !E.open && g.load < cap && mv.dot(edge) > mv.length() * 0.2;   // (the teeth going where they point — as the bucket curls in; its back first only pushes)
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
@@ -1071,16 +1071,22 @@ export class MachineTool {
       // is the cut; not the stick's end, that is held by the ground)
       // (each point of it in the ground: a line across the bucket's width there, down to it — the cut as
       // wide as the bucket, its walls straight)
-      for (const c of E.shellPoints()) {
-        if (g.load >= cap || !t.inside(c.x, c.z) || t.heightAt(c.x, c.z) <= c.y) continue;
-        const off = (c.x - p.x) * ux + (c.z - p.z) * uz;   // (across: from the bucket's middle)
-        for (let q = -hw; q <= hw; q += t.cell * 0.7) {
-          const px = c.x + ux * (q - off), pz = c.z + uz * (q - off); if (!t.inside(px, pz)) continue;
-          const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
-          const d = Math.min(t.nat[i] + t.loose[i] - c.y, cap - g.load);
-          if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
-        }
-      }
+      // (the bucket's body behind its teeth: its lowest line along it, bin by bin — the bins it leaves out filled
+      // between their neighbours — cut across all its width: the cut is the bucket's own shape, smooth, no ribs)
+      { const lx = uz, lz = -ux, bin = t.cell, low = new Map();
+        for (const c of [p, ...E.shellPoints()]) { if (!t.inside(c.x, c.z)) continue; const k = Math.round(((c.x - p.x) * lx + (c.z - p.z) * lz) / bin); low.set(k, Math.min(low.get(k) ?? Infinity, c.y)); }
+        const ks = [...low.keys()].sort((a, b) => a - b);
+        for (let n = 0; n + 1 < ks.length; n++) for (let k = ks[n] + 1; k < ks[n + 1]; k++) low.set(k, low.get(ks[n]) + (low.get(ks[n + 1]) - low.get(ks[n])) * (k - ks[n]) / (ks[n + 1] - ks[n]));
+        for (const [k, y] of low) {
+          if (g.load >= cap) break;
+          const cx = p.x + lx * k * bin, cz = p.z + lz * k * bin;
+          for (let q = -hw; q <= hw; q += t.cell * 0.7) {
+            const px = cx + ux * q, pz = cz + uz * q; if (!t.inside(px, pz)) continue;
+            const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
+            const d = Math.min(t.nat[i] + t.loose[i] - y, cap - g.load);
+            if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
+          }
+        } }
       if (any) { app.sfx.play('gravel_dig', { gap: 0.45, at: p }); t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); if (Math.random() < 0.3) app.particles?.emit(p.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.3), R(0.4), (Math.random() - 0.5) * R(0.3)), 0, R(0.03 + Math.random() * 0.03), 0, 0, 0); }
     }
     // the ground holds: the bucket's shell and the stick's end do not go into it (nor the teeth, but along
