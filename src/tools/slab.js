@@ -21,7 +21,9 @@ import { boxOf } from './freeBrick.js';
 //   belt { kind: 'slab', … , deck (run lengths: the cells over the open, on the props),
 //          cant: [ds, dt, mm] (the side of the cantilever in the frame, its length) }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const SLAB = { cell: 100, H: 200, cover: 25, bar: 12, step: 200, cantBar: 14, deck: 18, sec: 500, prim: 1500, prop: 1200, beamH: 200, beamW: 80 };
+export const SLAB = { cell: 100, H: 200, cover: 25, bar: 12, step: 200, cantBar: 14, deck: 18, sec: 500, prim: 1500, prop: 1200, beamH: 200, beamW: 80, Hc: 350 };
+// the cantilevers of a slab: one side ([ds, dt, mm]) or all round (a slab on one column)
+export const cantsOf = (b) => b?.cants || (b?.cant ? [b.cant] : []);
 export const isSlab = (b) => b?.kind === 'slab';
 
 // The slab over the walls under the finger: { rec, n, area (m²), exists } or null.
@@ -129,9 +131,11 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
 // the props (they stand on the ground / what is under it).
 // cantMm: the cantilever — past the piles' edge on the side nearest the finger, the whole width (on its own
 // props and formwork like the rest; its top bars back into the slab as over walls)
+// (on one or two columns — a tree column's trunk, its branches: a slab carried by its cantilevers all round,
+// SLAB.Hc thick — no slab stands on fewer than three columns without them)
 export function findPileSlab(app, p, screen, finger, belts = app.objects.all('belt'), cantMm = 0) {
   const cols = app.objects.all('column').filter(castDone);
-  if (cols.length < 3) return null;
+  if (cols.length < (cantMm > 0 ? 1 : 3)) return null;
   let pick = null, bd = Infinity;
   for (const r of cols) {
     const top = colTop(r), [x, z] = axisAt(r, top);
@@ -143,12 +147,13 @@ export function findPileSlab(app, p, screen, finger, belts = app.objects.all('be
   if (!pick) return null;
   const T = colTop(pick), same = cols.filter((r) => Math.abs(colTop(r) - T) < MM(30)), grp = [pick];
   for (let grew = true; grew;) { grew = false; for (const r of same) if (!grp.includes(r) && grp.some((q) => Math.hypot(q.x - r.x, q.z - r.z) < MM(6000))) { grp.push(r); grew = true; } }
-  if (grp.length < 3) return null;
+  const round = grp.length < 3;
+  if (round && !(cantMm > 0)) return null;
   const c = MM(SLAB.cell), tops = grp.map((r) => { const [x, z] = axisAt(r, colTop(r)); return { x, z, a: MM(secOf(r).a / 2), round: secOf(r).round }; });
   let x0 = Math.min(...tops.map((t) => t.x - t.a)) - MM(100), x1 = Math.max(...tops.map((t) => t.x + t.a)) + MM(100);
   let z0 = Math.min(...tops.map((t) => t.z - t.a)) - MM(100), z1 = Math.max(...tops.map((t) => t.z + t.a)) + MM(100);
-  let cant = null;
-  if (cantMm > 0) {
+  let cant = null, cants = null;
+  if (round) { const L = MM(cantMm); x0 -= L; x1 += L; z0 -= L; z1 += L; cants = [[1, 0, cantMm], [-1, 0, cantMm], [0, 1, cantMm], [0, -1, cantMm]]; } else if (cantMm > 0) {
     const q = finger && p ? p : { x: (x0 + x1) / 2, z: z1 }, sides = [[1, 0, x1 - q.x], [-1, 0, q.x - x0], [0, 1, z1 - q.z], [0, -1, q.z - z0]];
     const [ds, dt] = sides.reduce((a, b) => (Math.abs(b[2]) < Math.abs(a[2]) ? b : a)), L = MM(cantMm);
     if (ds > 0) x1 += L; else if (ds < 0) x0 -= L; else if (dt > 0) z1 += L; else z0 -= L;
@@ -162,8 +167,8 @@ export function findPileSlab(app, p, screen, finger, belts = app.objects.all('be
   }
   const rec = {
     type: 'belt', kind: 'slab', o: [+x0.toFixed(6), +z0.toFixed(6)], u: [1, 0], c: +c.toFixed(7), ni, nj,
-    mask: rle(mask), deck: rle(deck), top: +T.toFixed(6), H: +MM(SLAB.H).toFixed(6), lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0, segs: [],
-    cant, piles: grp.length,
+    mask: rle(mask), deck: rle(deck), top: +T.toFixed(6), H: +MM(round ? SLAB.Hc : SLAB.H).toFixed(6), lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0, segs: [],
+    cant, piles: grp.length, ...(cants ? { cants } : {}),
   };
   rec.clip = [0, 0, +(ni * c).toFixed(6), +(nj * c).toFixed(6)];
   const exists = belts.some((b) => isSlab(b) && Math.abs(b.top - rec.top) < MM(30) && beltContains(b, tops[0].x, tops[0].z));
@@ -186,7 +191,7 @@ export function slabClip(b, units, belts) {
   const q = pts.filter(inGrid);
   if (q.length < 4) return null;
   const c = [Math.min(...q.map((v) => v[0])), Math.min(...q.map((v) => v[1])), Math.max(...q.map((v) => v[0])), Math.max(...q.map((v) => v[1]))];
-  if (b.cant) { const [ds, dt, mm] = b.cant; if (ds > 0) c[2] += MM(mm); if (ds < 0) c[0] -= MM(mm); if (dt > 0) c[3] += MM(mm); if (dt < 0) c[1] -= MM(mm); }
+  for (const [ds, dt, mm] of cantsOf(b)) { if (ds > 0) c[2] += MM(mm); if (ds < 0) c[0] -= MM(mm); if (dt > 0) c[3] += MM(mm); if (dt < 0) c[1] -= MM(mm); }
   return c.map((v) => +v.toFixed(6));
 }
 
@@ -315,8 +320,8 @@ export function slabCage(b) {
     }
   }
   // the cantilever: the bars that carry it — on top, between the top mat's
-  if (b.cant) {
-    const [ds, dt, mm] = b.cant, dc = MM(SLAB.cantBar), back = MM(mm) * 1.5 + MM(mm), y = ds ? yt1 : yt2;   // (beside the top mat's bars that run the same way)
+  for (const [ds, dt, mm] of cantsOf(b)) {
+    const dc = MM(SLAB.cantBar), back = MM(mm) * 1.5 + MM(mm), y = ds ? yt1 : yt2;   // (beside the top mat's bars that run the same way)
     if (ds) {
       const iEdge = ds > 0 ? S1 - cov : S0 + cov, iIn = iEdge - ds * back;
       const lo = Math.min(iIn, iEdge), hi = Math.max(iIn, iEdge);
@@ -356,4 +361,4 @@ export function slabHole(b, x0, z0, x1, z1) {
 }
 
 // the cantilever as words: «консоль 1,5 м»
-export const cantText = (b) => (b?.cant ? `консоль ${(b.cant[2] / 1000).toFixed(1).replace('.', ',')} м` : 'без консоли');
+export const cantText = (b) => (b?.cants ? `консоль ${(b.cants[0][2] / 1000).toFixed(1).replace('.', ',')} м кругом` : b?.cant ? `консоль ${(b.cant[2] / 1000).toFixed(1).replace('.', ',')} м` : 'без консоли');

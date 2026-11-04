@@ -986,8 +986,8 @@ export default {
 "Опалубка днища: доски по краю плиты {0} × {1} м, 250 мм.{2}": "Floor forms: boards along the edge of the {0} × {1} m slab, 250 mm.{2}",
 "Опалубка отмостки: доски на колышках, {0} м по периметру, ширина {1} мм — дальше геотекстиль": "Blind area formwork: boards on stakes, {0} m round, width {1} mm — next the geotextile",
 "Опалубка перекрытия {0} м² (аренда)": "Slab formwork {0} m² (rental)",
-"Опалубка перекрытия: {0} м², {1}; фанера на балках и стойках, по краю доски, толщина плиты 200 мм — теперь каркас («Каркас»), потом бетон шлангом": "Slab formwork: {0} m², {1}; plywood on beams and props, boards along the edge, slab 200 mm thick — now the cage (“Cage”), then concrete with the hose",
-"Опалубка перекрытия на {0} колоннах/сваях: {1} м², {2}; фанера на балках и стойках, по краю доски, толщина плиты 200 мм — теперь каркас («Каркас»), потом бетон шлангом": "Slab formwork on {0} columns/piles: {1} m², {2}; plywood on beams and props, boards along the edge, slab 200 mm thick — now the cage (“Cage”), then concrete with the hose",
+"Опалубка перекрытия: {0} м², {1}; фанера на балках и стойках, по краю доски, толщина плиты {2} мм — теперь каркас («Каркас»), потом бетон шлангом": "Slab formwork: {0} m², {1}; plywood on beams and props, boards along the edge, slab {2} mm thick — now the cage (“Cage”), then concrete with the hose",
+"Опалубка перекрытия на {0} колоннах/сваях: {1} м², {2}; фанера на балках и стойках, по краю доски, толщина плиты {3} мм — теперь каркас («Каркас»), потом бетон шлангом": "Slab formwork on {0} columns/piles: {1} m², {2}; plywood on beams and props, boards along the edge, slab {3} mm thick — now the cage (“Cage”), then concrete with the hose",
 "Опалубка перемычки": "Lintel formwork",
 "Опалубка перемычки над проёмом {0} мм, длина {1} мм — отпустите": "Lintel formwork over a {0} mm opening, {1} mm long — let go",
 "Опалубка перемычки над проёмом {0} мм: днище на стойках, доски по бокам, длина {1} мм (опора по 250 мм), высота {2} мм — теперь «Каркас», потом бетон": "Lintel formwork over a {0} mm opening: the bottom on props, boards at the sides, {1} mm long (250 mm bearings), {2} mm high — now “Cage”, then concrete",
@@ -1917,4 +1917,6 @@ export default {
 "Нажмите, чтобы начать": "Tap to start",
 "Сначала включите запись экрана.": "Start the screen recording first.",
 "Ролик снимается сам — ваш участок не тронется.": "The film shoots itself — your plot stays as it is.",
+"консоль {0} м кругом": "cantilever {0} m all round",
+"Консоль 3,5 м": "Cantilever 3.5 m",
 };

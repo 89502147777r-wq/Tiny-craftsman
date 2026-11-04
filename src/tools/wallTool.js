@@ -1261,7 +1261,7 @@ export class WallTool {
       if (!belt) { app.ui.toast('Перекрытие — на верх стен, армопояс или залитые колонны и сваи (от трёх, верх на одной отметке): коснитесь верха стены или колонны'); return; }
       if (belt.exists) { app.ui.toast('Здесь опалубка перекрытия уже стоит'); return; }
       app.sfx?.seq?.(['pipe','pipe','plank','plank','hammer_nail']); app.journal.act('slab-form', {}, app.clock, () => app.objects.add(belt.rec));
-      app.ui.toast(`Опалубка перекрытия${belt.rec.piles ? ` на ${belt.rec.piles} колоннах/сваях` : ''}: ${belt.area.toFixed(1).replace('.', ',')} м², ${cantText(belt.rec)}; фанера на балках и стойках, по краю доски, толщина плиты 200 мм — теперь каркас («Каркас»), потом бетон шлангом`);
+      app.ui.toast(`Опалубка перекрытия${belt.rec.piles ? ` на ${belt.rec.piles} колоннах/сваях` : ''}: ${belt.area.toFixed(1).replace('.', ',')} м², ${cantText(belt.rec)}; фанера на балках и стойках, по краю доски, толщина плиты ${Math.round(belt.rec.H / MM(1))} мм — теперь каркас («Каркас»), потом бетон шлангом`);
       return;
     }
     if (ck === 'ucage' && !cage && bc) {
@@ -1434,7 +1434,7 @@ export class WallTool {
       const k = uStrength(b, app.clock);
       if (!(b.fill >= 0.95) || k < 1) { app.ui.toast(!(b.fill >= 0.95) ? (sl ? 'Перекрытие залито не доверху — долейте бетон' : 'Пояс залит не доверху — долейте бетон') : `Бетон набирает прочность: ${Math.round(k * 100)} % — ${sl ? (b.cant ? 'стойки рано убирать: консоль без них просядет' : 'стойки рано убирать: плита прогнётся') : 'опалубку рано снимать'}`); return; }
       app.sfx?.seq?.(['crowbar','plank','plank']); app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, { stripped: true, set: true }));
-      app.ui.toast(sl ? 'Стойки, балки и фанеру сняли — перекрытие готово' + (b.cant ? ', консоль держится сама' : '') : b.lform ? 'Стойки, днище и доски сняли — монолитная перемычка готова, на неё можно класть дальше' : 'Опалубку сняли — армопояс готов');
+      app.ui.toast(sl ? 'Стойки, балки и фанеру сняли — перекрытие готово' + (b.cant || b.cants ? ', консоль держится сама' : '') : b.lform ? 'Стойки, днище и доски сняли — монолитная перемычка готова, на неё можно класть дальше' : 'Опалубку сняли — армопояс готов');
       return;
     }
     if (id) {
