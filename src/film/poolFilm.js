@@ -155,23 +155,27 @@ export function* poolFilm(d, app) {
   d.title('GLASS MOSAIC', 'pick the colour — then sheet by sheet', 10);
   d.cut(look(fl(7300, 3000, 1100), fl(2600, 0, 600)), { fx: 'zoom', drift: 0.03, push: 0.05 });
   yield d.picker('CHOOSE THE MOSAIC', [['Turquoise', 'pool_mosaic_turq'], ['Blue', 'pool_mosaic_blue'], ['Aqua mix', 'pool_mosaic_aqua'], ['White', 'pool_mosaic_white']].map(([name, dir]) => ({ name, img: sw(dir) })), 0, 1.7);
-  d.speed = 2.2;
   { const r = R(), old = JSON.parse(JSON.stringify(r)), L = MOSAICS[st.poolMos][3];
     const live = { ...old, tile: faces(r).map((f) => { const [ni, nj] = sheetsOf(f); return L.repeat(ni * nj); }) };
     pw._fitSheets(live, old, () => pw._save('pool-tile', () => app.objects.update(r.id, { tile: live.tile }))); }
-  d.fly([[fl(7300, 3000, 1100), fl(2600, 0, 600)], [fl(5200, 2900, 700), fl(1200, 0, 500)]], 2.4, { ease: 'linear' });
-  yield d.held(1.3);
+  // (the beat: the bare bowl from above → low along the walls as the sheets go on → the same view from above, blue)
+  const bowlTop = { target: mid(floorTopY(R())), yaw: 1.57, pitch: 1.45, dist: 0.85 };
+  yield* d.beat(null, 'detail', { top: bowlTop, speed: [1.3, 1], lens: [0.9, 2.4, 1.2],
+    act: (side) => (side > 0 ? look(fl(7300, 3000, 1100), fl(2600, 0, 600)) : look(fl(700, 600, 900), fl(5200, POOL.W, 500))) });
 
   // 11 · the coping: on the mallet, then a skim along the stones
   d.speed = 2;
   { const r = R(), old = JSON.parse(JSON.stringify(r));
     const live = { ...old, copeCol: st.poolCope, cope: copeLayout(r).map((s) => '1'.repeat(s.n)) };
     pw._fitStones(live, old, () => pw._save('pool-cope', () => app.objects.update(r.id, { cope: live.cope, copeCol: live.copeCol }))); }
-  d.follow(hand, { yaw: 0.5, pitch: 0.42, dist: 0.22 }, { fx: 'flash', drift: 0.1, lag: 1.0 });
+  // (the beat on the mallet: from above → low beside the stones → from above, the line done)
+  const corner = at(0, 0, rimY(R()));
+  const go = d.beat(() => hand() || corner, 'repeat', { yaw: 0.5, dist: 0.24, speed: [1.6, 1.4], fx: 'flash' });
+  yield go.next().value;
   d.title('COPING', 'travertine, 30 mm over the water', 11);
-  yield d.sec(1.1);
-  d.fly([[gy(-900, -600, 650), gy(1500, 0, 300)], [gy(3000, -500, 500), gy(6000, 0, 280)], [gy(7600, -900, 900), gy(8000, W2, 200)]], 2.4, { fx: 'whip', ease: 'linear' });
-  yield d.held(1.3);
+  yield* go;
+  d.fly([[gy(-900, -600, 650), gy(1500, 0, 300)], [gy(3000, -500, 500), gy(6000, 0, 280)], [gy(7600, -900, 900), gy(8000, W2, 200)]], 2.4, { ease: 'linear' });
+  yield d.sec(1.6);
 
   // 12 · the deck: chosen by the finger, then the joists and the boards — a low flight along it
   d.title('POOL DECK', 'pick the deck — joists, then boards', 12);
@@ -182,8 +186,9 @@ export function* poolFilm(d, app) {
   d.fly([[gy(-2200, -2600, 900), gy(2000, -900, 150)], [gy(2500, -2500, 700), gy(6500, -800, 150)]], 1.9, { fx: 'zoom', ease: 'linear' });
   yield d.held(1.3);
   pw._deck(R());
-  d.fly([[gy(9800, -2600, 800), gy(6000, -900, 200)], [gy(6500, -2900, 1200), gy(2000, -700, 150)]], 2.6, { fx: 'whip', ease: 'linear' });
-  yield d.held(1.3);
+  // (the beat: the joists from above → low along the boards going on, side after side → from above, decked)
+  yield* d.beat(null, 'repeat', { top: { target: mid(rimY(R())), yaw: 0, pitch: 1.4, dist: 1.25 }, speed: [1.8, 1.6], lens: [0.9, 2.2, 1.2],
+    act: (side) => (side > 0 ? look(gy(9800, -2600, 800), gy(6000, -900, 200)) : look(gy(-2200, POOL.W + 2600, 900), gy(2000, POOL.W + 900, 150))) });
 
   // the water: a skim over the surface as it comes up, then wide
   d.speed = 14;
@@ -195,7 +200,7 @@ export function* poolFilm(d, app) {
   d.count('water', Math.round(POOL.L * POOL.W * waterMax(R()) / 1e9), ' m³', 2.2, 0, 2.4);
   yield d.sec(1.6);
   d.cut({ target: mid(rimY(R()) - MM(400)), yaw: 0.9, pitch: 0.55, dist: 0.95 }, { fx: 'whip', drift: 0.12 });
-  yield d.until(() => (pw.drag?.live?.water || 0) >= waterMax(R()) - 1);
+  { const t1 = d.t + 1.3; yield d.until(() => (pw.drag?.live?.water || 0) >= waterMax(R()) - 1 && d.t >= t1); }
   pw.up();
 
   // the evening: the lights on — a slow flight round the pool, low
@@ -203,7 +208,8 @@ export function* poolFilm(d, app) {
   pw._save('pool-light', () => app.objects.update(R().id, { light: true }));
   const h0 = 17.8;
   d.each(((k) => () => { k += d.dt / 1.8; app.sky.setHour(h0 + 2.4 * Math.min(1, k)); return k >= 1; })(0));
-  d.fly([[gy(-2800, -2600, 1400), gy(3800, W2, -600)], [gy(3000, -4200, 1100), gy(4200, W2, -600)], [gy(9600, -3200, 1500), gy(4400, W2, -600)]], 5.8, { fx: 'flash', ease: 'linear' });
+  // (the reveal: round the pool, pulling back and rising, as the lights come up)
+  d.reveal(gy(POOL.L / 2, W2, -600), MM(7000), 5.8, { yaw0: -2.4, arc: 1.7, y0: MM(1700), y1: MM(3600), fx: 'flash' });
   yield d.sec(0.9);
   d.kick('FROM DIRT TO THIS', 1.3, 'gold');
   yield d.sec(1.3);
