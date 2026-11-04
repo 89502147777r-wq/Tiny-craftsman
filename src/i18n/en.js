@@ -1949,4 +1949,5 @@ export default {
 "Коснитесь земли — встанет стеклянная шахта лифта высотой как колонна в «Размерах»; на её верх можно положить перекрытие, она его понесёт. Тап по лифту — кабина едет": "Tap the ground — a glass lift shaft as tall as the column in «Sizes» goes up; a slab can be laid on its top, it carries it. Tap the lift — the cabin rides",
 "Над лифтом ещё нет этажа — положите на шахту перекрытие (в нём будет проём)": "No floor over the lift yet — lay a slab on its top (it gets its opening)",
 "Шахта ниже {0} м — кабине не встать": "The shaft is under {0} m — the cabin does not fit",
+"Шахту лифта ставят на бетонное основание — сначала залейте под неё плиту или подушку (на голый грунт нельзя)": "A lift shaft stands on a concrete base — cast a slab or a pad under it first (not on the bare ground)",
 };

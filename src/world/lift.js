@@ -12,8 +12,10 @@ import { toFrame } from '../tools/belt.js';
 // transoms; a landing door at the ground and at each floor (stainless, two glass leaves); a hydraulic drive
 // (the cylinder in the pit behind the cabin, its ram and a sheave lifting the cabin 2:1 on ropes — no machine
 // room; the pump cabinet outside by the lower door); the cabin 1100 × 1400 × 2200 — glass on three sides, a
-// stainless frame and floor edge, a handrail, a light. Its top (`top`) carries what is on it: a slab laid
-// over it rests on steel bearing plates on the posts, an opening in it over the shaft (slab.js: `liftHole`);
+// stainless frame and floor edge, a handrail, a light. It stands on a cast concrete base (a pad or a slab —
+// never on the bare ground; its pit sunk in it). Its top (`top`) carries what is on it: the steel head welded
+// on — a ring of HEB 200 round the posts' heads, outriggers from the corners and the sides with their gusset
+// plates; a slab laid over it is cast on that, an opening in it over the shaft (slab.js: `liftHoles`);
 // the shaft goes on up through the opening into the floors, a stop at each slab with its opening over the
 // shaft, the headroom (the cabin + 1,2 m) over the top stop and the shaft's roof with vent grilles on it.
 // A lift: { type: 'lift', x, z (the shaft's middle), y0 (the ground), top (the shaft's top: what it carries
@@ -33,6 +35,7 @@ function mats() {
     edge: new THREE.MeshStandardMaterial({ color: 0x5f8f7c, roughness: 0.15, transparent: true, opacity: 0.85 }),
     epdm: new THREE.MeshStandardMaterial({ color: 0x141516, roughness: 0.85 }),
     cabinet: new THREE.MeshStandardMaterial({ color: 0xc5c7c4, metalness: 0, roughness: 0.55 }),
+    head: new THREE.MeshStandardMaterial({ color: 0x6e3a2a, metalness: 0, roughness: 0.7 }),   // (the head's steel: red-oxide primer)
     floor: new THREE.MeshStandardMaterial({ color: 0x2b2b2c, roughness: 0.7 }),
     light: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff1d6, emissiveIntensity: 1.2 }),
     conc: new THREE.MeshStandardMaterial({ color: 0x9e9c96, roughness: 0.9 }),
@@ -86,6 +89,9 @@ export function planLift(app, p, h, face) {
   const t = app.terrain;
   if (!t.inside(p.x, p.z)) return { why: 'За краем участка' };
   if (h < MM(LIFT.cabH + 600)) return { why: `Шахта ниже ${(LIFT.cabH + 600) / 1000} м — кабине не встать` };
+  // (its base: cast concrete under all its footprint — a pad or a foundation slab, not the ground)
+  const fp = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].map(([a, b]) => [p.x + a * MM(LIFT.w / 2 + 150), p.z + b * MM(LIFT.d / 2 + 150)]);
+  if (fp.some(([x, z]) => !t.inside(x, z) || !(t.conc[t.index(x, z)] > 1e-6))) return { why: 'Шахту лифта ставят на бетонное основание — сначала залейте под неё плиту или подушку (на голый грунт нельзя)', base: true };
   const near = app.objects.all('lift').find((q) => Math.hypot(q.x - p.x, q.z - p.z) < MM(LIFT.d + 200));
   if (near) return { why: 'Здесь уже стоит лифт', near };
   // (square to the plot: the doors on the side toward `face` — the camera)
@@ -102,7 +108,7 @@ export function liftAt(objects, x, z, pad = 100) {
 // the store (its stops — the slabs over it with their opening)
 export function buildLift(r, objects, ghost = null) {
   const mm = ghost === false ? Object.fromEntries(Object.keys(mats()).map((k) => [k, new THREE.MeshBasicMaterial({ color: 0xd04040, transparent: true, opacity: 0.45, depthWrite: false })])) : mats();
-  const G = { frame: [], steel: [], glass: [], floor: [], light: [], conc: [], edge: [], epdm: [], cabinet: [] }, panes = [];
+  const G = { frame: [], steel: [], glass: [], floor: [], light: [], conc: [], edge: [], epdm: [], cabinet: [], head: [] }, panes = [];
   const W = r.w / 2, D = r.d / 2, P = LIFT.post, J = LIFT.joint, dT = LIFT.door;
   const stops = (objects ? liftStops(objects, r) : []).map(([t, so]) => [(t - r.y0) / S, (so - r.y0) / S]);
   const Top = (r.top - r.y0) / S, H = stops.length ? stops.at(-1)[0] : 0, Ht = stops.length ? H + LIFT.head : Top;
@@ -142,8 +148,20 @@ export function buildLift(r, objects, ghost = null) {
       G.epdm.push(boxG(xi, xi + 10, y0, y1, z0 - 5, z0 + 10), boxG(xi, xi + 10, y0, y1, z1 - 10, z1 + 5), boxG(xi, xi + 10, y0 - 5, y0 + 10, z0, z1), boxG(xi, xi + 10, y1 - 10, y1 + 5, z0, z1));
     }
   }
-  // the bearing plates on the posts' heads (what it carries lies on them); the joint brackets at the slabs over
-  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) G.steel.push(boxG(sx * W - 130, sx * W + 130, (stops[0]?.[1] ?? Top) - LIFT.plate, stops[0]?.[1] ?? Top, sz * D - 130, sz * D + 130));
+  // the steel head welded on the posts' heads: the bearing plates, a ring of HEB 200 round them, outriggers from
+  // the corners (1,5 m, diagonal) and from the sides' middles (1,2 m), each with its gussets — what is cast over
+  // the shaft lies on it
+  const yH = stops[0]?.[1] ?? Top, hb = 200, bw2 = 100;
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) G.head.push(boxG(sx * W - 130, sx * W + 130, yH - LIFT.plate, yH, sz * D - 130, sz * D + 130));
+  G.head.push(boxG(-W - bw2, W + bw2, yH - hb, yH - LIFT.plate, -D - bw2, -D + bw2), boxG(-W - bw2, W + bw2, yH - hb, yH - LIFT.plate, D - bw2, D + bw2));
+  G.head.push(boxG(-W - bw2, -W + bw2, yH - hb, yH - LIFT.plate, -D, D), boxG(W - bw2, W + bw2, yH - hb, yH - LIFT.plate, -D, D));
+  const beam = (x0, z0, x1, z1, deep) => { const L = Math.hypot(x1 - x0, z1 - z0), b = new THREE.BoxGeometry(L, deep, 2 * bw2); b.rotateY(-Math.atan2(z1 - z0, x1 - x0)); b.translate((x0 + x1) / 2, yH - LIFT.plate - deep / 2, (z0 + z1) / 2); return b; };
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const L = 1500 / Math.SQRT2; G.head.push(beam(sx * W, sz * D, sx * (W + L), sz * (D + L), hb));
+    // (the gussets under the outrigger at the post: a triangle plate seen as a short deeper piece)
+    G.head.push(beam(sx * W, sz * D, sx * (W + 300), sz * (D + 300), hb + 250));
+  }
+  for (const [x0, z0, x1, z1] of [[0, -D, 0, -D - 1200], [0, D, 0, D + 1200], [-W, 0, -W - 1200, 0], [W, 0, W + 1200, 0]]) G.head.push(beam(x0, z0, x1, z1, hb));
   // the landing doors: at the ground and at each stop
   for (const y0 of [0, ...stops.map((q) => q[0])]) {
     G.steel.push(boxG(-500, 500, y0 + dT, y0 + dT + 60, D - 60, D)); G.steel.push(boxG(-560, -500, y0, y0 + dT + 60, D - 60, D)); G.steel.push(boxG(500, 560, y0, y0 + dT + 60, D - 60, D));
