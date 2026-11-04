@@ -42,7 +42,7 @@ export class Disaster {
     this.kind = kind; this.power = power; this.t = 0; this.on = true; this.done = false; this.broken = 0; this.said = {};
     wv.update?.(); wv.frozen = true;
     this.root = new THREE.Group(); this.root.name = 'disaster'; app.scene.add(this.root);
-    this.puffs = this.puffs || new Puffs(app.scene, 260);
+    this.puffs = this.puffs || new Puffs(app.scene, 420);
     // the world: gravity, the ground (a height field on a kinematic body — it can shake)
     const W = (this.world = new R.World({ x: 0, y: -9.81, z: 0 })); W.timestep = 1 / 60;
     this.ground = W.createRigidBody(R.RigidBodyDesc.kinematicPositionBased());
@@ -316,7 +316,7 @@ export class Disaster {
     }
     for (const cl of dirty) cl.instanceMatrix.needsUpdate = true;
     for (const p of this.panels) {
-      if ((p.sort === 'skin' && this.kind !== 'shaft') || (!p.free && this.kind !== 'quake') || p.carry) continue;
+      if ((p.sort === 'skin' && this.kind !== 'shaft') || (!p.free && this.kind !== 'quake') || p.carry || p.gone) continue;
       const t = p.body.translation(), r = p.body.rotation(); P.set(t.x / S, t.y / S, t.z / S); Q.set(r.x, r.y, r.z, r.w);
       p.o.matrix.multiplyMatrices(B.compose(P, Q, one), p.off); p.o.matrixWorldNeedsUpdate = true;
     }

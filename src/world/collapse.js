@@ -148,9 +148,9 @@ class Bits {
     this.m = new THREE.InstancedMesh(geo, mat, n); this.m.count = 0; this.m.frustumCulled = false; this.m.castShadow = !colour; root.add(this.m);
     this.p = []; this.n = n; this.colour = colour;
   }
-  add(at, v, size, col = null, spread = M(0.4)) {
+  add(at, v, size, col = null, spread = M(0.4), k = null) {
     if (this.p.length >= this.n) return;
-    const s = { x: at.x + (rnd() - 0.5) * spread, y: at.y + (rnd() - 0.5) * spread * 0.5, z: at.z + (rnd() - 0.5) * spread, v: v.clone(), s: size, r: new THREE.Euler(rnd() * 6, rnd() * 6, rnd() * 6), w: (rnd() - 0.5) * 14, rest: false, k: [0.7 + rnd() * 0.6, 0.6 + rnd() * 0.5, 0.7 + rnd() * 0.6] };
+    const s = { x: at.x + (rnd() - 0.5) * spread, y: at.y + (rnd() - 0.5) * spread * 0.5, z: at.z + (rnd() - 0.5) * spread, v: v.clone(), s: size, r: new THREE.Euler(k ? 0 : rnd() * 6, rnd() * 6, k ? (rnd() - 0.5) * 0.6 : rnd() * 6), w: (rnd() - 0.5) * (k ? 3 : 14), rest: false, k: k || [0.7 + rnd() * 0.6, 0.6 + rnd() * 0.5, 0.7 + rnd() * 0.6] };
     if (col && this.colour) this.m.setColorAt(this.p.length, col);
     this.p.push(s);
     if (this.m.instanceColor) this.m.instanceColor.needsUpdate = true;
@@ -388,6 +388,10 @@ export class ShaftCollapse {
       newChunks.push({ pieces, body: bd, c: cen, box, mass, free: true, under: [], over: [], str: 1, area: 0 }); this.bodies.push(bd); D.broken++;
     }
     D.chunks = [...D.chunks.filter((c) => !this.chunks.includes(c)), ...newChunks]; this.chunks = newChunks;
+    // (the blocks no longer clean and alike: dusted, each a shade of its own — darker near the blow)
+    { const col = new THREE.Color(), dust = new THREE.Color(0xb8a58a), seen = new Set();
+      for (const q of pcs) { const im = q.pc.cl; if (!im.instanceColor) continue; im.getColorAt(q.pc.i, col); const d = Math.min(1, q.p.distanceTo(hit) * S / 6); col.lerp(dust, 0.25 + 0.25 * rnd()).multiplyScalar(0.82 + 0.13 * d + 0.06 * rnd()); im.setColorAt(q.pc.i, col); seen.add(im); }
+      for (const im of seen) im.instanceColor.needsUpdate = true; }
     // the slabs: their pieces in clusters held by the bars — small by the blow, larger off it
     const sl = this.panels.filter((p) => p.sort === 'slab'), cur = sl.map((p) => { const b = new THREE.Box3().setFromPoints((p.o.userData.hull || []).map((q) => new THREE.Vector3(...q).applyMatrix4(PT))); return b.getCenter(new THREE.Vector3()); });
     const nearS = (i) => sl.map((_, j) => j).filter((j) => j !== i && sl[j].o.userData.slab === sl[i].o.userData.slab && cur[j].distanceTo(cur[i]) < M(2.2));
@@ -404,12 +408,19 @@ export class ShaftCollapse {
       bd.setLinvel(vel(cen.x, cen.y, cen.z), true); bd.setAngvel({ x: av.x * 0.6, y: av.y * 0.6, z: av.z * 0.6 }, true);
       this.bodies.push(bd);
     }
-    // the rest (the fascias, the railings, the windows, the roof): each on its own; the thin skins onto the ground only
+    // the rest (the windows, the roof): each on its own. The thin skins — the fascias, the railings — tear at their
+    // joints: crumpled cassettes and bent lengths, each its own bit, not one long bar
+    const dark = new THREE.Color(0x3a3f44);
     for (const p of this.panels.filter((q) => q.sort !== 'slab')) {
       const m = new THREE.Matrix4().multiplyMatrices(P, p.rel), pos = new THREE.Vector3(), q = new THREE.Quaternion(); m.decompose(pos, q, new THREE.Vector3());
+      if (p.sort === 'skin') {
+        const sz = p.box.getSize(new THREE.Vector3()), L = Math.max(sz.x, sz.z), along = sz.x > sz.z ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1), n = Math.max(2, Math.ceil(L * S / 1.2));
+        for (let k = 0; k < n; k++) { const at = pos.clone().addScaledVector(along.clone().applyQuaternion(q), (k / (n - 1) - 0.5) * L * 0.9), v = vel(at.x, at.y, at.z); this.crumbs.add(at, new THREE.Vector3(v.x / S * 0.6 + (rnd() - 0.5) * M(1.5), M(rnd() * 0.6), v.z / S * 0.6 + (rnd() - 0.5) * M(1.5)), M(0.35 + rnd() * 0.35), dark, M(0.3), [2.4 + rnd(), 0.9 + rnd() * 0.6, 0.18]); }
+        p.o.visible = false; W.removeRigidBody(p.body); p.body = null; p.carry = false; p.free = true; p.gone = true;
+        continue;
+      }
       p.body.setTranslation({ x: pos.x * S, y: pos.y * S, z: pos.z * S }, true); p.body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
-      const skin = p.sort === 'skin';
-      for (let k = 0; k < p.body.numColliders(); k++) { const c = p.body.collider(k); c.setEnabled(true); c.setCollisionGroups(skin ? (0x0002 << 16) | 0x0001 : (0x0004 << 16) | 0xfffd); }
+      for (let k = 0; k < p.body.numColliders(); k++) { const c = p.body.collider(k); c.setEnabled(true); c.setCollisionGroups((0x0004 << 16) | 0xfffd); }
       p.body.setBodyType(R.RigidBodyType.Dynamic, true); p.body.setLinvel(vel(pos.x, pos.y, pos.z), true);
       p.carry = false; p.free = true; this.bodies.push(p.body);
     }
@@ -423,12 +434,14 @@ export class ShaftCollapse {
     // the dust: first a ring out along the ground from the footprint (the air pushed out from under the slab), then rising, drifting
     const box = new THREE.Box3(); for (const c of newChunks) box.expandByPoint(c.c); for (const c of cur) box.expandByPoint(c);
     const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2, rx = (box.max.x - box.min.x) / 2 + M(0.5), rz = (box.max.z - box.min.z) / 2 + M(0.5);
-    for (let i = 0; i < 56; i++) { const a = i / 56 * Math.PI * 2 + rnd() * 0.1, ex = Math.cos(a), ez = Math.sin(a), v = M(4 + rnd() * 2); D.puffs?.emit('ring', new THREE.Vector3(cx + ex * rx, D.groundY + M(0.2), cz + ez * rz), new THREE.Vector3(ex * v, 0, ez * v), 1); }
-    for (let i = 0; i < 22; i++) D.puffs?.emit('rubble', new THREE.Vector3(cx + (rnd() - 0.5) * 2 * rx, D.groundY + rnd() * M(1), cz + (rnd() - 0.5) * 2 * rz), new THREE.Vector3(D.wdir.x * M(0.5), 0, D.wdir.z * M(0.5)), 0.9);
+    for (let i = 0; i < 90; i++) { const a = i / 90 * Math.PI * 2 + rnd() * 0.1, ex = Math.cos(a), ez = Math.sin(a), v = M(4 + rnd() * 2); D.puffs?.emit('ring', new THREE.Vector3(cx + ex * rx * (0.7 + rnd() * 0.3), D.groundY + M(0.25 + rnd() * 0.3), cz + ez * rz * (0.7 + rnd() * 0.3)), new THREE.Vector3(ex * v, 0, ez * v), 1); }
+    for (let i = 0; i < 40; i++) D.puffs?.emit('rubble', new THREE.Vector3(cx + (rnd() - 0.5) * 2 * rx, D.groundY + rnd() * M(1), cz + (rnd() - 0.5) * 2 * rz), new THREE.Vector3(D.wdir.x * M(0.5), 0, D.wdir.z * M(0.5)), 0.9);
     // crumbs of concrete and block all along the line it struck
     const grey = new THREE.Color(0x9a9890), white = new THREE.Color(0xd8d6d0);
     for (let i = 0; i < 260; i++) { const a = rnd() * Math.PI * 2, r0 = rnd(); this.crumbs.add(new THREE.Vector3(cx + Math.cos(a) * rx * r0, D.groundY + M(0.3), cz + Math.sin(a) * rz * r0), new THREE.Vector3(Math.cos(a) * M(1 + rnd() * 2.5), M(0.5 + rnd() * 1.5), Math.sin(a) * M(1 + rnd() * 2.5)), MM(15 + rnd() * rnd() * 110), rnd() < 0.5 ? grey : white, M(0.3)); }
     for (const p of this.panes) { const at = p.root.getWorldPosition(new THREE.Vector3()); for (let q = 0; q < 6; q++) this.shards.add(at, new THREE.Vector3((rnd() - 0.5) * M(2), M(rnd()), (rnd() - 0.5) * M(2)), MM(5 + rnd() * 10), null, M(1)); }
+    // (the crushed shaft's heap: steel and glass bits over it, not clean ground in the slab's opening)
+    { const steel = new THREE.Color(0x3a3d41), at = new THREE.Vector3(this.L.r.x, this.y0 + M(0.4), this.L.r.z); for (let i = 0; i < 60; i++) this.crumbs.add(at, new THREE.Vector3((rnd() - 0.5) * M(1.2), M(rnd() * 0.5), (rnd() - 0.5) * M(1.2)), MM(40 + rnd() * 160), rnd() < 0.5 ? steel : new THREE.Color(0xdde8e4), M(1.4)); }
   }
   // a block broken in the blow: its bits flying on with it
   _breakUnit(q, v) {
