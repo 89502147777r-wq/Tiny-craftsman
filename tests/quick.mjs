@@ -1015,9 +1015,11 @@ console.log('—', sec());
       for (let i = 0; i < 30 * 3 * X.secPerYear; i++) tc.simulate(1 / 30);
       o.mis = { ok: st.ok, arch: st.arch, xray: +red().toFixed(2), early: +X.stats().sag.toFixed(3) };
       for (let i = 0; i < 30 * 9 * X.secPerYear; i++) tc.simulate(1 / 30);
-      const f = X.stats(); Object.assign(o.mis, { sag: +f.sag.toFixed(3), cracks: f.cracks, fell: f.fell, done: f.done, glass: f.glass, bill: !!document.querySelector('.mistake-hud .m-bill')?.textContent,
+      const f = X.stats(); Object.assign(o.mis, { sag: +f.sag.toFixed(3), cracks: f.cracks, chips: f.chips, fell: f.fell, jam: f.jam, done: f.done, glass: f.glass, bill: !!document.querySelector('.mistake-hud .m-bill')?.textContent,
         // (the realist's checks on the cracks: not a straight cut — a bolt of lightning; through the blocks mostly)
-        rough: Math.min(...f.paths.slice(0, 3).map((q) => +(q.L / q.chord).toFixed(2))), joint: Math.max(...f.paths.slice(0, 3).map((q) => +(q.joint / q.L).toFixed(2))) });
+        rough: Math.min(...f.paths.filter((q) => q.kind === 'arch').map((q) => +(q.L / q.chord).toFixed(3))), roughMax: Math.max(...f.paths.filter((q) => q.kind === 'arch').map((q) => +(q.L / q.chord).toFixed(3))), joint: Math.max(...f.paths.filter((q) => q.kind === 'arch').map((q) => +(q.joint / q.L).toFixed(2))),
+        // (the two arch cracks meet at the crown; the halves touch at their top)
+        meet: +(Math.hypot(X.paths[1].p.at(-1)[0] - X.paths[2].p.at(-1)[0], X.paths[1].p.at(-1)[1] - X.paths[2].p.at(-1)[1]) / M).toFixed(0) });
       D.reset(); const lm = new tc.camera.matrix.constructor(); tc.wallView.lintels.getMatrixAt(0, lm);
       o.mis.back = !tc.wallView.frozen && !document.querySelector('.mistake-hud') && Math.abs(lm.determinant()) > 1e-15; }
     return o;
@@ -1025,7 +1027,7 @@ console.log('—', sec());
   check('catastrophes: 7 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 10 && o.slider && o.back && o.tint, JSON.stringify(o));
   check('catastrophes: a M 4 quake leaves the house standing, a M 9 one brings it down', o.weak.pieces > 250 && o.weak.share < 0.05 && o.strong.share > 0.4, JSON.stringify([o.weak, o.strong]));
   check('catastrophes: the tornado, the tsunami and the meteor at full power break the house', o.kinds.tornado > 0.1 && o.kinds.tsunami > 0.1 && o.kinds.meteor > 0.1, JSON.stringify(o.kinds));
-  check('mistakes: a lintel without bars — the x-ray reddens, it breaks and sags (≈45 mm), cracks through the blocks, nearly straight, ragged in the small (length 1,03–1,11 of the chord), the window glass cracks, blocks fall, the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early < 0.012 && o.mis.sag > 0.04 && o.mis.cracks >= 4 && o.mis.rough >= 1.03 && o.mis.rough <= 1.11 && o.mis.joint < 0.15 && o.mis.glass && o.mis.fell >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
+  check('mistakes: a lintel without bars — the x-ray reddens, it breaks in weeks and creeps (to ≈24 mm over a window), three hinges, the arch of collapse cracks meet at the crown, nearly straight and ragged in the small, the sash jams then the glass cracks, the blocks stay in (chips fall), the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early > 0.012 && o.mis.sag > 0.018 && o.mis.sag <= 0.027 && o.mis.cracks >= 3 && o.mis.rough >= 1.02 && o.mis.roughMax <= 1.2 && o.mis.joint < 0.2 && o.mis.meet < 60 && o.mis.jam && o.mis.glass && o.mis.fell === 0 && o.mis.chips >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
   check('catastrophes: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

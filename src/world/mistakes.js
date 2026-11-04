@@ -65,7 +65,7 @@ export class Mistake {
         if (Math.abs(n) > Lt.T * 0.75 + M(0.05) || y < -M(0.02) || y > h + M(1.2) || Math.abs(a) > Lt.L / 2 + M(1.2)) continue;
         // (in the arch: under the line from the opening's edges up to its crown — by the unit's middle, so the
         // edge of what drops goes unit by unit: a stepped crack along the joints)
-        const inA = y < h * (1 - Math.abs(a) / (span / 2 + M(0.1)));
+        const inA = Math.abs(a) < span / 2 && y < h * (1 - (a / (span / 2)) ** 2);   // (the arch of collapse: a parabola)
         this.units.push({ im, i, base: m4.clone(), p: P.clone(), s: Sv.clone(), a, y, inA, half: Math.max(Sv.x, Sv.z) / 2, hh: Sv.y / 2, d: 0, fall: null, col: im.instanceColor ? [im.instanceColor.getX(i), im.instanceColor.getY(i), im.instanceColor.getZ(i)] : null });
       }
     }
@@ -77,7 +77,7 @@ export class Mistake {
     this.halves = new THREE.InstancedMesh(wv.lintels.geometry, wv.lintels.material, 2); this.halves.castShadow = this.halves.receiveShadow = true; this.halves.frustumCulled = false;
     this.root.add(this.halves);
     // the cracks: jagged lines on both faces of the masonry (each side: whether a facade covers it)
-    this.crackMat = new THREE.MeshBasicMaterial({ color: 0x15120f, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+    this.crackMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     this.facSide = [1, -1].map((sd) => !!wv.facades?.children.length && this._faceOff(0, h * 0.4, sd, true) > this._faceOff(0, h * 0.4, sd, false) + M(0.02));
     this.facade = this.facSide.some(Boolean);
     this._cracks();
@@ -106,78 +106,103 @@ export class Mistake {
     const hit = ray.intersectObjects(objs, true)[0];
     return hit ? M(1.5) - hit.distance : L.T / 2;
   }
-  // the cracks' paths (in the wall's plane: a along it, y up from the lintel's top), as real ones in glued
-  // aerated concrete are (the realist): nearly straight on the whole — 45° from an opening's corner, or a gentle
-  // arch over a failed lintel — through the blocks; ragged only in the small (mm … cm: the grain, the pores),
-  // so its length is 1,03 … 1,10 of the straight line; now and then a short jog along a joint (1 crossing in 7);
-  // one or two hairline branches near its tip. Each with when it starts (years or sag) and how wide it opens
+  // the cracks' paths (in the wall's plane: a along it, y up from the lintel's top), as they are on a real failed
+  // plain-concrete lintel in glued aerated concrete (the realist): the lintel's own crack up its middle from the
+  // bottom (open below, closed at the top: a hinge); the arch of collapse over the opening — a parabola from
+  // each top corner of the opening, steep there (≈ 65°), level at the crown, the two meeting there. Each nearly
+  // straight on the whole, ragged only in the small (length 1,03 … 1,10 of the chord); at a real bed joint now
+  // and then a short run along it (then back to its line smoothly, no hook); a hairline branch or two near the tip,
+  // forward along it at 20 … 40°. Seeded by the lintel's place: every house its own.
   _cracks() {
-    const L = this.L, rnd = (() => { let x = 0x2f6b9a31; return () => ((x = (x * 16807) % 2147483647) / 2147483647); })();
-    // (the displacement at each halving: small at the large scale — it keeps its line — a little more in the small)
+    const L = this.L, seed = (Math.abs(Math.round(L.c.x * 1e4) * 73856093 ^ Math.round(L.c.z * 1e4) * 19349663) % 2147483646) + 1;
+    const rnd = (() => { let x = seed; return () => ((x = (x * 16807) % 2147483647) / 2147483647); })();
     const AMP = [0.017, 0.023, 0.029, 0.038, 0.046, 0.058, 0.066];
-    const row = M(0.25), path = (a0, y0, a1, y1, bend = 0, k = 1) => {
-      // (the line itself: straight, or bowed by `bend` of its length — an arch)
-      const l0 = Math.hypot(a1 - a0, y1 - y0) || 1e-9, mx = (a0 + a1) / 2 - (y1 - y0) / l0 * bend * l0, my = (y0 + y1) / 2 + (a1 - a0) / l0 * bend * l0;
-      let P = []; for (let i = 0; i <= 4; i++) { const u = i / 4, w0 = (1 - u) ** 2, w1 = 2 * u * (1 - u), w2 = u * u; P.push([w0 * a0 + w1 * mx + w2 * a1, w0 * y0 + w1 * my + w2 * y1]); }
+    // (the real bed joints over the lintel: the tops of the courses in the masonry there)
+    const beds = [...new Set(this.units.filter((u) => Math.abs(u.a) < L.span).map((u) => Math.round((u.y + u.hh) / M(0.005)) * M(0.005)))].sort((p, q) => p - q);
+    const jogP = 0.3;
+    const rough = (P, k = 1) => {
+      let lb = 0; for (let i = 1; i < P.length; i++) lb += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]);
       for (const amp0 of AMP) {
         const amp = amp0 * k, Q = [P[0]];
         for (let i = 1; i < P.length; i++) { const [xa, ya] = P[i - 1], [xb, yb] = P[i], l = Math.hypot(xb - xa, yb - ya) || 1e-9, off = (rnd() * 2 - 1) * amp * l * 2.2; Q.push([(xa + xb) / 2 - (yb - ya) / l * off, (ya + yb) / 2 + (xb - xa) / l * off], P[i]); }
         P = Q;
       }
-      const out = [P[0]]; let joint = 0;
+      // (a joint crossed: now and then along it a little way, and on from there — every point after it shifted)
+      const out = [P[0]]; let joint = 0, sh = 0;
       for (let i = 1; i < P.length; i++) {
-        const [xa, ya] = P[i - 1], [xb, yb] = P[i], ka = Math.floor(ya / row), kb = Math.floor(yb / row);
-        if (ka !== kb && rnd() < 0.14) { const yj = Math.max(ka, kb) * row, xj = xa + (xb - xa) * (yj - ya) / ((yb - ya) || 1e-9), run = (M(0.015) + rnd() * M(0.04)) * Math.sign((a1 - a0) || 1); out.push([xj, yj], [xj + run, yj], [xb + run, yb]); joint += Math.abs(run); continue; }
-        out.push(P[i]);
+        const [xa, ya] = P[i - 1], [xb, yb] = P[i], j = beds.find((y) => (ya - y) * (yb - y) < 0);
+        if (j != null && rnd() < jogP) { const xj = xa + (xb - xa) * (j - ya) / ((yb - ya) || 1e-9) + sh, run = (M(0.02) + rnd() * M(0.06)) * (rnd() < 0.5 ? -1 : 1); out.push([xj, j], [xj + run, j]); sh += run; joint += Math.abs(run); out.push([xb + sh, yb]); continue; }
+        out.push([xb + sh, yb]); sh *= 0.96;   // (back to its line smoothly, over a few cm: no hook)
       }
-      out.joint = joint;
+      out.joint = joint; out.lb = lb;
       return out;
     };
     const h = L.h, sp = L.span / 2, C = [];
-    // up the middle: from the lintel's bottom (its own crack, where it bends) into the masonry over it — the first
-    C.push({ p: path(0, -L.H, (rnd() - 0.5) * M(0.06), h * 0.3), t0: 0.8, t1: 4, w: 1 });
-    // from the opening's top corners up and in, a gentle arch to its crown — once it has broken
-    C.push({ p: path(-sp + M(0.05), 0, -M(0.05) + rnd() * M(0.06), h * 0.95, -0.06), s0: M(0.006), s1: M(0.03), w: 1 });
-    C.push({ p: path(sp - M(0.05), 0, M(0.05) - rnd() * M(0.06), h * 0.92, 0.06), s0: M(0.008), s1: M(0.032), w: 0.9 });
-    // the branches: one or two hairlines near each main crack's tip, short
-    for (const m of [C[1], C[2], C[0]]) for (let k = 0, n = 1 + (rnd() < 0.5 ? 1 : 0); k < n; k++) {
-      const i = Math.floor(m.p.length * (0.7 + 0.22 * rnd())), [x, y] = m.p[i], dir = rnd() < 0.5 ? -1 : 1, l = M(0.06) + rnd() * M(0.1);
-      C.push({ p: path(x, y, x + dir * l * 0.7, y + l * (0.5 + rnd() * 0.4), 0, 1.2), t0: m.t0 != null ? m.t0 + 2 : undefined, t1: m.t1 != null ? m.t1 + 2 : undefined, s0: m.s0 != null ? m.s0 + M(0.01) : undefined, s1: m.s1 != null ? m.s1 + M(0.01) : undefined, w: 0.3, br: true });
+    // the lintel's own crack: from its bottom middle up through it (a hinge at its top)
+    { const P = []; for (let i = 0; i <= 4; i++) P.push([(rnd() - 0.5) * M(0.004) * i, -L.H + L.H * i / 4]); C.push({ p: rough(P, 0.6), t0: 0.02, t1: 0.15, kind: 'lintel' }); }
+    // the arch: from each top corner of the opening, along the parabola, to the crown
+    for (const sd of [-1, 1]) { const P = []; for (let i = 0; i <= 12; i++) { const u = i / 12, a = sd * sp * (1 - u); P.push([a, h * (1 - (a / sp) ** 2)]); } C.push({ p: rough(P), s0: M(0.004), s1: M(0.014), kind: 'arch' }); }
+    // the branches: near each main crack's tip, forward along it at 20 … 40°
+    for (const m of [C[1], C[2]]) for (let k = 0, n = 1 + (rnd() < 0.5 ? 1 : 0); k < n; k++) {
+      const i = Math.floor(m.p.length * (0.55 + 0.35 * rnd())), [x, y] = m.p[i], [x2, y2] = m.p[Math.min(m.p.length - 1, i + 8)], tl = Math.hypot(x2 - x, y2 - y) || 1;
+      const ang = (rnd() < 0.5 ? -1 : 1) * (0.35 + 0.35 * rnd()), ca = Math.cos(ang), sa = Math.sin(ang), dx = ((x2 - x) * ca - (y2 - y) * sa) / tl, dy = ((x2 - x) * sa + (y2 - y) * ca) / tl, l = M(0.03) + rnd() * M(0.12);
+      C.push({ p: rough([[x, y], [x + dx * l / 2, y + dy * l / 2], [x + dx * l, y + dy * l]], 1.2), s0: m.s0 + M(0.004), s1: m.s1 + M(0.006), kind: 'branch', root: m });
     }
-    for (const c of C) { let s0 = 0; c.len = [0]; for (let i = 1; i < c.p.length; i++) { s0 += Math.hypot(c.p[i][0] - c.p[i - 1][0], c.p[i][1] - c.p[i - 1][1]); c.len.push(s0); } c.L = s0; c.joint = c.p.joint; }
+    for (const c of C) { let s0 = 0; c.len = [0]; for (let i = 1; i < c.p.length; i++) { s0 += Math.hypot(c.p[i][0] - c.p[i - 1][0], c.p[i][1] - c.p[i - 1][1]); c.len.push(s0); } c.L = s0; c.joint = c.p.joint; c.Lb = c.p.lb; }
     this.paths = C;
     // (each face of the masonry: how far out it is along each path — sampled, held between the samples)
     for (const c of C) { let last = null; c.off = c.p.map(([a, y], i) => (i % 6 === 0 || !last ? (last = [this._faceOff(a, y, 1, false), this._faceOff(a, y, -1, false)]) : last)); }
     const g = new THREE.BufferGeometry(), n = C.reduce((s0, c) => s0 + c.p.length, 0) * 2 * 2;
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     const idx = []; let base = 0;
     for (const c of C) for (let side = 0; side < 2; side++) { for (let i = 0; i < c.p.length - 1; i++) { const a = base + i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } base += c.p.length * 2; }
     g.setIndex(idx);
     this.crackMesh = new THREE.Mesh(g, this.crackMat); this.crackMesh.frustumCulled = false; this.root.add(this.crackMesh);
   }
+  // how far the masonry at (a, y) has gone down: what is in the arch rests on the lintel's halves and goes down
+  // with them — most at the middle, nothing at the opening's edges — less up toward the crown; outside: still
+  drop(a, y) {
+    const L = this.L, sp = L.span / 2;
+    if (Math.abs(a) >= sp || y > L.h * (1 - (a / sp) ** 2)) return 0;
+    return (this.sag || 0) * (1 - Math.abs(a) / sp) * (1 - 0.5 * Math.max(0, y) / L.h);
+  }
   _drawCracks(yrs, sag) {
-    const L = this.L, A = this.crackMesh.geometry.attributes.position.array, facOn = this.app.wallView.facades?.visible !== false;
-    let v = 0, shown = 0;
+    const L = this.L, geo = this.crackMesh.geometry, A = geo.attributes.position.array, Cc = geo.attributes.color.array, facOn = this.app.wallView.facades?.visible !== false;
+    const cam = this.app.camera, px = 2 * Math.tan((cam.fov || 50) * Math.PI / 360) / Math.max(300, innerHeight || 800);   // (a pixel's angle: no line thinner than it)
+    const th = Math.atan2(sag, L.span / 2), hair = M(0.0002);
+    let v = 0, cv = 0, shown = 0;
     for (const c of this.paths) {
-      // how far along it is (0…1) and how wide it opens at its start
+      // how far along it has grown (0…1): the lintel's at once in the first weeks, the arch's as it sags
       const k = c.t0 != null ? clamp01((yrs - c.t0) / (c.t1 - c.t0)) : clamp01((sag - c.s0) / (c.s1 - c.s0));
-      const reach = c.L * Math.pow(k, 0.7), w0 = (M(0.0012) + Math.min(M(0.014), sag * 0.3) * (c.br ? 0.4 : 1)) * c.w * (k > 0 ? 1 : 0);
+      const reach = c.L * Math.pow(k, 0.7);
       if (k > 0) shown++;
       for (let side = 0; side < 2; side++) {
         // (a face under a facade: not seen — unless the x-ray has taken the facade away)
         const hid = this.facSide[side] && facOn;
         for (let i = 0; i < c.p.length; i++) {
-          const [a, y] = c.p[i], s = c.len[i], on = !hid && s <= reach;
+          const [a, y] = c.p[i], s = c.len[i], on = !hid && k > 0 && s <= reach;
           const ip = Math.min(c.p.length - 1, i + 1), im = Math.max(0, i - 1), ta = c.p[ip][0] - c.p[im][0], ty = c.p[ip][1] - c.p[im][1], tl = Math.hypot(ta, ty) || 1;
-          // (wide where it began, a hairline at its tip; a little uneven along it)
-          const w = on ? w0 * Math.max(0.15, 1 - s / Math.max(1e-9, reach)) * (0.75 + 0.5 * Math.abs(Math.sin(i * 1.7))) : 0;
-          const qa = -ty / tl * w / 2, qy = ta / tl * w / 2, n = (side ? -1 : 1) * (c.off[i][side] + M(0.0015));
+          // (its true width: the lintel's — open at its bottom, 2·H·θ, closed at its top; the arch's — what the
+          // two sides have parted across it: the drop inside × how level it runs there; a hairline at least, and
+          // thinner still at its growing tip)
+          let w = 0;
+          if (on) {
+            w = c.kind === 'lintel' ? Math.max(hair, 2 * th * (-y)) : c.kind === 'branch' ? Math.max(hair, this.drop(a, y - M(0.02)) * Math.abs(ta / tl) * 0.4) : Math.max(hair, this.drop(a, y - M(0.02)) * Math.abs(ta / tl));
+            w *= Math.pow(clamp01((reach - s) / M(0.15) + (k >= 1 ? 1 : 0)), 0.6) * (0.85 + 0.3 * Math.abs(Math.sin(i * 1.7)));
+          }
+          const wr = on ? Math.max(w, cam.position.distanceTo(this._at(L.top + y, a, 0)) * px) : 0;   // (drawn: at least a pixel)
+          const qa = -ty / tl * wr / 2, qy = ta / tl * wr / 2, n = (side ? -1 : 1) * (c.off[i][side] + M(0.0015));
           const p1 = this._at(L.top + y + qy, a + qa, n), p2 = this._at(L.top + y - qy, a - qa, n);
           A[v++] = p1.x; A[v++] = p1.y; A[v++] = p1.z; A[v++] = p2.x; A[v++] = p2.y; A[v++] = p2.z;
+          // (its colour by its width: a hairline grey — dust in it; from ~2 mm dark, its depth showing)
+          const dk = clamp01((w / M(0.001) - 0.5) / 1.5), r = 0.416 + (0.082 - 0.416) * dk, g = 0.392 + (0.071 - 0.392) * dk, b = 0.361 + (0.059 - 0.361) * dk;
+          for (let q = 0; q < 2; q++) { Cc[cv++] = r; Cc[cv++] = g; Cc[cv++] = b; }
+          c.w1 = i === 0 ? w : c.w1;
         }
       }
     }
-    this.crackMesh.geometry.attributes.position.needsUpdate = true; this.crackN = shown;
+    geo.attributes.position.needsUpdate = true; geo.attributes.color.needsUpdate = true; this.crackN = shown;
   }
   // the window in the opening (if there is one): its glass, the cracks to show on it (spreading from the top
   // middle where it is pressed: a web of lines, their order in the alpha — shown as the alpha test drops)
@@ -228,62 +253,57 @@ export class Mistake {
   }
   _apply(yrs, dt = 0) {
     const app = this.app, L = this.L, Y = this.years, wv0 = app.wallView;
-    // how far it has gone: the hairline crack in the 1st year; the halves turning from the 2nd, slowly, then
-    // faster (the creep of what is left, the cracks opening); the sag at the crown: up to 45 mm
-    const k = clamp01((yrs - 1.5) / (Y - 1.5)), sag = M(0.045) * Math.pow(k, 1.8);
+    // how far it has gone (the realist): a lintel without bars breaks in the first weeks, once the load comes on
+    // (its middle bottom cracks right through: brittle); then it creeps, fast at first, slower and slower —
+    // 4 mm at once, toward ~24 mm with a window under it (it holds the rest), ~45 without — breathing with the
+    // seasons (wider in winter)
+    const tb = 0.08, sInf = this.win ? M(0.024) : M(0.045), s0 = M(0.004);
+    const sag = yrs < tb ? 0 : s0 + (sInf - s0) * (1 - Math.exp(-(yrs - tb) / 1.5)) * (1 + 0.08 * Math.sin(yrs * Math.PI * 2));
     this.sag = sag;
-    if (yrs > 0.8) this._say('hair', 'Волосяная трещина внизу перемычки — бетон без арматуры не держит изгиб', 'A hairline crack under the lintel — plain concrete does not hold bending');
-    if (sag > M(0.006)) this._say('sag', 'Перемычка разломилась — кладка над проёмом садится аркой', 'The lintel broke — the masonry over the opening sags as an arch');
-    if (sag > M(0.03)) this._say('drop', this.facade ? 'Трещины до верха арки — снаружи их не видно: фасад на утеплителе их не повторяет' : 'Трещины до верха арки, блоки выпадают', this.facade ? 'The cracks reach the crown of the arch — not seen outside: a facade on insulation does not follow them' : 'The cracks reach the crown of the arch, the blocks fall out');
-    // the halves: each turns down about its outer bearing, its inner end down by the sag
+    if (yrs > 0.03) this._say('hair', 'Перемычка треснула посередине снизу — бетон без арматуры не держит изгиб', 'The lintel cracks at its middle bottom — plain concrete does not hold bending');
+    if (sag > M(0.006)) this._say('sag', 'Перемычка переломилась — кладка над проёмом садится аркой', 'The lintel broke — the masonry over the opening sags as an arch');
+    if (sag > M(0.018)) this._say('arch', this.facade ? 'Свод обрушения отделился — снаружи трещин не видно: фасад на утеплителе их не повторяет' : 'Свод обрушения отделился трещинами — кладка держится на сломанной перемычке', this.facade ? 'The arch of collapse has come apart — not seen outside: a facade on insulation does not follow it' : 'The arch of collapse has come apart — the masonry rests on the broken lintel');
+    // the halves: three hinges — each turns down about its bearing at the opening's edge, the two touching at
+    // their top in the middle (crushed a little there), the crack open below by 2·H·θ
     {
-      const half = L.L / 2, ang = Math.atan2(sag, half - M(0.12)), m = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3();
+      const sp = L.span / 2, th = Math.atan2(sag, sp), m = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3();
       this._lintelM.decompose(P, Q, Sv);
       for (const side of [-1, 1]) {
-        const s2 = Sv.clone(); if (Sv.x >= Sv.z) s2.x = Sv.x / 2 - M(0.002); else s2.z = Sv.z / 2 - M(0.002);
-        const pivot = L.c.clone().addScaledVector(L.ax, side * (half - M(0.12))).setY(L.c.y - L.H / 2);
-        const c = L.c.clone().addScaledVector(L.ax, side * half / 2);
-        const R = new THREE.Quaternion().setFromAxisAngle(L.nrm, side * ang);
+        const s2 = Sv.clone(); if (Sv.x >= Sv.z) s2.x = Sv.x / 2 - M(0.001); else s2.z = Sv.z / 2 - M(0.001);
+        const pivot = L.c.clone().addScaledVector(L.ax, side * sp).setY(L.c.y - L.H / 2);
+        const c = L.c.clone().addScaledVector(L.ax, side * L.L / 4);
+        const R = new THREE.Quaternion().setFromAxisAngle(L.nrm, side * th);
         const pc = c.clone().sub(pivot).applyQuaternion(R).add(pivot);
+        // (its inner top corner kept at the middle: the halves bear on each other there, they do not overlap)
+        const top = L.c.clone().setY(L.c.y + L.H / 2), topR = top.clone().sub(pivot).applyQuaternion(R).add(pivot), slide = top.clone().sub(topR).dot(L.ax);
+        pc.addScaledVector(L.ax, slide);
         m.compose(pc, R.clone().multiply(Q), s2);
         this.halves.setMatrixAt(side < 0 ? 0 : 1, m);
       }
       this.halves.instanceMatrix.needsUpdate = true;
     }
-    // the masonry: what is in the arch goes down with the lintel (more at the crown's foot, less up the arch);
-    // the x-ray tints by the stress — over the middle of the opening first, gathering round the arch's edge
+    // the masonry: what is in the arch goes down with the lintel (this.drop); the x-ray tints by the stress — over
+    // the middle of the opening first, gathering along the arch's line
     const m = new THREE.Matrix4(), xr = app.settings.mXray !== false, Ld = Math.max(1e-9, L.h);
-    const st = clamp01(yrs / 2.5);
+    const st = clamp01(yrs / 1.2);
     for (const un of this.units) {
-      if (un.fall) continue;
       const off = Math.abs(un.a) / (L.span / 2 + M(0.1));
-      // (the masonry moves little — a few mm: what gives way shows in the cracks, through the blocks)
-      un.d = un.inA ? Math.min(sag * 0.2, M(0.007)) * (1 - 0.55 * un.y / Ld) * (1 - 0.35 * off) : 0;
+      un.d = un.inA ? this.drop(un.a, un.y - un.hh) : 0;
       m.copy(un.base); m.elements[13] -= un.d; un.im.setMatrixAt(un.i, m);
       if (un.col && un.im.instanceColor) {
-        // (the stress: over the opening, high under the arch's line — and along its edge most of all)
-        const edge = un.inA ? 1 - Math.abs(un.y / Ld - (1 - off)) * 1.6 : clamp01(1 - (un.y - Ld * (1 - off)) / (Ld * 0.6)) * (off < 1.25 ? 1 : 0);
-        const sv = xr ? clamp01(st * Math.max(0, edge) * (0.5 + 0.5 * clamp01(yrs / 4))) : 0;
+        const line = 1 - (un.a / (L.span / 2)) ** 2, edge = Math.abs(un.a) < L.span / 2 + M(0.3) ? clamp01(1 - Math.abs(un.y / Ld - Math.max(0, line)) * 1.6) : 0;
+        const sv = xr ? clamp01(st * edge * (0.6 + 0.4 * clamp01(yrs / 3))) : 0;
         const r = un.col[0] + (1.0 - un.col[0]) * sv, g = un.col[1] + ((sv < 0.5 ? 0.85 : 0.25) - un.col[1]) * sv, b = un.col[2] + (0.08 - un.col[2]) * sv;
         un.im.instanceColor.setXYZ(un.i, r, g, b);
       }
     }
-    // the bottom blocks of the arch fall out once it has sagged far enough
-    // (behind a facade the blocks cannot fall out: the insulation and the board hold them)
-    if (sag > M(0.03) && !this.fell && !this.facade) {
-      this.fell = true;
-      const bottom = this.units.filter((q) => q.inA && q.y < L.h * 0.35).sort((p, q) => Math.abs(p.a) - Math.abs(q.a)).slice(0, 3);
-      for (const q of bottom) q.fall = { v: new THREE.Vector3().addScaledVector(L.nrm, M(0.5) * (Math.random() < 0.5 ? -1 : 1)), w: (Math.random() - 0.5) * 6, rot: 0, y: 0, t: 0 };
-      app.sfx?.play?.('collapse', { at: L.c, vol: 0.7 });
-    }
-    for (const q of this.units) if (q.fall && dt > 0) {
-      const f = q.fall, gnd = app.terrain.heightAt(q.p.x + f.v.x * f.t, q.p.z + f.v.z * f.t) + q.hh;
-      f.t += dt; f.v.y -= M(9.81) * dt;
-      const p = q.p.clone().add(new THREE.Vector3(f.v.x * f.t, 0, f.v.z * f.t)); f.y += f.v.y * dt; p.y = Math.max(gnd, q.p.y - q.d + f.y);
-      if (p.y <= gnd + 1e-6 && !f.landed) { f.landed = true; f.w *= 0.2; app.sfx?.play?.('stone', { at: p, vol: 0.6, gap: 0.05 }); app.particles?.emit?.(p.clone(), new THREE.Vector3(0, M(0.4), 0), 0, M(0.05), 0, 0, 0); }
-      if (!f.landed) f.rot += f.w * dt;
-      const R = new THREE.Quaternion().setFromAxisAngle(this.L.ax, f.rot), P0 = new THREE.Vector3(), Q0 = new THREE.Quaternion(), S0 = new THREE.Vector3();
-      q.base.decompose(P0, Q0, S0); m.compose(p, R.multiply(Q0), S0); q.im.setMatrixAt(q.i, m);
+    // the blocks stay in (glued, the wedge rests on the halves on their 250 mm bearings): what falls is the
+    // concrete crushed at the hinge — chips from the lintel's top middle — and dust from the cracks
+    if (sag > M(0.008) && (this.chips || 0) < 6 && dt > 0 && Math.random() < dt * 1.5) {
+      this.chips = (this.chips || 0) + 1;
+      const p = this._at(L.top - M(0.01), (Math.random() - 0.5) * M(0.05), (Math.random() - 0.5) * L.T * 0.8);
+      app.particles?.emit?.(p, new THREE.Vector3((Math.random() - 0.5) * M(0.2), M(0.1), (Math.random() - 0.5) * M(0.2)).addScaledVector(L.nrm, (Math.random() < 0.5 ? -1 : 1) * M(0.15)), 0, M(0.012 + Math.random() * 0.02), 0, 0, 0);
+      app.sfx?.play?.('debris', { at: p, vol: 0.35, gap: 0.6 });
     }
     for (const im of new Set(this.units.map((q) => q.im))) { im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
     // (the x-ray sees through a facade: it is hidden while the x-ray is on)
@@ -293,10 +313,13 @@ export class Mistake {
     this._drawCracks(yrs, sag);
     // the window: its frame squeezed by what the lintel no longer carries, its glass cracking
     if (this.win) {
-      const W = this.win, press = Math.max(0, sag - M(0.004));
-      W.g.scale.y = W.sy * (1 - press / Math.max(1e-6, W.h) * 0.9);
-      if (press > M(0.006) && !this.said.glass) { this.said.glass = 1; app.sfx?.play?.('glass_break', { at: W.c, vol: 0.6 }); this.note = LANG === 'en' ? 'The lintel came down on the window — the frame squeezed, the glass cracked' : 'Перемычка легла на окно — раму сжало, стекло лопнуло'; }
-      const k2 = clamp01((press - M(0.006)) / M(0.02));
+      // (the frame sits 15 mm under the lintel: the sag takes that gap first — the sash jams — then squeezes the
+      // frame; 3 … 5 mm more and the glass cracks)
+      const W = this.win, press = Math.max(0, sag - M(0.015));
+      W.g.scale.y = W.sy * (1 - press / Math.max(1e-6, W.h));
+      if (sag > M(0.012)) this._say('jam', 'Створку окна заклинило — перемычка выбрала монтажный зазор', 'The window sash jams — the lintel has taken up the fitting gap');
+      if (press > M(0.004) && !this.said.glass) { this.said.glass = 1; app.sfx?.play?.('glass_break', { at: W.c, vol: 0.6 }); this.note = LANG === 'en' ? 'The lintel came down on the window — the frame squeezed, the glass cracked' : 'Перемычка легла на окно — раму сжало, стекло лопнуло'; }
+      const k2 = clamp01((press - M(0.004)) / M(0.006));
       for (const m of W.cracks) { m.visible = k2 > 0; m.material.alphaTest = Math.max(0.02, 1 - k2); }
     }
     // the words
@@ -305,7 +328,7 @@ export class Mistake {
       this.el.querySelector('.m-year').textContent = en ? `Year ${y}` : `Год ${y}`;
       this.el.querySelector('.m-note').textContent = this.note || '';
     }
-    if (this.t > 0.05 && Math.floor(yrs) !== this._yr) { this._yr = Math.floor(yrs); if (yrs > 1.2) app.sfx?.play?.('creak', { at: L.c, vol: 0.25 + 0.5 * k }); }
+    if (this.t > 0.05 && Math.floor(yrs) !== this._yr) { this._yr = Math.floor(yrs); if (yrs > 1.2) app.sfx?.play?.('creak', { at: L.c, vol: 0.25 + 0.5 * clamp01(sag / M(0.024)) }); }
   }
   _end() {
     this.done = true;
@@ -325,7 +348,7 @@ export class Mistake {
     if (this.h0 != null) app.sky?.setHour?.(this.h0);
     wv.frozen = false; wv.dirty = true; wv.update?.();
   }
-  stats() { return { on: this.on, done: this.done, sag: (this.sag || 0) * S, cracks: this.crackN || 0, glass: !!this.win?.cracks.some((m) => m.visible), paths: this.paths?.map((c) => ({ L: c.L * S, chord: Math.hypot(c.p.at(-1)[0] - c.p[0][0], c.p.at(-1)[1] - c.p[0][1]) * S, joint: c.joint * S })), fell: this.units?.filter((u) => u.fall).length || 0, arch: this.units?.filter((u) => u.inA).length || 0 }; }
+  stats() { return { on: this.on, done: this.done, sag: (this.sag || 0) * S, cracks: this.crackN || 0, chips: this.chips || 0, jam: !!this.said.jam, glass: !!this.win?.cracks.some((m) => m.visible), paths: this.paths?.map((c) => ({ kind: c.kind, L: c.L * S, chord: (c.Lb || c.L) * S, joint: c.joint * S, w0: (c.w1 || 0) * S })), fell: this.units?.filter((u) => u.fall).length || 0, arch: this.units?.filter((u) => u.inA).length || 0 }; }
 }
 
 // the glass's cracks: a web from where it is pressed (the top middle) — jagged radial lines and rings between
