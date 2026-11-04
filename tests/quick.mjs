@@ -997,7 +997,9 @@ console.log('—', sec());
     { const mm = (v) => v * M, z0 = mm(5500), add = (x, y, w, lintel = false) => tc.objects.add({ type: 'unit', kind: 'block', free: true, ...(lintel ? { lintel: true } : {}), p: [mm(x), y, z0], s: [mm(w), mm(lintel ? 250 : 240), mm(300)], q: [0, 0, 0, 1] });
       tc.journal.act('wall-m', {}, tc.clock, () => {
         for (let r = 0; r < 12; r++) { const y = g + (125 + 250 * r) * M; if (r === 7) { add(0, y, 2000, true); for (const x of [-1800, 1800]) add(x, y, 590); continue; }
-          for (let x = -1800 + (r % 2) * 300; x <= 1800; x += 600) { if (r < 7 && Math.abs(x) < 900) continue; if (Math.abs(x) <= 2100) add(Math.max(-1800, Math.min(1800, x)), y, 590); } } });
+          for (let x = -1800 + (r % 2) * 300; x <= 1800; x += 600) { if (r < 7 && Math.abs(x) < 900) continue; if (Math.abs(x) <= 2100) add(Math.max(-1800, Math.min(1800, x)), y, 590); } }
+        // (a window in the opening, up under the lintel: it takes the load when the lintel gives)
+        tc.objects.add({ type: 'window', key: 'pvc2', w: 1400, h: 1380, t: 300, x: 0, y: g + mm(360), z: z0, yaw: 0 }); });
       for (let i = 0; i < 4; i++) tc.simulate(0.1);
       Object.assign(tc.settings, { catKind: 'lintel', misYears: 10, mXray: true }); tc.ui.refresh();
       o.misChip = tc.ui.navNodes().list.map((c) => c.label).join('|').includes('Перемычка без арматуры') && !!document.getElementById('p-cat-r');
@@ -1005,7 +1007,9 @@ console.log('—', sec());
       for (let i = 0; i < 30 * 3 * X.secPerYear; i++) tc.simulate(1 / 30);
       o.mis = { ok: st.ok, arch: st.arch, xray: +red().toFixed(2), early: +X.stats().sag.toFixed(3) };
       for (let i = 0; i < 30 * 9 * X.secPerYear; i++) tc.simulate(1 / 30);
-      const f = X.stats(); Object.assign(o.mis, { sag: +f.sag.toFixed(3), cracks: f.cracks, fell: f.fell, done: f.done, bill: !!document.querySelector('.mistake-hud .m-bill')?.textContent });
+      const f = X.stats(); Object.assign(o.mis, { sag: +f.sag.toFixed(3), cracks: f.cracks, fell: f.fell, done: f.done, glass: f.glass, bill: !!document.querySelector('.mistake-hud .m-bill')?.textContent,
+        // (the realist's checks on the cracks: not a straight cut — a bolt of lightning; through the blocks mostly)
+        rough: Math.min(...f.paths.slice(0, 3).map((q) => +(q.L / q.chord).toFixed(2))), joint: Math.max(...f.paths.slice(0, 3).map((q) => +(q.joint / q.L).toFixed(2))) });
       D.reset(); const lm = new tc.camera.matrix.constructor(); tc.wallView.lintels.getMatrixAt(0, lm);
       o.mis.back = !tc.wallView.frozen && !document.querySelector('.mistake-hud') && Math.abs(lm.determinant()) > 1e-15; }
     return o;
@@ -1013,7 +1017,7 @@ console.log('—', sec());
   check('catastrophes: 7 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 10 && o.slider && o.back && o.tint, JSON.stringify(o));
   check('catastrophes: a M 4 quake leaves the house standing, a M 9 one brings it down', o.weak.pieces > 250 && o.weak.share < 0.05 && o.strong.share > 0.4, JSON.stringify([o.weak, o.strong]));
   check('catastrophes: the tornado, the tsunami and the meteor at full power break the house', o.kinds.tornado > 0.1 && o.kinds.tsunami > 0.1 && o.kinds.meteor > 0.1, JSON.stringify(o.kinds));
-  check('mistakes: a lintel without bars — the x-ray reddens, it breaks and sags (≈45 mm), stepped cracks, blocks fall, the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early < 0.012 && o.mis.sag > 0.04 && o.mis.cracks >= 4 && o.mis.fell >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
+  check('mistakes: a lintel without bars — the x-ray reddens, it breaks and sags (≈45 mm), jagged cracks mostly through the blocks, the window glass cracks, blocks fall, the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early < 0.012 && o.mis.sag > 0.04 && o.mis.cracks >= 4 && o.mis.rough > 1.12 && o.mis.joint < 0.4 && o.mis.glass && o.mis.fell >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
   check('catastrophes: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
@@ -1055,6 +1059,24 @@ console.log('—', sec());
   check('film director: the beat is setup from above → action low → payoff from above; no shot over 6 s', o.done && o.beat && o.longest <= 6.05 && o.log.some((s) => s[3]), JSON.stringify(o));
   check('film director: within a stage a hard cut (no transition), over a jump in time one; the hand-held sway is small', o.fx0 === 1 && o.fxIn === 0 && o.fxJump && o.sway > 0.0005 && o.sway < 0.02, JSON.stringify({ fx0: o.fx0, fxIn: o.fxIn, fxJump: o.fxJump, sway: o.sway }));
   check('film director: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, t = tc.terrain, M = 1 / 1000 / 10.4651, o = {};
+    // a heap of sand tipped in one place: it slides until it lies at its angle of repose (dry sand 30–34°)
+    const x = -0.3, z = -0.3; for (let k = 0; k < 40; k++) t.deposit(x, z, 6.5e-6, 0.02, 0, 1);   // (≈ 0,3 m³)
+    for (let i = 0; i < 4000 && t.active; i++) t.relax(1);
+    let worst = 0; const c = t.cell;
+    for (let a = -0.25; a <= 0.25; a += c) for (let b = -0.25; b <= 0.25; b += c) { const h0 = t.heightAt(x + a, z + b), h1 = t.heightAt(x + a + c, z + b), h2 = t.heightAt(x + a, z + b + c); worst = Math.max(worst, Math.abs(h1 - h0) / c, Math.abs(h2 - h0) / c); }
+    o.heap = +((t.heightAt(x, z) - t.orig[t.index(x, z)]) / M).toFixed(0); o.slope = +(Math.atan(worst) * 180 / Math.PI).toFixed(1);
+    return o;
+  });
+  check('realist: a heap of sand lies at its angle of repose (≤ 36°), not as a column', o.heap > 40 && o.slope <= 36, JSON.stringify(o));
+  check('realist: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 
