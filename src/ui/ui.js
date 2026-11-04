@@ -11,6 +11,7 @@ import { LAWN_HOW } from '../world/lawn.js';
 import { FENCE_KINDS, FENCE_COLS, GATES } from '../world/fence.js';
 import { PLANTS } from '../world/plants.js';
 import { CATS } from '../world/disaster.js';
+import { MISTAKES } from '../world/mistakes.js';
 import { PORCH_LAYERS, PORCH_TILES, CANOPIES } from '../world/porch.js';
 import { FLIGHTS, FLIGHT_TEMPS } from '../world/facadeLights.js';
 import { COURSES, COL_TYPES, courseH } from '../world/columns.js';
@@ -679,6 +680,9 @@ export class UI {
       const dt = app.disasterTool, s = app.settings, set = (o) => { Object.assign(s, o); app.applySettings(); app.ui.refresh(); };
       return [
         ...Object.entries(CATS).map(([k, K]) => C(`${K.icon} ${K.name}`, dt.kind === k, () => set({ catKind: k }))),
+        // (the mistakes of the build: what they do to the house over the years — a time-lapse)
+        ...Object.entries(MISTAKES).map(([k, K]) => C(`${K.icon} ${K.name}`, dt.kind === k, () => set({ catKind: k }))),
+        ...(dt.isMistake ? [C('Рентген', s.mXray !== false, () => { set({ mXray: s.mXray === false }); })] : []),
         C(dt.running ? '■ Идёт…' : '▶ Запустить', dt.running, () => { dt.run().then(() => app.ui.refresh()); }, 'next'),
         C('↺ Вернуть как было', false, () => { dt.reset(); app.ui.refresh(); }, 'warn'),
       ];
@@ -816,6 +820,18 @@ export class UI {
     if (!on) { if (this._paramKey?.startsWith?.('cat')) { this._paramKey = null; el.hidden = true; } return false; }
     const dt = app.disasterTool, en = LANG === 'en', K = CATS[dt.kind], key = 'cat' + dt.kind;
     el.hidden = false;
+    if (!K) {
+      // (a mistake: how many years the time-lapse runs)
+      if (this._paramKey !== key) {
+        this._paramKey = key;
+        el.innerHTML = `<label data-notr><span>${en ? 'Years' : 'Лет'}</span> <output id="p-cat"></output><input id="p-cat-r" type="range" min="2" max="20" step="1"></label>`;
+        const r = $('p-cat-r'), show = () => { $('p-cat').textContent = String(r.value); };
+        r.addEventListener('input', () => { app.settings.misYears = +r.value; show(); });
+        r.addEventListener('change', () => { app.settings.misYears = +r.value; app.applySettings?.(); show(); });
+        r.value = dt.years; show();
+      }
+      return true;
+    }
     if (this._paramKey !== key) {
       this._paramKey = key;
       el.innerHTML = `<label data-notr><span>${en ? 'Power' : 'Мощность'} · ${en ? K.en : K.name}</span> <output id="p-cat"></output><input id="p-cat-r" type="range" min="1" max="10" step="1"></label>`;
