@@ -118,7 +118,9 @@ function metalNormal() {
 export function sedumTex() {
   if (TEX.sedum) return TEX.sedum;
   const n = 512, cv = canvas(n), g = cv.getContext('2d'), hc = canvas(n), h = hc.getContext('2d');
-  g.fillStyle = '#5a4a3c'; g.fillRect(0, 0, n, n); h.fillStyle = '#202020'; h.fillRect(0, 0, n, n);
+  g.fillStyle = '#7a6a58'; g.fillRect(0, 0, n, n); h.fillStyle = '#202020'; h.fillRect(0, 0, n, n);
+  // (the substrate: crushed brick and pumice — rust-red and light crumbs)
+  for (let k = 0; k < 2600; k++) { g.fillStyle = rnd() < 0.6 ? `hsl(${14 + rnd() * 12},${45 + rnd() * 20}%,${32 + rnd() * 14}%)` : `hsl(40,10%,${62 + rnd() * 18}%)`; g.fillRect(rnd() * n, rnd() * n, 1 + rnd() * 2.5, 1 + rnd() * 2.5); }
   const kinds = [[96, 58, 34, 0.42], [82, 48, 30, 0.22], [12, 55, 36, 0.14], [70, 40, 46, 0.12], [52, 70, 52, 0.06]];   // (hue, sat, light, share)
   for (let k = 0; k < 4200; k++) {
     let u = rnd(), q = kinds[0]; for (const c of kinds) { if ((u -= c[3]) <= 0) { q = c; break; } }

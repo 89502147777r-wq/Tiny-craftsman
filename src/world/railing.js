@@ -116,13 +116,14 @@ function mats() {
 // concrete (the air gap), in pieces of up to 3 m with 12 mm open joints; at a corner the ends run on past
 // the edge by the gap — the cassettes meet there. A rail with `fascia` (its colour) and `h` (the slab's).
 export const FASCIA = { below: 150, over: 120, wool: 100, air: 30, gap: 130, t: 4, piece: 3000, joint: 12, bracket: 600 };
-export const FASCIA_COLOURS = { ral7016: ['Антрацит', 0x30353a, 0.55], ral9005: ['Чёрный', 0x141518, 0.5], bronze: ['Бронза', 0x4e3c2c, 0.65], ral9006: ['Серебро', 0xa6a9ac, 0.85], ral9003: ['Белый', 0xe9eae6, 0.3] };
+// (coil coating is paint: no metallic sheen — the «metallic» colours a little)
+export const FASCIA_COLOURS = { ral7016: ['Антрацит', 0x3a3f44, 0], ral9005: ['Чёрный', 0x1c1d20, 0], bronze: ['Бронза', 0x5a4632, 0.2], ral9006: ['Серебро', 0xa6a9ac, 0.2], ral9003: ['Белый', 0xe9eae6, 0] };
 const FMATS = {};
 function fmat(k) {
   if (FMATS[k]) return FMATS[k];
   const [, c, m] = FASCIA_COLOURS[k] || FASCIA_COLOURS.ral7016;
   // (coil-coated metal: a smooth, slightly glossy face — the light runs along it)
-  return (FMATS[k] = { face: new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: 0.34 }), sub: new THREE.MeshStandardMaterial({ color: 0x9a9ea2, metalness: 0.8, roughness: 0.45 }), dark: new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.9 }), wool: new THREE.MeshStandardMaterial({ color: 0x8f8a72, roughness: 1 }) });
+  return (FMATS[k] = { face: new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: 0.5 }), sub: new THREE.MeshStandardMaterial({ color: 0x9a9ea2, metalness: 0.8, roughness: 0.45 }), dark: new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.9 }), wool: new THREE.MeshStandardMaterial({ color: 0x8f8a72, roughness: 1 }) });
 }
 function buildFascia(r, ghost) {
   const M = fmat(r.fascia), F = FASCIA, L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, H = (r.h || MM(200)) / S, G = { face: [], sub: [], dark: [], wool: [] };

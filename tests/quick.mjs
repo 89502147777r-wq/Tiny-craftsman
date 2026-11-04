@@ -658,7 +658,7 @@ console.log('—', sec());
     tc.renderer.render(tc.scene, tc.camera); o.shader = tc.shaderErrors.length;
     return o;
   });
-  check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|4 · Лифт и решётка|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
+  check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|4 · Лифт-шахта|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
   check('columns: three piles bored, their two-half formwork set; a column not on the bare soil; the cages carried in', c.formed === '2false,2false,2false' && c.sqOnSoil && c.caged, JSON.stringify(c));
   check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles (and with a cantilever); a column on the slab over a pile (its continuation)', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3' && c.starter < -30 && c.cant?.cant === 1500 && c.cant.grow >= 1400 && c.cant.grow <= 1600 && c.up?.over === 'over' && c.up.off && !/колонна/.test(c.up.off), JSON.stringify(c));
   check('columns: either order (a cage first, the formwork round it), tied into a foundation cage (no formwork till it is cast), the sliders resize the picked one', c.cageFirst === '0true' && c.formAfter === 2 && c.preview === 400 && c.resized === '400,4' && c.tied > 250 && c.tied < 450 && c.tiedStage === '0true' && c.tiedNoForm && c.boredCage === 'true|1200|true' && c.landing, JSON.stringify(c));
