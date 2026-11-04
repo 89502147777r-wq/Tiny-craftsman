@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
-import { plan, toWorld } from '../tools/belt.js';
+import { plan, toWorld, toFrame } from '../tools/belt.js';
 import { isSlab } from '../tools/slab.js';
 import { boxOf } from '../tools/freeBrick.js';
 
@@ -49,11 +49,15 @@ export function slabRuns(b) {
 
 // the railing for the edge nearest p (world): the free stretch of it there (not under a wall,
 // not where a railing is already) → { rec, why } or null
-export function findRail(app, p) {
+// fascia (a colour key of FASCIA_COLOURS): the metal fascia over the slab's edge face instead — the
+// walls on the slab do not stop it (it is on the face, under them), only another fascia
+export function findRail(app, p, fascia = null) {
   const slabs = app.objects.all('belt').filter((b) => isSlab(b) && b.fill > 0.9);
   let best = null;
   for (const b of slabs) for (const r of slabRuns(b)) {
     if (Math.abs(p.y - r.y) > MM(1800)) continue;
+    // (a fascia: on the slab's outer edges only — not round an opening in it, a stair's or a lift's)
+    if (fascia) { const [s0, t0] = toFrame(b, (r.a[0] + r.b[0]) / 2 + r.out[0] * b.c * 0.5, (r.a[1] + r.b[1]) / 2 + r.out[1] * b.c * 0.5); if (s0 > 0 && t0 > 0 && s0 < b.ni * b.c && t0 < b.nj * b.c) continue; }
     const ux = r.b[0] - r.a[0], uz = r.b[1] - r.a[1], L = Math.hypot(ux, uz), u = [ux / L, uz / L];
     const s = (p.x - r.a[0]) * u[0] + (p.z - r.a[1]) * u[1], d = Math.abs((p.x - r.a[0]) * r.out[0] + (p.z - r.a[1]) * r.out[1]);
     if (s < -MM(200) || s > L + MM(200) || d > MM(900)) continue;
@@ -63,7 +67,7 @@ export function findRail(app, p) {
   const { b, r, u, L, s } = best;
   // what stands on the edge: the masonry on the slab (its first course) near the edge line
   const blocked = [];
-  for (const q of app.objects.all('unit').filter((x) => x.p && x.s && x.q).map(boxOf)) {
+  if (!fascia) for (const q of app.objects.all('unit').filter((x) => x.p && x.s && x.q).map(boxOf)) {
     if (Math.abs(q.bot - r.y) > MM(80)) continue;
     const ex = Math.abs(q.hl * q.ux) + Math.abs(q.hw * q.uz), ez = Math.abs(q.hl * q.uz) + Math.abs(q.hw * q.ux);
     const ds = (q.x - r.a[0]) * u[0] + (q.z - r.a[1]) * u[1], dn = (q.x - r.a[0]) * r.out[0] + (q.z - r.a[1]) * r.out[1];
@@ -72,6 +76,7 @@ export function findRail(app, p) {
     blocked.push([ds - half - MM(20), ds + half + MM(20)]);
   }
   for (const q of app.objects.all('rail')) {
+    if (!q.fascia !== !fascia) continue;   // (a glass railing on top and a fascia on the face: both may be there)
     if (Math.abs(q.y - r.y) > MM(30) || Math.abs(q.out[0] * r.out[0] + q.out[1] * r.out[1]) < 0.9) continue;
     const da = (q.a[0] - r.a[0]) * r.out[0] + (q.a[1] - r.a[1]) * r.out[1];
     if (Math.abs(da) > MM(30)) continue;
@@ -81,12 +86,14 @@ export function findRail(app, p) {
   // the free stretch round the finger (ends 20 mm off what stops it)
   let lo = 0, hi = L, why = null;
   for (const [b0, b1] of blocked) {
-    if (s >= b0 && s <= b1) { why = 'Здесь на краю уже стоит стена или ограждение'; break; }
+    if (s >= b0 && s <= b1) { why = fascia ? 'Здесь кант уже есть' : 'Здесь на краю уже стоит стена или ограждение'; break; }
     if (b1 < s) lo = Math.max(lo, b1); if (b0 > s) hi = Math.min(hi, b0);
   }
   if (!why && hi - lo < MM(400)) why = 'Здесь слишком короткий свободный край';
   const A = [r.a[0] + u[0] * lo, r.a[1] + u[1] * lo], B = [r.a[0] + u[0] * hi, r.a[1] + u[1] * hi];
-  return { rec: { type: 'rail', slab: b.id, a: A.map((v) => +v.toFixed(6)), b: B.map((v) => +v.toFixed(6)), y: +r.y.toFixed(6), out: r.out.map((v) => +v.toFixed(5)) }, len: Math.round((hi - lo) / S), why };
+  const rec = { type: 'rail', slab: b.id, a: A.map((v) => +v.toFixed(6)), b: B.map((v) => +v.toFixed(6)), y: +r.y.toFixed(6), out: r.out.map((v) => +v.toFixed(5)) };
+  if (fascia) { rec.fascia = fascia; rec.h = +b.H.toFixed(6); }
+  return { rec, len: Math.round((hi - lo) / S), why };
 }
 
 let MATS = null;
@@ -101,8 +108,49 @@ function mats() {
   };
   return MATS;
 }
+// The fascia over a slab's edge (the dark band round each floor): aluminium composite panels (ACM, 4 mm,
+// coil-coated) on an aluminium subframe — L brackets anchored into the slab's face every 600, a rail on
+// them; the panel folded into a cassette (its top and bottom returns back to the wall), 150 below the
+// slab's soffit (a drip edge) and 120 over its top (the floor build-up, the window's sill), 30 off the
+// concrete (the air gap), in pieces of up to 3 m with 12 mm open joints; at a corner the ends run on past
+// the edge by the gap — the cassettes meet there. A rail with `fascia` (its colour) and `h` (the slab's).
+export const FASCIA = { below: 150, over: 120, gap: 30, t: 4, piece: 3000, joint: 12, bracket: 600 };
+export const FASCIA_COLOURS = { ral7016: ['Антрацит', 0x30353a, 0.55], ral9005: ['Чёрный', 0x141518, 0.5], bronze: ['Бронза', 0x4e3c2c, 0.65], ral9006: ['Серебро', 0xa6a9ac, 0.85], ral9003: ['Белый', 0xe9eae6, 0.3] };
+const FMATS = {};
+function fmat(k) {
+  if (FMATS[k]) return FMATS[k];
+  const [, c, m] = FASCIA_COLOURS[k] || FASCIA_COLOURS.ral7016;
+  // (coil-coated metal: a smooth, slightly glossy face — the light runs along it)
+  return (FMATS[k] = { face: new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: 0.34 }), sub: new THREE.MeshStandardMaterial({ color: 0x9a9ea2, metalness: 0.8, roughness: 0.45 }), dark: new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.9 }) });
+}
+function buildFascia(r, ghost) {
+  const M = fmat(r.fascia), F = FASCIA, L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, H = (r.h || MM(200)) / S, G = { face: [], sub: [], dark: [] };
+  const box = (k, x0, x1, y0, y1, z0, z1) => G[k].push(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
+  const yb = -H - F.below, yt = F.over, z0 = F.gap, z1 = F.gap + F.t, ext = F.gap + F.t;   // (the slab's top at y 0, its face at z 0)
+  // the subframe: brackets on the face, the rails along them (seen through the joints, in the shadow)
+  for (let x = 150; x < L - 100; x += F.bracket) { box('sub', x - 20, x + 20, -H + 40, -H + 100, 0, F.gap); box('sub', x - 20, x + 20, -60, -20, 0, F.gap); }
+  box('sub', 0, L, -H + 60, -H + 80, F.gap - 4, F.gap); box('sub', 0, L, -50, -30, F.gap - 4, F.gap);
+  // the air gap's back: dark (the joints show it)
+  box('dark', -ext, L + ext, yb + 10, yt - 10, 1, 3);
+  // the cassettes: the face, its returns at the top and the bottom (back to the wall), the joints open
+  const n = Math.max(1, Math.ceil((L + 2 * ext) / F.piece)), pw = (L + 2 * ext - (n - 1) * F.joint) / n;
+  for (let k = 0; k < n; k++) {
+    const x0 = -ext + k * (pw + F.joint), x1 = x0 + pw;
+    box('face', x0, x1, yb, yt, z0, z1);
+    box('face', x0, x1, yt - F.t, yt, 0, z1); box('face', x0, x1, yb, yb + F.t, 0, z1);
+  }
+  const g = new THREE.Group();
+  for (const [k, list] of Object.entries(G)) {
+    if (!list.length) continue;
+    const m = new THREE.Mesh(mergeGeometries(list), ghost === false ? new THREE.MeshBasicMaterial({ color: 0xd04040, transparent: true, opacity: 0.5, depthWrite: false }) : M[k]);
+    m.castShadow = k === 'face'; m.receiveShadow = true;
+    g.add(m);
+  }
+  return g;
+}
 // the railing as a group (model scale, world placed): x along a→b, y up from the slab's top, z out
 export function buildRail(r, ghost = null) {
+  if (r.fascia) return place(buildFascia(r, ghost), r);
   const M = mats(), L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, G = { shoe: [], cap: [], glass: [], edge: [] };
   const box = (k, x0, x1, y0, y1, z0, z1) => G[k].push(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
   const [sw, sh] = RAIL.shoe, zc = -RAIL.back - sw / 2, t = RAIL.glass;
@@ -127,7 +175,11 @@ export function buildRail(r, ghost = null) {
     if (k === 'glass') m.renderOrder = 2;
     g.add(m);
   }
-  // its place: the basis along the edge, up, out (in the model's scale)
+  return place(g, r);
+}
+// its place: the basis along the edge, up, out (in the model's scale)
+function place(g, r) {
+  const L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S;
   const ux = (r.b[0] - r.a[0]) / (L * S), uz = (r.b[1] - r.a[1]) / (L * S);
   g.matrixAutoUpdate = false;
   g.matrix.makeBasis(new THREE.Vector3(ux * S, 0, uz * S), new THREE.Vector3(0, S, 0), new THREE.Vector3(r.out[0] * S, 0, r.out[1] * S)).setPosition(r.a[0], r.y, r.a[1]);

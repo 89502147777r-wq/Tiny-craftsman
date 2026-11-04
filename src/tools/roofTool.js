@@ -53,11 +53,11 @@ export class RoofWork {
     if (!R) { app.ui.toast('Кровля — на залитое перекрытие (внутри парапета)'); return true; }
     if (!R.area.n) { app.ui.toast('На перекрытии нет места под кровлю'); return true; }
     if (L === 'mem' && !done(R.b, R.area, R.rec.wedge).full && !R.rec.wedge.length) { app.ui.toast('Мембрана — по клиновидному слою: сначала «Клин 2 %»'); return true; }
-    if (L === 'grav' && !done(R.b, R.area, R.rec.memS).full) { app.ui.toast('Гравий — на готовую мембрану'); return true; }
+    if ((L === 'grav' || L === 'green') && !done(R.b, R.area, R.rec.memS).full) { app.ui.toast(L === 'green' ? 'Зелёная кровля — на готовую мембрану' : 'Гравий — на готовую мембрану'); return true; }
     const y = R.b.top + R.b.H + MM(L === 'vap' ? 1 : 200);
     const q = this._plane(e, y) || p, [s, t] = toFrame(R.b, q.x, q.z);
     this.drag = { R, y, s0: s, t0: t, s, t, cells: new Set() };
-    if (L === 'grav') this._paint(s, t);
+    if (L === 'grav' || L === 'green') this._paint(s, t);
     return true;
   }
   move(p, e) {
@@ -65,7 +65,7 @@ export class RoofWork {
     if (!d) return;
     const q = this._plane(e, d.y) || p, [s, t] = toFrame(d.R.b, q.x, q.z);
     d.s = s; d.t = t;
-    if (this.layer === 'grav') { this._paint(s, t); this._live(d.R, { layer: 'grav', cells: [...d.cells] }); return; }
+    if (this.layer === 'grav' || this.layer === 'green') { this._paint(s, t); this._live(d.R, { layer: this.layer, cells: [...d.cells] }); return; }
     d.rect = this._strip(d);
     this._live(d.R, d.rect ? { layer: this.layer, rect: d.rect, roll: { along: d.alongS, end: d.end, w: ROLLS[this.layer][0] } } : null);
     if (d.rect) this.app.ui.showMeasure(`${NAME[this.layer]}: полоса ${((d.alongS ? d.rect[2] - d.rect[0] : d.rect[3] - d.rect[1]) / S / 1000).toFixed(2)} × ${((d.alongS ? d.rect[3] - d.rect[1] : d.rect[2] - d.rect[0]) / S / 1000).toFixed(2)} м`.replace(/\./g, ','));
@@ -74,6 +74,17 @@ export class RoofWork {
     const d = this.drag, app = this.app, L = this.layer;
     this.drag = null; this._live(null); app.ui.hideMeasure();
     if (!d) return;
+    if (L === 'green') {
+      if (!d.cells.size) return;
+      // (500 mm from the parapet and the drain: gravel, no plants — the rest sedum)
+      const b = d.R.b, free = Math.round(ROOF.greenFree / 1000 / MODEL_SCALE / b.c), dr = d.R.rec.drain || drainOf(b, d.R.area);
+      const near = (k) => { const i = k % b.ni, j = (k - i) / b.ni; if (dr && Math.hypot((i + 0.5) * b.c - dr[0], (j + 0.5) * b.c - dr[1]) < ROOF.greenFree / 1000 / MODEL_SCALE) return true; for (let dj = -free; dj <= free; dj++) for (let di = -free; di <= free; di++) if (!d.R.area.on(i + di, j + dj)) return true; return false; };
+      const gr = [...d.cells].filter(near), gn = [...d.cells].filter((k) => !near(k));
+      const oldG = d.R.rec.grav === 'all' ? [] : d.R.rec.grav || [], oldN = d.R.rec.green || [];
+      this._save(d.R, { grav: [...new Set([...oldG, ...gr])], green: [...new Set([...oldN, ...gn])] }, 'roof-green');
+      app.ui.toast('Зелёная кровля: корнезащита, дренажный мат, геотекстиль, субстрат 80 мм и маты седума — у парапета и воронки полоса гравия 500 мм');
+      return;
+    }
     if (L === 'grav') {
       if (!d.cells.size) return;
       const old = d.R.rec.grav === 'all' ? [] : d.R.rec.grav || [];
@@ -259,6 +270,7 @@ export class RoofWork {
       mem: 'Мембрана: проведите пальцем — рулон 2,05 м раскатается, нахлёст 80 мм сваривается; когда закроете кровлю — заведётся на парапет, встанет воронка',
       cop: 'Отлив: тяните из лотка на верх парапета — куски по 2 м, на углах и в конце подрезаются',
       grav: 'Гравий: ведите пальцем по готовой мембране — рассыпается слой 50 мм',
+      green: 'Зелёная кровля: ведите пальцем по готовой мембране — дренаж, субстрат и маты седума; у парапета и воронки сама ляжет полоса гравия',
     }[L];
   }
   // «Удалить» on the roof: the last piece of its top layer comes off
@@ -266,12 +278,12 @@ export class RoofWork {
     const app = this.app, r0 = app.objects.get(id), b = r0 && app.objects.get(r0.slab);
     if (!b) return;
     const r = upgrade(r0, b, roofArea(b, app.objects.all('unit')));
-    for (const [k, nm] of [['grav', 'гравий'], ['copS', 'отлив'], ['memS', 'полосу мембраны'], ['wedge', 'клиновидную плиту'], ['xps', 'лист XPS'], ['vap', 'полосу пароизоляции']]) {
+    for (const [k, nm] of [['green', 'зелёную кровлю'], ['grav', 'гравий'], ['copS', 'отлив'], ['memS', 'полосу мембраны'], ['wedge', 'клиновидную плиту'], ['xps', 'лист XPS'], ['vap', 'полосу пароизоляции']]) {
       const v = r[k];
       if (!v || (Array.isArray(v) && !v.length)) continue;
-      const patch = { ...r, [k]: v === 'all' ? [] : k === 'grav' ? [] : v.slice(0, -1) };
+      const patch = { ...r, [k]: v === 'all' ? [] : k === 'grav' || k === 'green' ? [] : v.slice(0, -1) };
       delete patch.stage; delete patch.look; delete patch.id;
-      const empty = ['vap', 'xps', 'wedge', 'memS', 'copS', 'grav'].every((q) => !patch[q] || !patch[q].length);
+      const empty = ['vap', 'xps', 'wedge', 'memS', 'copS', 'grav', 'green'].every((q) => !patch[q] || !patch[q].length);
       app.sfx?.seq?.(['crowbar','sheet']); app.journal.act('roof-remove', {}, app.clock, () => { if (empty) app.objects.remove(id); else app.objects.update(id, patch); });
       app.ui.toast(`Сняли ${nm}`);
       return;
