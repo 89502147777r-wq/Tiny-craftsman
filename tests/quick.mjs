@@ -973,6 +973,46 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2l. The film director's grammar (director.js): the beat's three angles, the longest shot, hard cuts within a stage, the hand-held sway ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, { Director } = await import('./src/film/director.js'), THREE = await import('three'), o = {};
+    const P = new THREE.Vector3(0, tc.terrain.heightAt(0, 0), 0);
+    let busyUntil = 0; const busy0 = tc.busy; tc.busy = () => d.t < busyUntil;
+    function* script(d) {
+      d.bar(3);
+      d.cut({ target: P, yaw: 0, pitch: 0.5, dist: 1 }, { fx: 'flash' }); d.title('ONE', '', 1);
+      o.fx0 = d.fx.filter((e) => e.kind === 'flash').length;
+      yield d.sec(0.5);
+      d.cut({ target: P, yaw: 1, pitch: 0.5, dist: 1 }, { fx: 'whip' });   // (the same stage: a hard cut)
+      o.fxIn = d.fx.filter((e) => e.kind === 'whip').length;
+      yield d.sec(7);                                                          // (held too long: cut by itself)
+      busyUntil = d.t + 5;
+      yield* d.beat(P, 'detail', { yaw: 0.3 });
+      d.kick('7 DAYS LATER'); d.cut({ target: P, yaw: 2, pitch: 0.6, dist: 1 }, { fx: 'flash' });
+      o.fxJump = d.fx.some((e) => e.kind === 'flash' && e.t0 === d.t);
+      yield d.sec(0.4);
+    }
+    const d = new Director(tc, script, true);
+    let maxYaw = 0;
+    for (let i = 0; i < 30 * 25 && !d.done; i++) { d.update(1 / 30); if (d.shot && !d.shot.f && !d.fx.length) { const dy = tc.rig.state().yaw - d._eval(d.shot).yaw; maxYaw = Math.max(maxYaw, Math.abs(Math.atan2(Math.sin(dy), Math.cos(dy)))); } }
+    tc.busy = busy0;
+    o.done = d.done; o.log = d.log.map((s) => [s.kind, +s.t0.toFixed(1), s.pitch == null ? null : +s.pitch.toFixed(2), s.auto ? 1 : 0]);
+    // (the shots: none held longer than the cap; the beat: above, low, above)
+    o.longest = Math.max(...d.log.map((s, i) => (d.log[i + 1]?.t0 ?? d.t) - s.t0));
+    const b = d.log.filter((s) => s.kind === 'follow').map((s) => s.pitch);
+    o.beat = b.length >= 3 && b[0] > 1.2 && b[1] < 0.5 && b.at(-1) > 1.2;
+    o.sway = +maxYaw.toFixed(4);
+    d.el.remove(); document.body.classList.remove('filming');
+    return o;
+  });
+  check('film director: the beat is setup from above → action low → payoff from above; no shot over 6 s', o.done && o.beat && o.longest <= 6.05 && o.log.some((s) => s[3]), JSON.stringify(o));
+  check('film director: within a stage a hard cut (no transition), over a jump in time one; the hand-held sway is small', o.fx0 === 1 && o.fxIn === 0 && o.fxJump && o.sway > 0.0005 && o.sway < 0.02, JSON.stringify({ fx0: o.fx0, fxIn: o.fxIn, fxJump: o.fxJump, sway: o.sway }));
+  check('film director: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 3. WebKit (Safari's engine), if installed ------------------------------------------------------
 if (process.env.WEBKIT) {
   try {

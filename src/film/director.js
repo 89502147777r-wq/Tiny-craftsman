@@ -24,6 +24,8 @@ export class Director {
     this.app = app; this.t = 0; this.dt = 0; this.speed = 1; this.done = false;
     this.w = null; this.shot = null; this.tasks = new Set(); this.items = []; this.fx = [];
     this.stepAt = 0; this.stepT = 0; this.fin = null;
+    // (the grammar: the longest shots, the hand-held sway, the transitions used in the stage, the shots' log)
+    this.maxShot = 4.5; this.maxFollow = 6; this.hand = 1; this._fxN = 0; this._fxAt = -9; this.log = [];
     const el = (this.el = document.createElement('div'));
     el.id = 'film';
     el.innerHTML = '<div class="f-money" hidden><small>BUDGET</small><b></b></div><div class="f-bar"></div><div class="f-heads"></div><div class="f-pins"></div><div class="f-flash"></div><div class="f-end"><img src="assets/brand/logo-stack-light.png" alt=""><span></span></div>';
@@ -63,7 +65,7 @@ export class Director {
   sec(s) { const t1 = this.t + s; return () => this.t >= t1; }
   job() { return () => !this.app.busy(); }
   // the work done — and the shot on the screen long enough to be seen (min seconds)
-  held(min = 1.3) { return () => !this.app.busy() && (!this.shot || this.t - this.shot.t0 >= min); }
+  held(min = 1.3) { return () => !this.app.busy() && (!this.shot || this.t - (this.shot.tA ?? this.shot.t0) >= min); }
   until(f) { return f; }
   // (something done every frame while the script goes on: f(dt of the work) → true when it is over)
   each(f) { this.tasks.add(f); return f; }
@@ -77,37 +79,99 @@ export class Director {
   _full(v, from) { return { target: (v.target || from.target).clone(), yaw: v.yaw ?? from.yaw, pitch: v.pitch ?? from.pitch, dist: v.dist ?? from.dist }; }
   cut(v, o = {}) {
     const g = this._full(v, this._now());
-    this._shot({ from: g, goal: g, t0: this.t, dur: 1e-3, drift: o.drift ?? 0.05, push: o.push ?? 0.04, k: 1 });
+    this._shot({ from: g, goal: g, t0: this.t, dur: 1e-3, drift: o.drift ?? 0.05, push: o.push ?? 0.04, k: 1, hand: o.hand ?? 1, kind: 'cut' });
     if (o.fx) this.trans(o.fx);
   }
   move(v, dur = 1.2, o = {}) {
     const from = this.shot ? this._eval(this.shot) : this._now(), goal = this._full(v, from);
     goal.yaw = from.yaw + Math.atan2(Math.sin(goal.yaw - from.yaw), Math.cos(goal.yaw - from.yaw));   // (the short way round)
-    this._shot({ from, goal, t0: this.t, dur: Math.max(1e-3, dur), drift: o.drift ?? 0.03, push: o.push ?? 0, k: 1 });
+    this._shot({ from, goal, t0: this.t, dur: Math.max(1e-3, dur), drift: o.drift ?? 0.03, push: o.push ?? 0, k: 1, hand: o.hand ?? 0.6, kind: 'move' });
     if (o.fx) this.trans(o.fx);
   }
   // a flight along a path: keys [[eye, at], …] (points in the plot) — the camera through the eyes,
   // looking at the ats, both on smooth curves, in dur seconds (o.ease: start and stop gently)
   fly(keys, dur, o = {}) {
     const eyes = new THREE.CatmullRomCurve3(keys.map((k) => k[0].clone())), ats = new THREE.CatmullRomCurve3(keys.map((k) => k[1].clone()));
-    this._shot({ eyes, ats, t0: this.t, dur, k: 1, drift: 0, push: 0, ease: o.ease ?? 'start' });
+    this._shot({ eyes, ats, t0: this.t, dur, k: 1, drift: 0, push: 0, ease: o.ease ?? 'start', hand: o.hand ?? 0.2, kind: 'fly' });
     if (o.fx) this.trans(o.fx);
   }
   // follow f() (a point in the plot) from a view's yaw / pitch / dist; lag: how slowly it keeps up
   follow(f, v, o = {}) {
     const p = f() || this._now().target, g = { target: p.clone(), yaw: v.yaw, pitch: v.pitch, dist: v.dist };
-    this._shot({ from: g, goal: g, t0: this.t, dur: 1e-3, drift: o.drift ?? 0.06, push: o.push ?? 0.03, k: 1, f, lag: o.lag ?? 6, at: p.clone() });
+    this._shot({ from: g, goal: g, t0: this.t, dur: 1e-3, drift: o.drift ?? 0.06, push: o.push ?? 0.03, k: 1, f, lag: o.lag ?? 6, at: p.clone(), hand: o.hand ?? 0.8, kind: 'follow' });
     if (o.fx) this.trans(o.fx);
   }
   // a zoom punch: the distance × k, quickly, overshooting a little (it stays till the next shot)
   punch(k = 0.75, dur = 0.3) { const s = this.shot; if (!s) return; const k0 = s.k, t0 = this.t; this.each(() => { const u = clamp01((this.t - t0) / dur); if (this.shot === s) s.k = k0 + (k - k0) * back(u); return u >= 1; }); }
   shake(a = 0.012, dur = 0.35) { this.fx.push({ kind: 'shake', a, t0: this.t, t1: this.t + dur }); }
-  // the cut's transition
-  trans(kind) {
+  // the cut's transition (rule 9: one into a stage or over a jump in time; within it hard cuts —
+  // force: one all the same)
+  trans(kind, force = false) {
     const d = { flash: 0.22, blur: 0.25, zoom: 0.28, whip: 0.24 }[kind];
-    if (d) this.fx.push({ kind, t0: this.t, t1: this.t + d, dir: Math.random() < 0.5 ? -1 : 1 });
+    if (!d) return;
+    if (!force && this.stepAt && this._fxN >= 1) { if (this.shot) this.shot.hard = true; return; }
+    this._fxN++; this._fxAt = this.t;
+    this.fx.push({ kind, t0: this.t, t1: this.t + d, dir: Math.random() < 0.5 ? -1 : 1 });
+    if (this.shot) this.shot.fx = kind;
   }
-  _shot(s) { s.n = (this.shotN = (this.shotN || 0) + 1); this.shot = s; }
+  _shot(s) {
+    s.n = (this.shotN = (this.shotN || 0) + 1); this.shot = s;
+    this.log.push({ n: s.n, t0: this.t, kind: s.kind, auto: !!s.auto, step: this.stepAt, pitch: s.goal?.pitch ?? null });
+  }
+  // rule 2: a shot held too long — a new angle of the same thing (a hard cut), the beat goes on
+  _tempo() {
+    const s = this.shot;
+    if (!s || s.eyes || this.fin != null || this.lock) return;
+    const cap = s.f ? this.maxFollow : this.maxShot;
+    if (this.t - s.t0 < cap) return;
+    const v = this._eval(s), side = (s.n % 2 ? 1 : -1);
+    const g = { target: v.target, yaw: v.yaw + side * (0.65 + 0.25 * Math.random()), pitch: v.pitch > 0.9 ? Math.max(0.3, v.pitch - 0.75) : Math.min(1.35, v.pitch + 0.45), dist: v.dist * (v.pitch > 0.9 ? 0.75 : 1.2) };
+    const n = { ...s, from: g, goal: g, t0: this.t, k: 1, auto: true, tA: s.tA ?? s.t0, at: s.at?.clone(), vel: s.vel?.clone() };
+    this._shot(n);
+  }
+
+  // ---- the beats (the grammar's rules 3–5) -------------------------------------------------------------
+  // setup → action → payoff on a piece of work: at (a point or f() → point, followed), kind
+  // 'detail' (small work, close) | 'repeat' (the same again and again: faster) | 'structure' (a big
+  // thing: wide and low) | 'impact' (one blow); o: { dist, yaw, done (f → true: the work done;
+  // default: no job going), lens [setup, action a shot, payoff] s, speed [setup, action], fx (into the beat) }
+  *beat(at, kind = 'detail', o = {}) {
+    const K = BEATS[kind] || BEATS.detail, P = typeof at === 'function' ? at : () => at;
+    const dist = o.dist ?? K.dist, yaw = o.yaw ?? this._now().yaw, lens = o.lens ?? K.lens, sp = o.speed ?? K.speed;
+    const done = o.done ?? (() => !this.app.busy()), top = { yaw, pitch: K.top, dist: dist * 1.25 };
+    // (o.top: the setup's own view {target, yaw, pitch, dist}; o.act(side): the action's own views — a
+    // bowl, a deck: the side-on view from where the camera can stand)
+    const above = (fx) => (o.top ? this.cut(o.top, { drift: 0.05, push: 0.04, hand: 0.6, fx }) : this.follow(P, top, { drift: 0.06, push: 0.05, lag: 3, hand: 0.6, fx }));
+    // setup: from above, what is to be done
+    this.ramp(sp[0], 0.3);
+    above(o.fx);
+    yield this.sec(lens[0]);
+    // action: low and close from the side — one angle a shot, the other side when it goes on
+    this.ramp(sp[1], 0.3);
+    let side = 1;
+    while (!done()) {
+      if (o.act) this.cut(o.act(side), { drift: 0.04 * side, push: 0.05 });
+      else this.follow(P, { yaw: yaw + side * K.turn, pitch: K.low, dist: dist * 0.8 }, { drift: 0.05 * side, push: 0.04, lag: K.lag });
+      const t1 = this.t + lens[1];
+      yield this.until(() => done() || this.t >= t1);
+      side = -side;
+    }
+    // payoff: the match cut — the first framing again, in real time, a little punch in
+    this.ramp(1, 0.25);
+    above();
+    this.punch(0.9, 0.7);
+    yield this.sec(lens[2]);
+  }
+  // rule 10: the reveal — round the finished thing, pulling back and rising: c (its middle), r (how far,
+  // in the plot's units), dur s; o: { yaw0 (where it starts), arc (rad round), y0, y1 (heights) }
+  reveal(c, r, dur = 5, o = {}) {
+    const yaw0 = o.yaw0 ?? this._now().yaw, arc = o.arc ?? 1.9, y0 = o.y0 ?? r * 0.25, y1 = o.y1 ?? r * 0.75, keys = [];
+    for (let i = 0; i <= 4; i++) {
+      const u = i / 4, a = yaw0 + arc * u, R = r * (0.65 + 0.6 * u);
+      keys.push([new THREE.Vector3(c.x + Math.sin(a) * R, c.y + y0 + (y1 - y0) * u, c.z + Math.cos(a) * R), c.clone()]);
+    }
+    this.fly(keys, dur, { ease: 'linear', fx: o.fx, hand: 0.15 });
+  }
   _eval(s) {
     if (s.eyes) {
       // (a flight starts gently but never stops: at its end it goes on along its way, slowing over
@@ -125,7 +189,14 @@ export class Director {
     }
     const u = ease(clamp01((this.t - s.t0) / s.dur)), f = s.from, g = s.goal, age = this.t - s.t0;
     let target;
-    if (s.f) { const p = s.f(); if (p) s.at.lerp(p, 1 - Math.exp(-this.dt * s.lag)); target = s.at.clone(); }
+    if (s.f) {
+      // (a spring, critically damped: the aim keeps up without a jerk when the thing followed jumps — a
+      // hand going to the next stone)
+      const p = s.f(), w = s.lag, dt = Math.min(this.dt, 0.05);
+      s.vel = s.vel || new THREE.Vector3();
+      if (p && dt > 0) { _v.copy(p).sub(s.at).multiplyScalar(w * w).addScaledVector(s.vel, -2 * w); s.vel.addScaledVector(_v, dt); s.at.addScaledVector(s.vel, dt); }
+      target = s.at.clone();
+    }
     else target = f.target.clone().lerp(g.target, u);
     return { target, yaw: f.yaw + (g.yaw - f.yaw) * u + s.drift * age, pitch: f.pitch + (g.pitch - f.pitch) * u, dist: (f.dist + (g.dist - f.dist) * u) * Math.max(0.3, 1 - s.push * age) * s.k };
   }
@@ -142,6 +213,13 @@ export class Director {
       if (e.kind === 'zoom') { scale = 1 + 0.16 * (1 - easeOut(u)); blur = Math.max(blur, 3 * (1 - u) ** 2); }
       if (e.kind === 'whip') { v.yaw += e.dir * 0.3 * (1 - easeOut(u)); blur = Math.max(blur, 7 * (1 - u) ** 2); }
     }
+    // (rule 8: hand-held — a slow sway, two sines a way that never meet: breathing, not shaking)
+    const h = this.hand * (this.shot.hand ?? 1);
+    if (h > 0) {
+      const t = this.t;
+      v.yaw += h * 0.0045 * (Math.sin(t * 1.13 + 0.3) + 0.6 * Math.sin(t * 2.71 + 1.3));
+      v.pitch += h * 0.0032 * (Math.sin(t * 0.93 + 0.4) + 0.5 * Math.sin(t * 2.31 + 2.1));
+    }
     this.app.rig.setState({ target: v.target.toArray(), yaw: v.yaw, pitch: v.pitch, dist: v.dist }, true);
     this.app.focusPoint = this.shot.f ? this.shot.at : null;
     this.canvas.style.filter = blur > 0.2 ? `blur(${blur.toFixed(1)}px)` : '';
@@ -156,7 +234,7 @@ export class Director {
   // a stage's title: the step's chip pops, the words come up one by one, the sub line slides in
   title(main, sub = '', step = 0) {
     for (const it of this.items) if (it.head && it.out == null) { it.out = this.t; it.t1 = this.t + 0.22; }
-    if (step) { this.stepAt = step; this.stepT = this.t; this.stepName = main; }
+    if (step) { this.stepAt = step; this.stepT = this.t; this.stepName = main; this._fxN = this.t - this._fxAt < 0.15 ? 1 : 0; }
     if (!main) return;
     const h = document.createElement('div');
     h.className = 'f-head';
@@ -181,6 +259,7 @@ export class Director {
   }
   // a big word in the middle: punched in, shaken, gone («7 DAYS LATER»)
   kick(text, dur = 1.1, cls = '') {
+    this._fxN = 0;   // (a jump in time: a transition over it is the grammar's)
     const e = document.createElement('div');
     e.className = 'f-kick ' + cls; e.textContent = text;
     this._item(e, this.el, this.t + dur, (el, age, it) => {
@@ -329,7 +408,16 @@ export class Director {
     this.t += dt;
     for (const f of [...this.tasks]) if (f(dt * this.speed)) this.tasks.delete(f);
     this._advance();
+    this._tempo();
     this._camera();
     this._words();
   }
 }
+// the beats' shapes: top / low — pitch of the setup and the action; turn — the action's angle off the
+// setup's; dist — how close; lag — how slowly it keeps up; lens — s [setup, action a shot, payoff]; speed — [setup, action]
+const BEATS = {
+  detail: { top: 1.38, low: 0.32, turn: 0.95, dist: 0.3, lag: 2.5, lens: [1.0, 2.6, 1.1], speed: [2.5, 1.6] },
+  repeat: { top: 1.3, low: 0.38, turn: 1.1, dist: 0.45, lag: 2.0, lens: [0.9, 2.2, 1.0], speed: [3, 2.6] },
+  structure: { top: 1.2, low: 0.18, turn: 0.8, dist: 1.0, lag: 1.5, lens: [1.2, 3.5, 1.4], speed: [2, 1.2] },
+  impact: { top: 1.35, low: 0.22, turn: 1.0, dist: 0.4, lag: 4, lens: [0.8, 2.0, 1.2], speed: [2, 1] },
+};
