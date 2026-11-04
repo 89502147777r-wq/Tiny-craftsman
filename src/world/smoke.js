@@ -11,6 +11,8 @@ const KIND = {
   cloud: { color: 0xa89478, opacity: 0.5, size0: 1.2, size1: 7, rise: 0.25, life: 4.5 },
   flame: { color: 0xff8a2a, opacity: 0.85, size0: 0.6, size1: 1.6, rise: 2.2, life: 0.9, add: true },
   soot: { color: 0x1c1a19, opacity: 0.6, size0: 1.0, size1: 8, rise: 1.6, life: 5 },
+  // (a building come down: grey concrete dust, slow, hanging long — 5–10 s — and drifting with the wind)
+  rubble: { color: 0x9a978f, opacity: 0.55, size0: 1.6, size1: 10, rise: 0.08, life: 8 },
 };
 
 export class Puffs {

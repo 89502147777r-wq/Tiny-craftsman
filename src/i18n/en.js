@@ -1950,4 +1950,6 @@ export default {
 "Над лифтом ещё нет этажа — положите на шахту перекрытие (в нём будет проём)": "No floor over the lift yet — lay a slab on its top (it gets its opening)",
 "Шахта ниже {0} м — кабине не встать": "The shaft is under {0} m — the cabin does not fit",
 "Шахту лифта ставят на бетонное основание — сначала залейте под неё плиту или подушку (на голый грунт нельзя)": "A lift shaft stands on a concrete base — cast a slab or a pad under it first (not on the bare ground)",
+"Обрушение опоры": "Support collapse",
+"дом на шахте лифта": "the house on its lift shaft",
 };

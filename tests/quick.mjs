@@ -1127,6 +1127,52 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2k'. «Обрушение опоры»: a house on its glass lift shaft — the posts bow, the panes crack and whiten, the
+// house sinks and leans, then falls as one body (≈ g), strikes and breaks into pieces; the slabs fall too (not
+// lost); a fascia does not hold it up; all back as it was ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, o = {}, MM = (v) => v / 1000 / 10.4651, M = 1 / 1000 / 10.4651;
+    const SL = await import('/src/tools/slab.js'), LF = await import('/src/world/lift.js'), RL = await import('/src/world/railing.js'), CL = await import('/src/world/collapse.js');
+    const T = tc.terrain; for (let i = 0; i < T.conc.length; i++) { const x = T.toWorldX(i % T.nx), z = T.toWorldZ(Math.floor(i / T.nx)); if (Math.abs(x) < MM(1500) && Math.abs(z) < MM(1500)) T.conc[i] = MM(250); }
+    const g = T.heightAt(0, 0);
+    const lf = tc.objects.add(LF.planLift(tc, new V(0, g, 0), MM(6500), new V(1, 0, 3)).rec);
+    const sl = tc.objects.add(SL.findPileSlab(tc, new V(0, lf.top, 0), (v) => wt._screen(v), null, undefined, 3500).rec), s2 = tc.objects.get(sl.id);
+    tc.objects.update(sl.id, { lv: s2.lv.map(() => Math.round(s2.H / MM(1))), fill: 1, castT: tc.clock - 1e6, pourT: tc.clock - 1e6, wetT: tc.clock - 1e6, stripped: true });
+    tc.simulate(0.1);
+    const s3 = tc.objects.get(sl.id), ytop = s3.top + s3.H;
+    for (const run of RL.slabRuns(s3)) { const F = RL.findRail(tc, new V((run.a[0] + run.b[0]) / 2, run.y, (run.a[1] + run.b[1]) / 2), 'ral7016'); if (F && !F.why) tc.objects.add(F.rec); }
+    const add = (x, y, z, ax) => tc.objects.add({ type: 'unit', kind: 'block', free: true, p: [x, y, z], s: ax ? [600 * M, 250 * M, 300 * M] : [300 * M, 250 * M, 600 * M], q: [0, 0, 0, 1] });
+    for (let k = 0; k < 6; k++) { const y = ytop + (125 + 250 * k) * M, sh = (k % 2) * 300 * M;
+      for (let a = -3500 * M + 300 * M + sh; a < 3500 * M - 299 * M; a += 600 * M) { add(a, y, -3000 * M, true); add(a, y, 3000 * M, true); }
+      for (let b = -3000 * M + 450 * M + sh; b < 3000 * M - 449 * M; b += 600 * M) { add(-3350 * M, y, b, false); add(3350 * M, y, b, false); } }
+    for (let i = 0; i < 6; i++) tc.simulate(0.1);
+    tc.setTool('disaster'); Object.assign(tc.settings, { catKind: 'shaft', catPower: 5 });
+    o.chip = tc.ui.chips().some((c) => /Обрушение опоры/.test(c.label));
+    await tc.disasterTool.run();
+    const D = tc.disasterTool.sim, C = D.collapse, ST = CL.SHAFT_T;
+    o.carried = C && [C.chunks.length, C.panels.filter((p) => p.sort === 'slab').length, C.panels.filter((p) => p.sort === 'skin').length];
+    const run = (t1) => { while (D.t < t1) tc.simulate(1 / 30); };
+    const y0 = C.body.translation().y;
+    run(ST.white - 0.1); o.cracked = C.panes.filter((p) => p.cr.material.alphaTest < 0.9).length; o.panes = C.panes.length; o.bowSink = +((y0 - C.body.translation().y) * 1000).toFixed(1); o.lean = +(C.tilt * 180 / Math.PI).toFixed(2);
+    run(ST.fail - 0.05); o.white = C.panes.filter((p) => p.whited).length;
+    // (from the failure: the house's fall — its drop by ~0.6 s after it is free, against a free fall's ½gt²)
+    run(ST.fail + 0.1); const yA = C.body?.translation().y, tA = D.t; run(ST.fail + 0.6); const yB = C.body ? C.body.translation().y : null, tB = D.t;
+    o.fall = yA != null && yB != null ? { drop: +(yA - yB).toFixed(2), free: +(0.5 * 9.81 * ((tB - ST.fail) ** 2 - (tA - ST.fail) ** 2)).toFixed(2) } : null;
+    run(ST.fail + 4); o.struck = C.struck; o.free = C.chunks.filter((c) => c.free).length; o.slabsDown = C.panels.filter((p) => p.sort === 'slab').every((p) => p.body.translation().y < (g + MM(2500)) * 10.4651);
+    o.maxUp = Math.max(...C.chunks.map((c) => c.body.linvel().y));
+    tc.disasterTool.stop?.(); D.stop(); tc.simulate(0.1);
+    o.back = !tc.scene.getObjectByName('disaster') && !tc.wallView.frozen && tc.wallView._liftG.get(lf.id).children.every((ch) => ch.visible && ch.scale.y === 1);
+    return o;
+  });
+  check('support collapse: the chip; the house carried whole (its chunks, the slab in pieces, the fascias)', o.chip && o.carried?.[0] > 40 && o.carried[1] >= 4 && o.carried[2] === 4, JSON.stringify(o));
+  check('support collapse: the posts bow first — the house sinks a few mm and leans ≤ 3°; the panes crack bottom-up, then whiten', o.bowSink > 0.2 && o.bowSink < 60 && o.lean > 0 && o.lean <= 3 && o.cracked > 0 && o.white === o.panes, JSON.stringify(o));
+  check('support collapse: the house falls as a body would (its drop ≥ 60 % of a free fall\'s), strikes, breaks; the slabs come down; nothing bounces up', o.fall && o.fall.drop > 0.6 * o.fall.free && o.struck && o.free === o.carried[0] && o.slabsDown && o.maxUp < 1.5, JSON.stringify(o));
+  check('support collapse: all back as it was; no console errors', o.back && errors.length === 0, errors.slice(0, 3).join(' | ') + JSON.stringify(o));
+  await browser.close();
+}
+
 // ---- 2l. The film director's grammar (director.js): the beat's three angles, the longest shot, hard cuts within a stage, the hand-held sway ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
