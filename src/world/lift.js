@@ -7,22 +7,24 @@ import { toFrame } from '../tools/belt.js';
 // A panoramic glass lift standing on its own on the ground — and in the villa film the only thing the house
 // stands on (the owner: «without a leg — the point is that it must not hold»; it does not, and it falls).
 //
-// As one is built (the look checked by the realist): a steel frame (posts 120 × 120, RAL 7016) on its pit
-// 1,2 m (tanked — the pool is near; a ladder), laminated glass 8+8 between the posts in panes up to 2 m with
+// As one is built (the look checked by the realist): a home lift with no pit (a 50 mm ramp at its door — the
+// cut in the concrete it would need is not there), a steel frame (posts 120 × 120, RAL 7016) — each post's
+// foot a plate 250 × 250 × 20 on four anchors with their nuts, 30 mm of grout under it — laminated glass 8+8 between the posts in panes up to 2 m with
 // transoms; a landing door at the ground and at each floor (stainless, two glass leaves); a hydraulic drive
-// (the cylinder in the pit behind the cabin, its ram and a sheave lifting the cabin 2:1 on ropes — no machine
+// (the cylinder standing on the base behind the cabin, its ram and a sheave lifting the cabin 2:1 on ropes — no machine
 // room; the pump cabinet outside by the lower door); the cabin 1100 × 1400 × 2200 — glass on three sides, a
 // stainless frame and floor edge, a handrail, a light. It stands on a cast concrete base (a pad or a slab —
-// never on the bare ground; its pit sunk in it). Its top (`top`) carries what is on it: the steel head welded
-// on — a ring of HEB 200 round the posts' heads, outriggers from the corners and the sides with their gusset
-// plates; a slab laid over it is cast on that, an opening in it over the shaft (slab.js: `liftHoles`);
+// ≥ 150 thick under all of it, never on the bare ground). Its top (`top`) carries what is on it: the steel head
+// welded on — a ring of HEB 200 (I sections: flanges 200 × 15, web 9) round the posts' heads, its top flush
+// with the slab's soffit, outriggers from the corners and the sides with triangular gusset plates 12 under
+// them; a slab laid over it is cast on that (on its props till it is struck), an opening in it over the shaft (slab.js: `liftHoles`);
 // the shaft goes on up through the opening into the floors, a stop at each slab with its opening over the
 // shaft, the headroom (the cabin + 1,2 m) over the top stop and the shaft's roof with vent grilles on it.
 // A lift: { type: 'lift', x, z (the shaft's middle), y0 (the ground), top (the shaft's top: what it carries
 // lies on it), w, d (mm), u: [x, z] (its front: the way the doors look), at: the stop the cabin is at (0 the
 // ground) }.
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const LIFT = { w: 1600, d: 1700, post: 120, pane: 2000, cabW: 1100, cabD: 1400, cabH: 2200, speed: 0.6, pit: 1200, head: 3400, joint: 50, door: 2300, plate: 20 };
+export const LIFT = { w: 1600, d: 1700, post: 120, pane: 2000, cabW: 1100, cabD: 1400, cabH: 2200, speed: 0.6, pit: 0, ramp: 50, head: 3400, joint: 50, door: 2300, plate: 20 };
 
 let M = null;
 function mats() {
@@ -61,7 +63,8 @@ function meshes(G, mm) {
   const g = new THREE.Group();
   for (const [k, list] of Object.entries(G)) {
     if (!list.length) continue;
-    const m = new THREE.Mesh(mergeGeometries(list), mm[k]);
+    // (boxes are indexed, the gussets' extrusions not: all made alike to merge)
+    const m = new THREE.Mesh(mergeGeometries(list.some((g) => !g.index) ? list.map((g) => (g.index ? g.toNonIndexed() : g)) : list), mm[k]);
     m.castShadow = k !== 'glass' && k !== 'light'; m.receiveShadow = true;
     if (k === 'glass') m.renderOrder = 2;
     m.name = k;
@@ -90,8 +93,8 @@ export function planLift(app, p, h, face) {
   if (!t.inside(p.x, p.z)) return { why: 'За краем участка' };
   if (h < MM(LIFT.cabH + 600)) return { why: `Шахта ниже ${(LIFT.cabH + 600) / 1000} м — кабине не встать` };
   // (its base: cast concrete under all its footprint — a pad or a foundation slab, not the ground)
-  const fp = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].map(([a, b]) => [p.x + a * MM(LIFT.w / 2 + 150), p.z + b * MM(LIFT.d / 2 + 150)]);
-  if (fp.some(([x, z]) => !t.inside(x, z) || !(t.conc[t.index(x, z)] > 1e-6))) return { why: 'Шахту лифта ставят на бетонное основание — сначала залейте под неё плиту или подушку (на голый грунт нельзя)', base: true };
+  const fp = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]].map(([a, b]) => [p.x + a * MM(LIFT.w / 2 + 300), p.z + b * MM(LIFT.d / 2 + 300)]);
+  if (fp.some(([x, z]) => !t.inside(x, z) || !(t.conc[t.index(x, z)] >= MM(150)))) return { why: 'Шахту лифта ставят на бетонное основание не тоньше 150 мм — сначала залейте под неё плиту или подушку (на голый грунт нельзя)', base: true };
   const near = app.objects.all('lift').find((q) => Math.hypot(q.x - p.x, q.z - p.z) < MM(LIFT.d + 200));
   if (near) return { why: 'Здесь уже стоит лифт', near };
   // (square to the plot: the doors on the side toward `face` — the camera)
@@ -112,12 +115,17 @@ export function buildLift(r, objects, ghost = null) {
   const W = r.w / 2, D = r.d / 2, P = LIFT.post, J = LIFT.joint, dT = LIFT.door;
   const stops = (objects ? liftStops(objects, r) : []).map(([t, so]) => [(t - r.y0) / S, (so - r.y0) / S]);
   const Top = (r.top - r.y0) / S, H = stops.length ? stops.at(-1)[0] : 0, Ht = stops.length ? H + LIFT.head : Top;
-  // the pit: its floor and walls under the ground, the membrane outside, a ladder
-  G.conc.push(boxG(-W - 200, W + 200, -LIFT.pit - 250, -LIFT.pit, -D - 200, D + 200));
-  for (const [x0, x1, z0, z1] of [[-W - 200, -W, -D - 200, D + 200], [W, W + 200, -D - 200, D + 200], [-W, W, -D - 200, -D], [-W, W, D, D + 200]]) G.conc.push(boxG(x0, x1, -LIFT.pit, 0, z0, z1));
-  for (let y = -LIFT.pit + 200; y < 0; y += 300) G.steel.push(boxG(W - 420, W - 120, y, y + 20, D - 60, D - 40));
+  // the feet: under each post a plate 250 × 250 × 20 on four anchors M16 with their nuts, 30 mm of grout under it;
+  // a stainless ramp at the door (no pit: the cabin's floor 50 over the base)
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const cx = sx * (W - P / 2), cz = sz * (D - P / 2);
+    G.conc.push(boxG(cx - 150, cx + 150, 0, 30, cz - 150, cz + 150));
+    G.frame.push(boxG(cx - 125, cx + 125, 30, 50, cz - 125, cz + 125));
+    for (const [ax, az] of [[-90, -90], [90, -90], [90, 90], [-90, 90]]) { const n = new THREE.CylinderGeometry(14, 14, 16, 6); n.translate(cx + ax, 58, cz + az); G.steel.push(n); const rod = new THREE.CylinderGeometry(8, 8, 40, 8); rod.translate(cx + ax, 66, cz + az); G.steel.push(rod); }
+  }
+  G.steel.push(boxG(-560, 560, 0, LIFT.ramp, D - 20, D + 300));
   // the posts at the corners, up to the top (and on through the slab's opening, over the top stop by the headroom)
-  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) G.frame.push(boxG(sx * W - (sx > 0 ? P : 0), sx * W + (sx < 0 ? P : 0), 0, Ht, sz * D - (sz > 0 ? P : 0), sz * D + (sz < 0 ? P : 0)));
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) G.frame.push(boxG(sx * W - (sx > 0 ? P : 0), sx * W + (sx < 0 ? P : 0), 50, Ht, sz * D - (sz > 0 ? P : 0), sz * D + (sz < 0 ? P : 0)));
   // the transoms, the glass between (each pane kept: they crack and burst one by one)
   const glassIn = (y0, y1, front) => {
     const n = Math.max(1, Math.ceil((y1 - y0) / LIFT.pane)), ph = (y1 - y0) / n;
@@ -128,7 +136,7 @@ export function buildLift(r, objects, ghost = null) {
       if (b > front) panes.push(['front', -W + P, W - P, Math.max(a, front + 60), b, D - 46, D - 30]);
     }
   };
-  glassIn(0, stops.length ? stops[0][1] - LIFT.plate : Top - LIFT.plate, dT);
+  glassIn(LIFT.ramp, (stops.length ? stops[0][1] : Top) - 220, dT);
   stops.forEach(([t], k) => glassIn(t, k + 1 < stops.length ? stops[k + 1][1] - J : Ht - 200, t + dT));
   // each pane: the glass, its green edge (8+8: 17 mm of float seen end on), the black EPDM round it and the
   // pressure plates 50 × 12 over its edges outside (screwed every 300)
@@ -151,17 +159,24 @@ export function buildLift(r, objects, ghost = null) {
   // the steel head welded on the posts' heads: the bearing plates, a ring of HEB 200 round them, outriggers from
   // the corners (1,5 m, diagonal) and from the sides' middles (1,2 m), each with its gussets — what is cast over
   // the shaft lies on it
-  const yH = stops[0]?.[1] ?? Top, hb = 200, bw2 = 100;
-  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) G.head.push(boxG(sx * W - 130, sx * W + 130, yH - LIFT.plate, yH, sz * D - 130, sz * D + 130));
-  G.head.push(boxG(-W - bw2, W + bw2, yH - hb, yH - LIFT.plate, -D - bw2, -D + bw2), boxG(-W - bw2, W + bw2, yH - hb, yH - LIFT.plate, D - bw2, D + bw2));
-  G.head.push(boxG(-W - bw2, -W + bw2, yH - hb, yH - LIFT.plate, -D, D), boxG(W - bw2, W + bw2, yH - hb, yH - LIFT.plate, -D, D));
-  const beam = (x0, z0, x1, z1, deep) => { const L = Math.hypot(x1 - x0, z1 - z0), b = new THREE.BoxGeometry(L, deep, 2 * bw2); b.rotateY(-Math.atan2(z1 - z0, x1 - x0)); b.translate((x0 + x1) / 2, yH - LIFT.plate - deep / 2, (z0 + z1) / 2); return b; };
+  const yH = stops[0]?.[1] ?? Top, hb = 200, bf = 100, tf = 15, tw = 9;
+  // (an I beam from (x0, z0) to (x1, z1), its top flange's top at yH: two flanges 200 × 15 and the web 9)
+  const ibeam = (x0, z0, x1, z1, dir = 1) => {
+    const L = Math.hypot(x1 - x0, z1 - z0), parts = [new THREE.BoxGeometry(L, tf, 2 * bf).translate(0, -tf / 2, 0), new THREE.BoxGeometry(L, tf, 2 * bf).translate(0, -hb + tf / 2, 0), new THREE.BoxGeometry(L, hb - 2 * tf, tw).translate(0, -hb / 2, 0)];
+    return parts.map((g) => g.rotateY(-Math.atan2(z1 - z0, x1 - x0)).translate((x0 + x1) / 2, yH, (z0 + z1) / 2)); void dir;
+  };
+  // (a triangular gusset 12 under an outrigger at the post: in its web's plane, 300 along, 300 down)
+  const gusset = (x0, z0, x1, z1) => {
+    const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(300, 0); sh.lineTo(0, -300); sh.lineTo(0, 0);
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 12, bevelEnabled: false }); g.translate(0, -hb, -6);
+    return g.rotateY(-Math.atan2(z1 - z0, x1 - x0)).translate(x0, yH, z0);
+  };
+  G.head.push(...ibeam(-W - bf, -D, W + bf, -D), ...ibeam(-W - bf, D, W + bf, D), ...ibeam(-W, -D, -W, D), ...ibeam(W, -D, W, D));
   for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-    const L = 1500 / Math.SQRT2; G.head.push(beam(sx * W, sz * D, sx * (W + L), sz * (D + L), hb));
-    // (the gussets under the outrigger at the post: a triangle plate seen as a short deeper piece)
-    G.head.push(beam(sx * W, sz * D, sx * (W + 300), sz * (D + 300), hb + 250));
+    const L = 1500 / Math.SQRT2, x1 = sx * (W + L), z1 = sz * (D + L);
+    G.head.push(...ibeam(sx * W, sz * D, x1, z1), gusset(sx * W, sz * D, x1, z1));
   }
-  for (const [x0, z0, x1, z1] of [[0, -D, 0, -D - 1200], [0, D, 0, D + 1200], [-W, 0, -W - 1200, 0], [W, 0, W + 1200, 0]]) G.head.push(beam(x0, z0, x1, z1, hb));
+  for (const [x0, z0, x1, z1] of [[0, -D, 0, -D - 1200], [0, D, 0, D + 1200], [-W, 0, -W - 1200, 0], [W, 0, W + 1200, 0]]) G.head.push(...ibeam(x0, z0, x1, z1), gusset(x0, z0, x1, z1));
   // the landing doors: at the ground and at each stop
   for (const y0 of [0, ...stops.map((q) => q[0])]) {
     G.steel.push(boxG(-500, 500, y0 + dT, y0 + dT + 60, D - 60, D)); G.steel.push(boxG(-560, -500, y0, y0 + dT + 60, D - 60, D)); G.steel.push(boxG(500, 560, y0, y0 + dT + 60, D - 60, D));
@@ -172,8 +187,9 @@ export function buildLift(r, objects, ghost = null) {
   if (stops.length) for (const [z0, z1] of [[-D - 46, -D - 40], [D + 40, D + 46]]) for (let y = Ht - 180; y < Ht - 20; y += 30) G.steel.push(boxG(-W + 150, W - 150, y, y + 12, z0, z1));
   // the guide rails on the back (T 89), the hydraulic cylinder in the pit behind the cabin, the pump cabinet outside by the door
   const run = Math.max(H, Top * 0.5);
-  for (const x of [-LIFT.cabW / 2 - 60, LIFT.cabW / 2 + 60]) G.steel.push(boxG(x - 8, x + 8, -LIFT.pit + 100, Ht - 300, -D + P, -D + P + 70));
-  const cyl = new THREE.CylinderGeometry(70, 70, LIFT.pit + run / 2, 20); cyl.translate(0, (LIFT.pit + run / 2) / 2 - LIFT.pit, -D + P + 120); G.frame.push(cyl);
+  for (const x of [-LIFT.cabW / 2 - 60, LIFT.cabW / 2 + 60]) G.steel.push(boxG(x - 8, x + 8, 50, Ht - 300, -D + P, -D + P + 70));
+  const cyl = new THREE.CylinderGeometry(70, 70, run / 2, 20); cyl.translate(0, run / 4 + 50, -D + P + 120); G.frame.push(cyl);
+  G.frame.push(boxG(-150, 150, 0, 50, -D + P + 20, -D + P + 220));   // (the cylinder's foot on the base)
   G.cabinet.push(boxG(W + 120, W + 720, 0, 1800, D - 600, D)); G.steel.push(boxG(W + 140, W + 700, 1500, 1520, D + 1, D + 4));   // (the pump cabinet: RAL 7035)
   const g = meshes(G, mm);
   // the ram and its sheave (rising half the cabin's way), the ropes from the sheave down to the cabin's sling
