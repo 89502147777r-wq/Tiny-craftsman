@@ -85,7 +85,7 @@ async function main() {
   if (typeof app.settings.pump === 'number') app.settings.pump = PUMP.reduce((a, v) => (Math.abs(v - app.settings.pump) < Math.abs(a - app.settings.pump) ? v : a));   // the nearest step
   if (!PUMP.includes(app.settings.pump)) app.settings.pump = DEFAULT_SETTINGS.pump;   // BUILD 23: real pump rates
   if (!DELIVERY.includes(app.settings.delivery)) app.settings.delivery = DEFAULT_SETTINGS.delivery;   // BUILD 36: truck-sized deliveries
-  if (app.settings.wallKind && !['block', 'brick', 'cinder', 'blind', 'lform', 'studs', 'lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'pool', 'land', 'ext', 'column'].includes(app.settings.wallKind)) app.settings.wallKind = 'brick';   // BUILD 45: free brickwork (no thickness modes)
+  if (app.settings.wallKind && !['block', 'brick', 'cinder', 'blind', 'lform', 'studs', 'lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'pool', 'land', 'ext', 'column', 'rail', 'fascia'].includes(app.settings.wallKind)) app.settings.wallKind = 'brick';   // BUILD 45: free brickwork (no thickness modes)
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
   const params = new URLSearchParams(location.search);
   if (params.get('quality')) app.settings.quality = params.get('quality');
@@ -213,7 +213,7 @@ async function main() {
   const moving = (rain = true) => {
     const r = app.rig, g = r.goal;
     return app.settings.orbit || !!app.physJob || app.terrain.active || app.particles.busy || app.shovelTool.busy || app.rakeTool.busy || app.wallTool.busy
-      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy() || (rain && app.sky?.busy)
+      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy() || app.wallView.liftBusy || (rain && app.sky?.busy)
       || Math.abs(r.dist - g.dist) > 1e-4 || r.target.distanceToSquared(g.target) > 1e-9 || Math.abs(r.yaw - g.yaw) > 1e-4 || Math.abs(r.pitch - g.pitch) > 1e-4 || Math.abs(r.focus - r.focusGoal) > 1e-3;
   };
   function frame(now) {
@@ -351,7 +351,7 @@ function step(dt, time, render = true) {
   app.outlineView.update();
   app.formView.update();
   app.rebarView.update(); app.rebarView.lod(app.rig.dist);
-  app.wallView.update();
+  app.wallView.clock = app.clock; app.wallView.update();
   app.poolView.update(dt, app);
   app.gardenView.update(dt, app);
   app.wallView.columns.update(app.objects);

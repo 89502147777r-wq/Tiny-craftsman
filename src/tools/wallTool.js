@@ -10,7 +10,8 @@ import { COL_SECS, secOf, castDone } from '../world/columns.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
 import { PALLETS } from '../core/budget.js';
 import { findOpenings, findCorners, openingAt } from './windowFit.js';
-import { findRail, RAIL } from '../world/railing.js';
+import { LANG } from '../i18n/i18n.js';
+import { findRail, RAIL, FASCIA, FASCIA_COLOURS } from '../world/railing.js';
 import { WINDOWS, windowFits, WIN_COLOURS, buildWindow, buildCorner } from '../world/windows.js';
 import { FitJob, drill, part, at } from './fitJob.js';
 import { DOORS, doorFits, isDoor, buildDoor } from '../world/doors.js';
@@ -950,12 +951,13 @@ export class WallTool {
       this.works[c.kind].carryMove(p, e);
       app.ui.refresh();
       return;
-    } else if (c.kind === 'rail') {
-      // a glass railing: along the edge of a floor slab nearest the finger, its free stretch
-      const R = findRail(app, p);
+    } else if (c.kind === 'rail' || c.kind === 'fascia') {
+      // a glass railing: along the edge of a floor slab nearest the finger, its free stretch; a fascia: on its face
+      const fc = c.kind === 'fascia' ? (FASCIA_COLOURS[app.settings.fasciaCol] ? app.settings.fasciaCol : 'ral7016') : null;
+      const R = findRail(app, p, fc);
       c.rail = R; c.free = undefined; c.snap = null; v.live = null; v.hl = null; v.liveBed = null;
       v.liveRail = R ? { rec: R.rec, ok: !R.why } : null; v.dirty = true;
-      if (R) app.ui.showMeasure(R.why ? R.why : `Ограждение ${(R.len / 1000).toFixed(2).replace('.', ',')} м, высота 1,1 м`); else app.ui.hideMeasure();
+      if (R) app.ui.showMeasure(R.why ? R.why : fc ? `Кант ${(R.len / 1000).toFixed(2).replace('.', ',')} м` : `Ограждение ${(R.len / 1000).toFixed(2).replace('.', ',')} м, высота 1,1 м`); else app.ui.hideMeasure();
       app.ui.refresh();
       return;
     } else if (c.kind === 'window' || c.kind === 'door') {
@@ -1149,7 +1151,7 @@ export class WallTool {
     this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');
     this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', rail: 'Ограждение', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
+    const NAMES = { studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', rail: 'Ограждение', fascia: 'Кант', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
     if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', joists: 'Лаги', ridge: 'Прогон', cover: { metal: 'Лист', seam: 'Панель', shingle: 'Черепица' }[this.app.settings.proofCover || 'metal'], trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
     if (lab && kind === 'blind') { lab.textContent = this.app.settings.blindLayer === 'drain' ? 'Лоток' : 'Опалубка'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель', br: 'Кронштейн', mw: 'Плита минваты', mb: 'Рулон мембраны', rl: 'Направляющая', vp: 'Панель НВФ' }[this.app.settings.facLayer || 'eps']; return; }
@@ -1234,6 +1236,16 @@ export class WallTool {
       app.ui.hideMeasure();
       const sp = belt.rec.spans || [], deep = sp.filter((q) => q[4] > 0);
       app.ui.toast(`Опалубка пояса: доски по обе стороны стен, ${belt.lenM.toFixed(1).replace('.', ',')} м стен, высота пояса 250 мм${sp.length ? `; над пролётами (${sp.length}) — днище на стойках до плиты${deep.length ? `, ригель до ${Math.max(...deep.map((q) => q[4])) + 250} мм высотой` : ''}` : ''} — теперь каркас («Каркас»), потом бетон${belt.long ? `. Пролёт ${(belt.long / 1000).toFixed(1).replace('.', ',')} м не перекрыт — нужен промежуточный столб` : ''}`);
+      return;
+    }
+    if (ck === 'fascia') {
+      const R = railR; app.ui.hideMeasure();
+      if (!R) { app.ui.toast('Кант — на торец залитого перекрытия: поднесите к его краю'); return; }
+      if (R.why) { app.ui.toast(R.why); return; }
+      app.sfx?.seq?.(['drill', 'screwdriver', 'sheet', 'screwdriver']); app.journal.act('fascia', {}, app.clock, () => app.objects.add(R.rec));
+      const hh = Math.round(R.rec.h / MM(1)) + FASCIA.below + FASCIA.over;
+      app.ui.toast(LANG === 'en' ? `Slab fascia ${(R.len / 1000).toFixed(2)} m: composite panels 4 mm on an aluminium subframe (brackets every ${FASCIA.bracket} mm), ${hh} mm high, ${FASCIA.gap} mm air gap, open joints ${FASCIA.joint} mm`
+        : `Кант перекрытия ${(R.len / 1000).toFixed(2).replace('.', ',')} м: композитные кассеты 4 мм на алюминиевой подсистеме (кронштейны через ${FASCIA.bracket} мм), высота ${hh} мм, зазор ${FASCIA.gap} мм, открытые швы ${FASCIA.joint} мм`);
       return;
     }
     if (ck === 'rail') {
@@ -1342,7 +1354,8 @@ export class WallTool {
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
     if (this.work) return this.work.status(false);
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'lform', 'studs', 'rail'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'lform', 'studs', 'rail', 'fascia'].includes(this.kind)) return {
+      fascia: 'Кант перекрытия: тяните из лотка к краю залитого перекрытия — тёмная металлическая кассета закроет торец плиты по всей длине края',
       rail: 'Стеклянное ограждение: тяните из лотка к краю залитого перекрытия (консоль, балкон, проём лестницы или второго света) — встанет вдоль свободного края, высота 1,1 м',
       studs: 'Шпильки под мауэрлат: тяните из лотка к опалубке армопояса — до заливки (или в свежий бетон) встанут шпильки М12 по оси стен через ≤ 1 м; на них потом ляжет мауэрлат на шайбах и гайках',
       lform: 'Монолитная перемычка: тяните опалубку из лотка к проёму — днище на стойках и доски по бокам встанут над ним с опорой по 250 мм; потом «Каркас», бетон (ведро / шланг), вибратор, правило; когда наберёт прочность — «Удалить» снимет опалубку',
@@ -1403,7 +1416,7 @@ export class WallTool {
     // (a record of another work: that work takes it away, as it is done on site)
     const rec = id && app.objects.get(id), off = rec && this._remover(rec);
     if (off) { off(rec, e); return; }
-    if (id && app.objects.get(id)?.type === 'rail') { app.sfx?.seq?.(['glass', 'screwdriver']); app.journal.act('rail-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Ограждение сняли'); return; }
+    if (id && app.objects.get(id)?.type === 'rail') { const fa = !!app.objects.get(id).fascia; app.sfx?.seq?.(fa ? ['screwdriver', 'sheet'] : ['glass', 'screwdriver']); app.journal.act('rail-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast(fa ? 'Кант сняли' : 'Ограждение сняли'); return; }
     if (id && app.objects.get(id)?.type === 'rwin') { app.sfx?.seq?.(['crowbar', 'glass']); app.journal.act('rwin-remove', {}, app.clock, () => app.objects.remove(id)); app.ui.toast('Окно сняли — кровля снова сплошная'); return; }
     if (id && app.objects.get(id)?.type === 'window') {
       app.sfx?.seq?.(['crowbar','glass']); app.journal.act('window-remove', {}, app.clock, () => app.objects.remove(id));

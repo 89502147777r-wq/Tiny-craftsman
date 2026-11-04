@@ -658,7 +658,7 @@ console.log('—', sec());
     tc.renderer.render(tc.scene, tc.camera); o.shader = tc.shaderErrors.length;
     return o;
   });
-  check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
+  check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|4 · Лифт и решётка|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
   check('columns: three piles bored, their two-half formwork set; a column not on the bare soil; the cages carried in', c.formed === '2false,2false,2false' && c.sqOnSoil && c.caged, JSON.stringify(c));
   check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles (and with a cantilever); a column on the slab over a pile (its continuation)', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3' && c.starter < -30 && c.cant?.cant === 1500 && c.cant.grow >= 1400 && c.cant.grow <= 1600 && c.up?.over === 'over' && c.up.off && !/колонна/.test(c.up.off), JSON.stringify(c));
   check('columns: either order (a cage first, the formwork round it), tied into a foundation cage (no formwork till it is cast), the sliders resize the picked one', c.cageFirst === '0true' && c.formAfter === 2 && c.preview === 400 && c.resized === '400,4' && c.tied > 250 && c.tied < 450 && c.tiedStage === '0true' && c.tiedNoForm && c.boredCage === 'true|1200|true' && c.landing, JSON.stringify(c));
@@ -699,6 +699,58 @@ console.log('—', sec());
   check('tree column: a trunk Ø1200 has Ø32 bars every ~150 mm; two branches out of its top lean apart, the same way again is in the way', o.trunk.bars >= 20 && o.trunk.d === 32 && o.tilt === 30 && o.b1?.why == null && o.b1?.on === 'column' && Math.abs(o.b1.foot - 3000) < 5 && o.b2 === 'ok' && !!o.b3, JSON.stringify(o));
   check('tree column: a slab on its two branches — cantilevers all round (3 m), 350 thick; without a cantilever none', o.slab?.piles === 2 && o.slab.cants === 4 && o.slab.H === 350 && o.slab.w > 7500 && o.slab.l > 6500 && /кругом/.test(o.slab.text) && !o.noCant, JSON.stringify(o));
   check('tree column: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2d''. The villa's parts: a lift by the column into the floor (only through an opening in the slab), its
+// cabin riding; the lattice round the column; the fascia on the slab's outer edges (not round the opening);
+// a green roof — sedum in the field, gravel 500 mm along the parapet ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, o = {}, MM = (v) => v / 1000 / 10.4651;
+    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); tc.camera.updateProjectionMatrix(); wt._rc = null; const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
+    const SL = await import('/src/tools/slab.js'), LF = await import('/src/world/lift.js'), RL = await import('/src/world/railing.js');
+    const g = tc.terrain.heightAt(0, 0), H = 6500;
+    const col = tc.objects.add({ type: 'column', sec: 'rd', a: 500, h: +MM(H).toFixed(6), n: 26, course: 'block', tilt: [0, 0], x: 0, z: 0, y0: g, dep: 0, stage: 3, cage: true, fill: 1, on: 'concrete' });
+    tc.simulate(0.1);
+    const P = SL.findPileSlab(tc, new V(0, g + MM(H), 0), (v) => wt._screen(v), null, undefined, 3500), sl = tc.objects.add(P.rec);
+    const L0 = LF.planLift(tc, tc.objects.get(col.id), new V(0, g, 1)); o.noHole = !!L0.why;
+    const r = L0.rec, hw = MM(r.w / 2 + 100), hd = MM(r.d / 2 + 100), Hh = SL.slabHole(tc.objects.get(sl.id), r.x - hw, r.z - hd, r.x + hw, r.z + hd);
+    tc.objects.update(sl.id, Hh.patch);
+    const s2 = tc.objects.get(sl.id);
+    tc.objects.update(sl.id, { lv: s2.lv.map(() => Math.round(s2.H / MM(1))), fill: 1, castT: tc.clock - 1e6, pourT: tc.clock - 1e6, wetT: tc.clock - 1e6, stripped: true });
+    tc.simulate(0.1);
+    // the lift by the column tool: a tap on the column on its +z side
+    tc.rig.setState({ target: [0, g + MM(3000), 0], yaw: 0, pitch: 0.15, dist: 1.6 }); tc.simulate(0.05);
+    tc.setTool('column'); tc.settings.colStage = 'lift'; const cp = new V(0, g + MM(2500), MM(250));
+    tc.columnTool.down(cp, e(cp)); tc.columnTool.up(); tc.simulate(0.1);
+    const lf = tc.objects.all('lift')[0]; o.lift = lf && { up: Math.round((lf.y1 - lf.y0) / MM(1)), side: lf.u, lattice: lf.lattice };
+    o.liftMesh = !!tc.wallView._liftG?.get(lf?.id);
+    if (lf) { tc.columnTool.down(cp, e(cp)); tc.columnTool.up(); o.busy = tc.wallView.liftBusy; tc.simulate(LF.rideTime(lf) + 0.5); o.at = tc.objects.get(lf.id).at; o.cabY = Math.round(tc.wallView._liftG.get(lf.id).userData.cab.position.y); }
+    // the fascia: four outer edges, none round the lift's opening
+    const s3 = tc.objects.get(sl.id);
+    for (const run of RL.slabRuns(s3)) { const m = new V((run.a[0] + run.b[0]) / 2, run.y, (run.a[1] + run.b[1]) / 2); const F = RL.findRail(tc, m, 'ral7016'); if (F && !F.why) tc.objects.add(F.rec); }
+    o.fascias = tc.objects.all('rail').filter((q) => q.fascia).length;
+    o.again = RL.findRail(tc, new V(...[s3.o[0] + s3.ni * s3.c / 2, 0, s3.o[1]].map((v, i) => (i === 1 ? s3.top + s3.H : v))), 'ral7016')?.why;
+    // the green roof (the membrane done): painted over the whole slab
+    tc.objects.add({ type: 'roof', slab: sl.id, stage: 4, look: 'grey' }); tc.simulate(0.05);
+    tc.setTool('wall'); Object.assign(tc.settings, { wallKind: 'roof', roofLayer: 'green' });
+    tc.rig.setState({ target: [0, s3.top + s3.H, 0], yaw: 0, pitch: 1.45, dist: 2.2 }); tc.simulate(0.05);
+    const rw = wt.roof, c0 = new V(s3.o[0] + MM(300), s3.top + s3.H, s3.o[1] + MM(300));
+    rw.down(c0, e(c0));
+    for (let i = 0; i <= 40; i++) for (const zz of [0.1, 0.3, 0.5, 0.7, 0.9]) { const q = new V(s3.o[0] + s3.ni * s3.c * i / 40, s3.top + s3.H, s3.o[1] + s3.nj * s3.c * zz); rw.move(q, e(q)); }
+    rw.up(); tc.simulate(0.05);
+    const rf = tc.objects.all('roof')[0];
+    o.green = (rf.green || []).length; o.grav = (rf.grav || []).length;
+    // (no green cell within 500 mm of the slab's edge)
+    o.greenEdge = Math.min(...(rf.green || [0]).map((k) => { const i = k % s3.ni, j = (k - i) / s3.ni; return Math.min(i, j, s3.ni - 1 - i, s3.nj - 1 - j); }));
+    return o;
+  });
+  check('villa: a lift goes by the column only through an opening; 6.5 m up, the lattice round the column, the cabin rides up', o.noHole && o.lift?.up > 6500 && o.lift.lattice && o.liftMesh && o.busy && o.at === 1 && o.cabY > 6500, JSON.stringify(o));
+  check('villa: the fascia on the four outer edges (not round the opening), not twice', o.fascias === 4 && /уже/.test(o.again || ''), JSON.stringify(o));
+  check('villa: a green roof — sedum in the field, gravel 500 mm at the edge', o.green > 500 && o.grav > 100 && o.greenEdge >= 5, JSON.stringify(o));
+  check('villa: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 

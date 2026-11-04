@@ -7,6 +7,7 @@ import { withBitumen } from './bitumen.js';
 import { PALLETS } from '../core/budget.js';
 import { buildWindow, buildCorner } from './windows.js';
 import { buildRail } from './railing.js';
+import { buildLift, buildLattice, ride, rideTime, rideEase } from './lift.js';
 import { buildDoor, isDoor } from './doors.js';
 import { kitsLoaded } from './openingKits.js';
 import { buildRoof } from './roof.js';
@@ -475,7 +476,7 @@ export class WallView {
         if (rec?.type === 'proof' ? this._plateKey.get(id) !== key : !rec) { this._plateKey.set(id, key); this.dirty = true; this._faces = null; this.facadeDirty = true; }
         return;
       }
-      if (rec?.type === 'rail' || this._railIds?.has(id)) { this.railDirty = true; return; }
+      if (rec?.type === 'rail' || rec?.type === 'lift' || this._railIds?.has(id)) { if (!(rec?.type === 'lift' && this._liftG?.has(id) && this._ride?.id === id)) this.railDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (rec?.type === 'stock' || this._stockIds?.has(id)) { this.dirty = true; return; }
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; if (rec?.type === 'unit' || !rec) this._byUnits = true; }
@@ -486,6 +487,13 @@ export class WallView {
     if (this.frozen) return;   // (a catastrophe is on: the house is shown by it)
     if (this._kitsAt !== kitsLoaded()) { this._kitsAt = kitsLoaded(); if (this._win) this._buildWindows(); }
     if (this.railDirty || this.liveRail !== this._liveRailAt) this._buildRails();
+    // (a lift riding: its cabin eased from one stop to the other on the game's clock)
+    const R = this._ride;
+    if (R) {
+      const g = this._liftG?.get(R.id), u = Math.min(1, ((this.clock ?? 0) - R.t0) / R.T);
+      if (g) ride(g, R.from + (R.to - R.from) * rideEase(u));
+      if (u >= 1 || !g) { this._ride = null; if (this.objects.get(R.id)) this.objects.update(R.id, { at: R.to }); }
+    }
     if (this.blindStream !== this._streamAt) { this._streamAt = this.blindStream; setStream(this.stream, this.blindStream?.r, this.blindStream); }
     // (blocks being laid one after another: the blocks themselves at once; what follows from them — the
     // facade over the walls, the roofs on them, the fill, the blind area — when the hand rests: each
@@ -957,13 +965,29 @@ export class WallView {
     for (const [id, e] of [...this._win]) if (!seen.has(id)) { this.windows.remove(e.group); e.group.traverse((o) => o.geometry?.dispose()); this._win.delete(id); }
   }
 
+  // a lift's cabin sent to the other stop (its ride takes rideTime)
+  rideLift(id) {
+    const r = this.objects.get(id); if (!r || this._ride) return 0;
+    const from = r.at || 0, T = rideTime(r);
+    this._ride = { id, from, to: from ? 0 : 1, t0: this.clock ?? 0, T };
+    return T;
+  }
+  get liftBusy() { return !!this._ride; }
   // the glass railings (and the one in the hand: green — it goes there, red — it does not)
   _buildRails() {
     this.railDirty = false; this._liveRailAt = this.liveRail;
     for (const g of [...this.rails.children]) { this.rails.remove(g); g.traverse((o) => o.geometry?.dispose()); }
-    const recs = this.objects.all('rail');
-    this._railIds = new Set(recs.map((r) => r.id));
+    const recs = this.objects.all('rail'), lifts = this.objects.all('lift');
+    this._railIds = new Set([...recs, ...lifts].map((r) => r.id));
     for (const r of recs) { const g = buildRail(r); g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; }); this.rails.add(g); }
+    // the lifts by their columns, the lattice round the column
+    this._liftG = new Map();
+    for (const r of lifts) {
+      const g = buildLift(r); g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; }); this.rails.add(g); this._liftG.set(r.id, g);
+      if (this._ride?.id === r.id) ride(g, this._ride.from);
+      const col = r.lattice && this.objects.get(r.col);
+      if (col) { const m = buildLattice(col); m.userData.uOwner = r.id; this.rails.add(m); }
+    }
     const lv = this.liveRail;
     if (lv) { const g = buildRail(lv.rec, lv.ok ? null : false); g.traverse((o) => { if (o.isMesh) o.userData.noPick = true; }); this.rails.add(g); }
   }

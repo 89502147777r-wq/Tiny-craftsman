@@ -12,15 +12,19 @@ import { mats as winMats } from './windows.js';
 //   mem  – the PVC membrane: rolls 2,05 m, 80 mm overlaps welded; once the field is closed
 //          it is turned up the parapet 300 mm and the drain goes in,
 //   cop  – the coping on the parapet: 2 m pieces, cut at the ends,
-//   grav – the ballast: gravel spread by hand.
+//   grav – the ballast: gravel spread by hand,
+//   green– or a green roof (extensive, as the FLL guideline has it) spread by hand: a root barrier over the
+//          membrane, the drainage board (HDPE cups 25), the filter fleece, the substrate 80 (crushed brick and
+//          pumice), sedum mats 30; 500 mm along the parapet and round the drain no plants — a gravel strip
+//          (the fire break, the drain kept clear), an aluminium edge profile between the two.
 // Each layer goes only where the one under it is. The roof's plan: the slab's cells not
 // under the parapet (the masonry laid on the slab).
 //   roof { slab, mem (colour), cop (colour), vap: [[s0,t0,s1,t1]…], xps: […], wedge: […],
 //          memS: […], copS: [[x0,z0,x1,z1,y,w]…], grav: [cell…], drain: [s,t] }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const ROOF = { vap: 1, xps: 150, minWedge: 20, slope: 0.02, mem: 2, upstand: 300, gravel: 50, vapW: 1500, vapLap: 100, memW: 2050, memLap: 80, xpsL: 1200, xpsW: 600, wedgeL: 1000, copL: 2000 };
+export const ROOF = { green: 135, greenFree: 500, vap: 1, xps: 150, minWedge: 20, slope: 0.02, mem: 2, upstand: 300, gravel: 50, vapW: 1500, vapLap: 100, memW: 2050, memLap: 80, xpsL: 1200, xpsW: 600, wedgeL: 1000, copL: 2000 };
 export const ROOF_LAYERS = [
-  ['vap', 'Пароизоляция'], ['xps', 'Утеплитель XPS'], ['wedge', 'Клин 2 %'], ['mem', 'Мембрана'], ['cop', 'Отлив'], ['grav', 'Гравий'],
+  ['vap', 'Пароизоляция'], ['xps', 'Утеплитель XPS'], ['wedge', 'Клин 2 %'], ['mem', 'Мембрана'], ['cop', 'Отлив'], ['grav', 'Гравий'], ['green', 'Зелёная кровля'],
 ];
 export const MEM_COLOURS = { grey: ['Светло-серая', '#a1a4a6'], graphite: ['Графит', '#3d4044'], white: ['Белая', '#e8e9e5'] };
 export const COP_COLOURS = {
@@ -108,6 +112,29 @@ function metalNormal() {
   h.fillStyle = '#808080'; h.fillRect(0, 0, n, n);
   for (let y = 0; y < n; y++) { h.fillStyle = `rgb(${120 + rnd() * 20 | 0},0,0)`; h.fillRect(0, y, n, 1); }
   return (TEX.metal = normalOf(hc, 0.6));
+}
+// sedum mats: tight rosettes of a few kinds (green, olive, the red of the autumn, a yellow in bloom), a
+// little bare substrate between — drawn with their height for the normal map
+export function sedumTex() {
+  if (TEX.sedum) return TEX.sedum;
+  const n = 512, cv = canvas(n), g = cv.getContext('2d'), hc = canvas(n), h = hc.getContext('2d');
+  g.fillStyle = '#5a4a3c'; g.fillRect(0, 0, n, n); h.fillStyle = '#202020'; h.fillRect(0, 0, n, n);
+  const kinds = [[96, 58, 34, 0.42], [82, 48, 30, 0.22], [12, 55, 36, 0.14], [70, 40, 46, 0.12], [52, 70, 52, 0.06]];   // (hue, sat, light, share)
+  for (let k = 0; k < 4200; k++) {
+    let u = rnd(), q = kinds[0]; for (const c of kinds) { if ((u -= c[3]) <= 0) { q = c; break; } }
+    const x = rnd() * n, y = rnd() * n, r = 3 + rnd() * 6;
+    for (const dx of [-n, 0, n]) for (const dy of [-n, 0, n]) {
+      const X = x + dx, Y = y + dy; if (X < -12 || Y < -12 || X > n + 12 || Y > n + 12) continue;
+      // (a rosette: its leaves round a centre, lighter where they face up)
+      for (let l = 0; l < 7; l++) {
+        const a = l / 7 * Math.PI * 2 + rnd(), lx = X + Math.cos(a) * r * 0.55, ly = Y + Math.sin(a) * r * 0.55;
+        g.fillStyle = `hsl(${q[0] + rnd() * 10 - 5},${q[1]}%,${q[2] + rnd() * 10 - 4}%)`; g.beginPath(); g.ellipse(lx, ly, r * 0.5, r * 0.3, a, 0, Math.PI * 2); g.fill();
+        h.fillStyle = `rgb(${150 + rnd() * 80 | 0},0,0)`; h.beginPath(); h.ellipse(lx, ly, r * 0.5, r * 0.3, a, 0, Math.PI * 2); h.fill();
+      }
+      g.fillStyle = `hsl(${q[0]},${q[1] + 8}%,${q[2] + 12}%)`; g.beginPath(); g.arc(X, Y, r * 0.25, 0, Math.PI * 2); g.fill();
+    }
+  }
+  return (TEX.sedum = { map: asTex(cv), normalMap: normalOf(hc, 3) });
 }
 let GRAVEL = null;
 export function gravelTex() {
@@ -321,6 +348,28 @@ export function buildRoof(b, units, rec, live) {
     for (let j = 0; j < b.nj; j++) for (let i = 0; i < b.ni; i++) { const k = j * b.ni + i; if (area.on(i, j) && (r.grav === 'all' || grav.has(k) || gl?.includes(k))) cells.push([i * c, j * c, (i + 1) * c, (j + 1) * c]); }
     const t = gravelTex();
     add(sheet(cells, (s, t2) => top(s, t2) + ROOF.mem + ROOF.gravel, (s, t2) => [mmS(s) / 1.2, mmS(t2) / 1.2], 0), new THREE.MeshStandardMaterial({ ...t, roughness: 0.95 }));
+  }
+  // the green roof: the sedum on its substrate, the aluminium edge profile where it meets the gravel
+  const green = new Set(r.green || []), glv = live && live.layer === 'green' ? live.cells : null;
+  if (green.size || glv?.length) {
+    const on = (k) => green.has(k) || !!glv?.includes(k), cells = [];
+    for (let j = 0; j < b.nj; j++) for (let i = 0; i < b.ni; i++) if (area.on(i, j) && on(j * b.ni + i)) cells.push([i * c, j * c, (i + 1) * c, (j + 1) * c]);
+    const t = sedumTex(), hG = (s, t2) => top(s, t2) + ROOF.mem + ROOF.green;
+    add(sheet(cells, hG, (s, t2) => [mmS(s) / 1.6, mmS(t2) / 1.6], 0), new THREE.MeshStandardMaterial({ ...t, roughness: 0.9, normalScale: new THREE.Vector2(1.2, 1.2) }));
+    // (round the green: the profile's face from the gravel up past the substrate, 2 mm)
+    const edge = [], has = (i, j) => i >= 0 && j >= 0 && i < b.ni && j < b.nj && area.on(i, j) && on(j * b.ni + i);
+    for (let j = 0; j < b.nj; j++) for (let i = 0; i < b.ni; i++) {
+      if (!has(i, j)) continue;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (has(i + di, j + dj)) continue;
+        const s0 = (di > 0 ? i + 1 : di < 0 ? i : i) * c, s1 = (di > 0 ? i + 1 : di < 0 ? i : i + 1) * c, t0 = (dj > 0 ? j + 1 : dj < 0 ? j : j) * c, t1 = (dj > 0 ? j + 1 : dj < 0 ? j : j + 1) * c;
+        const a = W(s0, t0, top(s0, t0) + ROOF.mem), e = W(s1, t1, top(s1, t1) + ROOF.mem), hh = MM(ROOF.green + 10);
+        const L2 = Math.hypot(e[0] - a[0], e[2] - a[2]), bx = new THREE.BoxGeometry(L2 + MM(2), hh, MM(3));
+        bx.rotateY(-Math.atan2(e[2] - a[2], e[0] - a[0])); bx.translate((a[0] + e[0]) / 2, (a[1] + e[1]) / 2 + hh / 2, (a[2] + e[2]) / 2);
+        edge.push(bx);
+      }
+    }
+    if (edge.length) add(mergeGeometries(edge, false), new THREE.MeshStandardMaterial({ color: 0xb4b8bc, metalness: 0.85, roughness: 0.35 }));
   }
   // the coping
   const cop = r.copS === 'all' ? parapetLines(b, units).map((l) => [...l.p0, ...l.p1, l.y, l.w]) : [...(r.copS || []), ...(live && live.layer === 'cop' && live.seg ? [live.seg] : [])];
