@@ -1,3 +1,4 @@
+import { Pace } from './core/pace.js';
 import { upgrade } from './core/upgrade.js';
 import { Mirrors } from './render/mirrors.js';
 import * as THREE from 'three';
@@ -202,10 +203,10 @@ async function main() {
   let last = performance.now();
   let fpsAcc = 0, fpsN = 0;
   app.fps = 0;
-  // Drawn only as often as the picture changes (the phone stays cool): every frame while a
-  // finger is on the screen or was a moment ago, 30 a second while a tool, a machine, the
-  // soil or the camera is still moving by itself, else 2 a second (the clock, curing)
-  let lastDraw = 0;
+  // Drawn only as often as the picture changes (the phone stays cool), but evenly: while a finger is
+  // on the screen or was a moment ago, or a tool, a machine, the soil or the camera still moves by
+  // itself — every display frame up to 60 a second (core/pace.js); else 2 a second (the clock, curing)
+  const pace = new Pace();
   app.lastInput = performance.now();
   app.poke = () => { app.lastInput = performance.now(); };
   for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown']) window.addEventListener(ev, app.poke, { passive: true, capture: true });
@@ -220,16 +221,16 @@ async function main() {
     last = now;
     if (app.film) { if (!app.filmOffline) app.filmStep(dt, now / 1000); requestAnimationFrame(frame); return; }
     const recent = now - app.lastInput < 1500, mv = moving();
-    const due = recent || (now - lastDraw > (mv ? 30 : 480));
+    const due = pace.due(now, recent || mv);
     // (the hand-held sway runs only while drawn smoothly; the shadows are drawn again only when
     // something but the rain moves — else twice a second, for the sun)
     app.rig.live = recent || mv;
-    // (the hand off: the picture sharp again at once — coarser only while it works and the frames lag)
-    if (app.dprAuto && now - app.lastInput > 700) { app.dprAuto = 0; slowS = 0; resize(); }
+    // (the hand off and all still: the picture sharp again — coarser only while it works and the frames
+    // lag; not while the camera still glides: a new canvas buffer then is a hitch in the move)
+    if (app.dprAuto && now - app.lastInput > 700 && !mv) { app.dprAuto = 0; slowS = 0; resize(); }
     app.shadowLive = recent || (mv && moving(false));
     if (due) {
-      const fd = (now - lastDraw) / 1000;
-      lastDraw = now;
+      const fd = Math.min(1, pace.fd / 1000);
       fpsAcc += fd; fpsN++;
       if (fpsAcc > 1) {
         app.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0;

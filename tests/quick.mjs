@@ -70,6 +70,18 @@ function validate(src, name) {
   try { execFileSync(glslang, [f], { stdio: 'pipe' }); return 'ok'; } catch (e) { return String(e.stdout || e.message).slice(-400); }
 }
 
+// ---- 0. The frames' cadence (core/pace.js): while something moves, drawn evenly — at 60 Hz every frame, at
+// 120 Hz every other one — even when the display's frames come with a little jitter; still: twice a second ----
+{
+  const { Pace } = await import('../src/core/pace.js');
+  const run = (hz, live, secs = 6) => { const P = new Pace(), f = 1000 / hz, gaps = []; let x = 0x1234567, last = null;
+    const rnd = () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return x / 0x7fffffff; };
+    for (let k = 0; k < secs * hz; k++) { const now = 1000 + k * f + (rnd() - 0.5) * 3; if (P.due(now, live)) { if (last != null && k > hz) gaps.push(Math.round((now - last) / f)); last = now; } }
+    return [...new Set(gaps)].sort().join(','); };
+  const r = { hz60: run(60, true), hz120: run(120, true), hz90: run(90, true), still: run(60, false) };
+  check('frames: drawn evenly while things move (60 Hz: every frame, 120 Hz: every other), twice a second when still', r.hz60 === '1' && r.hz120 === '2' && r.hz90 === '1' && r.still.split(',').every((g) => g >= 28 && g <= 31), JSON.stringify(r));
+}
+
 // ---- 1. Chromium: start, shaders --------------------------------------------------------------
 for (const variant of ['full', 'light']) {
   const { browser, page, errors } = await open(pw.chromium, variant === 'light' ? '&soil=light' : '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -981,11 +993,27 @@ console.log('—', sec());
     o.back = tc.wallView.blocks.visible && !tc.scene.getObjectByName('disaster') && !tc.wallView.frozen;
     o.kinds = {};
     for (const k of ['hurricane', 'tornado', 'tsunami', 'flood', 'fire', 'meteor']) o.kinds[k] = (await run(k, 10, 14)).share;
+    // a mistake: a wall 4,2 m with an opening 1,5 m, a lintel 2,0 m over it (cast without bars), 4 courses on it
+    { const mm = (v) => v * M, z0 = mm(5500), add = (x, y, w, lintel = false) => tc.objects.add({ type: 'unit', kind: 'block', free: true, ...(lintel ? { lintel: true } : {}), p: [mm(x), y, z0], s: [mm(w), mm(lintel ? 250 : 240), mm(300)], q: [0, 0, 0, 1] });
+      tc.journal.act('wall-m', {}, tc.clock, () => {
+        for (let r = 0; r < 12; r++) { const y = g + (125 + 250 * r) * M; if (r === 7) { add(0, y, 2000, true); for (const x of [-1800, 1800]) add(x, y, 590); continue; }
+          for (let x = -1800 + (r % 2) * 300; x <= 1800; x += 600) { if (r < 7 && Math.abs(x) < 900) continue; if (Math.abs(x) <= 2100) add(Math.max(-1800, Math.min(1800, x)), y, 590); } } });
+      for (let i = 0; i < 4; i++) tc.simulate(0.1);
+      Object.assign(tc.settings, { catKind: 'lintel', misYears: 10, mXray: true }); tc.ui.refresh();
+      o.misChip = tc.ui.navNodes().list.map((c) => c.label).join('|').includes('Перемычка без арматуры') && !!document.getElementById('p-cat-r');
+      const st = await D.run(), X = D.mis, red = () => { const c = X.units.filter((u) => u.inA && u.col); return c.length ? Math.max(...c.map((u) => u.col[2] - u.im.instanceColor.getZ(u.i))) : 0; };   // (red-yellow: the blue gone)
+      for (let i = 0; i < 30 * 3 * X.secPerYear; i++) tc.simulate(1 / 30);
+      o.mis = { ok: st.ok, arch: st.arch, xray: +red().toFixed(2), early: +X.stats().sag.toFixed(3) };
+      for (let i = 0; i < 30 * 9 * X.secPerYear; i++) tc.simulate(1 / 30);
+      const f = X.stats(); Object.assign(o.mis, { sag: +f.sag.toFixed(3), cracks: f.cracks, fell: f.fell, done: f.done, bill: !!document.querySelector('.mistake-hud .m-bill')?.textContent });
+      D.reset(); const lm = new tc.camera.matrix.constructor(); tc.wallView.lintels.getMatrixAt(0, lm);
+      o.mis.back = !tc.wallView.frozen && !document.querySelector('.mistake-hud') && Math.abs(lm.determinant()) > 1e-15; }
     return o;
   });
-  check('catastrophes: 7 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 9 && o.slider && o.back && o.tint, JSON.stringify(o));
+  check('catastrophes: 7 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 10 && o.slider && o.back && o.tint, JSON.stringify(o));
   check('catastrophes: a M 4 quake leaves the house standing, a M 9 one brings it down', o.weak.pieces > 250 && o.weak.share < 0.05 && o.strong.share > 0.4, JSON.stringify([o.weak, o.strong]));
   check('catastrophes: the tornado, the tsunami and the meteor at full power break the house', o.kinds.tornado > 0.1 && o.kinds.tsunami > 0.1 && o.kinds.meteor > 0.1, JSON.stringify(o.kinds));
+  check('mistakes: a lintel without bars — the x-ray reddens, it breaks and sags (≈45 mm), stepped cracks, blocks fall, the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early < 0.012 && o.mis.sag > 0.04 && o.mis.cracks >= 4 && o.mis.fell >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
   check('catastrophes: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

@@ -1905,5 +1905,8 @@ export default {
 "▶ Запустить": "▶ Start",
 "■ Идёт…": "■ Going on…",
 "↺ Вернуть как было": "↺ Back as it was",
+"🧱 Перемычка без арматуры": "🧱 A lintel without rebar",
+"Перемычка без арматуры": "A lintel without rebar",
+"Рентген": "X-ray",
 "Мощность": "Power",
 };
