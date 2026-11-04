@@ -118,7 +118,7 @@ console.log('—', sec());
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.evaluate(() => { localStorage.clear(); indexedDB.deleteDatabase('tiny-craftsman'); });
-  await page.reload();
+  await page.reload({ timeout: 120000 });
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const play = await page.evaluate(async () => {
     const SC = (await import('/src/config.js')).MODEL_SCALE;   // real = model × SC
@@ -352,7 +352,7 @@ console.log('—', sec());
   check('walls: a block carried from the pallet (let go in the open → back), laid at its place with mortar, undo', play.walls.refused && play.walls.laid && play.walls.bed && play.walls.errMm < 2 && play.walls.back && play.walls.rows === 3, JSON.stringify(play.walls));
   check('shovel takes spilled fresh concrete and tips it into the form, volume exact, undo', play.shovelConc.loaded && play.shovelConc.took && play.shovelConc.vol < 1e-6 && play.shovelConc.undo, JSON.stringify(play.shovelConc));
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 8 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));
-  await page.reload();
+  await page.reload({ timeout: 120000 });   // (a loaded container: the load event can take more than 30 s)
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const after = await page.evaluate(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(tc.terrain.excavatedVolume() * 1e6).toFixed(3), sand: +(tc.terrain.materialVolumes()[1] * 1e6).toFixed(2), conc: +(tc.terrain.concVolume() * 1e6).toFixed(2) }; });
   check('stripping: warns while soft, then boards come off into a stack, concrete stays, undo', play.strip.warned && play.strip.running && play.strip.still && play.strip.stripped && play.strip.back && play.strip.conc && play.strip.n0 > 0, JSON.stringify(play.strip));
@@ -1119,11 +1119,74 @@ console.log('—', sec());
       o.mis.back = !tc.wallView.frozen && !document.querySelector('.mistake-hud') && Math.abs(lm.determinant()) > 1e-15; }
     return o;
   });
-  check('catastrophes: 7 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 10 && o.slider && o.back && o.tint, JSON.stringify(o));
+  check('catastrophes: 8 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 11 && o.slider && o.back && o.tint, JSON.stringify(o));
   check('catastrophes: a M 4 quake leaves the house standing, a M 9 one brings it down', o.weak.pieces > 250 && o.weak.share < 0.05 && o.strong.share > 0.4, JSON.stringify([o.weak, o.strong]));
   check('catastrophes: the tornado, the tsunami and the meteor at full power break the house', o.kinds.tornado > 0.1 && o.kinds.tsunami > 0.1 && o.kinds.meteor > 0.1, JSON.stringify(o.kinds));
   check('mistakes: a lintel without bars — the x-ray reddens, it breaks in weeks and creeps (to ≈24 mm over a window), three hinges, the arch of collapse cracks meet at the crown, nearly straight and ragged in the small, the sash jams then the glass cracks, the blocks stay in (chips fall), the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early > 0.012 && o.mis.sag > 0.018 && o.mis.sag <= 0.027 && o.mis.cracks >= 3 && o.mis.rough >= 1.02 && o.mis.roughMax <= 1.2 && o.mis.joint < 0.2 && o.mis.meet < 60 && o.mis.jam && o.mis.glass && o.mis.fell === 0 && o.mis.chips >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
   check('catastrophes: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2k'. «Обрушение опоры»: a house on its glass lift shaft — the posts bow, the panes crack and whiten, the
+// house sinks and leans, then falls as one body (≈ g), strikes and breaks into pieces; the slabs fall too (not
+// lost); a fascia does not hold it up; all back as it was ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, o = {}, MM = (v) => v / 1000 / 10.4651, M = 1 / 1000 / 10.4651;
+    const SL = await import('/src/tools/slab.js'), LF = await import('/src/world/lift.js'), RL = await import('/src/world/railing.js'), CL = await import('/src/world/collapse.js'), THREE = await import('three');
+    const T = tc.terrain; for (let i = 0; i < T.conc.length; i++) { const x = T.toWorldX(i % T.nx), z = T.toWorldZ(Math.floor(i / T.nx)); if (Math.abs(x) < MM(1500) && Math.abs(z) < MM(1500)) T.conc[i] = MM(250); }
+    const g = T.heightAt(0, 0);
+    const lf = tc.objects.add(LF.planLift(tc, new V(0, g, 0), MM(6500), new V(1, 0, 3)).rec);
+    const sl = tc.objects.add(SL.findPileSlab(tc, new V(0, lf.top, 0), (v) => wt._screen(v), null, undefined, 3500).rec), s2 = tc.objects.get(sl.id);
+    tc.objects.update(sl.id, { lv: s2.lv.map(() => Math.round(s2.H / MM(1))), fill: 1, castT: tc.clock - 1e6, pourT: tc.clock - 1e6, wetT: tc.clock - 1e6, stripped: true });
+    tc.simulate(0.1);
+    const s3 = tc.objects.get(sl.id), ytop = s3.top + s3.H;
+    for (const run of RL.slabRuns(s3)) { const F = RL.findRail(tc, new V((run.a[0] + run.b[0]) / 2, run.y, (run.a[1] + run.b[1]) / 2), 'ral7016'); if (F && !F.why) tc.objects.add(F.rec); }
+    const add = (x, y, z, ax) => tc.objects.add({ type: 'unit', kind: 'block', free: true, p: [x, y, z], s: ax ? [600 * M, 250 * M, 300 * M] : [300 * M, 250 * M, 600 * M], q: [0, 0, 0, 1] });
+    for (let k = 0; k < 6; k++) { const y = ytop + (125 + 250 * k) * M, sh = (k % 2) * 300 * M;
+      for (let a = -3500 * M + 300 * M + sh; a < 3500 * M - 299 * M; a += 600 * M) { add(a, y, -3000 * M, true); add(a, y, 3000 * M, true); }
+      for (let b = -3000 * M + 450 * M + sh; b < 3000 * M - 449 * M; b += 600 * M) { add(-3350 * M, y, b, false); add(3350 * M, y, b, false); } }
+    for (let i = 0; i < 6; i++) tc.simulate(0.1);
+    tc.setTool('disaster'); Object.assign(tc.settings, { catKind: 'shaft', catPower: 5 });
+    o.chip = tc.ui.chips().some((c) => /Обрушение опоры/.test(c.label));
+    const sc0 = tc.wallView._liftG.get(lf.id).children.map((ch) => [ch.scale.y, ch.position.y]);
+    const tr0 = performance.now(); await tc.disasterTool.run(); o.runMs = Math.round(performance.now() - tr0);
+    const D = tc.disasterTool.sim, C = D.collapse, ST = CL.SHAFT_T;
+    // (the cast concrete is not hidden as a whole — only the slabs shown in pieces leave it; hiding it all left a slab's bars alone)
+    { const wv = tc.wallView, ix = wv.fill.geometry.index.array, own = wv.owner.fill, cut = new Set(C.panels.filter((p) => p.sort === 'slab').map((p) => p.o.userData.slab));
+      o.fill = { shown: wv.fill.visible, tris: ix.length / 3, want: own.filter((id) => !cut.has(id)).length, total: own.length, cut: cut.size }; }
+    o.carried = C && [C.chunks.length, C.panels.filter((p) => p.sort === 'slab').length, C.panels.filter((p) => p.sort === 'skin').length];
+    const run = (t1) => { while (D.t < t1) tc.simulate(1 / 30); };
+    const y0 = C.body.translation().y;
+    run(ST.white - 0.1); o.cracked = C.panes.filter((p) => p.crack.alphaTest < 0.9).length; o.panes = C.panes.length; o.bowSink = +((y0 - C.body.translation().y) * 1000).toFixed(1); o.lean = +(C.tilt * 180 / Math.PI).toFixed(2);
+    run(ST.fail - 0.05); o.white = C.panes.filter((p) => p.whited).length;
+    // (from the failure: the house's fall — its drop by ~0.6 s after it is free, against a free fall's ½gt²)
+    run(ST.fail + 0.1); const yA = C.body?.translation().y, tA = D.t; run(ST.fail + 0.6); const yB = C.body ? C.body.translation().y : null, tB = D.t;
+    o.fall = yA != null && yB != null ? { drop: +(yA - yB).toFixed(2), free: +(0.5 * 9.81 * ((tB - ST.fail) ** 2 - (tA - ST.fail) ** 2)).toFixed(2) } : null;
+    run(ST.fail + 4); o.struck = C.struck; o.free = C.chunks.filter((c) => c.free).length; o.slabMaxY = +Math.max(...C.panels.filter((p) => p.sort === 'slab').map((p) => p.body.translation().y - g * 10.4651)).toFixed(2); o.slabsDown = o.slabMaxY < 3;
+    o.maxUp = Math.max(...C.chunks.map((c) => c.body.linvel().y));
+    // (not a Lego set: the slab's pieces all different, the wall's chunks of every size; a corner first; nothing on edge)
+    { const areas = C.panels.filter((p) => p.sort === 'slab').map((p) => { const b = new THREE.Box3().setFromObject(p.o); return Math.round((b.max.x - b.min.x) * (b.max.z - b.min.z) * 1e5); });
+      o.slabDistinct = new Set(areas).size / areas.length; const sz = C.chunks.map((c) => c.vol); o.chunkSizes = [+Math.min(...sz).toFixed(2), +Math.max(...sz).toFixed(1), sz.length];
+      o.strikeAngle = +C.strikeAngle.toFixed(1);
+      o.slabTilt = Math.max(...C.panels.filter((p) => p.sort === 'slab').map((p) => { const r = p.body.rotation(), q = new THREE.Quaternion(r.x, r.y, r.z, r.w), up = new THREE.Vector3(0, 1, 0).applyQuaternion(q); return Math.acos(Math.min(1, Math.abs(up.y))) * 180 / Math.PI; }));
+      o.tilts = C.panels.filter((p) => p.sort === 'slab').map((p) => { const r = p.body.rotation(), q = new THREE.Quaternion(r.x, r.y, r.z, r.w), up = new THREE.Vector3(0, 1, 0).applyQuaternion(q), b = new THREE.Box3().setFromObject(p.o); return [Math.round(Math.acos(Math.min(1, Math.abs(up.y))) * 57.3), +((b.max.x - b.min.x) * (b.max.z - b.min.z) * 100).toFixed(1)]; }).filter((t) => t[0] > 30);
+      o.overTop = C.chunks.some((c) => c.body.translation().y > C.top0 * 10.4651 + 0.3); }
+    // (the crushed shaft's own parts — the sheave, the ram, the ropes — come down with it, none left hanging in the air)
+    { const L = [...tc.wallView._liftG.get(lf.id).children].filter((ch) => ch.visible && ch.userData.y0 != null && ch.userData.y0 > 0.01);
+      o.liftParts = L.length; o.hanging = L.filter((ch) => ch.scale.y < 0.99 * (ch.userData.sy0 ?? 1) && ch.position.y > ch.userData.y0 * 0.99).length; }
+    tc.disasterTool.stop?.(); D.stop(); tc.simulate(0.1);
+    o.back = !tc.scene.getObjectByName('disaster') && !tc.wallView.frozen && tc.wallView._liftG.get(lf.id).children.every((ch, i) => ch.visible && ch.scale.y === sc0[i][0] && ch.position.y === sc0[i][1]);
+    return o;
+  });
+  check('support collapse: the chip; the house carried whole (its chunks, the slab in pieces, the fascias)', o.chip && o.carried?.[0] > 40 && o.carried[1] >= 18 && o.carried[2] === 4, JSON.stringify(o));
+  check('support collapse: the posts bow first — the house sinks a few mm and leans ≤ 3°; the panes crack bottom-up, then whiten', o.bowSink > 0.2 && o.bowSink < 60 && o.lean > 0 && o.lean <= 3 && o.cracked > 0 && o.white === o.panes, JSON.stringify(o));
+  check('support collapse: the house falls as a body would (its drop ≥ 60 % of a free fall\'s), strikes, breaks; the slabs come down; nothing bounces up', o.fall && o.fall.drop > 0.6 * o.fall.free && o.struck && o.free > 0 && o.slabsDown && o.maxUp < 1.5, JSON.stringify(o));
+  check('support collapse: not a Lego set — the slab in pieces all different, the walls split through their blocks — hundreds of pieces from a tenth of a block to many; a corner first (≥ 8°); no slab piece on edge (≤ 40° — lying on the heap), nothing over the walls', o.slabDistinct > 0.9 && o.chunkSizes[0] < 0.3 && o.chunkSizes[1] > 4 && o.chunkSizes[2] >= 150 && o.strikeAngle >= 8 && o.slabTilt <= 40 && !o.overTop, JSON.stringify(o));
+  check('support collapse: nothing left hanging in the air — the shaft\'s parts come down as it is crushed', o.liftParts > 0 && o.hanging === 0, JSON.stringify(o));
+  check('catastrophe: the cast concrete stays shown — only the slabs in pieces leave it', o.fill.shown && o.fill.tris === o.fill.want && o.fill.cut === 1 && o.fill.total > 0, JSON.stringify(o.fill));
+  check('support collapse: all back as it was; no console errors', o.back && errors.length === 0, errors.slice(0, 3).join(' | ') + JSON.stringify(o));
   await browser.close();
 }
 

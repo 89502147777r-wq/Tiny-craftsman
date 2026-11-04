@@ -1056,7 +1056,10 @@ export class MachineTool {
     E.update(dt);
     const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
     // (digging: the teeth leading — the way they go as it curls in — not full, not tipped)
-    const edge = E.cutDir(new THREE.Vector3()), cutting = moving && !E.open && g.load < cap && mv.dot(edge) > mv.length() * 0.2;   // (the teeth going where they point — as the bucket curls in; its back first only pushes)
+    // (full, it still cuts while it is in no deeper than 85 % of its depth: what does not fit runs out over its lip —
+    // a driver drags a full bucket on so; deeper, the ground holds it)
+    const hold = cap * E.holdShare(), bucketDeep = R(1.0) * 0.8, full = g.load >= hold * 0.98;
+    const edge = E.cutDir(new THREE.Vector3()), cutting = moving && !E.open && (!full || tDeep0 < bucketDeep * 0.85) && mv.dot(edge) > mv.length() * 0.2;   // (the teeth going where they point — as the bucket curls in; its back first only pushes)
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
@@ -1064,7 +1067,7 @@ export class MachineTool {
         const px = p.x + ux * q, pz = p.z + uz * q; if (!t.inside(px, pz)) continue;
         const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
         // (what lies over the teeth, as high as the bucket is deep: into it — what is higher stays)
-        const s = t.nat[i] + t.loose[i], d = Math.min(s - p.y, depth, cap - g.load);
+        const s = t.nat[i] + t.loose[i], d = Math.min(s - p.y, depth, cap * 1.3 - g.load);
         if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
       }
       // (and what the bucket's body goes through behind its teeth on the stroke: into it too — the bucket
@@ -1078,12 +1081,12 @@ export class MachineTool {
         const ks = [...low.keys()].sort((a, b) => a - b);
         for (let n = 0; n + 1 < ks.length; n++) for (let k = ks[n] + 1; k < ks[n + 1]; k++) low.set(k, low.get(ks[n]) + (low.get(ks[n + 1]) - low.get(ks[n])) * (k - ks[n]) / (ks[n + 1] - ks[n]));
         for (const [k, y] of low) {
-          if (g.load >= cap) break;
+          if (g.load >= cap * 1.3) break;
           const cx = p.x + lx * k * bin, cz = p.z + lz * k * bin;
           for (let q = -hw; q <= hw; q += t.cell * 0.7) {
             const px = cx + ux * q, pz = cz + uz * q; if (!t.inside(px, pz)) continue;
             const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
-            const d = Math.min(t.nat[i] + t.loose[i] - y, cap - g.load);
+            const d = Math.min(t.nat[i] + t.loose[i] - y, cap * 1.3 - g.load);
             if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
           }
         } }
@@ -1108,9 +1111,11 @@ export class MachineTool {
         else if (h0 > 0.02 && E.heave === 0) app.sfx.play('stone', { at: E.root.position, vol: 0.4 });
       }
     }
-    // (opened: it runs out — into the body of the truck under it, else onto the ground)
-    if (E.open && g.load > 1e-9) {
-      const m = E.mouthWorld(new THREE.Vector3()), T = this.truck, part = Math.min(1, dt * 1.8 + 0.02);
+    // (what it does not hold turned as it is runs out over its lower lip — a little tipped: the heap's top; opened:
+    // all of it — into the body of the truck under it, else onto the ground)
+    const holdNow = cap * E.holdShare();
+    if (g.load > holdNow + 1e-9) {
+      const m = E.lipWorld(new THREE.Vector3()), T = this.truck, part = Math.min(1, ((g.load - holdNow) / g.load) * Math.min(1, dt * 6) + (holdNow < cap * 0.02 ? dt * 1.5 : 0));
       let into = false;
       if (T?.loaded && T.root.visible) { const q = T.root.worldToLocal(m.clone()), b = T.bodyBox; into = q.x > b.min.x && q.x < b.max.x && q.z > b.min.z && q.z < b.max.z && m.y > T.y + b.min.y; }
       const take = [0, 0, 0, 0, 0]; for (let k = 0; k < 5; k++) { take[k] = g.carry[k] * (g.load * part < 1e-9 ? 1 : part); g.carry[k] -= take[k]; }
@@ -1121,11 +1126,16 @@ export class MachineTool {
         if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let k = 0; k < 4; k++) T.mix[k] += (take[k] + (k ? 0 : take[4])) / Math.max(1e-12, v) * inT; T.soil.material.setMix?.(T.mix);
         T.pourLine(m, new THREE.Vector3(Math.sin(E.yaw + E.swing), 0, Math.cos(E.yaw + E.swing)), E.bucketW / 2, inT / TRUCK_LOAD);
         const k = vol > 0 ? 1 - inT / vol : 0; if (k > 1e-6) { const sp = this._overSide(m); for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(sp.x, sp.z, take[j] * k * t.cellArea, R(0.4), 0, j); }
-      } else if (t.inside(m.x, m.z)) for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(m.x, m.z, take[j] * t.cellArea, R(0.35), 0, j);
-      for (let j = 0; j < 4; j++) app.particles?.emit(m.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.2), -R(0.6), (Math.random() - 0.5) * R(0.2)), 0, R(0.03 + Math.random() * 0.04), 0, 0, 0);
+      } else {
+        // (onto the ground in a strip under the lip, all its width: a ridge at the soil's own slope, not a mound at a point)
+        for (let q = 0; q < 5; q++) { const lp = E.lipWorld(new THREE.Vector3(), -1 + q * 0.5); if (t.inside(lp.x, lp.z)) for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(lp.x, lp.z, take[j] * t.cellArea / 5, R(0.22), 0, j); }
+      }
+      // (the curtain: crumbs 20–60 mm all along the lip, falling)
+      for (let j = 0; j < 14; j++) { const lp = E.lipWorld(new THREE.Vector3(), Math.random() * 2 - 1); app.particles?.emit(lp, new THREE.Vector3((Math.random() - 0.5) * R(0.15), -R(0.4 + Math.random() * 0.4), (Math.random() - 0.5) * R(0.15)), 0, R(0.02 + Math.random() * 0.04), 0, 0, 0); }
       if (g.load < cap * 0.01) g.carry.fill(0);
     }
     E.load = Math.min(1, g.load / cap);
+    // (the soil in it as it lies: level in it, heaped on top — its share of a heaped bucket)
     E.soilColor(this._mixOf(g.carry));
   }
   _mixOf(c) { const tot = c[0] + c[1] + c[2] + c[3] + c[4], out = (this._mc ||= new THREE.Color()); out.setRGB(0, 0, 0); if (tot <= 0) return out.copy(BUCKET_COL[0]); for (let k = 0; k < 5; k++) out.r += BUCKET_COL[k].r * c[k] / tot, out.g += BUCKET_COL[k].g * c[k] / tot, out.b += BUCKET_COL[k].b * c[k] / tot; return out; }

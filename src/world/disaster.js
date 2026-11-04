@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { loadPhysics } from './physics.js';
 import { Puffs } from './smoke.js';
+import { ShaftCollapse, slabPieces, hullDesc } from './collapse.js';
 
 // Catastrophes (a show, not a change to the project: nothing in the records moves — at «Вернуть как было»
 // the house is as it was). The house is taken as it is drawn: every block, brick and lintel of the walls,
@@ -22,6 +23,7 @@ export const CATS = {
   tsunami: { name: 'Цунами', en: 'Tsunami', icon: '🌊', unit: (p, en) => (en ? `a ${(0.5 + (p - 1) * 11.5 / 9).toFixed(1)} m wave` : `волна ${(0.5 + (p - 1) * 11.5 / 9).toFixed(1).replace('.', ',')} м`), dur: 18 },
   flood: { name: 'Наводнение', en: 'Flood', icon: '💧', unit: (p, en) => (en ? `water ${(0.2 + (p - 1) * 2.8 / 9).toFixed(1)} m` : `вода ${(0.2 + (p - 1) * 2.8 / 9).toFixed(1).replace('.', ',')} м`), dur: 20 },
   fire: { name: 'Пожар', en: 'Fire', icon: '🔥', unit: (p, en) => (en ? ['a spark', 'a small fire', 'a fire', 'a big fire', 'a firestorm'] : ['искра', 'возгорание', 'пожар', 'сильный пожар', 'огненный шторм'])[Math.min(4, Math.floor((p - 1) / 2))], dur: 22 },
+  shaft: { name: 'Обрушение опоры', en: 'Support collapse', icon: '🏚', unit: (p, en) => (en ? 'the house on its lift shaft' : 'дом на шахте лифта'), dur: 14 },
   meteor: { name: 'Метеорит', en: 'Meteorite', icon: '☄', unit: (p, en) => `Ø ${(0.2 + (p - 1) * 4.8 / 9).toFixed(1)} ${en ? 'm' : 'м'}`, dur: 12 },
 };
 
@@ -40,7 +42,7 @@ export class Disaster {
     this.kind = kind; this.power = power; this.t = 0; this.on = true; this.done = false; this.broken = 0; this.said = {};
     wv.update?.(); wv.frozen = true;
     this.root = new THREE.Group(); this.root.name = 'disaster'; app.scene.add(this.root);
-    this.puffs = this.puffs || new Puffs(app.scene, 260);
+    this.puffs = this.puffs || new Puffs(app.scene, 420);
     // the world: gravity, the ground (a height field on a kinematic body — it can shake)
     const W = (this.world = new R.World({ x: 0, y: -9.81, z: 0 })); W.timestep = 1 / 60;
     this.ground = W.createRigidBody(R.RigidBodyDesc.kinematicPositionBased());
@@ -62,7 +64,7 @@ export class Disaster {
         this.pieces.push({ cl: im, i, p: P.clone(), q: Q.clone(), s: Sv.clone(), dens, str, lintel: key === 'lintels' });
       }
     }
-    this.hidden = [wv.mortar, wv.fill].filter((m) => m?.visible); for (const m of this.hidden) m.visible = false;
+    this.hidden = [wv.mortar].filter((m) => m?.visible); for (const m of this.hidden) m.visible = false;
     // the chunks: a grid along the walls (0,9 m across, 0,75 m up — smaller the stronger it is)
     const big = this.pieces.length > 1200 ? Math.min(2.2, Math.sqrt(this.pieces.length / 1200)) : 1;   // (a big house: bigger chunks — no more than ~500 bodies on a phone)
     const ca = M((this.power > 6 ? 0.6 : 0.9) * big), cy = M((this.power > 6 ? 0.5 : 0.75) * Math.sqrt(big)), grid = new Map();
@@ -100,18 +102,33 @@ export class Disaster {
       this.root.attach(o); o.matrixAutoUpdate = false; o.updateMatrix();
       p.off = new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z).multiply(o.matrix);
       const bd = W.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(c.x * S, c.y * S, c.z * S).setLinearDamping(0.1).setAngularDamping(0.4));
-      const hx = Math.max(0.02, sz.x * S / 2), hy = Math.max(0.02, sz.y * S / 2), hz = Math.max(0.02, sz.z * S / 2), dens = sort === 'roof' ? 120 : sort === 'window' ? 350 : 60;
-      W.createCollider(R.ColliderDesc.cuboid(hx, Math.min(hy, sort === 'roof' ? hy : 0.4), hz).setDensity(dens * (sort === 'roof' ? Math.min(1, 0.4 / hy) : 1)).setFriction(0.7), bd);
+      const hx = Math.max(0.02, sz.x * S / 2), hy = Math.max(0.02, sz.y * S / 2), hz = Math.max(0.02, sz.z * S / 2), dens = sort === 'roof' ? 120 : sort === 'window' ? 350 : sort === 'slab' ? 2400 : 60;
+      const hd = o.userData?.hull && hullDesc(R, o.userData.hull, c);   // (a slab's piece: its own shape)
+      W.createCollider((hd || R.ColliderDesc.cuboid(hx, Math.min(hy, sort === 'roof' ? hy : 0.4), hz)).setDensity(dens * (sort === 'roof' ? Math.min(1, 0.4 / hy) : 1)).setFriction(0.7), bd);
       p.body = bd; p.area = (sort === 'roof' ? sz.x * sz.z : Math.max(sz.x, sz.z) * sz.y) * S * S;
       p.under = this.chunks.filter((ch) => ch.box.max.x > b.min.x - M(0.05) && ch.box.min.x < b.max.x + M(0.05) && ch.box.max.z > b.min.z - M(0.05) && ch.box.min.z < b.max.z + M(0.05) && (sort === 'roof' ? ch.box.max.y > b.min.y - M(0.4) && ch.box.max.y < b.min.y + M(0.6) : ch.box.max.y > b.min.y && ch.box.min.y < b.max.y));
-      p.cap = (sort === 'roof' ? 1300 : sort === 'window' ? 1800 : 2500) * (0.75 + 0.5 * rnd()) * (belt && sort === 'roof' ? 1.3 : 1);
+      p.cap = (sort === 'roof' ? 1300 : sort === 'window' ? 1800 : sort === 'slab' ? 1e9 : 2500) * (0.75 + 0.5 * rnd()) * (belt && sort === 'roof' ? 1.3 : 1);
       this.panels.push(p);
     };
     for (const g of [wv.roofs, wv.proofs]) if (g) for (const ch of [...g.children]) { const parts = ch.children.length > 1 && ch.children.length < 60 ? [...ch.children] : [ch]; for (const o of parts) panel(o, 'roof'); }
     for (const ch of [...(wv.windows?.children || [])]) panel(ch, 'window');
-    for (const g of [wv.facades, wv.blinds, wv.rails]) if (g) for (const ch of [...g.children]) panel(ch, 'skin');
+    // (the slabs: their cast concrete is one mesh of the view, hidden — as pieces of their own, heavy, falling
+    // when what carries them goes; the lifts stay out of it: a shaft that fails is shown by its own kind)
+    const cut = new Set();
+    for (const o of slabPieces(app.objects)) { panel(o, 'slab'); cut.add(o.userData.slab); }
+    // (the cast concrete stays as it is — the foundation, the blind area, a slab not yet cast through; only the slabs
+    // shown in pieces are taken out of it: hiding it all left their bars standing alone)
+    const fg = wv.fill?.geometry, own = wv.owner?.fill;
+    if (fg?.index && own && cut.size) {
+      const a = fg.index.array, keep = [];
+      for (let t = 0; t < a.length / 3; t++) if (!cut.has(own[t])) keep.push(a[3 * t], a[3 * t + 1], a[3 * t + 2]);
+      this.fillIdx = [fg, fg.index]; fg.setIndex(keep);
+    }
+    const liftGs = new Set(wv._liftG ? [...wv._liftG.values()] : []);
+    for (const g of [wv.facades, wv.blinds, wv.rails]) if (g) for (const ch of [...g.children]) if (!liftGs.has(ch)) panel(ch, 'skin');
     // the scene of it: water, the funnel, the meteor; the sky and the sound
     this._setupFx();
+    this.collapse = kind === 'shaft' ? new ShaftCollapse(this) : null;
     app.ui?.refresh();
     return this.stats();
   }
@@ -157,6 +174,7 @@ export class Disaster {
   get env() { const D = CATS[this.kind].dur, t = this.t; return Math.max(0, Math.min(1, t / 2, (D - t) / 3)); }
   _load(h) {
     const k = this.kind, p = this.power, env = this.env, R = this.R;
+    if (k === 'shaft') { this.collapse?.load(h); return; }
     const dropNow = (c) => { if (!c.free && c.dropAt != null && this.t >= c.dropAt) this._free(c); };
     for (const c of this.chunks) dropNow(c);
     // (a panel whose walls are gone comes down)
@@ -297,8 +315,9 @@ export class Disaster {
   // ---- drawing -----------------------------------------------------------------------------------------
   _draw() {
     const P = new THREE.Vector3(), Q = new THREE.Quaternion(), B = new THREE.Matrix4(), m = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1), dirty = new Set();
+    this.collapse?.drawCarried();
     for (const c of this.chunks) {
-      if (!c.free && this.kind !== 'quake') continue;
+      if ((!c.free && this.kind !== 'quake') || c.carry) continue;
       if (c.free && c.body.isSleeping() && c.drawn) continue;
       const t = c.body.translation(), r = c.body.rotation(); P.set(t.x / S, t.y / S, t.z / S); Q.set(r.x, r.y, r.z, r.w); B.compose(P, Q, one);
       for (const pc of c.pieces) { m.multiplyMatrices(B, pc.local); pc.cl.setMatrixAt(pc.i, m); dirty.add(pc.cl); }
@@ -306,7 +325,7 @@ export class Disaster {
     }
     for (const cl of dirty) cl.instanceMatrix.needsUpdate = true;
     for (const p of this.panels) {
-      if (p.sort === 'skin' || (!p.free && this.kind !== 'quake')) continue;
+      if ((p.sort === 'skin' && this.kind !== 'shaft') || (!p.free && this.kind !== 'quake') || p.carry || p.gone) continue;
       const t = p.body.translation(), r = p.body.rotation(); P.set(t.x / S, t.y / S, t.z / S); Q.set(r.x, r.y, r.z, r.w);
       p.o.matrix.multiplyMatrices(B.compose(P, Q, one), p.off); p.o.matrixWorldNeedsUpdate = true;
     }
@@ -368,6 +387,7 @@ export class Disaster {
     }
     if (k === 'fire') for (const p of this.panels) if (p.burn > 0 && p.burn < 1.6 && Math.random() < 0.5) this.puffs?.emit(Math.random() < 0.55 ? 'flame' : 'soot', p.c.clone().add(new THREE.Vector3((Math.random() - 0.5) * (p.box.max.x - p.box.min.x), (p.box.max.y - p.box.min.y) * 0.5, (Math.random() - 0.5) * (p.box.max.z - p.box.min.z))), new THREE.Vector3(0, 0, 0), 2.5);
     if (k === 'quake' && env > 0.3 && Math.random() < 0.1 * env) this.puffs?.emit('dust', this.centre.clone().add(new THREE.Vector3((Math.random() - 0.5) * M(10), 0, (Math.random() - 0.5) * M(10))), new THREE.Vector3(0, 0, 0), 1.5);
+    this.collapse?.fx(dt);
     this.puffs?.update(dt);
     if (this.t > CATS[k].dur + 6 && !this.done) { this.done = true; if (this.app.rig) this.app.rig.shakeAmp = 0; app.ui?.refresh(); }
   }
@@ -378,8 +398,11 @@ export class Disaster {
     const app = this.app, wv = app.wallView;
     this.clones = [];
     for (const m of this.hidden || []) m.visible = true;
+    if (this.fillIdx) { const [fg, ix] = this.fillIdx; if (this.app.wallView.fill.geometry === fg) fg.setIndex(ix); this.fillIdx = null; }
+    this.collapse?.stop(); this.collapse = null;
     for (const p of this.panels || []) {
       p.o.visible = true;
+      if (!p.parent) { p.o.geometry?.dispose(); continue; }   // (a slab's piece: made for the show)
       p.parent.add(p.o); p.o.matrix.copy(p.local); p.o.matrix.decompose(p.o.position, p.o.quaternion, p.o.scale); p.o.matrixAutoUpdate = p.auto; p.o.updateMatrixWorld(true);
     }
     for (const m of this._charred || []) if (m.userData._mat0) { m.material = m.userData._mat0; delete m.userData._mat0; }   // (the real materials back)
