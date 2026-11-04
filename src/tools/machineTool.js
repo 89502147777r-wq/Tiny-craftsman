@@ -1005,7 +1005,7 @@ export class MachineTool {
     if (this.view === 'free') { this._mirrors(null); return; }   // (the camera left where it is)
     if (this.view === 'cab' || this.view === 'roof') {
       // from the driver's seat: looking ahead and down at where the bucket works (held still, no lag)
-      const f = new THREE.Vector3(Math.cos(yawV), 0, -Math.sin(yawV)), roof = this.view === 'roof', seat = this.seatAt || (ex ? (roof ? [-0.6, 2.5, 0.3] : [-1.3, 1.6, 1.2]) : roof ? (this.drv === 'truck' ? [1.3, 2.75] : [0.85, 2.55]) : this.drv === 'truck' ? [1.45, 1.6] : [0.62, 1.75]);
+      const f = new THREE.Vector3(Math.cos(yawV), 0, -Math.sin(yawV)), roof = this.view === 'roof', seat = this.seatAt || (ex ? (roof ? [0.62, 1.75, 0.3] : [0.62, 1.2, 0.5]) : roof ? (this.drv === 'truck' ? [1.3, 2.75] : [0.85, 2.55]) : this.drv === 'truck' ? [1.45, 1.6] : [0.62, 1.75]);
       if (ex) M.root.updateMatrixWorld(true);
       // (the excavator's seat: in the cab on the house's left, in the model's metres — the house's own frame)
       const e = ex ? new THREE.Vector3(seat[0], seat[1], seat[2]).applyMatrix4(this.exc.house.matrixWorld) : new THREE.Vector3(seat[0] * R(1), seat[1] * R(1), 0).applyMatrix4(M.root.matrixWorld);
@@ -1050,20 +1050,57 @@ export class MachineTool {
     }
     E.boomGoal -= ry * 0.55 * dt;
     E.curlGoal -= rx * 1.2 * dt;
-    const before = E.teethWorld(new THREE.Vector3());
+    // the ground under what goes into it: how deep the deepest of the points is in it
+    const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, t.heightAt(q.x, q.z) - q.y); return w; };
+    const pose0 = E.pose(), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
     E.update(dt);
-    const p = E.teethWorld(new THREE.Vector3()), moving = p.distanceTo(before) > R(0.002);
-    // (the teeth in the ground, the bucket going: what is over them comes into it)
-    if (moving && !E.open && g.load < cap && t.inside(p.x, p.z)) {
-      const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2;
+    const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
+    // (digging: the teeth leading — down the way they point or dragged across — not full, not tipped)
+    const edge = E.edgeDir(new THREE.Vector3()), cutting = moving && !E.open && g.load < cap && mv.dot(edge) > -mv.length() * 0.25;   // (not the bucket's back first: that only pushes)
+    if (cutting && t.inside(p.x, p.z)) {
+      const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
       for (let q = -hw; q <= hw; q += t.cell * 0.7) {
         const px = p.x + ux * q, pz = p.z + uz * q; if (!t.inside(px, pz)) continue;
         const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
-        const s = t.nat[i] + t.loose[i], d = Math.min(s - p.y, cap - g.load);
+        // (what lies over the teeth, as high as the bucket is deep: into it — what is higher stays)
+        const s = t.nat[i] + t.loose[i], d = Math.min(s - p.y, depth, cap - g.load);
         if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
       }
-      if (any) { app.sfx.play('gravel_dig', { gap: 0.45, at: p }); t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); if (Math.random() < 0.3) app.particles?.emit(p.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.3), R(0.4), (Math.random() - 0.5) * R(0.3)), 0, R(0.03), 0, 0, 0); app.sfx.scrapeLevel(0.45); }
+      // (and what the bucket's body goes through behind its teeth on the stroke: into it too — the bucket
+      // is the cut; not the stick's end, that is held by the ground)
+      // (each point of it in the ground: a line across the bucket's width there, down to it — the cut as
+      // wide as the bucket, its walls straight)
+      for (const c of E.shellPoints()) {
+        if (g.load >= cap || !t.inside(c.x, c.z) || t.heightAt(c.x, c.z) <= c.y) continue;
+        const off = (c.x - p.x) * ux + (c.z - p.z) * uz;   // (across: from the bucket's middle)
+        for (let q = -hw; q <= hw; q += t.cell * 0.7) {
+          const px = c.x + ux * (q - off), pz = c.z + uz * (q - off); if (!t.inside(px, pz)) continue;
+          const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
+          const d = Math.min(t.nat[i] + t.loose[i] - c.y, cap - g.load);
+          if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
+        }
+      }
+      if (any) { app.sfx.play('gravel_dig', { gap: 0.45, at: p }); t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); if (Math.random() < 0.3) app.particles?.emit(p.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.3), R(0.4), (Math.random() - 0.5) * R(0.3)), 0, R(0.03 + Math.random() * 0.03), 0, 0, 0); }
+    }
+    // the ground holds: the bucket's shell and the stick's end do not go into it (nor the teeth, but along
+    // their cut). Pressed down on it with the boom, the machine's front comes up on the rear of its tracks
+    // (to ≈10°); further — or any other way into it — the move does not happen.
+    {
+      // (on the stroke the bucket is the cut: only the stick's end is held then)
+      const tol = R(0.03), deep = cutting ? under(E.stickPoints()) : under(E.hardPoints()), tDeep = cutting ? 0 : under([p]);
+      const bad = (deep > tol && deep > (cutting ? deepS0 : deep0) + 1e-6) || (tDeep > tol && tDeep > tDeep0 + 1e-6);
+      if (bad) {
+        let ok = false;
+        if (!cutting && ry > 0 && E.boom < pose0[1]) for (let h = E.heave + 0.01; h <= 0.18 && !ok; h += 0.01) { E.heave = h; E._apply(); ok = under(E.hardPoints()) <= Math.max(tol, deep0) && (cutting || under([E.teethWorld(new THREE.Vector3())]) <= Math.max(tol, tDeep0)); }
+        if (!ok) { E.setPose(pose0); if (!this._thudT || performance.now() - this._thudT > 900) { this._thudT = performance.now(); app.sfx.play('metal_hit', { at: p, vol: 0.45 }); } }
+        E.swingGoal = E.swing; E.boomGoal = E.boom; E.stickGoal = E.stick; E.curlGoal = E.curl;
+      } else if (E.heave > 0 && ry <= 0) {
+        // (let go or lifted: the front comes down again, as far as the bucket lets it)
+        const h0 = E.heave; E.heave = Math.max(0, h0 - dt * 0.5); E._apply();
+        if (under(E.hardPoints()) > Math.max(tol, deep)) { E.heave = h0; E._apply(); }
+        else if (h0 > 0.02 && E.heave === 0) app.sfx.play('stone', { at: E.root.position, vol: 0.4 });
+      }
     }
     // (opened: it runs out — into the body of the truck under it, else onto the ground)
     if (E.open && g.load > 1e-9) {
