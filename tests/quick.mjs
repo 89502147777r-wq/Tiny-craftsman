@@ -900,12 +900,22 @@ console.log('—', sec());
     mt.enter('excavator'); for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
     o.exc = mt.driving && mt.drv === 'excavator'; const E = mt.exc;
     o.btns = [...document.querySelectorAll('#mbtns button')].map((b) => b.textContent).join('|');
-    mt.joystick('r', 0, 1); mt.joystick('l', 0, -1); frames(60); mt.joystick('l', 0, 0); frames(30);
+    // a dig as a driver does it: the stick out, the bucket's teeth turned down, the boom down into the ground
+    // (the teeth lead: it cuts), the bucket curled in — full, as much as came out of the ground; up, opened —
+    // empty; then pressed down on the ground with the bucket open (nothing cuts): it does not go in, the
+    // machine's front comes up on its tracks instead
+    const soilV = () => { let v = 0; for (let i = 0; i < t.nat.length; i++) v += t.nat[i] + t.loose[i]; return v * t.cellArea; }, dug0 = soilV();
+    const go = (n, l, r) => { mt.joystick('l', ...l); mt.joystick('r', ...r); frames(n); mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(3); };
+    go(60, [0, -1], [0, 0]); go(12, [0, 0], [-1, 0]); go(40, [0, 0], [0, 1]);
     const teeth = E.teethWorld(new V()); o.teethLow = teeth.y < t.heightAt(teeth.x, teeth.z) + 0.3 * M;
-    mt.joystick('l', 0, 1); mt.joystick('r', -1, 0); frames(60); mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(5);
+    go(40, [0, 1], [0, 0]); go(40, [0, 1], [-1, 0]); go(30, [0, 0], [-1, 0]);
     o.full = +E.load.toFixed(2);
-    mt.joystick('r', 0, -1); frames(60); mt.joystick('r', 1, 0); frames(70); mt.joystick('r', 0, 0); frames(30);
+    { const inB = mt.digG.load * t.cellArea, out = dug0 - soilV(); o.inBucket = +(inB / Math.max(1e-12, out)).toFixed(2); }
+    go(60, [0, 0], [0, -1]); go(70, [0, 0], [1, 0]); frames(30);
     o.after = +E.load.toFixed(2);
+    { let deepest = 0; mt.joystick('r', 0, 1); for (let i = 0; i < 60; i++) { tc.simulate(1 / 30); for (const q of E.hardPoints()) if (t.inside(q.x, q.z)) deepest = Math.max(deepest, t.heightAt(q.x, q.z) - q.y); }
+      o.heave = +E.heave.toFixed(3); mt.joystick('r', 0, 0); frames(5); o.deepest = +(deepest / M * 1000).toFixed(0); }
+
     mt.setExcMode('drive'); const x0 = E.x, z0 = E.z; mt.joystick('l', 0, -1); frames(45); mt.joystick('l', 0, 0); frames(5); o.drove = Math.hypot(E.x - x0, E.z - z0) > 0.3 * M;
     mt.exit(); frames(5);
     // the truck: loaded, driven out past the plot's edge — to the tip, back empty
@@ -918,7 +928,7 @@ console.log('—', sec());
   });
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
-  check('machines: the excavator — the boom down, the bucket curled in fills it, opened it is empty; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.after < 0.05 && o.drove, JSON.stringify(o));
+  check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), opened it is empty; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove, JSON.stringify(o));
   check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty', o.signs && o.tip, JSON.stringify(o));
   check('machines: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
