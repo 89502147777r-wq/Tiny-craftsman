@@ -376,6 +376,16 @@ console.log('—', sec());
       tc.journal.act('fence-old', {}, tc.clock, () => tc.objects.add(old)); tc.simulate(0.05);
       const f1 = tc.objects.all('fence')[0]; tc.undo(); tc.redo(); tc.simulate(0.05); const f = tc.objects.all('fence')[0], B = (await import('/src/world/fence2.js')).bays2(f);
       out.fence = { v: f1?.v === 2 && f?.v === 2 && !f.done, posts: f.pegs.filter((q) => q.post && q.fill >= 1).length, railed: B.filter((b) => b.railed && b.filled).length, gate: f.gates.map((q) => q.type + (q.hung ? ':hung' : '') + (q.open ? ':open' : '')).join() + (B.some((b) => b.gate === 0) ? ':bay' : ''), drawn: !!tc.gardenView.parts.get('F' + f.id)?.sub.fill }; }
+    // a path and a lawn of the old kind (before BUILD 253 / 254), finished: read as laid by hand — every kerb,
+    // the fabric, every paver; the lawn with its turf — and drawn
+    { const G = await import('/src/world/garden.js'), g = tc.terrain.heightAt(-0.2, -0.62);
+      tc.journal.act('path-old', {}, tc.clock, () => tc.objects.add({ type: 'path', pts: [[-0.5, -0.62], [0.1, -0.62]], W: 1200, g, paver: 'brick', col: 'grey', done: { dig: 1, kerb: 1, geo: 1, grav: 1, sand: 1, pave: 1, joint: 1 } }));
+      tc.undo(); tc.redo();
+      const lo = tc.objects.add({ type: 'lawn', poly: [[0.3, -0.25], [0.5, -0.25], [0.5, -0.05], [0.3, -0.05]], g: tc.terrain.heightAt(0.4, -0.15), u: [1, 0], how: 'turf', done: { soil: 1, rake: 1, roll: 1, grass: 1, water: 1 } });
+      tc.simulate(0.05);
+      const p = tc.objects.all('path').at(-1), pe = tc.gardenView.parts.get(p.id), l = tc.objects.get(lo.id);
+      out.old = { path: p.v === 2 && p.laid.length === G.paversOf(p).length && p.kerbs.length === G.kerbsOf(p).length && p.geo.length === 1 && !!pe?.sub.pave && !!pe?.sub.kerb, lawn: l.v === 2 && !!tc.gardenView.parts.get('L' + l.id)?.sub.body };
+      tc.objects.remove(p.id); tc.objects.remove(l.id); }
     // plants and a light
     Object.assign(tc.settings, { landWhat: 'plant' });
     for (const [k, x] of [['tree', 0.3], ['ball', 0.35], ['thuja', 0.4], ['bollard', 0.45]]) { tc.settings.plantKind = k; tap(new V(x, 0.1, -0.3)); }
@@ -464,7 +474,7 @@ console.log('—', sec());
     return out;
   });
   check('«Готово»: rooms furnished behind the windows, another interior, off again, undo', land.interior.on && land.interior.rooms >= 1 && land.interior.rerolled && land.interior.off && land.interior.back, JSON.stringify(land.interior));
-  check('garden: a lawn (topsoil, turf, water), an old fence read as one by the post (posts, rails, slats, wicket), plants and a light', land.lawn.done === 'soil,grass,water' && land.lawn.cells >= 2 && land.fence.v && land.fence.posts >= 5 && land.fence.railed >= 3 && land.fence.gate === 'wicket:hung:open:bay' && land.fence.drawn && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
+  check('garden: a lawn (topsoil, turf, water), old fence / path / lawn read as today\'s (posts, rails, slats, wicket; kerbs, pavers; turf), plants and a light', land.lawn.done === 'soil,grass,water' && land.lawn.cells >= 2 && land.fence.v && land.fence.posts >= 5 && land.fence.railed >= 3 && land.fence.gate === 'wicket:hung:open:bay' && land.fence.drawn && land.old.path && land.old.lawn && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
   check('exterior: a porch cast to a door (pit, stone, forms, concrete, stripped, tiled) and a canopy over it', land.porch.steps === 3 && land.porch.done === 'dig,grav,form,conc,strip,tile' && land.porch.canopy === 1 && land.porch.lights === 'steps', JSON.stringify(land.porch));
   check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
   check('ring beam over hollow piers: one beam as wide as the piers; cast, one building (one wall plate)', land.span?.spans === 1 && land.span.wide[0] >= 350 && land.span.tied,JSON.stringify(land.span));

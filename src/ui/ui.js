@@ -6,8 +6,8 @@ import { showTouches } from './touches.js';
 import { ROOF_LAYERS, MEM_COLOURS, COP_COLOURS } from '../world/roof.js';
 import { WIN_COLOURS } from '../world/windows.js';
 import { POOL_LAYERS, MOSAICS, COPES, DECKS, DECK_WIDTHS } from '../world/pool.js';
-import { PATH_LAYERS, PATH_LAYERS2, PATH_WIDTHS, PAVERS, PAVE_COLS, filletLine } from '../world/garden.js';
-import { LAWN_LAYERS, LAWN_HOW } from '../world/lawn.js';
+import { PATH_LAYERS2, PAVERS, PAVE_COLS, filletLine } from '../world/garden.js';
+import { LAWN_HOW } from '../world/lawn.js';
 import { FENCE_KINDS, FENCE_COLS, GATES } from '../world/fence.js';
 import { PLANTS } from '../world/plants.js';
 import { CATS } from '../world/disaster.js';
@@ -598,7 +598,7 @@ export class UI {
         return c;
       });
       // the garden: the path's stages (the width when it is set out; the pavers and their colour)
-      const LS = wt.land.layer, lw = wt.land, isLawn = lw.what === 'lawn', lset = (o) => lay({ wallKind: 'land', landWhat: 'path', ...o }), gset = (o) => lay({ wallKind: 'land', landWhat: 'lawn', ...o });
+      const lw = wt.land, isLawn = lw.what === 'lawn', lset = (o) => lay({ wallKind: 'land', landWhat: 'path', ...o }), gset = (o) => lay({ wallKind: 'land', landWhat: 'lawn', ...o });
       // (the path by hand: the width and the corners' radius — the sliders; the corners straight or rounded;
       // the pavers: each kind opens its colours)
       const pw = lw.pw, PS = pw.L;

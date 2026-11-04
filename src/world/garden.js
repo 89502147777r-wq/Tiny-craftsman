@@ -15,10 +15,21 @@ import { MODEL_SCALE } from '../config.js';
 //          paver, col (laid with), done: { dig, kerb, geo, grav, sand, pave, joint } }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const PATH = { dig: 300, kerbW: 80, kerbH: 200, kerbL: 1000, room: 150, bed: 100, haunch: 100, grav: 200, sand: 40, paver: 60, joint: 3, kerbUp: 50 };
+// a path of the old kind (laid at a touch a stage, before BUILD 253: { pts, W, g, paver, col, done: { dig, kerb,
+// geo, grav, sand, pave, joint } }) as one laid by hand (v: 2): its corners as they were (not rounded), what was
+// done of it all done — every kerb, the fabric end to end, every paver (the joints are filled with them).
+// Read so on loading (core/upgrade.js).
+export function pathFromV1(r) {
+  if (!r || r.v === 2 || !Array.isArray(r.pts)) return r;
+  const d = r.done || {}, base = r.pts.map((p) => [...p]), q = { ...r, v: 2, base, pts: base.map((p) => [...p]), round: 0, W: r.W || 1200, done: {}, kerbs: [], geo: [], laid: [] };
+  for (const k of ['dig', 'kerb', 'geo', 'grav', 'sand', 'pave']) if (d[k]) q.done[k] = 1;
+  if (d.kerb) q.kerbs = kerbsOf(q).map((_, i) => i);
+  if (d.geo) q.geo = [[0, Math.round(lengthOf(q) / S)]];
+  if (d.pave) q.laid = paversOf(q).map((_, i) => i);
+  return q;
+}
 // the path laid by hand (v: 2): the stages, the joints filled with the pavers (sand swept in as they go)
 export const PATH_LAYERS2 = [['set', 'Разметка'], ['dig', 'Корыто'], ['kerb', 'Бордюр'], ['geo', 'Геотекстиль'], ['grav', 'Щебень'], ['sand', 'Песок'], ['pave', 'Плитка']];
-export const PATH_LAYERS = [['set', 'Разметка'], ['dig', 'Корыто'], ['kerb', 'Бордюр'], ['geo', 'Геотекстиль'], ['grav', 'Щебень'], ['sand', 'Песок'], ['pave', 'Плитка'], ['joint', 'Швы']];
-export const PATH_WIDTHS = [800, 1000, 1200, 1500, 2000];
 // the pavers: the piece (mm, along the row × across it) and how they are laid
 // (the ones laid most in the US and in Europe: the Holland stone in running bond, herringbone and
 // basketweave; the tumbled «old town» cobble of three sizes; squares, large slabs, planks, hexagons)
