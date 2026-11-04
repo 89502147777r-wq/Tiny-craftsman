@@ -7,7 +7,8 @@ import {
 import { pointAt } from '../world/gardenView.js';
 import { PathWork } from './pathTool.js';
 import { LawnWork } from './lawnTool.js';
-import { FENCE, FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES, fenceLine, postsOf, fenceLength, fillCount, sOf, gateFit, kindOf } from '../world/fence.js';
+import { fenceLine, fenceLength } from '../world/fence.js';
+import { fromV1 } from '../world/fence2.js';
 import { PLANTS, hedgePlants } from '../world/plants.js';
 import { LAWN, LAWN_LAYERS, LAWN_HOW, polyOf, areaOf, inside as inPolyL, mainDir, cellsOf as lawnCells, frameW } from '../world/lawn.js';
 
@@ -20,7 +21,6 @@ const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 const NAME = Object.fromEntries(PATH_LAYERS);
 const ORDER = PATH_LAYERS.map(([k]) => k);
 const LNAME = Object.fromEntries(LAWN_LAYERS), LORDER = LAWN_LAYERS.map(([k]) => k);
-const FNAME = Object.fromEntries(FENCE_LAYERS), FORDER = FENCE_LAYERS.map(([k]) => k);
 const f1 = (v) => v.toFixed(1).replace('.', ',');
 
 export class LandWork {
@@ -63,14 +63,8 @@ export class LandWork {
     return null;
   }
 
-  get what() { const w = this.app.settings.landWhat; return w === 'lawn' || w === 'fence' || w === 'plant' ? w : 'path'; }
+  get what() { const w = this.app.settings.landWhat; return w === 'lawn' || w === 'plant' ? w : 'path'; }
   get plantKind() { return PLANTS[this.app.settings.plantKind] ? this.app.settings.plantKind : 'tree'; }
-  get fenceLayer() { return FNAME[this.app.settings.fenceLayer] ? this.app.settings.fenceLayer : 'line'; }
-  get fenceKind() { return FENCE_KINDS[this.app.settings.fenceKind] ? this.app.settings.fenceKind : 'slat'; }
-  get fenceH() { return FENCE_HEIGHTS.includes(this.app.settings.fenceH) ? this.app.settings.fenceH : 1800; }
-  get fenceCol() { const c = this.app.settings.fenceCol, K = FENCE_KINDS[this.fenceKind]; return K.cols.includes(c) ? c : K.cols[0]; }
-  get gateType() { return GATES[this.app.settings.gateType] ? this.app.settings.gateType : 'swing'; }
-  get fence() { const all = this.app.objects.all('fence'); return all.find((r) => r.id === this.fsel) || all.at(-1) || null; }
   get lawnLayer() { return LNAME[this.app.settings.lawnLayer] ? this.app.settings.lawnLayer : 'area'; }
   get how() { return LAWN_HOW[this.app.settings.lawnHow] ? this.app.settings.lawnHow : 'turf'; }
   get lawn() { const all = this.app.objects.all('lawn'); return all.find((r) => r.id === this.lsel) || all.at(-1) || null; }
@@ -78,7 +72,6 @@ export class LandWork {
   down(p, e) {
     // (the lawn by hand — lawnTool.js; one made before it: its old stages)
     if (this.what === 'lawn') { const old = this.lw.L !== 'area' && this.app.objects.all('lawn').find((q) => inPolyL(q.poly, p.x, p.z)); if (!old || old.v === 2) return this.lw.down(p, e); return this._lawnDown(p, e); }
-    if (this.what === 'fence') return this._fenceDown(p, e);
     if (this.what === 'plant') return this._plantDown(p, e);
     // (the path by hand — pathTool.js; a path set out before it: its old stages)
     { const old = this.pw.L !== 'set' && this.pick(p); if (!old || old.v === 2) return this.pw.down(p, e); }
@@ -103,8 +96,7 @@ export class LandWork {
     if (this.lw.drag) { this.lw.move(p, e); return; }
     const d = this.drag; if (!d) return;
     if (d.L === 'area') { this._lawnMove(p); return; }
-    if (d.L === 'fline') { this._fenceMove(p); return; }
-    if (d.L === 'hedge') { const last = d.trail.at(-1); if (Math.hypot(p.x - last[0], p.z - last[1]) > MM(80)) { d.trail.push([p.x, p.z]); const pts = fenceLine(d.trail); this.view.setLiveFence(pts ? { pts, H: 1300, kind: 'slat', col: 'graphite', g: this._groundOf(pts) } : null); if (pts) this.app.ui?.showMeasure?.(`Живая изгородь ${f1(fenceLength({ pts, kind: 'slat' }) / S / 1000)} м, ${hedgePlants({ pts }).length} растений — отпустите`); } return; }
+    if (d.L === 'hedge') { const last = d.trail.at(-1); if (Math.hypot(p.x - last[0], p.z - last[1]) > MM(80)) { d.trail.push([p.x, p.z]); const pts = fenceLine(d.trail); this.view.setLiveFence(pts ? fromV1({ type: 'fence', pts, H: 1300, kind: 'slat', col: 'graphite', g: this._groundOf(pts) }) : null); if (pts) this.app.ui?.showMeasure?.(`Живая изгородь ${f1(fenceLength({ pts, kind: 'slat' }) / S / 1000)} м, ${hedgePlants({ pts }).length} растений — отпустите`); } return; }
     const last = d.trail.at(-1);
     if (Math.hypot(p.x - last[0], p.z - last[1]) < MM(80)) return;
     d.trail.push([p.x, p.z]);
@@ -120,7 +112,6 @@ export class LandWork {
     if (this.lw.drag) { this.lw.up(); return; }
     const app = this.app, d = this.drag;
     if (d?.L === 'area') { this._lawnUp(); return; }
-    if (d?.L === 'fline') { this._fenceUp(); return; }
     if (d?.L === 'hedge') { this.drag = null; this.view.setLiveFence(null); this.app.ui?.hideMeasure?.(); const pts = fenceLine(d.trail); if (!pts) { this.toast('Изгородь короче метра — ведите пальцем длиннее'); return; } this._plant({ kind: 'hedge', pts, g: this._groundOf(pts) }); return; }
     this.drag = null;
     if (!d) return;
@@ -339,7 +330,6 @@ export class LandWork {
   // the next thing to do (the chip «➜ …»)
   next(r = this.rec) {
     if (this.what === 'lawn') return this.lw.next();
-    if (this.what === 'fence') return this.fenceNext();
     if (this.what === 'plant') return [null, this.plantStatus()];
     if (!r || r.v === 2) return this.pw.next(r && r.v === 2 ? r : undefined);
     const d = r.done || {};
@@ -348,7 +338,6 @@ export class LandWork {
   }
   status() {
     if (this.what === 'lawn') return this.lw.status();
-    if (this.what === 'fence') return this.fenceStatus();
     if (this.what === 'plant') return this.plantStatus();
     if (this.what === 'path') return this.pw.status();
     return {
@@ -587,163 +576,6 @@ export class LandWork {
     this.toast('Растение убрали');
   }
 
-  // ==== the fence ==============================================================================
-  _fencePick(p) {
-    const all = this.app.objects.all('fence');
-    if (!all.length) return null;
-    let best = null, bd = Infinity;
-    for (const r of all) for (let i = 1; i < r.pts.length; i++) {
-      const [x0, z0] = r.pts[i - 1], [x1, z1] = r.pts[i], dx = x1 - x0, dz = z1 - z0, L2 = dx * dx + dz * dz, k = Math.max(0, Math.min(1, ((p.x - x0) * dx + (p.z - z0) * dz) / L2)), d = Math.hypot(x0 + dx * k - p.x, z0 + dz * k - p.z);
-      if (d < bd) bd = d, best = r;
-    }
-    if (best) this.fsel = best.id;
-    return best;
-  }
-  _fenceDown(p) {
-    const L = this.fenceLayer;
-    if (L === 'line') { this.drag = { L: 'fline', trail: [[p.x, p.z]] }; this.app.ui?.showMeasure?.('Ведите пальцем, где встанет забор'); return true; }
-    const r = this._fencePick(p);
-    if (!r) { this.toast('Сначала «1 · Разметка»: проведите пальцем линию забора'); return true; }
-    if (this.app.physJob) return true;
-    if (L === 'gate') { this._gate(r, p); return true; }
-    const i = FORDER.indexOf(L), d = r.done || {};
-    if (d[L]) { const [nk, nw] = this.fenceNext(r); this.toast(nk ? `${FNAME[L]} — уже сделано. Дальше «${FORDER.indexOf(nk) + 1} · ${nw}»` : 'Забор готов'); return true; }
-    for (let k = 1; k < Math.min(i, 4); k++) if (!d[FORDER[k]]) { this.toast(`Сначала «${k + 1} · ${FNAME[FORDER[k]]}»`); return true; }
-    ({ holes: () => this._fHoles(r), posts: () => this._fPosts(r), fill: () => this._fFill(r) })[L]?.();
-    return true;
-  }
-  _fenceMove(p) {
-    const d = this.drag, last = d.trail.at(-1);
-    if (Math.hypot(p.x - last[0], p.z - last[1]) < MM(80)) return;
-    d.trail.push([p.x, p.z]);
-    const pts = fenceLine(d.trail) || [d.trail[0], [p.x, p.z]];
-    const r = { pts, H: this.fenceH, kind: this.fenceKind, col: this.fenceCol, g: this._groundOf(pts) };
-    this.view.setLiveFence(r);
-    this.app.ui?.showMeasure?.(`Забор ${f1(fenceLength(r) / S / 1000)} м, ${postsOf(r).length} столбов — отпустите, где он кончается`);
-  }
-  _fenceUp() {
-    const app = this.app, d = this.drag;
-    this.drag = null;
-    this.view.setLiveFence(null); app.ui?.hideMeasure?.();
-    const pts = fenceLine(d.trail);
-    if (!pts) { this.toast('Забор короче метра — ведите пальцем длиннее'); return; }
-    const rec = { type: 'fence', pts, H: this.fenceH, kind: this.fenceKind, col: this.fenceCol, g: +this._groundOf(pts).toFixed(6), done: {} };
-    this._save('fence-line', () => { const o = app.objects.add(rec); this.fsel = o.id; });
-    this.toast(`Забор ${f1(fenceLength(rec) / S / 1000)} м, высота ${f1(rec.H / 1000)} м: шнур натянут, места ${postsOf(rec).length} столбов отмечены. Дальше «2 · Ямы под столбы»`);
-  }
-  // each hole bored with the auger: the screw going down turning, the soil thrown up round it
-  _fHoles(r) {
-    const app = this.app, t = app.terrain, P = postsOf(r), per = 0.55, R = MM(FENCE.hole / 2), y = r.g - MM(FENCE.holeDepth);
-    app.journal.begin('fence-holes', {}, app.clock);
-    const done = new Set();
-    const steps = [[P.length * per, (u) => {
-      const q = u * P.length, k = Math.min(P.length - 1, Math.floor(q)), f = q - k, [x, z] = P[k];
-      for (let i = 0; i < k; i++) if (!done.has(i)) { done.add(i); const [hx, hz] = P[i]; t.scoop(hx, hz, R * 1.15, y, r.g, () => true, i); }
-      const dep = Math.min(1, f / 0.8);
-      t.scoop(x, z, R * 1.15, r.g - (r.g - y) * dep, r.g, () => true, k);
-      this.view.setAnim('F' + r.id, { augerAt: u < 1 ? { x, z, y: r.g - MM(FENCE.holeDepth) * dep + MM(40), spin: q * 40 } : null });
-      if (Math.random() < 0.5 && f < 0.85) app.particles?.emit(new THREE.Vector3(x, r.g + MM(30), z), new THREE.Vector3((Math.random() - 0.5) * 0.15, 0.1, (Math.random() - 0.5) * 0.15), 0, MM(20), 0, 0, 0);
-      app.sfx?.engine?.('fence-auger', u < 1 ? 0.6 : 0);
-      if (u >= 1) for (let i = 0; i < P.length; i++) { const [hx, hz] = P[i]; t.scoop(hx, hz, R * 1.15, y, r.g, () => true, i); }
-    }]];
-    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); this.view.setAnim('F' + r.id, null); app.sfx?.engine?.('fence-auger', 0); }, commit: () => {
-      app.objects.update(r.id, { done: { ...(app.objects.get(r.id).done || {}), holes: 1 } });
-      app.journal.commit(app.clock);
-      this.view.setAnim('F' + r.id, null);
-      app.sfx?.engine?.('fence-auger', 0);
-      this.toast(`Пробурено ${P.length} ям Ø 200 глубиной 1 м. Дальше «3 · Столбы»`);
-    } });
-  }
-  // the posts stood in the holes one by one, plumbed to the string, concreted
-  _fPosts(r) {
-    const app = this.app, t = app.terrain, P = postsOf(r), R = MM(FENCE.hole / 2 + 30);
-    app.journal.begin('fence-posts', {}, app.clock);
-    const filled = new Set();
-    const steps = [[Math.max(2, P.length * 0.3), (u, job) => {
-      const n = u * (P.length + 1);
-      this.view.setAnim('F' + r.id, { posts: u >= 1 ? 1e9 : n });
-      for (let i = 0; i < Math.min(P.length, Math.floor(n - 0.5)); i++) if (!filled.has(i)) {
-        filled.add(i);
-        const [x, z] = P[i], box = [x - R, z - R, x + R, z + R];
-        t.levelTo((wx, wz) => Math.hypot(wx - x, wz - z) < R, r.g, box);
-        if (job) app.sfx?.play?.('pipe');
-      }
-      if (u >= 1) for (let i = 0; i < P.length; i++) { const [x, z] = P[i]; t.levelTo((wx, wz) => Math.hypot(wx - x, wz - z) < R, r.g, [x - R, z - R, x + R, z + R]); }
-    }]];
-    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); this.view.setAnim('F' + r.id, null); }, commit: () => {
-      app.objects.update(r.id, { done: { ...(app.objects.get(r.id).done || {}), posts: 1 } });
-      app.journal.commit(app.clock);
-      this.view.setAnim('F' + r.id, null);
-      this.toast(`${P.length} столбов 60 × 60 выставлены по шнуру и уровню и забетонированы. Дальше «4 · Заполнение»`);
-    } });
-  }
-  _fFill(r) {
-    const app = this.app, kind = this.fenceKind, col = this.fenceCol;
-    app.journal.begin('fence-fill', {}, app.clock);
-    if (r.kind !== kind || r.col !== col) app.objects.update(r.id, { kind, col });
-    const rr = app.objects.get(r.id), n = fillCount(rr), ng = (rr.gates || []).length, Kn = FENCE_KINDS[kind].name;
-    const steps = [[Math.max(2.5, Math.min(14, n * (kind === 'mesh' || kind === 'chain' ? 0.45 : 0.06))), (u, job) => {
-      const k = u * (n + 1);
-      this.view.setAnim('F' + r.id, { fill: u >= 1 ? 1e9 : k });
-      if (Math.floor(k) !== job._k) { job._k = Math.floor(k); app.sfx?.play?.(kind === 'mesh' || kind === 'chain' ? 'wire' : kind === 'prof' ? 'sheet' : 'hammer_nail'); }
-    }]];
-    // (the gates' leaves hung after it, each lowered onto its hinges and tried once)
-    (rr.gates || []).forEach((q, gi) => { if (!q.hung) steps.push(...this._hang(r, gi)); });
-    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); this.view.setAnim('F' + r.id, null); }, commit: () => {
-      const cur = app.objects.get(r.id);
-      app.objects.update(r.id, { done: { ...(cur.done || {}), fill: 1 }, gates: (cur.gates || []).map((q) => ({ ...q, hung: 1 })) });
-      app.journal.commit(app.clock);
-      this.view.setAnim('F' + r.id, null);
-      this.toast(`${Kn}: ${n} элементов${ng ? `, ворот и калиток: ${ng}` : ''} — забор готов`);
-    } });
-  }
-  // a gate's leaves going on: lowered onto the hinges (or the rollers), then opened and closed once
-  _hang(r, gi) {
-    const app = this.app, key = 'F' + r.id;
-    return [[1.0, (u, job) => { this.view.setAnim(key, { gate: gi, gu: u, gopen: 0 }); if (u > 0.9 && !job['_g' + gi]) { job['_g' + gi] = 1; app.sfx?.play?.('gate_latch'); } }],
-      [1.6, (u) => this.view.setAnim(key, { gate: gi, gu: 1, gopen: Math.sin(Math.PI * u) })],
-      [0, () => this.view.setAnim(key, { gate: null })]];
-  }
-  // «Ворота и калитки»: a touch on the fence puts the chosen one there (the posts each side 100 × 100);
-  // a touch on a gate already there opens or closes it
-  _gate(r, p) {
-    const app = this.app, [s, off] = sOf(r, p.x, p.z), gates = r.gates || [];
-    const hit = gates.findIndex((q) => Math.abs(q.s - s) < q.w / 2 + 100);
-    if (hit >= 0) {
-      if (!gates[hit].hung && !(r.done || {}).fill) { this.toast('Створки повесят с заполнением забора («4 · Заполнение»)'); return; }
-      const open = !gates[hit].open; app.sfx?.play?.(open ? 'gate_open' : 'gate_latch');
-      this._save('gate-open', () => app.objects.update(r.id, { gates: gates.map((q, i) => (i === hit ? { ...q, open } : q)) }));
-      this.toast(open ? `${GATES[gates[hit].type].name}: открыто` : `${GATES[gates[hit].type].name}: закрыто`);
-      return;
-    }
-    if (off > MM(1500)) { this.toast('Коснитесь линии забора — там, где будут ворота или калитка'); return; }
-    const T = GATES[this.gateType], c = gateFit(r, s, T.w);
-    if (c == null) { this.toast(`Здесь не помещается: ${T.name.toLowerCase()} — ${T.w / 1000} м по прямой, от угла и других ворот`.replace(/(\d)\.(\d)/g, '$1,$2')); return; }
-    const d = r.done || {}, gi = gates.length, rec = { s: c, w: T.w, type: this.gateType, open: false, hung: d.fill ? 1 : 0 };
-    app.journal.begin('gate', {}, app.clock);
-    app.objects.update(r.id, { gates: [...gates, rec] });
-    // (the fence is up: the two gate posts set (the posts re-spaced round them), the leaves hung and tried)
-    const steps = d.fill ? this._hang(r, gi) : [[0.3, () => {}]];
-    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); this.view.setAnim('F' + r.id, null); }, commit: () => {
-      app.journal.commit(app.clock); this.view.setAnim('F' + r.id, null);
-      this.toast(d.fill ? `${T.name} ${T.w / 1000} м: столбы 100 × 100 забетонированы, створки навешены и опробованы. Коснитесь ворот — открыть или закрыть` : d.posts ? `${T.name} ${T.w / 1000} м размечены: столбы 100 × 100 по краям; створки повесят с заполнением` : `${T.name} ${T.w / 1000} м размечены — по краям встанут столбы 100 × 100`);
-    } });
-  }
-  fenceNext(r = this.fence) {
-    if (!r) return ['line', 'Проведите линию забора'];
-    const d = r.done || {};
-    for (const k of FORDER.slice(1, 4)) if (!d[k]) return [k, FNAME[k]];
-    return [null, 'Забор готов'];
-  }
-  fenceStatus() {
-    return {
-      line: `Ведите пальцем, где встанет забор высотой ${f1(this.fenceH / 1000)} м — углы по ходу пальца`,
-      holes: 'Коснитесь забора — мотобур пробурит ямы под столбы',
-      posts: 'Коснитесь забора — столбы встанут по шнуру и забетонируются',
-      fill: `Коснитесь забора — заполнение «${FENCE_KINDS[this.fenceKind].name}», пролёт за пролётом; ворота и калитки — навешены`,
-      gate: `Коснитесь линии забора — встанут «${GATES[this.gateType].name}»; коснитесь готовых ворот — открыть или закрыть`,
-    }[this.fenceLayer];
-  }
   removeFence(id) {
     if (!this.app.objects.get(id)) return;
     this._save('fence-remove', () => this.app.objects.remove(id));

@@ -370,15 +370,12 @@ console.log('—', sec());
     for (const k of ['soil', 'grass', 'water']) { tc.settings.lawnLayer = k; tap(new V(0.05, 0.1, 0.0)); }
     const lawn = tc.objects.all('lawn')[0];
     out.lawn = { done: Object.keys(lawn?.done || {}).join(), cells: tc.gardenView.parts.get('L' + lawn?.id)?.sub.body?.children.length };
-    // a fence
-    Object.assign(tc.settings, { landWhat: 'fence', fenceLayer: 'line', fenceKind: 'slat', fenceH: 1800 });
-    const F = []; for (let i = 0; i <= 20; i++) F.push(new V(-0.6 + 0.8 * i / 20, 0.1, 0.55));
-    drag(F);
-    tc.settings.fenceLayer = 'gate'; tc.settings.gateType = 'wicket'; tap(F[5]);
-    for (const k of ['holes', 'posts', 'fill']) { tc.settings.fenceLayer = k; tap(F[10]); }
-    tc.settings.fenceLayer = 'gate'; tap(F[5]);
-    const fence = tc.objects.all('fence')[0];
-    out.fence = { done: Object.keys(fence?.done || {}).join(), gate: fence?.gates?.map((q) => q.type + (q.hung ? ':hung' : '') + (q.open ? ':open' : '')).join() };
+    // a fence of the old kind (put up at once, before BUILD 245) read from a project: a fence by the post —
+    // its holes, posts, rails and slats done, its wicket hung; undone and redone it stays the new kind
+    { const g = tc.terrain.heightAt(-0.2, 0.55), old = { type: 'fence', pts: [[-0.6, 0.55], [0.2, 0.55]], H: 1800, kind: 'slat', col: 'graphite', g, done: { holes: 1, posts: 1, fill: 1 }, gates: [{ s: 2000, w: 1000, type: 'wicket', open: true, hung: 1 }] };
+      tc.journal.act('fence-old', {}, tc.clock, () => tc.objects.add(old)); tc.simulate(0.05);
+      const f1 = tc.objects.all('fence')[0]; tc.undo(); tc.redo(); tc.simulate(0.05); const f = tc.objects.all('fence')[0], B = (await import('/src/world/fence2.js')).bays2(f);
+      out.fence = { v: f1?.v === 2 && f?.v === 2 && !f.done, posts: f.pegs.filter((q) => q.post && q.fill >= 1).length, railed: B.filter((b) => b.railed && b.filled).length, gate: f.gates.map((q) => q.type + (q.hung ? ':hung' : '') + (q.open ? ':open' : '')).join() + (B.some((b) => b.gate === 0) ? ':bay' : ''), drawn: !!tc.gardenView.parts.get('F' + f.id)?.sub.fill }; }
     // plants and a light
     Object.assign(tc.settings, { landWhat: 'plant' });
     for (const [k, x] of [['tree', 0.3], ['ball', 0.35], ['thuja', 0.4], ['bollard', 0.45]]) { tc.settings.plantKind = k; tap(new V(x, 0.1, -0.3)); }
@@ -467,7 +464,7 @@ console.log('—', sec());
     return out;
   });
   check('«Готово»: rooms furnished behind the windows, another interior, off again, undo', land.interior.on && land.interior.rooms >= 1 && land.interior.rerolled && land.interior.off && land.interior.back, JSON.stringify(land.interior));
-  check('garden: a lawn (topsoil, turf, water), a fence (holes, posts, slats), plants and a light', land.lawn.done === 'soil,grass,water' && land.lawn.cells >= 2 && land.fence.done === 'holes,posts,fill' && land.fence.gate === 'wicket:hung:open' && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
+  check('garden: a lawn (topsoil, turf, water), an old fence read as one by the post (posts, rails, slats, wicket), plants and a light', land.lawn.done === 'soil,grass,water' && land.lawn.cells >= 2 && land.fence.v && land.fence.posts >= 5 && land.fence.railed >= 3 && land.fence.gate === 'wicket:hung:open:bay' && land.fence.drawn && land.plants === 'tree,ball,thuja,bollard,hedge', JSON.stringify({ lawn: land.lawn, fence: land.fence, plants: land.plants }));
   check('exterior: a porch cast to a door (pit, stone, forms, concrete, stripped, tiled) and a canopy over it', land.porch.steps === 3 && land.porch.done === 'dig,grav,form,conc,strip,tile' && land.porch.canopy === 1 && land.porch.lights === 'steps', JSON.stringify(land.porch));
   check('openings: a doorway from the floor beside a brick pier on the same line', land.pier?.ok && land.pier.floor <= 5 && land.pier.h >= 8 * 253 - 10 && land.pier.w > 2300, JSON.stringify(land.pier));
   check('ring beam over hollow piers: one beam as wide as the piers; cast, one building (one wall plate)', land.span?.spans === 1 && land.span.wide[0] >= 350 && land.span.tied,JSON.stringify(land.span));

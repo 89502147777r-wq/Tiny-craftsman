@@ -69,13 +69,6 @@ export function sOf(r, x, z) {
   return best;
 }
 // a gate's place: kept within one leg, clear of the corners and of the other gates (null: no room)
-export function gateFit(r, s, w, skip = -1) {
-  const G = legs(r), g = G.find((q) => s >= q.s0 && s <= q.s0 + q.L) || G.at(-1), m = 150;
-  if (g.L < w + 2 * m) return null;
-  const c = Math.max(g.s0 + m + w / 2, Math.min(g.s0 + g.L - m - w / 2, s));
-  for (const [i, q] of (r.gates || []).entries()) if (i !== skip && Math.abs(q.s - c) < (q.w + w) / 2 + 300) return null;
-  return Math.round(c);
-}
 // the posts: [x, z, big (a gate's), s] — at the ends, the corners and each side of a gate; between them evenly
 export function postsOf(r) {
   const G = legs(r), step = FENCE_KINDS[kindOf(r)].step, gates = (r.gates || []).map((q) => [q.s - q.w / 2, q.s + q.w / 2]);
@@ -155,34 +148,6 @@ function fillMat(kind, col) {
   return metal(C[2], kind === 'mesh' ? 0.5 : 0.4);
 }
 
-// the string line and the pegs while it is set out; a dab of paint where each post goes; the gates' gaps
-export function fenceString(r) {
-  const G = new THREE.Group(), y = r.g + MM(150), line = new THREE.LineBasicMaterial({ color: 0xfff3c4 });
-  G.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(r.pts.map(([x, z]) => new THREE.Vector3(x, y, z))), line));
-  const pg = box(MM(40), MM(450), MM(40)); pg.translate(0, MM(75), 0);
-  const pm = new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.8 });
-  for (const [x, z] of [r.pts[0], r.pts.at(-1)]) { const o = new THREE.Mesh(pg, pm); o.position.set(x, r.g, z); o.castShadow = true; G.add(o); }
-  const dot = new THREE.Mesh(new THREE.CircleGeometry(MM(90), 12), new THREE.MeshBasicMaterial({ color: 0xff5a1f })); dot.rotation.x = -Math.PI / 2;
-  const big = new THREE.Mesh(new THREE.CircleGeometry(MM(130), 12), new THREE.MeshBasicMaterial({ color: 0x2f8cff })); big.rotation.x = -Math.PI / 2;
-  for (const [x, z, b] of postsOf(r)) { const d = (b ? big : dot).clone(); d.position.set(x, r.g + MM(8), z); G.add(d); }
-  return G;
-}
-// the posts (shown one by one as they go in; a gate's posts 100 × 100), their concrete with them
-export function fencePosts(r, U) {
-  const G = new THREE.Group(), P = postsOf(r), H = r.H, top = r.g + MM(H), bot = r.g - MM(FENCE.holeDepth - 100);
-  const pm = metal(0x2f3236);
-  const mk = (s) => { const g = box(MM(s), top - bot + MM(s > 60 ? 100 : 0), MM(s)); g.translate(0, (top + bot) / 2 + MM(s > 60 ? 50 : 0), 0); return g; };
-  const yaw = (i) => yawOf(P[Math.max(0, i - 1)], P[Math.min(P.length - 1, i + 1)]);
-  const small = [], large = [];
-  P.forEach(([x, z, b], i) => (b ? large : small).push([at(x, 0, z, yaw(i)), i]));
-  G.add(pieces(mk(FENCE.post), pm, small, U.posts), pieces(mk(FENCE.bigPost), pm, large, U.posts));
-  const cap = box(MM(66), MM(6), MM(66)); cap.translate(0, top + MM(3), 0);
-  const capB = box(MM(106), MM(6), MM(106)); capB.translate(0, top + MM(103), 0);
-  G.add(pieces(cap, pm, small, U.posts), pieces(capB, pm, large, U.posts));
-  const cg = new THREE.CylinderGeometry(MM(95), MM(105), MM(60), 14); cg.translate(0, r.g - MM(25), 0);
-  G.add(pieces(cg, new THREE.MeshStandardMaterial({ map: tex('pool_coat', 'col.jpg', true), color: 0xbdbab3, roughness: 0.95 }), P.map(([x, z], i) => [at(x, 0, z), i]), U.posts));
-  return G;
-}
 // the fill of the bays (the gates' bays left open: their leaves are fenceGates'); the order: bay by bay,
 // the rails first, then the infill from the bottom (slats, louvres) or along (pickets)
 // opt (the fence by the post, fence2.js): { bays: the bays to fill, fresh: the middles of those going in
@@ -343,7 +308,6 @@ function mergeBoxes(list) {
   return g;
 }
 // the number of pieces of the fill (for the animation's count)
-export const fillCount = (r) => { const k = kindOf(r), B = baysOf(r).filter((b) => b.gate < 0), H = r.H; return B.length * (k === 'slat' ? Math.floor((H - FENCE.gap) / (FENCE.slat + FENCE.slatGap)) : k === 'louvre' ? Math.floor((H - 2 * FENCE.gap) / 70) : k === 'prof' ? 3 : 1) + (k === 'picket' ? B.reduce((s, b) => s + 2 + Math.floor((b.L / S - FENCE.post) / 150), 0) - B.length : 0); };
 
 // ---- the gates ----------------------------------------------------------------------------------------
 // a leaf (local: x along from its hinge 0 … w, y up from the ground, z across): a steel frame 60 × 40,
@@ -438,15 +402,3 @@ export function fenceGates(r, opt = {}) {
   return out;
 }
 export const fenceUniforms = () => ({ posts: { n: { value: -1 } }, fill: { n: { value: -1 } } });
-// the earth auger (a two-man petrol auger): the motor, the bars, the screw
-export function auger() {
-  const G = new THREE.Group(), red = new THREE.MeshStandardMaterial({ color: 0xc6372b, roughness: 0.5, metalness: 0.2 }), steel = new THREE.MeshStandardMaterial({ color: 0x6d7175, roughness: 0.35, metalness: 0.85 }), black = new THREE.MeshStandardMaterial({ color: 0x1d1e20, roughness: 0.6 });
-  const screw = new THREE.Group();
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(MM(20), MM(20), MM(1100), 8), steel); shaft.position.y = MM(550); screw.add(shaft);
-  for (let k = 0; k < 22; k++) { const f = new THREE.Mesh(new THREE.BoxGeometry(MM(190), MM(6), MM(60)), steel); f.position.y = MM(40 + k * 45); f.rotation.y = k * 0.9; f.rotation.z = 0.25; screw.add(f); }
-  G.add(screw); G.userData.screw = screw;
-  const motor = new THREE.Mesh(new THREE.BoxGeometry(MM(260), MM(220), MM(220)), red); motor.position.y = MM(1250); G.add(motor);
-  const bar = new THREE.Mesh(new THREE.CylinderGeometry(MM(14), MM(14), MM(1100), 8), black); bar.rotation.z = Math.PI / 2; bar.position.y = MM(1300); G.add(bar);
-  G.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return G;
-}

@@ -10,6 +10,8 @@ export class ObjectStore {
     this.nextId = 1;
     this.tx = null;
     this.listeners = new Set();
+    // (records of an older kind read as today's on their way in — core/upgrade.js, set by the app)
+    this.upgrade = (r) => r;
   }
 
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
@@ -19,7 +21,7 @@ export class ObjectStore {
   all(type) { const out = []; for (const r of this.map.values()) if (!type || r.type === type) out.push(r); return out; }
 
   add(rec) {
-    rec = clone(rec);
+    rec = this.upgrade(clone(rec));
     if (!rec.id) rec.id = this.nextId++;
     else this.nextId = Math.max(this.nextId, rec.id + 1);
     this._track(rec.id);
@@ -77,6 +79,7 @@ export class ObjectStore {
   }
 
   _put(id, rec) {
+    if (rec) rec = this.upgrade(rec);
     if (rec) this.map.set(id, rec); else this.map.delete(id);
     this._emit(id, rec);
   }
@@ -88,6 +91,6 @@ export class ObjectStore {
     this.map.clear();
     for (const id of ids) this._emit(id, null);
     this.nextId = data?.nextId || 1;
-    for (const r of data?.items || []) { this.map.set(r.id, r); this._emit(r.id, r); this.nextId = Math.max(this.nextId, r.id + 1); }
+    for (const r0 of data?.items || []) { const r = this.upgrade(r0); this.map.set(r.id, r); this._emit(r.id, r); this.nextId = Math.max(this.nextId, r.id + 1); }
   }
 }

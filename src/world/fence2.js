@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
-import { legs, pointAtS, FENCE } from './fence.js';
+import { legs, pointAtS, FENCE, FENCE_KINDS, kindOf, postsOf } from './fence.js';
 
 // The fence put up post by post («Забор», fenceTool.js), as a fencer does it:
 //   line  – the string pulled along the finger, the pegs on it every `step` (1 … 5 m); each peg can
@@ -20,6 +20,31 @@ const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const HOLE = { r: 100, depth: 1000 };
 export const RAIL_SECS = { r4020: { name: '40 × 20', h: 40, d: 20 }, r4025: { name: '40 × 25', h: 40, d: 25 }, r6040: { name: '60 × 40', h: 60, d: 40 } };
 export const isV2 = (r) => r?.v === 2;
+// a fence of the old kind (put up all at once, before BUILD 245: { pts, H, kind, col, g, done: { holes,
+// posts, fill }, gates }) as a fence by the post — the same posts where they stood, each stage done as it
+// was: the holes bored, the posts 60 × 60 (100 × 100 at the gates) concreted, the rails on every row of
+// each bay and its infill, the gates hung. Read so on loading (core/upgrade.js): nothing else draws the old.
+export function fromV1(r) {
+  if (!r || r.v === 2 || !Array.isArray(r.pts)) return r;
+  const d = r.done || {}, H = r.H || 1800;
+  const pegs = postsOf(r).map(([, , big, s]) => {
+    const q = { s: Math.round(s) };
+    if (d.holes || d.posts) { q.hole = 1; q.g = r.g; }
+    if (d.posts) { q.post = { sh: 'sq', a: big ? FENCE.bigPost : FENCE.post, h: H }; q.fill = 1; q.pourT = 0; }
+    return q;
+  });
+  const gates = (r.gates || []).map((q) => ({ s: Math.round(q.s), w: Math.round(q.w), type: q.type, open: !!q.open, hung: q.hung || d.fill ? 1 : 0, hinge: 'L', swing: 'front' }));
+  const rails = [], filled = [];
+  if (d.fill && d.posts) for (let i = 1; i < pegs.length; i++) {
+    const a = pegs[i - 1].s, b = pegs[i].s, mid = (a + b) / 2;
+    if (gates.some((q) => Math.abs(mid - q.s) < q.w / 2 - 1)) continue;
+    for (const y of railRows(H)) rails.push({ a, b, y, sec: 'r4020', side: 1 });
+    filled.push(mid);
+  }
+  const { done, ...rest } = r;
+  void done;
+  return { ...rest, v: 2, step: FENCE_KINDS[kindOf(r)].step, kind: kindOf(r), H, pegs, rails, filled, gates };
+}
 // the rows of rails on posts h high: two (three from 2 m)
 export const railRows = (h) => (h >= 2000 ? [300, Math.round(h / 2), h - 300] : [300, h - 300]);
 

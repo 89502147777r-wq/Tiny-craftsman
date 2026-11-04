@@ -3,8 +3,8 @@ import { MODEL_SCALE } from '../config.js';
 import { PATH, TOPS, PAVERS, paversOf, kerbsOf, paveQuads, kerbOuter, digQuads, bandQuads, legsOf, legW, lengthOf, half, inset } from './garden.js';
 import { lawnUniforms, buildLawn, lawnLine, lawnGhost, lawnPegs, turfRoll, roller, sprinkler } from './lawnView.js';
 import { frameW } from './lawn.js';
-import { fenceString, fencePosts, fenceFill, fenceUniforms, auger, fenceGates } from './fence.js';
-import { isV2, railRows, stringAndPegs, postsAndConcrete, railsAndWelds, bays2, postA, pegXZ, RAIL_SECS } from './fence2.js';
+import { fenceFill, fenceUniforms, fenceGates } from './fence.js';
+import { railRows, stringAndPegs, postsAndConcrete, railsAndWelds, bays2, postA, pegXZ, RAIL_SECS } from './fence2.js';
 import { PLANTS, plantBody, rootBall, mulchDisc, mulchStrip, spotsOf } from './plants.js';
 import { buildLight, lightLevel } from './facadeLights.js';
 import { buildInterior, interiorLight } from './interior.js';
@@ -198,22 +198,14 @@ export class GardenView {
       this._buildLawn(app, r, e);
     }
     const fences = this.objects.all('fence').slice();
-    if (this.liveFence?.pts?.length > 1) fences.push({ ...this.liveFence, id: null, done: {} });
+    if (this.liveFence?.pts?.length > 1) fences.push({ ...this.liveFence, id: null });
     for (const r of fences) {
       const key = 'F' + (r.id ?? 'new');
       seen.add(key);
       let e = this.parts.get(key);
       if (!e) { e = { g: new THREE.Group(), keys: {}, sub: {}, U: fenceUniforms(), fence: true }; this.group.add(e.g); this.parts.set(key, e); }
       e.rec = r;
-      if (isV2(r)) { this._buildFence2(r, e, app); continue; }
-      const d = r.done || {}, a = this.anim['F' + r.id] || {}, gk = JSON.stringify((r.gates || []).map((q) => [q.s, q.w, q.type])), geo = [r.pts.flat().join(), r.H, r.kind, r.g, gk].join('|');
-      this._part(e, 'string', !d.posts ? geo : null, () => fenceString(r));
-      this._part(e, 'posts', d.posts || a.posts != null ? geo : null, () => fencePosts(r, e.U));
-      this._part(e, 'fill', d.fill || a.fill != null ? geo + '|' + r.col : null, () => fenceFill(r, e.U));
-      // the gates' leaves (hung with the fill, or one by one later)
-      const hung = (r.gates || []).some((q) => q.hung) || d.fill || a.gate != null;
-      this._part(e, 'gates', hung ? geo + '|' + r.col + '|' + (r.gates || []).map((q) => (q.hung ? 1 : 0)).join('') : null, () => { const G = new THREE.Group(); e.gl = fenceGates(r); for (const q of e.gl) G.add(q.group); return G; });
-      if (!e.auger) { e.auger = auger(); e.auger.visible = false; e.g.add(e.auger); }
+      this._buildFence2(r, e, app);
     }
     for (const r of this.objects.all('plant')) {
       const key = 'P' + r.id;
@@ -349,15 +341,14 @@ export class GardenView {
     this._part(e, 'gates', (r.gates || []).length ? base + JSON.stringify((r.gates || []).map((q) => [q.s, q.w, q.type, q.hinge, q.swing])) + '|' + r.kind + '|' + r.col + '|' + r.H + '|' + gside + '|' + gz : null, () => { const G = new THREE.Group(); e.gl = fenceGates(r, { side: gside, z: gz }); for (const q of e.gl) G.add(q.group); return G; });
   }
   _fenceFrame(e) {
-    const r = e.rec, d = r.done || {}, a = this.anim['F' + r.id] || {};
-    e.U.posts.n.value = a.posts ?? (d.posts ? 1e9 : -1);
-    e.U.fill.n.value = a.fill ?? (d.fill || (isV2(r) && (r.filled || []).length) ? 1e9 : -1);
+    const r = e.rec, a = this.anim['F' + r.id] || {};
+    e.U.fill.n.value = a.fill ?? ((r.filled || []).length ? 1e9 : -1);
     // the gates: shown when hung; each leaf swung (or rolled) toward where it is meant to be
     if (e.sub.gates && e.gl) {
       e.gs = e.gs || {};
       for (const q of e.gl) {
         const G = r.gates?.[q.gi]; if (!G) continue;
-        const inst = a.gate === q.gi, shown = G.hung || d.fill || inst;
+        const inst = a.gate === q.gi, shown = G.hung || inst;
         q.group.visible = !!shown;
         const want = inst ? (a.gopen ?? 0) : G.open ? 1 : 0;
         const cur = e.gs[q.gi] ?? want, k = inst ? want : cur + (want - cur) * Math.min(1, (this._dt || 0.016) * 2.2);
@@ -370,9 +361,6 @@ export class GardenView {
         }
       }
     }
-    const g = a.augerAt;
-    if (e.auger) e.auger.visible = !!g;
-    if (g && e.auger) { e.auger.position.set(g.x, g.y, g.z); e.auger.userData.screw.rotation.y = g.spin; }
   }
   _buildLawn(app, r, e) {
     const d = r.done || {}, a = this.anim['L' + r.id] || {}, geo = [r.poly.flat().join(), r.g, r.u].join('|');
