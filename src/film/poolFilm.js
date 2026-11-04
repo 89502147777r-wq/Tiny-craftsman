@@ -200,7 +200,7 @@ export function* poolFilm(d, app) {
   d.count('water', Math.round(POOL.L * POOL.W * waterMax(R()) / 1e9), ' m³', 2.2, 0, 2.4);
   yield d.sec(1.6);
   d.cut({ target: mid(rimY(R()) - MM(400)), yaw: 0.9, pitch: 0.55, dist: 0.95 }, { fx: 'whip', drift: 0.12 });
-  yield d.until(() => (pw.drag?.live?.water || 0) >= waterMax(R()) - 1);
+  { const t1 = d.t + 1.3; yield d.until(() => (pw.drag?.live?.water || 0) >= waterMax(R()) - 1 && d.t >= t1); }
   pw.up();
 
   // the evening: the lights on — a slow flight round the pool, low
