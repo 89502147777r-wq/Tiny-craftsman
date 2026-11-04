@@ -106,37 +106,43 @@ export class Mistake {
     const hit = ray.intersectObjects(objs, true)[0];
     return hit ? M(1.5) - hit.distance : L.T / 2;
   }
-  // the cracks' paths (in the wall's plane: a along it, y up from the lintel's top): jagged by midpoint
-  // displacement (a bolt of lightning), through the blocks; now and then a short run along a bed joint (not
-  // always — 3 in 10 crossings); a branch or two; each with when it starts (years or sag) and how wide it opens
+  // the cracks' paths (in the wall's plane: a along it, y up from the lintel's top), as real ones in glued
+  // aerated concrete are (the realist): nearly straight on the whole — 45° from an opening's corner, or a gentle
+  // arch over a failed lintel — through the blocks; ragged only in the small (mm … cm: the grain, the pores),
+  // so its length is 1,03 … 1,10 of the straight line; now and then a short jog along a joint (1 crossing in 7);
+  // one or two hairline branches near its tip. Each with when it starts (years or sag) and how wide it opens
   _cracks() {
     const L = this.L, rnd = (() => { let x = 0x2f6b9a31; return () => ((x = (x * 16807) % 2147483647) / 2147483647); })();
-    const row = M(0.25), path = (a0, y0, a1, y1, rough = 0.27) => {
-      let P = [[a0, y0], [a1, y1]];
-      for (let lv = 0, amp = rough; lv < 6; lv++, amp *= 0.62) {
-        const Q = [P[0]];
+    // (the displacement at each halving: small at the large scale — it keeps its line — a little more in the small)
+    const AMP = [0.017, 0.023, 0.029, 0.038, 0.046, 0.058, 0.066];
+    const row = M(0.25), path = (a0, y0, a1, y1, bend = 0, k = 1) => {
+      // (the line itself: straight, or bowed by `bend` of its length — an arch)
+      const l0 = Math.hypot(a1 - a0, y1 - y0) || 1e-9, mx = (a0 + a1) / 2 - (y1 - y0) / l0 * bend * l0, my = (y0 + y1) / 2 + (a1 - a0) / l0 * bend * l0;
+      let P = []; for (let i = 0; i <= 4; i++) { const u = i / 4, w0 = (1 - u) ** 2, w1 = 2 * u * (1 - u), w2 = u * u; P.push([w0 * a0 + w1 * mx + w2 * a1, w0 * y0 + w1 * my + w2 * y1]); }
+      for (const amp0 of AMP) {
+        const amp = amp0 * k, Q = [P[0]];
         for (let i = 1; i < P.length; i++) { const [xa, ya] = P[i - 1], [xb, yb] = P[i], l = Math.hypot(xb - xa, yb - ya) || 1e-9, off = (rnd() * 2 - 1) * amp * l * 2.2; Q.push([(xa + xb) / 2 - (yb - ya) / l * off, (ya + yb) / 2 + (xb - xa) / l * off], P[i]); }
         P = Q;
       }
       const out = [P[0]]; let joint = 0;
       for (let i = 1; i < P.length; i++) {
         const [xa, ya] = P[i - 1], [xb, yb] = P[i], ka = Math.floor(ya / row), kb = Math.floor(yb / row);
-        if (ka !== kb && rnd() < 0.3) { const yj = Math.max(ka, kb) * row, xj = xa + (xb - xa) * (yj - ya) / ((yb - ya) || 1e-9), run = (M(0.03) + rnd() * M(0.09)) * Math.sign((a1 - a0) || 1); out.push([xj, yj], [xj + run, yj], [xb + run, yb]); joint += Math.abs(run); continue; }
+        if (ka !== kb && rnd() < 0.14) { const yj = Math.max(ka, kb) * row, xj = xa + (xb - xa) * (yj - ya) / ((yb - ya) || 1e-9), run = (M(0.015) + rnd() * M(0.04)) * Math.sign((a1 - a0) || 1); out.push([xj, yj], [xj + run, yj], [xb + run, yb]); joint += Math.abs(run); continue; }
         out.push(P[i]);
       }
       out.joint = joint;
       return out;
     };
     const h = L.h, sp = L.span / 2, C = [];
-    // up the middle: from the lintel's bottom (its own crack) into the masonry over it — the first
-    C.push({ p: path(0, -L.H, (rnd() - 0.5) * M(0.15), h * 0.32, 0.1), t0: 0.8, t1: 4, w: 1 });
-    // from the opening's top corners, up and in along the arch, to its crown — once it has broken
-    C.push({ p: path(-sp + M(0.05), 0, -M(0.08) + rnd() * M(0.1), h * 0.95), s0: M(0.006), s1: M(0.03), w: 1 });
-    C.push({ p: path(sp - M(0.05), 0, M(0.08) - rnd() * M(0.1), h * 0.92), s0: M(0.008), s1: M(0.032), w: 0.9 });
-    // the branches: off the main ones, short, at an angle
-    for (const m of [C[1], C[2], C[0]]) for (let k = 0; k < 2; k++) {
-      const i = Math.floor(m.p.length * (0.25 + 0.5 * rnd())), [x, y] = m.p[i], dir = rnd() < 0.5 ? -1 : 1, l = M(0.15) + rnd() * M(0.3);
-      C.push({ p: path(x, y, x + dir * l * 0.8, y + l * (0.3 + rnd() * 0.5), 0.12), t0: m.t0 != null ? m.t0 + 1.5 : undefined, t1: m.t1 != null ? m.t1 + 2 : undefined, s0: m.s0 != null ? m.s0 + M(0.006) : undefined, s1: m.s1 != null ? m.s1 + M(0.008) : undefined, w: 0.45, br: true });
+    // up the middle: from the lintel's bottom (its own crack, where it bends) into the masonry over it — the first
+    C.push({ p: path(0, -L.H, (rnd() - 0.5) * M(0.06), h * 0.3), t0: 0.8, t1: 4, w: 1 });
+    // from the opening's top corners up and in, a gentle arch to its crown — once it has broken
+    C.push({ p: path(-sp + M(0.05), 0, -M(0.05) + rnd() * M(0.06), h * 0.95, -0.06), s0: M(0.006), s1: M(0.03), w: 1 });
+    C.push({ p: path(sp - M(0.05), 0, M(0.05) - rnd() * M(0.06), h * 0.92, 0.06), s0: M(0.008), s1: M(0.032), w: 0.9 });
+    // the branches: one or two hairlines near each main crack's tip, short
+    for (const m of [C[1], C[2], C[0]]) for (let k = 0, n = 1 + (rnd() < 0.5 ? 1 : 0); k < n; k++) {
+      const i = Math.floor(m.p.length * (0.7 + 0.22 * rnd())), [x, y] = m.p[i], dir = rnd() < 0.5 ? -1 : 1, l = M(0.06) + rnd() * M(0.1);
+      C.push({ p: path(x, y, x + dir * l * 0.7, y + l * (0.5 + rnd() * 0.4), 0, 1.2), t0: m.t0 != null ? m.t0 + 2 : undefined, t1: m.t1 != null ? m.t1 + 2 : undefined, s0: m.s0 != null ? m.s0 + M(0.01) : undefined, s1: m.s1 != null ? m.s1 + M(0.01) : undefined, w: 0.3, br: true });
     }
     for (const c of C) { let s0 = 0; c.len = [0]; for (let i = 1; i < c.p.length; i++) { s0 += Math.hypot(c.p[i][0] - c.p[i - 1][0], c.p[i][1] - c.p[i - 1][1]); c.len.push(s0); } c.L = s0; c.joint = c.p.joint; }
     this.paths = C;

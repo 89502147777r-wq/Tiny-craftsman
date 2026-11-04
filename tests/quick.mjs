@@ -1025,7 +1025,7 @@ console.log('—', sec());
   check('catastrophes: 7 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 10 && o.slider && o.back && o.tint, JSON.stringify(o));
   check('catastrophes: a M 4 quake leaves the house standing, a M 9 one brings it down', o.weak.pieces > 250 && o.weak.share < 0.05 && o.strong.share > 0.4, JSON.stringify([o.weak, o.strong]));
   check('catastrophes: the tornado, the tsunami and the meteor at full power break the house', o.kinds.tornado > 0.1 && o.kinds.tsunami > 0.1 && o.kinds.meteor > 0.1, JSON.stringify(o.kinds));
-  check('mistakes: a lintel without bars — the x-ray reddens, it breaks and sags (≈45 mm), jagged cracks mostly through the blocks, the window glass cracks, blocks fall, the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early < 0.012 && o.mis.sag > 0.04 && o.mis.cracks >= 4 && o.mis.rough > 1.12 && o.mis.joint < 0.4 && o.mis.glass && o.mis.fell >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
+  check('mistakes: a lintel without bars — the x-ray reddens, it breaks and sags (≈45 mm), cracks through the blocks, nearly straight, ragged in the small (length 1,03–1,11 of the chord), the window glass cracks, blocks fall, the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early < 0.012 && o.mis.sag > 0.04 && o.mis.cracks >= 4 && o.mis.rough >= 1.03 && o.mis.rough <= 1.11 && o.mis.joint < 0.15 && o.mis.glass && o.mis.fell >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
   check('catastrophes: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
