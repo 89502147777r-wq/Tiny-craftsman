@@ -1,0 +1,42 @@
+# One-off (removed after use): downloads the chosen CC BY / CC0 excavator candidates (modelled, not scanned) from
+# Sketchfab with the repository secret SKETCHFAB_TOKEN and commits them to this branch, in incoming/.
+name: Fetch Sketchfab models
+on:
+  push:
+    branches: [fetch-sketchfab-wf]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download
+        env:
+          TOKEN: ${{ secrets.SKETCHFAB_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "SKETCHFAB_TOKEN is not set"; exit 1; fi
+          mkdir -p incoming
+          for pair in exc_cat:5f195244108c46e495a1e78040f02f7e exc_one:79abe2fa2d8841bc9af49eda02a68148 exc_ik:f2a569f2a2f64a079cc353fa4d4a74f1; do
+            name=${pair%%:*}; uid=${pair##*:}
+            for try in 1 2 3 4 5 6; do
+              curl -sS -H "Authorization: Token $TOKEN" "https://api.sketchfab.com/v3/models/$uid/download" -o dl.json
+              grep -q "Too many requests" dl.json || break
+              echo "rate limited ($name), waiting"; sleep 60
+            done
+            sleep 8
+            url=$(python3 -c "import json;d=json.load(open('dl.json'));print((d.get('glb') or d.get('gltf') or {}).get('url','') if isinstance(d,dict) else '')")
+            kind=$(python3 -c "import json;d=json.load(open('dl.json'));print('glb' if isinstance(d,dict) and d.get('glb') else 'zip')")
+            if [ -z "$url" ]; then echo "no download for $name: $(head -c 200 dl.json)"; continue; fi
+            curl -sSL "$url" -o "incoming/$name.$kind"
+            sz=$(stat -c %s "incoming/$name.$kind"); echo "$name $sz"
+            if [ "$sz" -gt 95000000 ]; then echo "too big: $name"; rm "incoming/$name.$kind"; fi
+          done
+          rm -f dl.json
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add incoming
+          git commit -m "Downloaded Sketchfab excavator models (CC BY)" || echo "nothing downloaded"
+          git push
