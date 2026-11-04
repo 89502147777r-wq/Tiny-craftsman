@@ -1126,8 +1126,12 @@ export class MachineTool {
         if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let k = 0; k < 4; k++) T.mix[k] += (take[k] + (k ? 0 : take[4])) / Math.max(1e-12, v) * inT; T.soil.material.setMix?.(T.mix);
         T.pourLine(m, new THREE.Vector3(Math.sin(E.yaw + E.swing), 0, Math.cos(E.yaw + E.swing)), E.bucketW / 2, inT / TRUCK_LOAD);
         const k = vol > 0 ? 1 - inT / vol : 0; if (k > 1e-6) { const sp = this._overSide(m); for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(sp.x, sp.z, take[j] * k * t.cellArea, R(0.4), 0, j); }
-      } else if (t.inside(m.x, m.z)) for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(m.x, m.z, take[j] * t.cellArea, R(0.35), 0, j);
-      for (let j = 0; j < 4; j++) app.particles?.emit(m.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.2), -R(0.6), (Math.random() - 0.5) * R(0.2)), 0, R(0.03 + Math.random() * 0.04), 0, 0, 0);
+      } else {
+        // (onto the ground in a strip under the lip, all its width: a ridge at the soil's own slope, not a mound at a point)
+        for (let q = 0; q < 5; q++) { const lp = E.lipWorld(new THREE.Vector3(), -1 + q * 0.5); if (t.inside(lp.x, lp.z)) for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(lp.x, lp.z, take[j] * t.cellArea / 5, R(0.22), 0, j); }
+      }
+      // (the curtain: crumbs 20–60 mm all along the lip, falling)
+      for (let j = 0; j < 14; j++) { const lp = E.lipWorld(new THREE.Vector3(), Math.random() * 2 - 1); app.particles?.emit(lp, new THREE.Vector3((Math.random() - 0.5) * R(0.15), -R(0.4 + Math.random() * 0.4), (Math.random() - 0.5) * R(0.15)), 0, R(0.02 + Math.random() * 0.04), 0, 0, 0); }
       if (g.load < cap * 0.01) g.carry.fill(0);
     }
     E.load = Math.min(1, g.load / cap);

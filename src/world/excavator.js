@@ -187,9 +187,10 @@ export class Excavator {
     return Math.min(1, (A + heap) / this.secRef);
   }
   // the lip it runs out over (world): the lower end of its opening
-  lipWorld(out = new THREE.Vector3()) {
+  // (u −1 … 1: across its width — what runs out comes off all along the lip, a curtain)
+  lipWorld(out = new THREE.Vector3(), u = 0) {
     const up = this._upLocal(), H = (p) => p[0] * up[0] + p[1] * up[1], l = H(this.lips[0]) < H(this.lips[1]) ? this.lips[0] : this.lips[1];
-    return out.set(this.secX, l[0], l[1]).applyMatrix4(this.bucketP.matrixWorld);
+    return out.set(this.secX + u * this.secW / 2 * 0.9, l[0], l[1]).applyMatrix4(this.bucketP.matrixWorld);
   }
   // the soil in it (share of a heaped bucket): level in it, a heap on top — extruded across its width
   _fill(share) {

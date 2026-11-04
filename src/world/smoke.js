@@ -12,7 +12,7 @@ const KIND = {
   flame: { color: 0xff8a2a, opacity: 0.85, size0: 0.6, size1: 1.6, rise: 2.2, life: 0.9, add: true },
   soot: { color: 0x1c1a19, opacity: 0.6, size0: 1.0, size1: 8, rise: 1.6, life: 5 },
   // (a building come down: grey concrete dust, slow, hanging long — 5–10 s — and drifting with the wind)
-  rubble: { color: 0xb8a58a, opacity: 0.7, size0: 2, size1: 10, rise: 0.35, life: 8 },
+  rubble: { color: 0xb8a58a, opacity: 0.55, size0: 2, size1: 10, rise: 0.5, life: 6 },
   // (the air pushed out from under a falling slab: a ring of dust running out along the ground — fast, stopping in a second)
   ring: { color: 0xb8a58a, opacity: 0.8, size0: 1.2, size1: 6, rise: 0.08, life: 3.5, damp: 2.6 },
 };

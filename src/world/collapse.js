@@ -3,6 +3,7 @@ import { MODEL_SCALE } from '../config.js';
 import { LIFT } from './lift.js';
 import { isSlab } from '../tools/slab.js';
 import { toWorld } from '../tools/belt.js';
+import { fracture } from './fracture.js';
 
 // «Обрушение опоры» (a catastrophe of its own kind, `shaft`): a house standing on a glass lift shaft comes
 // down, as the realist describes such a failure (his lessons of builds 274 and 276; the owner: «not a Lego
@@ -331,6 +332,8 @@ export class ShaftCollapse {
       for (const it of this.bodies) {
         const v = it.linvel(), hz = Math.hypot(v.x, v.z), kh = hz > 3 ? 3 / hz : 1, p = it.translation();
         if (v.y > 0.6 || kh < 1 || (p.y > this.top0 * S && v.y > 0)) it.setLinvel({ x: v.x * kh, y: Math.min(v.y, p.y > this.top0 * S ? 0 : 0.6), z: v.z * kh }, true);
+        // (the slabs' pieces held by their bars: they settle, they do not cartwheel onto an edge)
+        if (this.slabB?.has(it)) { const w = it.angvel(), wl = Math.hypot(w.x, w.y, w.z); if (wl > 0.7) it.setAngvel({ x: w.x * 0.7 / wl, y: w.y * 0.7 / wl, z: w.z * 0.7 / wl }, true); }
       }
     }
   }
@@ -368,37 +371,32 @@ export class ShaftCollapse {
       for (const pc of c.pieces) { const m = new THREE.Matrix4().multiplyMatrices(B, pc.local), p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(); m.decompose(p, q, s); pcs.push({ pc, m, p, q, s, dens: pc.dens }); }
       W.removeRigidBody(c.body);
     }
-    const near = (i) => pcs.map((_, j) => j).filter((j) => j !== i && pcs[j].p.distanceTo(pcs[i].p) < M(0.75));
-    const size = (i) => { const d = pcs[i].p.distanceTo(hit) * S, u = rnd(); return d < 2.5 ? (u < 0.7 ? 1 : 2) : u < 0.4 ? 1 + Math.floor(rnd() * 2) : u < 0.8 ? 3 + Math.floor(rnd() * 6) : 9 + Math.floor(rnd() * 22); };
+    // (split through the units, not at their joints: pieces from a tenth of a block to twenty, hundreds of them, each
+    // its own body; the units themselves hidden — their bits are drawn)
+    const wv = D.app.wallView, zero = new THREE.Matrix4().makeScale(0, 0, 0), hidden = new Set();
+    const frags = fracture(pcs.map((q) => ({ m: q.m, cl: q.pc.cl, kind: q.pc.cl === wv.bricks ? 'brick' : 'block', dens: q.dens })), hit, { max: 650 });
+    for (const q of pcs) { q.pc.cl.setMatrixAt(q.pc.i, zero); hidden.add(q.pc.cl); }
+    for (const im of hidden) im.instanceMatrix.needsUpdate = true;
     const newChunks = [];
-    for (const g of groups(pcs.length, size, near)) {
-      const cen = g.reduce((a, i) => a.add(pcs[i].p), new THREE.Vector3()).multiplyScalar(1 / g.length), inv = new THREE.Matrix4().makeTranslation(-cen.x, -cen.y, -cen.z);
-      const bd = W.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(cen.x * S, cen.y * S, cen.z * S).setLinearDamping(0.15).setAngularDamping(0.4).setCcdEnabled(g.length > 8));
-      let mass = 0; const box = new THREE.Box3(), pieces = [];
-      for (const i of g) {
-        const q = pcs[i], hx = Math.max(0.01, q.s.x * S / 2 - 0.006), hy = Math.max(0.01, q.s.y * S / 2 - 0.006), hz = Math.max(0.01, q.s.z * S / 2 - 0.006);
-        W.createCollider(R.ColliderDesc.cuboid(hx, hy, hz).setTranslation((q.p.x - cen.x) * S, (q.p.y - cen.y) * S, (q.p.z - cen.z) * S).setRotation(q.q).setDensity(q.dens).setFriction(0.8).setRestitution(0.02).setCollisionGroups((0x0004 << 16) | 0xfffd), bd);
-        mass += q.dens * 8 * hx * hy * hz; box.expandByPoint(q.p);
-        const local = new THREE.Matrix4().multiplyMatrices(inv, q.m);
-        // (a single block near the blow: broken — its bits instead of it)
-        if (g.length === 1 && q.p.distanceTo(hit) * S < 3.5 && rnd() < 0.45) { local.scale(new THREE.Vector3(0, 0, 0)); this._breakUnit(q, vel(q.p.x, q.p.y, q.p.z)); }
-        pieces.push({ ...q.pc, local });
-      }
-      bd.setLinvel(vel(cen.x, cen.y, cen.z), true); bd.setAngvel({ x: av.x + (rnd() - 0.5) * 1.5, y: av.y + (rnd() - 0.5) * 0.6, z: av.z + (rnd() - 0.5) * 1.5 }, true);
-      newChunks.push({ pieces, body: bd, c: cen, box, mass, free: true, under: [], over: [], str: 1, area: 0 }); this.bodies.push(bd); D.broken++;
+    for (const f of frags) {
+      // (a crumb less than a twentieth of a unit: a bit flying, not a body)
+      if (f.vol < 0.05) { const v = vel(f.c.x, f.c.y, f.c.z); this.crumbs.add(f.c, new THREE.Vector3(v.x / S * 0.5 + (rnd() - 0.5) * M(1.5), M(rnd()), v.z / S * 0.5 + (rnd() - 0.5) * M(1.5)), MM(30 + rnd() * 60), f.dens > 1000 ? new THREE.Color(0xa04c34) : new THREE.Color(0xd8d6d0), M(0.1)); f.g.traverse((o) => o.geometry?.dispose()); continue; }
+      const bd = W.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(f.c.x * S, f.c.y * S, f.c.z * S).setLinearDamping(0.15).setAngularDamping(0.4).setCcdEnabled(f.vol > 4));
+      const desc = hullDesc(R, f.hull, f.c, 0.004); if (!desc) { W.removeRigidBody(bd); continue; }
+      W.createCollider(desc.setDensity(f.dens).setFriction(0.8).setRestitution(0.02).setCollisionGroups((0x0004 << 16) | 0xfffd), bd);
+      bd.setLinvel(vel(f.c.x, f.c.y, f.c.z), true); bd.setAngvel({ x: av.x + (rnd() - 0.5) * 2, y: av.y + (rnd() - 0.5) * 0.8, z: av.z + (rnd() - 0.5) * 2 }, true);
+      D.root.add(f.g);
+      newChunks.push({ pieces: [], frag: f.g, vol: f.vol, body: bd, c: f.c, box: new THREE.Box3().setFromCenterAndSize(f.c, new THREE.Vector3()), mass: 0, free: true, drawn: false, under: [], over: [], str: 1, area: 0 });
+      this.bodies.push(bd); D.broken++;
     }
     D.chunks = [...D.chunks.filter((c) => !this.chunks.includes(c)), ...newChunks]; this.chunks = newChunks;
-    // (the blocks no longer clean and alike: dusted, each a shade of its own — darker near the blow)
-    { const col = new THREE.Color(), dust = new THREE.Color(0xb8a58a), seen = new Set();
-      for (const q of pcs) { const im = q.pc.cl; if (!im.instanceColor) continue; im.getColorAt(q.pc.i, col); const d = Math.min(1, q.p.distanceTo(hit) * S / 6); col.lerp(dust, 0.25 + 0.25 * rnd()).multiplyScalar(0.82 + 0.13 * d + 0.06 * rnd()); im.setColorAt(q.pc.i, col); seen.add(im); }
-      for (const im of seen) im.instanceColor.needsUpdate = true; }
     // the slabs: their pieces in clusters held by the bars — small by the blow, larger off it
     const sl = this.panels.filter((p) => p.sort === 'slab'), cur = sl.map((p) => { const b = new THREE.Box3().setFromPoints((p.o.userData.hull || []).map((q) => new THREE.Vector3(...q).applyMatrix4(PT))); return b.getCenter(new THREE.Vector3()); });
     const nearS = (i) => sl.map((_, j) => j).filter((j) => j !== i && sl[j].o.userData.slab === sl[i].o.userData.slab && cur[j].distanceTo(cur[i]) < M(2.2));
     const sizeS = (i) => { const d = cur[i].distanceTo(hit) * S; return d < 2.5 ? 1 : d < 5 ? 1 + Math.floor(rnd() * 3) : 2 + Math.floor(rnd() * 5); };
     for (const g of groups(sl.length, sizeS, nearS)) {
       const cen = g.reduce((a, i) => a.add(cur[i]), new THREE.Vector3()).multiplyScalar(1 / g.length);
-      const bd = W.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(cen.x * S, cen.y * S, cen.z * S).setLinearDamping(0.15).setAngularDamping(0.6).setCcdEnabled(true));
+      const bd = W.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(cen.x * S, cen.y * S, cen.z * S).setLinearDamping(0.15).setAngularDamping(1.2).setCcdEnabled(true)); this.slabB = (this.slabB || new Set()).add(bd);
       for (const i of g) {
         const p = sl[i], pts = (p.o.userData.hull || []).map((q) => new THREE.Vector3(...q).applyMatrix4(PT).toArray());
         const desc = hullDesc(R, pts, cen); if (desc) W.createCollider(desc.setDensity(2400).setFriction(0.85).setRestitution(0.02).setCollisionGroups((0x0004 << 16) | 0xfffd), bd);
@@ -459,10 +457,12 @@ export class ShaftCollapse {
   fx(dt) {
     if (!this.ok) return;
     const D = this.D, floor = (x, z) => D.app.terrain.heightAt(x, z);
+    // (the masonry's broken pieces: drawn where their bodies are)
+    if (this.struck) for (const c of this.chunks) { if (!c.frag || (c.fdrawn && c.body.isSleeping())) continue; const t = c.body.translation(), r = c.body.rotation(); c.frag.matrix.compose(new THREE.Vector3(t.x / S, t.y / S, t.z / S), new THREE.Quaternion(r.x, r.y, r.z, r.w), new THREE.Vector3(1, 1, 1)); c.frag.matrixWorldNeedsUpdate = true; c.fdrawn = c.body.isSleeping(); }
     this.shards.update(dt, floor); this.crumbs.update(dt, floor);
-    if (this.struck && D.t - this.strikeT < 5 && rnd() < 0.35 * (1 - (D.t - this.strikeT) / 5)) {
+    if (this.struck && D.t - this.strikeT < 4 && rnd() < 0.15 * (1 - (D.t - this.strikeT) / 4)) {
       const c = this.chunks[Math.floor(rnd() * this.chunks.length)]?.body.translation();
-      if (c) D.puffs?.emit('rubble', new THREE.Vector3(c.x / S, D.groundY + rnd() * M(0.6), c.z / S), new THREE.Vector3(D.wdir.x * M(0.5), 0, D.wdir.z * M(0.5)), 0.7);
+      if (c) D.puffs?.emit('rubble', new THREE.Vector3(c.x / S, D.groundY + rnd() * M(0.6), c.z / S), new THREE.Vector3(D.wdir.x * M(0.8), 0, D.wdir.z * M(0.8)), 0.4 + rnd() * 0.3);
     }
     if (this.struck && D.app.rig) D.app.rig.shakeAmp = Math.max(0, 0.8 - (D.t - this.strikeT) * 1.2);
   }
