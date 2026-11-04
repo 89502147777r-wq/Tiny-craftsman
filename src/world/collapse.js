@@ -64,7 +64,7 @@ const clipHalf = (poly, m, d) => {
 const key = (p) => `${Math.round(p[0] * 1e5)},${Math.round(p[1] * 1e5)}`;
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 10007) / 10007; };
 const MATS = {};
-const concMat = () => (MATS.c ||= new THREE.MeshStandardMaterial({ color: 0x9d9b95, roughness: 0.95, vertexColors: true }));
+const concMat = () => (MATS.c ||= new THREE.MeshStandardMaterial({ color: 0x86857f, roughness: 0.95, vertexColors: true }));   // (the slab's concrete: greyer than the aerated blocks)
 const barMat = () => (MATS.b ||= new THREE.MeshStandardMaterial({ color: 0x5b4b3f, roughness: 0.6, metalness: 0.4 }));
 export function slabPieces(objects) {
   const out = [];
@@ -276,7 +276,8 @@ export class ShaftCollapse {
     }
     const k = Math.max(0.06, 1 - short / yH);
     // (the rails, the cylinder, the doors, the head — down with the posts)
-    for (const ch of this.L.g.children) if (ch.visible && !this._own.has(ch) && ch !== this.cab && ch.name !== 'cabinet' && ch.name !== 'conc') ch.scale.y = k;
+    // (scaled — and moved down: a part with its own place, the sheave, the ram, the ropes, must not stay up in the air)
+    for (const ch of this.L.g.children) if (ch.visible && !this._own.has(ch) && ch !== this.cab && ch.name !== 'cabinet' && ch.name !== 'conc') { if (ch.userData.y0 == null) ch.userData.y0 = ch.position.y; ch.scale.y = k * (ch.userData.sy0 ??= ch.scale.y); ch.position.y = ch.userData.y0 * k; }
     // (the cabin crushed, not squashed: down to half its height at most, racked over to the lean)
     if (this.cab) { this.cab.scale.y = Math.max(0.42, Math.min(1, k * 1.6)); this.cab.rotation.set(lz * (1 - k) * 0.5, 0, -lx * (1 - k) * 0.5); this.cab.position.y = this.cabY0 * Math.min(1, k * 1.2); }
     // (the panes: each half the same length — they fold out at the middle as the height closes)
@@ -393,7 +394,7 @@ export class ShaftCollapse {
     // the slabs: their pieces in clusters held by the bars — small by the blow, larger off it
     const sl = this.panels.filter((p) => p.sort === 'slab'), cur = sl.map((p) => { const b = new THREE.Box3().setFromPoints((p.o.userData.hull || []).map((q) => new THREE.Vector3(...q).applyMatrix4(PT))); return b.getCenter(new THREE.Vector3()); });
     const nearS = (i) => sl.map((_, j) => j).filter((j) => j !== i && sl[j].o.userData.slab === sl[i].o.userData.slab && cur[j].distanceTo(cur[i]) < M(2.2));
-    const sizeS = (i) => { const d = cur[i].distanceTo(hit) * S; return d < 2.5 ? 1 : d < 5 ? 1 + Math.floor(rnd() * 3) : 2 + Math.floor(rnd() * 5); };
+    const sizeS = (i) => { const d = cur[i].distanceTo(hit) * S; return d < 2.5 ? 1 : d < 5 ? 1 + Math.floor(rnd() * 2) : 2 + Math.floor(rnd() * 3); };   // (no more than 4 held together: a larger raft would stand on edge over the heap)
     for (const g of groups(sl.length, sizeS, nearS)) {
       const cen = g.reduce((a, i) => a.add(cur[i]), new THREE.Vector3()).multiplyScalar(1 / g.length);
       const bd = W.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(cen.x * S, cen.y * S, cen.z * S).setLinearDamping(0.15).setAngularDamping(1.2).setCcdEnabled(true)); this.slabB = (this.slabB || new Set()).add(bd);
@@ -471,7 +472,7 @@ export class ShaftCollapse {
     const g = this.L.g;
     for (const q of this.posts || []) { g.remove(q.m); q.m.geometry.dispose(); }
     for (const p of this.panes || []) { g.remove(p.root); p.root.traverse((o) => o.geometry?.dispose()); }
-    for (const ch of g.children) { ch.visible = true; ch.scale.y = 1; }
+    for (const ch of g.children) { ch.visible = true; ch.scale.y = ch.userData.sy0 ?? 1; if (ch.userData.y0 != null) ch.position.y = ch.userData.y0; delete ch.userData.y0; delete ch.userData.sy0; }
     if (this.cab) { this.cab.rotation.set(0, 0, 0); this.cab.scale.y = 1; this.cab.position.y = this.cabY0; }
   }
 }

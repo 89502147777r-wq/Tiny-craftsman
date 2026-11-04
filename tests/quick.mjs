@@ -352,7 +352,7 @@ console.log('—', sec());
   check('walls: a block carried from the pallet (let go in the open → back), laid at its place with mortar, undo', play.walls.refused && play.walls.laid && play.walls.bed && play.walls.errMm < 2 && play.walls.back && play.walls.rows === 3, JSON.stringify(play.walls));
   check('shovel takes spilled fresh concrete and tips it into the form, volume exact, undo', play.shovelConc.loaded && play.shovelConc.took && play.shovelConc.vol < 1e-6 && play.shovelConc.undo, JSON.stringify(play.shovelConc));
   check('trench, formwork, cage and ties placed', play.objects.outlines === 2 && play.objects.forms >= 8 && play.objects.cages === 1 && play.objects.tied, JSON.stringify(play.objects));
-  await page.reload();
+  await page.reload({ timeout: 120000 });   // (a loaded container: the load event can take more than 30 s)
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const after = await page.evaluate(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(tc.terrain.excavatedVolume() * 1e6).toFixed(3), sand: +(tc.terrain.materialVolumes()[1] * 1e6).toFixed(2), conc: +(tc.terrain.concVolume() * 1e6).toFixed(2) }; });
   check('stripping: warns while soft, then boards come off into a stack, concrete stays, undo', play.strip.warned && play.strip.running && play.strip.still && play.strip.stripped && play.strip.back && play.strip.conc && play.strip.n0 > 0, JSON.stringify(play.strip));
@@ -1150,6 +1150,7 @@ console.log('—', sec());
     for (let i = 0; i < 6; i++) tc.simulate(0.1);
     tc.setTool('disaster'); Object.assign(tc.settings, { catKind: 'shaft', catPower: 5 });
     o.chip = tc.ui.chips().some((c) => /Обрушение опоры/.test(c.label));
+    const sc0 = tc.wallView._liftG.get(lf.id).children.map((ch) => [ch.scale.y, ch.position.y]);
     await tc.disasterTool.run();
     const D = tc.disasterTool.sim, C = D.collapse, ST = CL.SHAFT_T;
     o.carried = C && [C.chunks.length, C.panels.filter((p) => p.sort === 'slab').length, C.panels.filter((p) => p.sort === 'skin').length];
@@ -1167,15 +1168,20 @@ console.log('—', sec());
       o.slabDistinct = new Set(areas).size / areas.length; const sz = C.chunks.map((c) => c.vol); o.chunkSizes = [+Math.min(...sz).toFixed(2), +Math.max(...sz).toFixed(1), sz.length];
       o.strikeAngle = +C.strikeAngle.toFixed(1);
       o.slabTilt = Math.max(...C.panels.filter((p) => p.sort === 'slab').map((p) => { const r = p.body.rotation(), q = new THREE.Quaternion(r.x, r.y, r.z, r.w), up = new THREE.Vector3(0, 1, 0).applyQuaternion(q); return Math.acos(Math.min(1, Math.abs(up.y))) * 180 / Math.PI; }));
+      o.tilts = C.panels.filter((p) => p.sort === 'slab').map((p) => { const r = p.body.rotation(), q = new THREE.Quaternion(r.x, r.y, r.z, r.w), up = new THREE.Vector3(0, 1, 0).applyQuaternion(q), b = new THREE.Box3().setFromObject(p.o); return [Math.round(Math.acos(Math.min(1, Math.abs(up.y))) * 57.3), +((b.max.x - b.min.x) * (b.max.z - b.min.z) * 100).toFixed(1)]; }).filter((t) => t[0] > 30);
       o.overTop = C.chunks.some((c) => c.body.translation().y > C.top0 * 10.4651 + 0.3); }
+    // (the crushed shaft's own parts — the sheave, the ram, the ropes — come down with it, none left hanging in the air)
+    { const L = [...tc.wallView._liftG.get(lf.id).children].filter((ch) => ch.visible && ch.userData.y0 != null && ch.userData.y0 > 0.01);
+      o.liftParts = L.length; o.hanging = L.filter((ch) => ch.scale.y < 0.99 * (ch.userData.sy0 ?? 1) && ch.position.y > ch.userData.y0 * 0.99).length; }
     tc.disasterTool.stop?.(); D.stop(); tc.simulate(0.1);
-    o.back = !tc.scene.getObjectByName('disaster') && !tc.wallView.frozen && tc.wallView._liftG.get(lf.id).children.every((ch) => ch.visible && ch.scale.y === 1);
+    o.back = !tc.scene.getObjectByName('disaster') && !tc.wallView.frozen && tc.wallView._liftG.get(lf.id).children.every((ch, i) => ch.visible && ch.scale.y === sc0[i][0] && ch.position.y === sc0[i][1]);
     return o;
   });
   check('support collapse: the chip; the house carried whole (its chunks, the slab in pieces, the fascias)', o.chip && o.carried?.[0] > 40 && o.carried[1] >= 18 && o.carried[2] === 4, JSON.stringify(o));
   check('support collapse: the posts bow first — the house sinks a few mm and leans ≤ 3°; the panes crack bottom-up, then whiten', o.bowSink > 0.2 && o.bowSink < 60 && o.lean > 0 && o.lean <= 3 && o.cracked > 0 && o.white === o.panes, JSON.stringify(o));
   check('support collapse: the house falls as a body would (its drop ≥ 60 % of a free fall\'s), strikes, breaks; the slabs come down; nothing bounces up', o.fall && o.fall.drop > 0.6 * o.fall.free && o.struck && o.free > 0 && o.slabsDown && o.maxUp < 1.5, JSON.stringify(o));
   check('support collapse: not a Lego set — the slab in pieces all different, the walls split through their blocks — hundreds of pieces from a tenth of a block to many; a corner first (≥ 8°); no slab piece on edge (≤ 40° — lying on the heap), nothing over the walls', o.slabDistinct > 0.9 && o.chunkSizes[0] < 0.3 && o.chunkSizes[1] > 4 && o.chunkSizes[2] >= 150 && o.strikeAngle >= 8 && o.slabTilt <= 40 && !o.overTop, JSON.stringify(o));
+  check('support collapse: nothing left hanging in the air — the shaft\'s parts come down as it is crushed', o.liftParts > 0 && o.hanging === 0, JSON.stringify(o));
   check('support collapse: all back as it was; no console errors', o.back && errors.length === 0, errors.slice(0, 3).join(' | ') + JSON.stringify(o));
   await browser.close();
 }

@@ -17,11 +17,11 @@ function inside(kind) {
     g.fillStyle = '#b4573a'; g.fillRect(0, 0, n, n);
     for (let i = 0; i < 900; i++) { const v = rnd(); g.fillStyle = v < 0.5 ? `rgba(120,46,28,${0.3 + rnd() * 0.4})` : v < 0.8 ? `rgba(215,140,100,${0.3 + rnd() * 0.4})` : 'rgba(60,40,30,0.5)'; g.fillRect(rnd() * n, rnd() * n, 1 + rnd() * 2, 1 + rnd() * 2); }
   } else {
-    g.fillStyle = '#c9c7c0'; g.fillRect(0, 0, n, n);
+    g.fillStyle = '#a9a69e'; g.fillRect(0, 0, n, n);   // (a break is darker than the block's sawn face)
     for (let i = 0; i < 1400; i++) { const r = 0.5 + rnd() * 2; g.fillStyle = `rgba(${90 + rnd() * 40},${90 + rnd() * 40},${88 + rnd() * 40},${0.35 + rnd() * 0.4})`; g.beginPath(); g.arc(rnd() * n, rnd() * n, r, 0, Math.PI * 2); g.fill(); }
   }
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
-  return (INS[kind] = new THREE.MeshStandardMaterial({ map: t, roughness: 1, color: kind === 'brick' ? 0xffffff : 0xf2f0ea }));
+  return (INS[kind] = new THREE.MeshStandardMaterial({ map: t, roughness: 1, color: 0xffffff }));
 }
 
 // a unit's box faces (its own frame, −0.5 … 0.5): for each axis face, its 4 corners' uv from the instanced geometry
@@ -92,7 +92,7 @@ export function fracture(units, hit, opt = {}) {
     const j = Math.floor(rnd() * units.length), c = centres[j], near = Math.min(1, c.distanceTo(hit) / (unitL * 14));
     // (most pieces small and middling — a tenth of a unit to three; one in twelve a big slab of wall, three to twenty;
     // by the blow nothing big)
-    const big = near > 0.4 && rnd() < 0.08, lo = Math.log(big ? 3 : 0.1), hi = Math.log(big ? 20 : near < 0.4 ? 1.5 : 3), v = Math.exp(lo + (hi - lo) * rnd()) * uv;
+    const big = near > 0.4 && rnd() < 0.08, lo = Math.log(big ? 3 : 0.1), hi = Math.log(big ? 12 : near < 0.4 ? 1.5 : 3), v = Math.exp(lo + (hi - lo) * rnd()) * uv;
     const s = new THREE.Vector3().setFromMatrixScale(units[j].m);
     seeds.push({ p: c.clone().add(new THREE.Vector3((rnd() - 0.5) * s.x, (rnd() - 0.5) * s.y, (rnd() - 0.5) * s.z).applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(units[j].m))), w: Math.pow(v, 2 / 3) * (big ? 1.1 : 0.3), v });
     filled += v; void total;
@@ -126,10 +126,16 @@ export function fracture(units, hit, opt = {}) {
       let vol = 0; const pc = poly[0].pts[0];
       for (const f of poly) {
         const w = f.pts.map(W);
-        for (let i = 1; i + 1 < f.pts.length; i++) {
-          const tr = [0, i, i + 1], dst = f.k >= 0 ? fa : br;
-          for (const q of tr) { dst.pos.push(w[q].x, w[q].y, w[q].z); if (f.k >= 0) dst.uv.push(...uvAt(F, f.k, f.pts[q])); else { const g = w[q]; dst.uv.push((g.x + g.z) * 6, g.y * 6); } }
-          vol += Math.abs(dot(sub(f.pts[0], pc), cross(sub(f.pts[i], pc), sub(f.pts[i + 1], pc)))) / 6;
+        for (let i = 1; i + 1 < f.pts.length; i++) vol += Math.abs(dot(sub(f.pts[0], pc), cross(sub(f.pts[i], pc), sub(f.pts[i + 1], pc)))) / 6;
+        if (f.k >= 0) {
+          for (let i = 1; i + 1 < f.pts.length; i++) for (const q of [0, i, i + 1]) { fa.pos.push(w[q].x, w[q].y, w[q].z); fa.uv.push(...uvAt(F, f.k, f.pts[q])); }
+        } else {
+          // (a break is rough: its middle and an inner ring pushed in and out by a few % of its size — not a sawn plane)
+          const m = w.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / w.length), nrm = new THREE.Vector3().subVectors(w[1], w[0]).cross(new THREE.Vector3().subVectors(w[2], w[0])).normalize();
+          const sz = Math.max(...w.map((p) => p.distanceTo(m))), off = () => nrm.clone().multiplyScalar((rnd() - 0.5) * 2 * sz * 0.06);
+          const mid = m.clone().add(off()), ring = w.map((p) => p.clone().lerp(m, 0.45 + rnd() * 0.15).add(off()));
+          const put = (a, b, c) => { for (const g of [a, b, c]) { br.pos.push(g.x, g.y, g.z); const ax = Math.abs(nrm.x) > Math.abs(nrm.z) ? g.z : g.x; br.uv.push(ax * 6, (Math.abs(nrm.y) > 0.7 ? g.z : g.y) * 6); } };
+          for (let i = 0; i < w.length; i++) { const j = (i + 1) % w.length; put(w[i], w[j], ring[j]); put(w[i], ring[j], ring[i]); put(ring[i], ring[j], mid); }
         }
         for (const p of w) P.pts.push(p);
       }
