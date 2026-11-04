@@ -1119,7 +1119,7 @@ console.log('—', sec());
       o.mis.back = !tc.wallView.frozen && !document.querySelector('.mistake-hud') && Math.abs(lm.determinant()) > 1e-15; }
     return o;
   });
-  check('catastrophes: 7 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 10 && o.slider && o.back && o.tint, JSON.stringify(o));
+  check('catastrophes: 8 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 11 && o.slider && o.back && o.tint, JSON.stringify(o));
   check('catastrophes: a M 4 quake leaves the house standing, a M 9 one brings it down', o.weak.pieces > 250 && o.weak.share < 0.05 && o.strong.share > 0.4, JSON.stringify([o.weak, o.strong]));
   check('catastrophes: the tornado, the tsunami and the meteor at full power break the house', o.kinds.tornado > 0.1 && o.kinds.tsunami > 0.1 && o.kinds.meteor > 0.1, JSON.stringify(o.kinds));
   check('mistakes: a lintel without bars — the x-ray reddens, it breaks in weeks and creeps (to ≈24 mm over a window), three hinges, the arch of collapse cracks meet at the crown, nearly straight and ragged in the small, the sash jams then the glass cracks, the blocks stay in (chips fall), the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early > 0.012 && o.mis.sag > 0.018 && o.mis.sag <= 0.027 && o.mis.cracks >= 3 && o.mis.rough >= 1.02 && o.mis.roughMax <= 1.2 && o.mis.joint < 0.2 && o.mis.meet < 60 && o.mis.jam && o.mis.glass && o.mis.fell === 0 && o.mis.chips >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
@@ -1151,8 +1151,11 @@ console.log('—', sec());
     tc.setTool('disaster'); Object.assign(tc.settings, { catKind: 'shaft', catPower: 5 });
     o.chip = tc.ui.chips().some((c) => /Обрушение опоры/.test(c.label));
     const sc0 = tc.wallView._liftG.get(lf.id).children.map((ch) => [ch.scale.y, ch.position.y]);
-    await tc.disasterTool.run();
+    const tr0 = performance.now(); await tc.disasterTool.run(); o.runMs = Math.round(performance.now() - tr0);
     const D = tc.disasterTool.sim, C = D.collapse, ST = CL.SHAFT_T;
+    // (the cast concrete is not hidden as a whole — only the slabs shown in pieces leave it; hiding it all left a slab's bars alone)
+    { const wv = tc.wallView, ix = wv.fill.geometry.index.array, own = wv.owner.fill, cut = new Set(C.panels.filter((p) => p.sort === 'slab').map((p) => p.o.userData.slab));
+      o.fill = { shown: wv.fill.visible, tris: ix.length / 3, want: own.filter((id) => !cut.has(id)).length, total: own.length, cut: cut.size }; }
     o.carried = C && [C.chunks.length, C.panels.filter((p) => p.sort === 'slab').length, C.panels.filter((p) => p.sort === 'skin').length];
     const run = (t1) => { while (D.t < t1) tc.simulate(1 / 30); };
     const y0 = C.body.translation().y;
@@ -1182,6 +1185,7 @@ console.log('—', sec());
   check('support collapse: the house falls as a body would (its drop ≥ 60 % of a free fall\'s), strikes, breaks; the slabs come down; nothing bounces up', o.fall && o.fall.drop > 0.6 * o.fall.free && o.struck && o.free > 0 && o.slabsDown && o.maxUp < 1.5, JSON.stringify(o));
   check('support collapse: not a Lego set — the slab in pieces all different, the walls split through their blocks — hundreds of pieces from a tenth of a block to many; a corner first (≥ 8°); no slab piece on edge (≤ 40° — lying on the heap), nothing over the walls', o.slabDistinct > 0.9 && o.chunkSizes[0] < 0.3 && o.chunkSizes[1] > 4 && o.chunkSizes[2] >= 150 && o.strikeAngle >= 8 && o.slabTilt <= 40 && !o.overTop, JSON.stringify(o));
   check('support collapse: nothing left hanging in the air — the shaft\'s parts come down as it is crushed', o.liftParts > 0 && o.hanging === 0, JSON.stringify(o));
+  check('catastrophe: the cast concrete stays shown — only the slabs in pieces leave it', o.fill.shown && o.fill.tris === o.fill.want && o.fill.cut === 1 && o.fill.total > 0, JSON.stringify(o.fill));
   check('support collapse: all back as it was; no console errors', o.back && errors.length === 0, errors.slice(0, 3).join(' | ') + JSON.stringify(o));
   await browser.close();
 }

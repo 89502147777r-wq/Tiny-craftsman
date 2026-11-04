@@ -64,7 +64,7 @@ export class Disaster {
         this.pieces.push({ cl: im, i, p: P.clone(), q: Q.clone(), s: Sv.clone(), dens, str, lintel: key === 'lintels' });
       }
     }
-    this.hidden = [wv.mortar, wv.fill].filter((m) => m?.visible); for (const m of this.hidden) m.visible = false;
+    this.hidden = [wv.mortar].filter((m) => m?.visible); for (const m of this.hidden) m.visible = false;
     // the chunks: a grid along the walls (0,9 m across, 0,75 m up — smaller the stronger it is)
     const big = this.pieces.length > 1200 ? Math.min(2.2, Math.sqrt(this.pieces.length / 1200)) : 1;   // (a big house: bigger chunks — no more than ~500 bodies on a phone)
     const ca = M((this.power > 6 ? 0.6 : 0.9) * big), cy = M((this.power > 6 ? 0.5 : 0.75) * Math.sqrt(big)), grid = new Map();
@@ -114,7 +114,16 @@ export class Disaster {
     for (const ch of [...(wv.windows?.children || [])]) panel(ch, 'window');
     // (the slabs: their cast concrete is one mesh of the view, hidden — as pieces of their own, heavy, falling
     // when what carries them goes; the lifts stay out of it: a shaft that fails is shown by its own kind)
-    for (const o of slabPieces(app.objects)) panel(o, 'slab');
+    const cut = new Set();
+    for (const o of slabPieces(app.objects)) { panel(o, 'slab'); cut.add(o.userData.slab); }
+    // (the cast concrete stays as it is — the foundation, the blind area, a slab not yet cast through; only the slabs
+    // shown in pieces are taken out of it: hiding it all left their bars standing alone)
+    const fg = wv.fill?.geometry, own = wv.owner?.fill;
+    if (fg?.index && own && cut.size) {
+      const a = fg.index.array, keep = [];
+      for (let t = 0; t < a.length / 3; t++) if (!cut.has(own[t])) keep.push(a[3 * t], a[3 * t + 1], a[3 * t + 2]);
+      this.fillIdx = [fg, fg.index]; fg.setIndex(keep);
+    }
     const liftGs = new Set(wv._liftG ? [...wv._liftG.values()] : []);
     for (const g of [wv.facades, wv.blinds, wv.rails]) if (g) for (const ch of [...g.children]) if (!liftGs.has(ch)) panel(ch, 'skin');
     // the scene of it: water, the funnel, the meteor; the sky and the sound
@@ -389,6 +398,7 @@ export class Disaster {
     const app = this.app, wv = app.wallView;
     this.clones = [];
     for (const m of this.hidden || []) m.visible = true;
+    if (this.fillIdx) { const [fg, ix] = this.fillIdx; if (this.app.wallView.fill.geometry === fg) fg.setIndex(ix); this.fillIdx = null; }
     this.collapse?.stop(); this.collapse = null;
     for (const p of this.panels || []) {
       p.o.visible = true;
