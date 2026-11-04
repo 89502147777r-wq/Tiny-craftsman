@@ -1,3 +1,4 @@
+import { upgrade } from './core/upgrade.js';
 import { Mirrors } from './render/mirrors.js';
 import * as THREE from 'three';
 import { BUILD, STAGE, TRAY, MODEL_SCALE, DEFAULT_SETTINGS, DEFAULT_OUTLINES, MACHINES_ENABLED, K, KT, M_SOIL, M_SAND, M_G5, M_G20, M_BLACK, CONCRETE, PUMP, DELIVERY } from './config.js';
@@ -118,6 +119,7 @@ async function main() {
   app.dust = makeDust(); scene.add(app.dust.points);
 
   app.objects = new ObjectStore();
+  app.objects.upgrade = upgrade;   // (records of an older kind read as today's: core/upgrade.js)
   app.outlineView = new OutlineView(terrain, app.objects); scene.add(app.outlineView.group);
   app.projectView = new ProjectView(); scene.add(app.projectView.group);
   app.formView = new FormworkView(tex, app.objects, terrain); scene.add(app.formView.group);

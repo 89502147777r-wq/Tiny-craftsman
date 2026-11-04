@@ -8,7 +8,7 @@ import { WIN_COLOURS } from '../world/windows.js';
 import { POOL_LAYERS, MOSAICS, COPES, DECKS, DECK_WIDTHS } from '../world/pool.js';
 import { PATH_LAYERS, PATH_LAYERS2, PATH_WIDTHS, PAVERS, PAVE_COLS, filletLine } from '../world/garden.js';
 import { LAWN_LAYERS, LAWN_HOW } from '../world/lawn.js';
-import { FENCE_LAYERS, FENCE_KINDS, FENCE_HEIGHTS, FENCE_COLS, GATES } from '../world/fence.js';
+import { FENCE_KINDS, FENCE_COLS, GATES } from '../world/fence.js';
 import { PLANTS } from '../world/plants.js';
 import { CATS } from '../world/disaster.js';
 import { PORCH_LAYERS, PORCH_TILES, CANOPIES } from '../world/porch.js';
@@ -598,7 +598,7 @@ export class UI {
         return c;
       });
       // the garden: the path's stages (the width when it is set out; the pavers and their colour)
-      const LS = wt.land.layer, lw = wt.land, isLawn = lw.what === 'lawn', isFence = lw.what === 'fence', fset = (o) => lay({ wallKind: 'land', landWhat: 'fence', ...o }), lset = (o) => lay({ wallKind: 'land', landWhat: 'path', ...o }), gset = (o) => lay({ wallKind: 'land', landWhat: 'lawn', ...o });
+      const LS = wt.land.layer, lw = wt.land, isLawn = lw.what === 'lawn', lset = (o) => lay({ wallKind: 'land', landWhat: 'path', ...o }), gset = (o) => lay({ wallKind: 'land', landWhat: 'lawn', ...o });
       // (the path by hand: the width and the corners' radius — the sliders; the corners straight or rounded;
       // the pavers: each kind opens its colours)
       const pw = lw.pw, PS = pw.L;
@@ -611,13 +611,6 @@ export class UI {
       const lawn = LAWN_LAYERS2.map(([k, l], i) => {
         const c = C(`${i + 1} · ${l}`, has('land') && isLawn && lw.lw.L === k, () => gset({ lawnLayer: k }));
         if (k === 'grass') return G('lgrass', c.label, Object.entries(LAWN_HOW).map(([q, n]) => C(n, lw.how === q, () => gset({ lawnLayer: 'grass', lawnHow: q }))), null, c);
-        return c;
-      });
-      const fence = FENCE_LAYERS.map(([k, l], i) => {
-        const c = C(`${i + 1} · ${l}`, has('land') && isFence && lw.fenceLayer === k, () => fset({ fenceLayer: k }));
-        if (k === 'line') return G('fline', c.label, [...FENCE_HEIGHTS.map((h) => C(`Высота ${String(h / 1000).replace('.', ',')} м`, lw.fenceH === h, () => fset({ fenceLayer: 'line', fenceH: h }))), ...Object.entries(FENCE_KINDS).map(([q, K]) => C(K.name, lw.fenceKind === q, () => fset({ fenceLayer: 'line', fenceKind: q })))], null, c);
-        if (k === 'fill') return G('ffill', c.label, [...Object.entries(FENCE_KINDS).map(([q, K]) => C(K.name, lw.fenceKind === q, () => fset({ fenceLayer: 'fill', fenceKind: q }))), ...FENCE_KINDS[lw.fenceKind].cols.map((q) => C('◼ ' + FENCE_COLS[q][0], lw.fenceCol === q, () => fset({ fenceLayer: 'fill', fenceCol: q })))], null, c);
-        if (k === 'gate') return G('fgate', c.label, [G('fgates', 'Ворота', Object.entries(GATES).filter(([, T]) => T.gate).map(([q, T]) => C(T.name, lw.fenceLayer === 'gate' && lw.gateType === q, () => fset({ fenceLayer: 'gate', gateType: q })))), G('fwick', 'Калитки', Object.entries(GATES).filter(([, T]) => !T.gate).map(([q, T]) => C(T.name, lw.fenceLayer === 'gate' && lw.gateType === q, () => fset({ fenceLayer: 'gate', gateType: q }))))], null, c);
         return c;
       });
       const ew = wt.ext, eset = (o) => lay({ wallKind: 'ext', ...o });
