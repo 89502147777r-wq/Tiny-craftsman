@@ -21,7 +21,7 @@ import { boxOf } from './freeBrick.js';
 //   belt { kind: 'slab', … , deck (run lengths: the cells over the open, on the props),
 //          cant: [ds, dt, mm] (the side of the cantilever in the frame, its length) }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const SLAB = { cell: 100, H: 200, cover: 25, bar: 12, step: 200, cantBar: 14, deck: 18, sec: 500, prim: 1500, prop: 1200, beamH: 200, beamW: 80, Hc: 350 };
+export const SLAB = { cell: 100, H: 200, cover: 25, bar: 12, step: 200, cantBar: 14, deck: 18, sec: 500, prim: 1500, prop: 1200, beamH: 200, beamW: 80, Hc: 350, cap: 500 };   // (cap: the capital under a slab on one or two columns — walls.js)
 // the cantilevers of a slab: one side ([ds, dt, mm]) or all round (a slab on one column)
 export const cantsOf = (b) => b?.cants || (b?.cant ? [b.cant] : []);
 export const isSlab = (b) => b?.kind === 'slab';
@@ -120,6 +120,7 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
     cant,
   };
   rec.clip = slabClip(rec, app.objects.all('unit'), belts);
+  liftHoles(app, rec);
   const exists = belts.some((b) => isSlab(b) && Math.abs(b.top - rec.top) < MM(30) && beltContains(b, p.x, p.z));
   return { rec, n, area: n * (SLAB.cell / 1000) ** 2, exists };
 }
@@ -133,8 +134,11 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
 // props and formwork like the rest; its top bars back into the slab as over walls)
 // (on one or two columns — a tree column's trunk, its branches: a slab carried by its cantilevers all round,
 // SLAB.Hc thick — no slab stands on fewer than three columns without them)
+// (a lift's shaft standing on its own carries one too: on the bearing plates of its posts — as one support,
+// its section the shaft's; the slab gets its opening over the shaft — the cabin rides up through it)
 export function findPileSlab(app, p, screen, finger, belts = app.objects.all('belt'), cantMm = 0) {
-  const cols = app.objects.all('column').filter(castDone);
+  const shafts = app.objects.all('lift').map((r) => ({ id: 'lift' + r.id, x: r.x, z: r.z, y0: r.y0, h: r.top - r.y0, tilt: [0, 0], sec: 'sq', a: Math.max(r.w, r.d) + 2 * 130, lift: r }));
+  const cols = [...app.objects.all('column').filter(castDone), ...shafts];
   if (cols.length < (cantMm > 0 ? 1 : 3)) return null;
   let pick = null, bd = Infinity;
   for (const r of cols) {
@@ -171,8 +175,29 @@ export function findPileSlab(app, p, screen, finger, belts = app.objects.all('be
     cant, piles: grp.length, ...(cants ? { cants } : {}),
   };
   rec.clip = [0, 0, +(ni * c).toFixed(6), +(nj * c).toFixed(6)];
+  liftHoles(app, rec);
   const exists = belts.some((b) => isSlab(b) && Math.abs(b.top - rec.top) < MM(30) && beltContains(b, tops[0].x, tops[0].z));
   return { rec, n, area: n * (SLAB.cell / 1000) ** 2, exists };
+}
+
+// the openings over the lifts under a slab being set out (the shaft inside its posts, + 20 mm all round):
+// in the formwork before the concrete, as on site; flagged [.., 1] — a lift's (no skylight on a roof there)
+export function liftHoles(app, rec) {
+  for (const L of app.objects.all('lift')) {
+    if (L.top > rec.top + MM(30)) continue;
+    const [s, t] = toFrame(rec, L.x, L.z);
+    if (s < 0 || t < 0 || s > rec.ni * rec.c || t > rec.nj * rec.c) continue;
+    const hw = MM(L.w / 2 - 120 + 20), hd = MM(L.d / 2 - 120 + 20), ax = Math.abs(L.u[0]) > 0.5;
+    const ex = ax ? hd : hw, ez = ax ? hw : hd;
+    // (the cells over the shaft were marked «on a support» — no deck: inside its posts it is open, the hole goes there)
+    const dk = unrle(rec.deck, rec.ni * rec.nj), [sa, ta] = toFrame(rec, L.x - ex, L.z - ez), [sb, tb] = toFrame(rec, L.x + ex, L.z + ez);
+    for (let j = Math.max(0, Math.floor(Math.min(ta, tb) / rec.c)); j < Math.min(rec.nj, Math.ceil(Math.max(ta, tb) / rec.c)); j++) for (let i = Math.max(0, Math.floor(Math.min(sa, sb) / rec.c)); i < Math.min(rec.ni, Math.ceil(Math.max(sa, sb) / rec.c)); i++) dk[j * rec.ni + i] = 1;
+    rec.deck = rle(dk);
+    const H = slabHole(rec, L.x - ex, L.z - ez, L.x + ex, L.z + ez);
+    if (!H.patch) continue;
+    Object.assign(rec, H.patch);
+    rec.holes = rec.holes.map((q, k) => (k === rec.holes.length - 1 ? [...q.slice(0, 4), 1] : q));
+  }
 }
 
 // the slab's true outline in its frame: the outer faces of what carries it (the walls whose

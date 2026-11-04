@@ -1244,8 +1244,8 @@ export class WallTool {
       if (R.why) { app.ui.toast(R.why); return; }
       app.sfx?.seq?.(['drill', 'screwdriver', 'sheet', 'screwdriver']); app.journal.act('fascia', {}, app.clock, () => app.objects.add(R.rec));
       const hh = Math.round(R.rec.h / MM(1)) + FASCIA.below + FASCIA.over;
-      app.ui.toast(LANG === 'en' ? `Slab fascia ${(R.len / 1000).toFixed(2)} m: composite panels 4 mm on an aluminium subframe (brackets every ${FASCIA.bracket} mm), ${hh} mm high, ${FASCIA.gap} mm air gap, open joints ${FASCIA.joint} mm`
-        : `Кант перекрытия ${(R.len / 1000).toFixed(2).replace('.', ',')} м: композитные кассеты 4 мм на алюминиевой подсистеме (кронштейны через ${FASCIA.bracket} мм), высота ${hh} мм, зазор ${FASCIA.gap} мм, открытые швы ${FASCIA.joint} мм`);
+      app.ui.toast(LANG === 'en' ? `Slab fascia ${(R.len / 1000).toFixed(2)} m: composite panels 4 mm, mineral core A2, over mineral wool ${FASCIA.wool} mm on an aluminium subframe (brackets every ${FASCIA.bracket} mm), ${hh} mm high, ${FASCIA.air} mm air gap, open joints ${FASCIA.joint} mm`
+        : `Кант перекрытия ${(R.len / 1000).toFixed(2).replace('.', ',')} м: композитные кассеты 4 мм с минеральным сердечником A2 по минвате ${FASCIA.wool} мм на алюминиевой подсистеме (кронштейны через ${FASCIA.bracket} мм), высота ${hh} мм, зазор ${FASCIA.air} мм, открытые швы ${FASCIA.joint} мм`);
       return;
     }
     if (ck === 'rail') {

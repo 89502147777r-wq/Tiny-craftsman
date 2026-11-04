@@ -1,4 +1,4 @@
-import { planLift } from '../world/lift.js';
+import { planLift, liftAt, liftStops } from '../world/lift.js';
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { FitJob, wait, hammer, drive, ease } from './fitJob.js';
@@ -23,7 +23,7 @@ import { COURSES, COL_TYPES, PILE_DEP, BORE_DEP, holeR, secOf, typeOf, courseH, 
 // The concrete: «Бетон» — the hose or the bucket into the formwork (concreteTools.js).
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 const _ray = new THREE.Raycaster();
-export const COL_TABS = [['form', 'Опалубка'], ['cage', 'Каркас'], ['strip', 'Распалубка'], ['lift', 'Лифт и решётка']];
+export const COL_TABS = [['form', 'Опалубка'], ['cage', 'Каркас'], ['strip', 'Распалубка'], ['lift', 'Лифт-шахта']];
 // the sides of the slope (the way the top leans), as seen on the plot from the start view
 export const DIRS = [[0, '→'], [45, '↗'], [90, '↑'], [135, '↖'], [180, '←'], [225, '↙'], [270, '↓'], [315, '↘']];
 export const TYPE_NAMES = { sq: 'Квадратная колонна', rd: 'Круглая колонна', pile: 'Свая' };
@@ -186,26 +186,38 @@ export class ColumnWork {
     if (app.physJob) return true;
     const e0 = e && e.clientX !== undefined ? [e.clientX, e.clientY] : null;
     if (L === 'form' || L === 'cage') { this.drag = { what: L, e0, hit: this.pick(p, e) }; this._carry(p, e, true); return true; }
+    if (L === 'lift') return this._lift(p);
+    const lf = L === 'del' && p && liftAt(app.objects, p.x, p.z);
+    if (lf) { app.sfx?.seq?.(['screwdriver', 'glass', 'metal_hit']); app.journal.act('lift-remove', {}, app.clock, () => app.objects.remove(lf.id)); this.toast('Лифт сняли'); return true; }
     const r = this.pick(p, e);
     if (!r) return false;   // (no column there: the finger turns the camera)
     this.select(r, false);
     if (L === 'strip') this._strip(r);
-    else if (L === 'lift') this._lift(r, p);
     else if (L === 'del') this.remove(r.id);
     return true;
   }
-  // a glass lift beside the column into the floor over it, the lattice round the column (lift.js); a touch on
-  // a column that has one: the cabin rides to the other stop
-  _lift(r, p) {
-    const app = this.app, has = app.objects.all('lift').find((q) => q.col === r.id);
-    if (has) { const T = app.wallView.rideLift(has.id); if (T) { app.sfx?.play?.('door', { gap: 1 }); this.toast(EN() ? (has.at ? 'The cabin goes down' : 'The cabin goes up to the floor') : (has.at ? 'Кабина едет вниз' : 'Кабина едет в этаж')); } return; }
-    const P = planLift(app, r, p);
-    if (P.why) { this.toast(EN() ? 'The lift goes beside a cast column into the floor slab over it — the slab needs its opening there (made in the formwork)' : P.why); return; }
+  // a glass lift shaft on the ground (lift.js), as tall as the column's height in «Размеры»: what is laid on its
+  // top it carries (a slab over it gets its opening for the cabin); a touch on a lift: the cabin rides a stop on
+  _lift(p) {
+    const app = this.app;
+    if (!p) return false;
+    const has = liftAt(app.objects, p.x, p.z);
+    if (has) {
+      const T = app.wallView.rideLift(has.id), n = liftStops(app.objects, has).length;
+      if (!T) { this.toast(EN() ? 'No floor over the lift yet — lay a slab on its top (it gets its opening)' : 'Над лифтом ещё нет этажа — положите на шахту перекрытие (в нём будет проём)'); return true; }
+      app.sfx?.play?.('door', { gap: 1 });
+      const to = (has.at || 0) >= n ? 0 : (has.at || 0) + 1;
+      this.toast(EN() ? (to ? `The cabin goes up to stop ${to}` : 'The cabin goes down to the ground') : (to ? `Кабина едет на остановку ${to}` : 'Кабина едет вниз'));
+      return true;
+    }
+    const P = planLift(app, p, this.sizes().h, app.camera.position);
+    if (P.why) { this.toast(P.why); return true; }
     app.sfx?.seq?.(['drill', 'metal_hit', 'screwdriver', 'glass', 'screwdriver', 'metal_hit'], 0.25);
-    app.journal.act('lift', {}, app.clock, () => app.objects.add({ ...P.rec, lattice: true }));
-    const h = ((P.rec.y1 - P.rec.y0) / MM(1) / 1000).toFixed(1);
-    this.toast(EN() ? `A panoramic lift, ${h} m up into the floor: a steel frame on a base slab over its pit, laminated glass 8+8, the guide rails, a glass cabin 1100 × 1400; a steel lattice round the column (cladding — it carries nothing). Tap the column: the cabin rides`
-      : `Панорамный лифт на ${h.replace('.', ',')} м в этаж: стальной каркас на плите над приямком, триплекс 8+8, направляющие, стеклянная кабина 1100 × 1400; вокруг колонны — стальная решётка (облицовка, она ничего не несёт). Тап по колонне — кабина едет`);
+    app.journal.act('lift', {}, app.clock, () => app.objects.add(P.rec));
+    const h = ((P.rec.top - P.rec.y0) / MM(1) / 1000).toFixed(1);
+    this.toast(EN() ? `A panoramic lift shaft ${h} m: a steel frame on its tanked pit, laminated glass 8+8, hydraulic (no machine room), a glass cabin 1100 × 1400. Lay a slab on its top — it carries it; the cabin then rides into the floor through the slab's opening. Tap the lift: the cabin rides`
+      : `Панорамная шахта лифта ${h.replace('.', ',')} м: стальной каркас на гидроизолированном приямке, триплекс 8+8, гидравлика (без машинного), стеклянная кабина 1100 × 1400. Положите на её верх перекрытие — она его понесёт; кабина поедет в этаж через проём в плите. Тап по лифту — кабина едет`);
+    return true;
   }
   // the tray (the corner of the screen): the formwork / the cage taken from it
   trayDown(p, e) {
@@ -402,15 +414,12 @@ export class ColumnWork {
       : `${sec.name}, ${courseH(this.course, this.n)} мм${this.tiltDeg ? `, наклон ${this.tiltDeg}°` : ''}: ведите опалубку (или из лотка) на место или вокруг каркаса — зелёная встанет; тап по колонне — выбрать её`;
     if (L === 'cage') return 'Тяните каркас в опалубку или на основание: на бетон; на грунт или щебень — сначала пробурят яму; в арматуру фундамента (привяжется к ней); тап по колонне — выбрать её';
     if (L === 'strip') return 'Коснитесь залитой колонны — опалубку снимут, когда бетон наберёт прочность';
-    if (L === 'lift') return 'Коснитесь залитой колонны под перекрытием с той стороны, где встанет лифт — стеклянная шахта в этаж и решётка вокруг колонны; ещё тап — кабина едет';
+    if (L === 'lift') return 'Коснитесь земли — встанет стеклянная шахта лифта высотой как колонна в «Размерах»; на её верх можно положить перекрытие, она его понесёт. Тап по лифту — кабина едет';
     return 'Коснитесь колонны без бетона — её уберут';
   }
   remove(id) {
     const app = this.app, r = app.objects.get(id);
     if (!r) return;
-    // (a lift by it: the lift goes first)
-    const lf = app.objects.all('lift').find((q) => q.col === id);
-    if (lf) { app.sfx?.seq?.(['screwdriver', 'glass', 'metal_hit']); app.journal.act('lift-remove', {}, app.clock, () => app.objects.remove(lf.id)); this.toast('Лифт и решётку сняли'); return; }
     if (fillOf(r) > 0) { this.toast('Залитую колонну не снять'); return; }
     this._save('column-remove', () => app.objects.remove(id));
     if (this.sel === id) this.sel = null;
