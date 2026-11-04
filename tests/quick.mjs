@@ -713,10 +713,14 @@ console.log('—', sec());
     const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); tc.camera.updateProjectionMatrix(); wt._rc = null; const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
     const SL = await import('/src/tools/slab.js'), LF = await import('/src/world/lift.js'), RL = await import('/src/world/railing.js');
     const g = tc.terrain.heightAt(0, 0);
-    // the shaft: as tall as the column in «Размеры» (26 courses of blocks ≈ 6,5 m), a tap on the ground
+    // the shaft: as tall as the column in «Размеры» (26 courses of blocks ≈ 6,5 m) — not on the bare ground;
+    // on a cast pad 3 × 3 m
     tc.rig.setState({ target: [0, g, 0], yaw: 0, pitch: 0.6, dist: 1.6 }); tc.simulate(0.05);
     tc.setTool('column'); Object.assign(tc.settings, { colStage: 'lift', colCourse: 'block', colN: 26 });
-    const gp = new V(0, g, 0); tc.columnTool.down(gp, e(gp)); tc.columnTool.up(); tc.simulate(0.1);
+    const gp = new V(0, g, 0); tc.columnTool.down(gp, e(gp)); tc.columnTool.up(); o.onSoil = tc.objects.all('lift').length;
+    const T = tc.terrain; for (let i = 0; i < T.conc.length; i++) { const x = T.toWorldX(i % T.nx), z = T.toWorldZ(Math.floor(i / T.nx)); if (Math.abs(x) < MM(1500) && Math.abs(z) < MM(1500)) T.conc[i] = MM(250); }
+    T.updateMesh?.(); const g2 = T.heightAt(0, 0);
+    { const gq = new V(0, g2, 0); tc.columnTool.down(gq, e(gq)); tc.columnTool.up(); tc.simulate(0.1); }
     const lf = tc.objects.all('lift')[0];
     o.shaft = lf && { h: Math.round((lf.top - lf.y0) / MM(1)), u: lf.u };
     o.again = (() => { tc.columnTool.down(new V(MM(1500), g, 0), e(new V(MM(1500), g, 0))); tc.columnTool.up(); return tc.objects.all('lift').length; })();
@@ -751,7 +755,7 @@ console.log('—', sec());
     o.greenEdge = Math.min(...(rf.green || [0]).map((k) => { const i = k % s3.ni, j = (k - i) / s3.ni; return Math.min(i, j, s3.ni - 1 - i, s3.nj - 1 - j); }));
     return o;
   });
-  check('villa: a lift shaft on the ground (≈ 6.5 m, one only there); a slab on its top cantilevered all round with the opening over it; the cabin rides up to the floor', o.shaft?.h > 6000 && o.again === 1 && o.slab?.piles === 1 && o.slab.cants === 4 && o.slab.holes === 1 && o.slab.liftHole === 1 && o.stops === 1 && o.liftMesh && o.busy && o.at === 1 && Math.abs(o.cabY - o.floor) < 5, JSON.stringify(o));
+  check('villa: a lift shaft not on the bare ground, on a cast pad (≈ 6.5 m, one only there); a slab on its top cantilevered all round with the opening over it; the cabin rides up to the floor', o.onSoil === 0 && o.shaft?.h > 6000 && o.again === 1 && o.slab?.piles === 1 && o.slab.cants === 4 && o.slab.holes === 1 && o.slab.liftHole === 1 && o.stops === 1 && o.liftMesh && o.busy && o.at === 1 && Math.abs(o.cabY - o.floor) < 5, JSON.stringify(o));
   check('villa: the fascia on the four outer edges (not round the opening), not twice', o.fascias === 4 && /уже/.test(o.again2 || ''), JSON.stringify(o));
   check('villa: a green roof — sedum in the field, gravel 500 mm at the edge', o.green > 500 && o.grav > 100 && o.greenEdge >= 5, JSON.stringify(o));
   check('villa: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
