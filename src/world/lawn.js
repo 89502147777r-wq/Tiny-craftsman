@@ -16,7 +16,6 @@ import { pitBox } from './pool.js';
 //                       u: [ux, uz] (the rows run along it), done: { soil, rake, roll, grass, water } }
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const LAWN = { cell: 100, roll: [2000, 400], soil: 100 };
-export const LAWN_LAYERS = [['area', 'Контур'], ['soil', 'Плодородный грунт'], ['rake', 'Грабли'], ['roll', 'Каток'], ['grass', 'Газон'], ['water', 'Полив']];
 export const LAWN_HOW = { turf: 'Рулонный газон', seed: 'Посев семян' };
 
 // a closed outline from the finger's trail (straightened within 200 mm); null: too small

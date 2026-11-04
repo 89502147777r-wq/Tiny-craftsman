@@ -59,14 +59,6 @@ function hook(mat, U, key, frag, vert = '') {
   mat.customProgramCacheKey = () => key;
   return mat;
 }
-// the topsoil: dark, crumbly; smoother where raked, with the roller's lanes once rolled
-function soilMat(U) {
-  return hook(new THREE.MeshStandardMaterial({ map: tex('forest_ground_06', 'diff.jpg', true), normalMap: tex('forest_ground_06', 'nor_gl.jpg', false), color: 0x5a4434, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), U, 'lawnSoil', `
-    if (vA > uF) discard;
-    float raked = step(vA, uR), rolled = step(vA, uK);
-    diffuseColor.rgb *= mix(0.78 + 0.3 * fract(sin(dot(floor(vMapUv * 60.0), vec2(12.9, 78.2))) * 43758.5), 1.0, raked);
-    diffuseColor.rgb *= 1.0 + rolled * (0.06 + 0.05 * step(0.5, fract(vV * 0.0 + vA / 900.0)));`);
-}
 // the grass: turf laid roll by roll (the seams dark until watered) or the seed coming up; shells over
 // it give the blades their depth
 function grassMat(U, shell, seed) {
@@ -85,13 +77,11 @@ function grassMat(U, shell, seed) {
 }
 
 export function buildLawn(app, r, U) {
-  const G = new THREE.Group(), d = r.done || {}, cells = cellsOf(app, r);
+  const G = new THREE.Group(), cells = cellsOf(app, r);
   G.userData.nRolls = cells.nRolls; G.userData.a0 = cells.a0 / S; G.userData.a1 = cells.a1 / S;
   if (!cells.length) return G;
-  if (r.v !== 2) { const soil = new THREE.Mesh(cellGeo(app, r, cells, MM(6)), soilMat(U)); soil.receiveShadow = true; G.add(soil); }
   const seed = r.how === 'seed', geo = cellGeo(app, r, cells, MM(10));
   for (let k = 0; k < 3; k++) { const o = new THREE.Mesh(geo, grassMat(U, k, seed)); o.receiveShadow = k === 0; o.userData.keepGeo = k > 0; G.add(o); }
-  void d;
   return G;
 }
 // the outline sprayed on the ground (white marking paint)

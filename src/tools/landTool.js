@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE, M_G20, M_SAND, M_SOIL } from '../config.js';
 import { FitJob } from './fitJob.js';
 import {
-  PATH, PATH_LAYERS, PATH_WIDTHS, PAVERS, PAVE_COLS, TOPS, lineOf, lineWhy, legsOf, legW, lengthOf, half, paveQuads, digQuads, kerbOuter, inQuads, boxOf, chainOf, kerbsOf, paversOf,
+  PATH, TOPS, legsOf, legW, lengthOf, half, paveQuads, digQuads, kerbOuter, inQuads, boxOf, chainOf,
 } from '../world/garden.js';
 import { pointAt } from '../world/gardenView.js';
 import { PathWork } from './pathTool.js';
@@ -10,41 +10,18 @@ import { LawnWork } from './lawnTool.js';
 import { fenceLine, fenceLength } from '../world/fence.js';
 import { fromV1 } from '../world/fence2.js';
 import { PLANTS, hedgePlants } from '../world/plants.js';
-import { LAWN, LAWN_LAYERS, LAWN_HOW, polyOf, areaOf, inside as inPolyL, mainDir, cellsOf as lawnCells, frameW } from '../world/lawn.js';
+import { LAWN, LAWN_HOW, inside as inPolyL, cellsOf as lawnCells } from '../world/lawn.js';
 
-// The garden done by the finger (garden.js): «Благоустройство» → «Дорожка» → its stages one after
-// the other. The path is drawn by the finger along the ground; each next stage is a touch on it and
-// is done before the eyes: the trough dug bite by bite, the kerbs set one by one, the fabric rolled
-// out, the stone and the sand spread from the start to the end, the plate going over them, the
-// pavers laid row after row.
+// «Благоустройство»: the path (pathTool.js), the lawn (lawnTool.js), the plants (here). Kept here for them
+// both: the trough dug bite by bite, the stone and the sand spread and rammed (the path's «auto»), the turf
+// rolled out (the lawn's), the ground's level along a line / inside an outline.
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-const NAME = Object.fromEntries(PATH_LAYERS);
-const ORDER = PATH_LAYERS.map(([k]) => k);
-const LNAME = Object.fromEntries(LAWN_LAYERS), LORDER = LAWN_LAYERS.map(([k]) => k);
 const f1 = (v) => v.toFixed(1).replace('.', ',');
 
 export class LandWork {
   constructor(app) { this.app = app; this.drag = null; this.sel = null; this.pw = new PathWork(this); this.lw = new LawnWork(this); }
-  get layer() { return NAME[this.app.settings.pathLayer] ? this.app.settings.pathLayer : 'set'; }
-  get W() { return PATH_WIDTHS.includes(this.app.settings.pathW) ? this.app.settings.pathW : 1200; }
-  get paver() { return PAVERS[this.app.settings.pathPaver] ? this.app.settings.pathPaver : 'brick'; }
-  get col() { return PAVE_COLS[this.app.settings.pathCol] ? this.app.settings.pathCol : 'grey'; }
-  get rec() { const all = this.app.objects.all('path'); return all.find((r) => r.id === this.sel) || all.at(-1) || null; }
   get view() { return this.app.gardenView; }
   toast(m) { this.app.ui?.toast(m); }
-  // the path at a point: the one it is on, else the nearest
-  pick(p) {
-    const all = this.app.objects.all('path');
-    if (!p || !all.length) return this.rec;
-    let best = null, bd = Infinity;
-    for (const r of all) {
-      if (inQuads(digQuads(r), p.x, p.z)) { best = r; break; }
-      const a = chainOf(r, p.x, p.z), q = pointAt(r, a / S), d = Math.hypot(q[0] - p.x, q[1] - p.z);
-      if (d < bd) bd = d, best = r;
-    }
-    if (best) this.sel = best.id;
-    return best;
-  }
   _save(label, fn) { const app = this.app; return app.journal.act(label, {}, app.clock, fn); }
   // the terrain's cells in the bands qs (with each one's chainage, mm)
   _cells(r, qs) {
@@ -54,81 +31,32 @@ export class LandWork {
     out.box = [ix0, iz0, ix1, iz1];
     return out;
   }
-  // what is done of a path: the stage reached
-  stageOf(r) { const d = r?.done || {}; let k = 0; for (let i = 1; i < ORDER.length; i++) if (d[ORDER[i]]) k = i; return k; }
-  _need(r, L) {
-    const i = ORDER.indexOf(L), d = r.done || {};
-    if (d[L]) return `${NAME[L]} — уже сделано. Дальше «${ORDER.indexOf(this.next(r)[0]) + 1} · ${NAME[this.next(r)[0]] || ''}»`;
-    for (let k = 1; k < i; k++) if (!d[ORDER[k]]) return `Сначала «${k + 1} · ${NAME[ORDER[k]]}»`;
-    return null;
-  }
 
   get what() { const w = this.app.settings.landWhat; return w === 'lawn' || w === 'plant' ? w : 'path'; }
   get plantKind() { return PLANTS[this.app.settings.plantKind] ? this.app.settings.plantKind : 'tree'; }
-  get lawnLayer() { return LNAME[this.app.settings.lawnLayer] ? this.app.settings.lawnLayer : 'area'; }
   get how() { return LAWN_HOW[this.app.settings.lawnHow] ? this.app.settings.lawnHow : 'turf'; }
-  get lawn() { const all = this.app.objects.all('lawn'); return all.find((r) => r.id === this.lsel) || all.at(-1) || null; }
 
+  // the finger: on the path (pathTool.js), on the lawn (lawnTool.js), planting (a hedge drawn along)
   down(p, e) {
-    // (the lawn by hand — lawnTool.js; one made before it: its old stages)
-    if (this.what === 'lawn') { const old = this.lw.L !== 'area' && this.app.objects.all('lawn').find((q) => inPolyL(q.poly, p.x, p.z)); if (!old || old.v === 2) return this.lw.down(p, e); return this._lawnDown(p, e); }
+    if (this.what === 'lawn') return this.lw.down(p, e);
     if (this.what === 'plant') return this._plantDown(p, e);
-    // (the path by hand — pathTool.js; a path set out before it: its old stages)
-    { const old = this.pw.L !== 'set' && this.pick(p); if (!old || old.v === 2) return this.pw.down(p, e); }
-    const L = this.layer;
-    if (L === 'set') {
-      const app = this.app;
-      this.drag = { L, trail: [[p.x, p.z]] };
-      this.view.setLive(null);
-      app.ui?.showMeasure?.('Ведите пальцем по земле — где пройдёт дорожка');
-      return true;
-    }
-    const r = this.pick(p);
-    if (!r) { this.toast('Сначала «1 · Разметка»: проведите пальцем по участку, где пройдёт дорожка'); return true; }
-    if (this.app.physJob) return true;
-    const why = this._need(r, L);
-    if (why) { this.toast(why); return true; }
-    ({ dig: () => this._dig(r), kerb: () => this._kerb(r), geo: () => this._geo(r), grav: () => this._grav(r), sand: () => this._sand(r), pave: () => this._pave(r), joint: () => this._joint(r) })[L]?.();
-    return true;
+    return this.pw.down(p, e);
   }
   move(p, e) {
     if (this.pw.drag) { this.pw.move(p, e); return; }
     if (this.lw.drag) { this.lw.move(p, e); return; }
     const d = this.drag; if (!d) return;
-    if (d.L === 'area') { this._lawnMove(p); return; }
     if (d.L === 'hedge') { const last = d.trail.at(-1); if (Math.hypot(p.x - last[0], p.z - last[1]) > MM(80)) { d.trail.push([p.x, p.z]); const pts = fenceLine(d.trail); this.view.setLiveFence(pts ? fromV1({ type: 'fence', pts, H: 1300, kind: 'slat', col: 'graphite', g: this._groundOf(pts) }) : null); if (pts) this.app.ui?.showMeasure?.(`Живая изгородь ${f1(fenceLength({ pts, kind: 'slat' }) / S / 1000)} м, ${hedgePlants({ pts }).length} растений — отпустите`); } return; }
-    const last = d.trail.at(-1);
-    if (Math.hypot(p.x - last[0], p.z - last[1]) < MM(80)) return;
-    d.trail.push([p.x, p.z]);
-    const pts = lineOf(d.trail) || [d.trail[0], [p.x, p.z]];
-    const g = this._groundOf(pts), r = { pts, W: this.W, g };
-    this.view.setLive(r);
-    const len = legsOf(r).reduce((s, q) => s + q.L, 0) / S / 1000;
-    this.app.ui?.showMeasure?.(lineWhy(pts, this.W) || `Дорожка ${f1(len)} м × ${f1(this.W / 1000)} м — отпустите, где она кончается`);
   }
   update() {}
   up() {
     if (this.pw.drag) { this.pw.up(); return; }
     if (this.lw.drag) { this.lw.up(); return; }
-    const app = this.app, d = this.drag;
-    if (d?.L === 'area') { this._lawnUp(); return; }
+    const d = this.drag;
     if (d?.L === 'hedge') { this.drag = null; this.view.setLiveFence(null); this.app.ui?.hideMeasure?.(); const pts = fenceLine(d.trail); if (!pts) { this.toast('Изгородь короче метра — ведите пальцем длиннее'); return; } this._plant({ kind: 'hedge', pts, g: this._groundOf(pts) }); return; }
     this.drag = null;
-    if (!d) return;
-    this.view.setLive(null);
-    app.ui?.hideMeasure?.();
-    const pts = lineOf(d.trail);
-    if (!pts) { this.toast('Дорожка короче метра — проведите пальцем длиннее, вдоль будущей дорожки'); return; }
-    const why = lineWhy(pts, this.W);
-    if (why) { this.toast(why); return; }
-    const rec = { type: 'path', pts, W: this.W, g: +this._groundOf(pts).toFixed(6), done: {} };
-    const fit = this._fits(rec);
-    if (fit) { this.toast(fit); return; }
-    this._save('path-set-out', () => { const o = app.objects.add(rec); this.sel = o.id; });
-    const len = lengthOf(rec) / S / 1000;
-    this.toast(`Дорожка ${f1(len)} м, ширина ${f1(this.W / 1000)} м: колышки и шнур по краям бордюров. Дальше «2 · Корыто»`);
   }
-  interrupt() { this.pw.interrupt(); this.lw.interrupt(); if (this.drag?.L === 'set') { this.view.setLive(null); this.app.ui?.hideMeasure?.(); } if (this.drag?.L === 'area') { this.view.setLiveLawn(null); this.app.ui?.hideMeasure?.(); } if (this.drag?.L === 'fline') { this.view.setLiveFence(null); this.app.ui?.hideMeasure?.(); } this.drag = null; }
+  interrupt() { this.pw.interrupt(); this.lw.interrupt(); if (this.drag?.L === 'hedge') { this.view.setLiveFence(null); this.app.ui?.hideMeasure?.(); } this.drag = null; }
 
   // the ground's level along the line (the middle of what is there)
   _groundOf(pts) {
@@ -178,52 +106,7 @@ export class LandWork {
     } });
   }
 
-  // ---- 3 · the kerbs: one after another on the concrete, tapped down to the string ------------
-  _kerb(r) {
-    const app = this.app, t = app.terrain, K = kerbsOf(r), g = r.g, v = this.view, gear = app.concreteGear;
-    const [cx, cz] = legW(legsOf(r)[0], legsOf(r)[0].L / 2, 0);
-    if (t.heightAt(cx, cz) > r.g - MM(PATH.dig - 60)) { this.toast('Корыто ещё не выкопано — «2 · Корыто»'); return; }
-    // (behind the kerbs, out to the trough's side: the soil put back, rammed)
-    const all = this._cells(r, digQuads(r)), ko = kerbOuter(r), back = all.filter(([, , x, z]) => !inQuads(ko, x, z));
-    back.box = all.box;
-    app.journal.begin('path-kerb', {}, app.clock);
-    const per = 0.32, steps = [];
-    const P = (k) => { const p = K[k].p, n = p.length; return new THREE.Vector3(p.reduce((s, q) => s + q[0], 0) / n, g, p.reduce((s, q) => s + q[1], 0) / n); };
-    steps.push([0, () => v.setAnim(r.id, { kerb: 0, kerbS: K[0].s - 400 })]);
-    steps.push([K.length * per + 0.6, (u, job) => {
-      const n = u * (K.length + 2), k = Math.min(K.length - 1, Math.floor(n));
-      v.setAnim(r.id, { kerb: u >= 1 ? 1e9 : n, kerbS: u >= 1 ? 1e9 : (K[k].s ?? 0) + 600 });
-      // (the mallet on the one going down)
-      const f = (n % 1), sw = f < 0.6 ? Math.sin(f / 0.6 * Math.PI / 2) : Math.cos((f - 0.6) / 0.4 * Math.PI / 2);
-      gear.malletSwing = sw * 0.75; gear.set('mallet', P(Math.max(0, k - 1)), 0);
-      if (Math.floor(n) !== job._lastK) { job._lastK = Math.floor(n); app.sfx?.play?.('mallet'); }
-      if (u >= 1) gear.set(null);
-    }]);
-    // the soil back behind them, from the start to the end
-    const L = lengthOf(r) / S;
-    steps.push([1.4, (u) => {
-      const front = -1500 + (L + 3000) * u;
-      for (const c of back) { if (c[1] > front || c[4]) continue; const i = c[0], h = t.hAt(i); if (h < g) t._push(i, g - h, M_SOIL); c[4] = 1; }
-      t._touch(...back.box);
-    }]);
-    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); v.setAnim(r.id, null); gear.set(null); }, commit: () => {
-      app.objects.update(r.id, { done: { ...(app.objects.get(r.id).done || {}), kerb: 1 } });
-      app.journal.commit(app.clock);
-      v.setAnim(r.id, null);
-      this.toast(`Бордюры 1000 × 200 × 80: ${K.length} шт на бетоне с подпорой, по шнуру; за ними грунт засыпан. Дальше «4 · Геотекстиль»`);
-    } });
-  }
 
-  // ---- 4 · the geotextile: rolled out from the start to the end -------------------------------
-  _geo(r) {
-    const app = this.app, v = this.view, L = lengthOf(r) / S;
-    const steps = [[Math.max(1.6, L / 1000 * 0.35), (u) => { const s = -200 + (L + 400) * u; v.setAnim(r.id, { geo: s, roll: u < 1 ? Math.max(0, Math.min(L, s)) : null }); app.sfx?.loop?.('geo-roll', 'fabric', u < 1 ? 0.6 : 0, 1, null, true); }]];
-    new FitJob(app, { steps, parts: [], onAbort: () => v.setAnim(r.id, null), commit: () => {
-      this._save('path-geo', () => app.objects.update(r.id, { done: { ...(r.done || {}), ...(app.objects.get(r.id).done || {}), geo: 1 } }));
-      v.setAnim(r.id, null);
-      this.toast(`Геотекстиль ${f1(L / 1000 * r.W / 1000)} м² — щебень не уйдёт в грунт. Дальше «5 · Щебень»`);
-    } });
-  }
 
   // a layer spread from the start to the end, up to the top yTop (the front: the material running
   // out ahead a little); then the tool over it
@@ -294,111 +177,12 @@ export class LandWork {
     } });
   }
 
-  // ---- 7 · the pavers: row after row from the start --------------------------------------------
-  _pave(r) {
-    const app = this.app, v = this.view, key = this.paver, col = this.col;
-    const live = { ...r, paver: key, col };
-    const n = paversOf(live).length, cut = paversOf(live).filter((p) => p.cut).length;
-    // (the record takes the kind and the colour at once: the view builds them; shown as laid)
-    app.journal.begin('path-pave', {}, app.clock);
-    app.objects.update(r.id, { paver: key, col });
-    const dur = Math.max(3, Math.min(14, n / 45));
-    const steps = [[dur, (u, job) => {
-      const k = u * (n + 6);
-      v.setAnim(r.id, { pave: u >= 1 ? 1e9 : k });
-      if (Math.floor(k / 3) !== job._k) { job._k = Math.floor(k / 3); if (Math.random() < 0.5) app.sfx?.play?.('tile'); }
-    }]];
-    new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); v.setAnim(r.id, null); }, commit: () => {
-      app.objects.update(r.id, { done: { ...(app.objects.get(r.id).done || {}), pave: 1 } });
-      app.journal.commit(app.clock);
-      v.setAnim(r.id, null);
-      this.toast(`Плитка «${PAVERS[key].name}», ${PAVE_COLS[col][0].toLowerCase()}: ${n} шт, из них подрезано ${cut}. Дальше «8 · Швы»`);
-    } });
-  }
 
-  // ---- 8 · the joints: sand brushed in, the plate over the pavers on a mat ----------------------
-  _joint(r) {
-    const app = this.app, v = this.view, L = lengthOf(r) / S;
-    const steps = [[Math.max(1.5, L / 1000 * 0.25), (u) => { v.setAnim(r.id, { joint: -100 + (L + 200) * u }); app.sfx?.loop?.('joint', 'rake_loop', u < 1 ? 0.5 : 0, 1.3, null, true); }], this._plate(r, r.g, 1)];
-    new FitJob(app, { steps, parts: [], onAbort: () => { v.setAnim(r.id, null); app.concreteGear.set(null); }, commit: () => {
-      this._save('path-joint', () => app.objects.update(r.id, { done: { ...(app.objects.get(r.id).done || {}), joint: 1 } }));
-      v.setAnim(r.id, null);
-      this.toast('Швы заполнены песком, плитка осажена виброплитой через резиновый коврик — дорожка готова');
-    } });
-  }
 
   // the next thing to do (the chip «➜ …»)
-  next(r = this.rec) {
-    if (this.what === 'lawn') return this.lw.next();
-    if (this.what === 'plant') return [null, this.plantStatus()];
-    if (!r || r.v === 2) return this.pw.next(r && r.v === 2 ? r : undefined);
-    const d = r.done || {};
-    for (const k of ORDER.slice(1)) if (!d[k]) return [k, NAME[k]];
-    return [null, 'Дорожка готова'];
-  }
-  status() {
-    if (this.what === 'lawn') return this.lw.status();
-    if (this.what === 'plant') return this.plantStatus();
-    if (this.what === 'path') return this.pw.status();
-    return {
-      set: `Проведите пальцем по участку, где пройдёт дорожка шириной ${f1(this.W / 1000)} м — повороты по ходу пальца`,
-      dig: 'Коснитесь дорожки — выкопается корыто 300 мм с запасом под бордюры',
-      kerb: 'Коснитесь дорожки — бордюры встанут на бетон по шнуру, за ними засыплют грунт',
-      geo: 'Коснитесь дорожки — по дну корыта раскатается геотекстиль',
-      grav: 'Коснитесь дорожки — щебень 200 мм с трамбовкой виброплитой',
-      sand: 'Коснитесь дорожки — песок 40 мм, выровненный правилом',
-      pave: `Коснитесь дорожки — уложится плитка «${PAVERS[this.paver].name}», ${PAVE_COLS[this.col][0].toLowerCase()}`,
-      joint: 'Коснитесь дорожки — швы засыплют песком и пройдут виброплитой',
-    }[this.layer];
-  }
-  // ==== the lawn ===============================================================================
-  _lawnPick(p) {
-    const all = this.app.objects.all('lawn');
-    const r = (p && all.find((q) => inPolyL(q.poly, p.x, p.z))) || null;
-    if (r) this.lsel = r.id;
-    return r || this.lawn;
-  }
-  _lawnNeed(r, L) {
-    return null;   // (no stage waits for another)
-    // eslint-disable-next-line no-unreachable
-    const i = LORDER.indexOf(L), d = r.done || {};
-    if (d[L]) { const [nk, nw] = this.lawnNext(r); return nk ? `${LNAME[L]} — уже сделано. Дальше «${LORDER.indexOf(nk) + 1} · ${nw}»` : 'Газон готов'; }
-    for (let k = 1; k < i; k++) if (!d[LORDER[k]]) return `Сначала «${k + 1} · ${LNAME[LORDER[k]]}»`;
-    return null;
-  }
-  _lawnDown(p) {
-    const L = this.lawnLayer;
-    if (L === 'area') {
-      this.drag = { L, trail: [[p.x, p.z]] };
-      this.app.ui?.showMeasure?.('Обведите пальцем место под газон — контур замкнётся сам');
-      return true;
-    }
-    const r = this._lawnPick(p);
-    if (!r) { this.toast('Сначала «1 · Контур»: обведите пальцем место под газон'); return true; }
-    if (this.app.physJob) return true;
-    const why = this._lawnNeed(r, L);
-    if (why) { this.toast(why); return true; }
-    ({ soil: () => this._lSoil(r), rake: () => this._lRake(r), roll: () => this._lRoll(r), grass: () => this._lGrass(r), water: () => this._lWater(r) })[L]?.();
-    return true;
-  }
-  _lawnMove(p) {
-    const d = this.drag, last = d.trail.at(-1);
-    if (Math.hypot(p.x - last[0], p.z - last[1]) < MM(100)) return;
-    d.trail.push([p.x, p.z]);
-    const poly = polyOf(d.trail);
-    this.view.setLiveLawn(poly ? { poly, g: this._groundIn(poly) } : null);
-    this.app.ui?.showMeasure?.(poly ? `Газон ${f1(areaOf(poly) / S / S / 1e6)} м² — отпустите, контур замкнётся` : 'Обведите пальцем место под газон');
-  }
-  _lawnUp() {
-    const app = this.app, d = this.drag;
-    this.drag = null;
-    this.view.setLiveLawn(null); app.ui?.hideMeasure?.();
-    const poly = polyOf(d.trail);
-    if (!poly) { this.toast('Контур мал — обведите место под газон шире (от 1,5 м²)'); return; }
-    const rec = { type: 'lawn', poly, g: +this._groundIn(poly).toFixed(6), u: mainDir(poly), how: this.how, done: {} };
-    this._save('lawn-area', () => { const o = app.objects.add(rec); this.lsel = o.id; });
-    this.toast(`Газон ${f1(areaOf(poly) / S / S / 1e6)} м²: контур размечен краской. Дальше «2 · Плодородный грунт»`);
-  }
+  // the next thing to do; what to do now
+  next() { return this.what === 'lawn' ? this.lw.next() : this.what === 'plant' ? [null, this.plantStatus()] : this.pw.next(); }
+  status() { return this.what === 'lawn' ? this.lw.status() : this.what === 'plant' ? this.plantStatus() : this.pw.status(); }
   // the ground's level inside an outline (the middle of what is there)
   _groundIn(poly) {
     const t = this.app.terrain, xs = poly.map((q) => q[0]), zs = poly.map((q) => q[1]), hs = [];
@@ -418,40 +202,6 @@ export class LandWork {
   }
   // the extent of the lawn along its rows (mm), its cells
   _lExtent(r) { const c = lawnCells(this.app, r); return { c, a0: c.a0 / S, a1: c.a1 / S, b0: c.b0 / S, b1: c.b1 / S }; }
-  _lSoil(r) {
-    const app = this.app, { c, a0, a1, b0, b1 } = this._lExtent(r), A = c.length * (LAWN.cell / 1000) ** 2;
-    if (!c.length) { this.toast('Внутри контура нет свободной земли (дорожки, бассейн, бетон)'); return; }
-    const steps = [[Math.max(2, (a1 - a0) / 1000 * 0.35), (u) => {
-      const f = a0 - 300 + (a1 - a0 + 600) * u;
-      this.view.setAnim('L' + r.id, { soil: f });
-      if (u < 1 && Math.random() < 0.7) { const [x, z] = frameW(r, MM(f), MM(b0 + (b1 - b0) * Math.random())); app.particles?.emit(new THREE.Vector3(x, r.g + MM(400), z), new THREE.Vector3(0, -0.15, 0), 0, MM(25), 0, 0, 0); }
-      if (u < 1 && Math.random() < 0.15) app.sfx?.pour?.(0.3, 'soil_pour');
-    }]];
-    this._lJob(r, 'soil', steps, `Плодородный грунт 100 мм на ${f1(A)} м² (${f1(A * 0.1)} м³). Дальше «3 · Грабли»`);
-  }
-  _lRake(r) {
-    const app = this.app, { a0, a1, b0, b1 } = this._lExtent(r), rk = app.rake, vis = rk.root.visible, pos = rk.target.pos.clone(), dir = rk.target.dir.clone(), lift = rk.target.lift;
-    const u = r.u || [1, 0], back = () => { rk.setPose({ pos, dir, lift }, true); rk.root.visible = vis; };
-    const steps = [[0, () => { rk.root.visible = true; }], [Math.max(2.5, (a1 - a0) / 1000 * 0.45), (q) => {
-      const f = a0 + (a1 - a0) * q, sw = Math.sin(q * Math.PI * 2 * Math.max(4, (a1 - a0) / 900)), b = (b0 + b1) / 2 + sw * (b1 - b0) * 0.42;
-      const [x, z] = frameW(r, MM(f), MM(b));
-      rk.setPose({ pos: new THREE.Vector3(x, r.g + MM(16), z), dir: new THREE.Vector2(-u[0], -u[1]), lift: 0.5 }, q === 0);
-      this.view.setAnim('L' + r.id, { rake: f - 250 });
-      if (Math.random() < 0.12) app.sfx?.scrapeLevel?.(0.25);
-      if (q >= 1) { back(); app.sfx?.scrapeLevel?.(0); }
-    }]];
-    this._lJob(r, 'rake', steps, 'Грунт разровнен граблями, камни и комья убраны. Дальше «4 · Каток»', back);
-  }
-  _lRoll(r) {
-    const { a0, a1, b0, b1 } = this._lExtent(r), u = r.u || [1, 0], yaw = Math.atan2(-u[0], -u[1]);
-    const lanes = Math.max(2, Math.ceil((a1 - a0) / 700)), dur = Math.min(12, Math.max(3, lanes * 0.35));
-    const steps = [[dur, (q) => {
-      const k = Math.min(lanes - 1, Math.floor(q * lanes)), f = q * lanes - k, a = a0 + (a1 - a0) * (k + 0.5) / lanes, b = k % 2 ? b1 - (b1 - b0) * f : b0 + (b1 - b0) * f;
-      this.view.setAnim('L' + r.id, { roll: a0 + (a1 - a0) * k / lanes, rollerAt: q < 1 ? { a: MM(a), b: MM(b), y: r.g + MM(6), yaw: yaw + (k % 2 ? Math.PI / 2 : -Math.PI / 2) } : null });
-      if (Math.random() < 0.08) this.app.sfx?.scrapeLevel?.(0.15);
-    }]];
-    this._lJob(r, 'roll', steps, 'Укатано садовым катком — грунт осел и не продавится. Дальше «5 · Газон»', () => this.app.sfx?.scrapeLevel?.(0));
-  }
   _lGrass(r) {
     const app = this.app, how = this.how, { c } = this._lExtent(r);
     if (!c.length) { this.toast('Внутри разметки нет свободной земли'); return; }
@@ -477,33 +227,6 @@ export class LandWork {
       if (k !== job._k) { job._k = k; app.sfx?.play?.('turf'); }
     }]];
     this._lJob(r, 'grass', steps, `Рулонный газон: ${n} рулонов 2 × 0,4 м на ${f1(A)} м², швы вразбежку. Дальше «6 · Полив»`);
-  }
-  _lWater(r) {
-    const app = this.app, { c, a0, a1, b0, b1 } = this._lExtent(r), am = (a0 + a1) / 2, bm = (b0 + b1) / 2, R = Math.max(a1 - a0, b1 - b0) / 2;
-    const steps = [[4, (q) => {
-      this.view.setAnim('L' + r.id, { water: q, wet: Math.min(1, q * 3), sprAt: q < 1 ? { a: MM(am), b: MM(bm), y: r.g + MM(10) } : null });
-      const [x, z] = frameW(r, MM(am), MM(bm));
-      for (let i = 0; i < 4; i++) { const ang = q * 40 + i * 1.57, v = 0.5 + Math.random() * 0.5; app.particles?.emit(new THREE.Vector3(x, r.g + MM(220), z), new THREE.Vector3(Math.cos(ang) * MM(R) * 1.4 * v, 0.25, Math.sin(ang) * MM(R) * 1.4 * v), 0, MM(6), 0, 0, 1); }
-      app.sfx?.loop?.('lawn-water', 'sprinkler', 0.6, 1, null, true);
-    }]];
-    void c;
-    this._lJob(r, 'water', steps, r.how === 'seed' ? 'Полито — газон густой и зелёный. Готово' : 'Полито — рулоны укоренились, швы сомкнулись. Газон готов');
-  }
-  lawnNext(r = this.lawn) {
-    if (!r) return ['area', 'Обведите место под газон'];
-    const d = r.done || {};
-    for (const k of LORDER.slice(1)) if (!d[k]) return [k, LNAME[k]];
-    return [null, 'Газон готов'];
-  }
-  lawnStatus() {
-    return {
-      area: 'Обведите пальцем место под газон — контур замкнётся сам; дорожки, бассейн и бетон внутри обойдутся',
-      soil: 'Коснитесь газона — завезут и разровняют плодородный грунт 100 мм',
-      rake: 'Коснитесь газона — грабли выровняют грунт и уберут камни',
-      roll: 'Коснитесь газона — садовый каток укатает грунт',
-      grass: this.how === 'seed' ? 'Коснитесь газона — посев семян (взойдёт через три недели)' : 'Коснитесь газона — рулоны газона лягут ряд за рядом, швы вразбежку',
-      water: 'Коснитесь газона — полив дождевателем',
-    }[this.lawnLayer];
   }
   removeLawn(id) {
     if (!this.app.objects.get(id)) return;

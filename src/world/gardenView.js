@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { PATH, TOPS, PAVERS, paversOf, kerbsOf, paveQuads, kerbOuter, digQuads, bandQuads, legsOf, legW, lengthOf, half, inset } from './garden.js';
-import { lawnUniforms, buildLawn, lawnLine, lawnGhost, lawnPegs, turfRoll, roller, sprinkler } from './lawnView.js';
+import { lawnUniforms, buildLawn, lawnGhost, lawnPegs, turfRoll, roller, sprinkler } from './lawnView.js';
 import { frameW } from './lawn.js';
 import { fenceFill, fenceUniforms, fenceGates } from './fence.js';
 import { railRows, stringAndPegs, postsAndConcrete, railsAndWelds, bays2, postA, pegXZ, RAIL_SECS } from './fence2.js';
@@ -9,7 +9,7 @@ import { PLANTS, plantBody, rootBall, mulchDisc, mulchStrip, spotsOf } from './p
 import { buildLight, lightLevel } from './facadeLights.js';
 import { buildInterior, interiorLight } from './interior.js';
 import { mats as winMats } from './windows.js';
-import { porchConcrete, porchForm, porchTiles, porchUniforms, canopyMesh, blocksOf as porchBlocks } from './porch.js';
+import { porchConcrete, porchForm, porchTiles, porchUniforms, canopyMesh } from './porch.js';
 
 // The garden drawn (garden.js): the paths — the pegs and the string of the setting-out, the
 // geotextile, the kerbs on their concrete, the pavers, the sand in the joints. The ground's layers
@@ -147,26 +147,12 @@ export class GardenView {
       if (e.porch) { this._porchFrame(e); continue; }
       if (e.canopy) { this._canopyFrame(e); continue; }
       if (e.flight) { this._lightFrame(e); continue; }
-      const r = e.rec, d = r.done || {}, a = this.anim[r.id] || {}, U = e.U;
-      if (r.v === 2) {
-        // (by hand: what is laid shows; the pavers going in now drop into their places; the roll where the finger is)
-        U.kerb.n.value = 1e9; U.bed.f.value = 1e9; U.pave.n.value = a.pave ?? 1e9;
-        if (e.roll) {
-          e.roll.visible = a.roll != null;
-          if (a.roll != null) { const p = pointAt(r, a.roll), L = lengthOf(r) / S, k = Math.max(0, Math.min(1, (a.rolled || 0) / Math.max(1, L))); e.roll.position.set(p[0], r.g - MM(PATH.dig) + MM(10 + 60 * (1 - k)), p[1]); e.roll.rotation.y = -Math.atan2(p[3], p[2]); const sc = 0.35 + 0.65 * (1 - k); e.roll.scale.set(sc, 1, sc); }
-        }
-        continue;
-      }
-      U.kerb.n.value = a.kerb ?? (d.kerb ? 1e9 : -1);
-      U.bed.f.value = a.kerbS ?? (d.kerb ? 1e9 : -1e9);
-      U.geo.f.value = a.geo ?? (d.geo ? 1e9 : -1e9);
-      U.pave.n.value = a.pave ?? (d.pave ? 1e9 : -1);
-      U.joint.f.value = a.joint ?? (d.joint ? 1e9 : -1e9);
-      if (e.sub.kerb) e.sub.kerb.castShadow = a.kerb == null;
+      const r = e.rec, a = this.anim[r.id] || {}, U = e.U;
+      // (by hand: what is laid shows; the pavers going in now drop into their places; the roll where the finger is)
+      U.kerb.n.value = 1e9; U.bed.f.value = 1e9; U.pave.n.value = a.pave ?? 1e9;
       if (e.roll) {
-        const on = a.roll != null;
-        e.roll.visible = on;
-        if (on) { const L = lengthOf(r) / S, k = Math.max(0, Math.min(1, a.roll / L)), p = pointAt(r, a.roll); e.roll.position.set(p[0], r.g + MM(TOPS.geo + 60 * (1 - k) + 20), p[1]); e.roll.rotation.y = -Math.atan2(p[3], p[2]); const sc = 0.35 + 0.65 * (1 - k); e.roll.scale.set(sc, 1, sc); }
+        e.roll.visible = a.roll != null;
+        if (a.roll != null) { const p = pointAt(r, a.roll), L = lengthOf(r) / S, k = Math.max(0, Math.min(1, (a.rolled || 0) / Math.max(1, L))); e.roll.position.set(p[0], r.g - MM(PATH.dig) + MM(10 + 60 * (1 - k)), p[1]); e.roll.rotation.y = -Math.atan2(p[3], p[2]); const sc = 0.35 + 0.65 * (1 - k); e.roll.scale.set(sc, 1, sc); }
       }
     }
   }
@@ -365,23 +351,12 @@ export class GardenView {
   _buildLawn(app, r, e) {
     const d = r.done || {}, a = this.anim['L' + r.id] || {}, geo = [r.poly.flat().join(), r.g, r.u].join('|');
     this._part(e, 'ghost', r.id == null ? geo : null, () => lawnGhost(r));
-    if (r.v === 2) {
-      // (by hand: the pegs and the string until the grass is on; the grass over the ground as it is — the
-      // black topsoil in the ground itself)
-      this._part(e, 'line', !d.grass ? geo : null, () => lawnPegs(app, r));
-      const near = this.objects.all('path').length + ':' + this.objects.all('pool').length + ':' + Math.round((app.terrain.version || 0) / 50);
-      this._part(e, 'body', r.id != null && (d.grass || a.lay != null || a.grow != null) ? geo + '|' + (r.how || 'turf') + '|' + near : null, () => buildLawn(app, r, e.U));
-      if (!e.gear) { e.gear = { roll: turfRoll(), roller: roller(), spr: sprinkler() }; for (const o of Object.values(e.gear)) { o.visible = false; e.g.add(o); } }
-      return;
-    }
-    this._part(e, 'line', r.id != null && !d.grass ? geo : null, () => lawnLine(app, r));
-    // (what is round it when the soil goes on: the paths, the pools)
-    const near = this.objects.all('path').length + ':' + this.objects.all('pool').length;
-    this._part(e, 'body', r.id != null && (d.soil || a.soil != null) ? geo + '|' + (r.how || 'turf') + '|' + near + '|' + (this.objects.get(r.id) ? 1 : 0) : null, () => buildLawn(app, r, e.U));
-    if (!e.gear) {
-      e.gear = { roll: turfRoll(), roller: roller(), spr: sprinkler() };
-      for (const o of Object.values(e.gear)) { o.visible = false; e.g.add(o); }
-    }
+    // (by hand: the pegs and the string until the grass is on; the grass over the ground as it is — the
+    // black topsoil in the ground itself)
+    this._part(e, 'line', !d.grass ? geo : null, () => lawnPegs(app, r));
+    const near = this.objects.all('path').length + ':' + this.objects.all('pool').length + ':' + Math.round((app.terrain.version || 0) / 50);
+    this._part(e, 'body', r.id != null && (d.grass || a.lay != null || a.grow != null) ? geo + '|' + (r.how || 'turf') + '|' + near : null, () => buildLawn(app, r, e.U));
+    if (!e.gear) { e.gear = { roll: turfRoll(), roller: roller(), spr: sprinkler() }; for (const o of Object.values(e.gear)) { o.visible = false; e.g.add(o); } }
   }
   // the lawn's uniforms and its tools, from where the work has got
   _lawnFrame(e) {
@@ -407,24 +382,10 @@ export class GardenView {
     return g;
   }
 
-  _buildPath(app, r, e) {
-    if (r.v === 2) { this._buildPath2(app, r, e); return; }
-    const d = r.done || {}, a = this.anim[r.id] || {}, geo = [r.pts.flat().join(), r.W, r.g].join('|');
-    // the ghost while it is drawn
-    this._part(e, 'ghost', r.id == null ? geo : null, () => ghost(r));
-    // the pegs and the string (until the kerbs are in)
-    this._part(e, 'string', r.id != null && !d.kerb ? geo : null, () => strings(r));
-    // the kerbs, their bed and haunch
-    this._part(e, 'kerb', d.kerb || a.kerb != null ? geo : null, () => kerbMesh(r, e.U));
-    this._part(e, 'geo', d.geo || a.geo != null ? geo : null, () => geoMesh(r, e.U));
-    if (!e.roll && (a.roll != null)) { e.roll = rollMesh(r); e.g.add(e.roll); }
-    this._part(e, 'pave', d.pave || a.pave != null ? geo + '|' + (r.paver || '') + (r.col || '') : null, () => paveMesh(r, e.U));
-    this._part(e, 'joint', d.joint || a.joint != null ? geo : null, () => jointMesh(r, e.U));
-  }
 }
 
-// ---- the path laid by hand (v: 2) ----
-GardenView.prototype._buildPath2 = function (app, r, e) {
+// ---- the path (laid by hand: pathTool.js) ----
+GardenView.prototype._buildPath = function (app, r, e) {
   const d = r.done || {}, a = this.anim[r.id] || {}, geo = [r.pts.flat().join(), r.W, r.g].join('|');
   this._part(e, 'ghost', r.id == null ? geo : null, () => ghost(r));
   // the pegs at the corners and the ends, the strings along the kerbs' outer line (until the kerbs are all in)
@@ -552,28 +513,8 @@ function kerbMesh(r, U, only = null, up = 0) {
   const mb = new THREE.Mesh(prisms(bed, ch, MM(800)), bm); mb.receiveShadow = true; G.add(mb);
   return G;
 }
-function geoMesh(r, U) {
-  const g = r.g, legs = legsOf(r), list = paveQuads(r).map((p) => ({ p, s: p.map(([x, z]) => { let best = 0, bd = Infinity; for (const q of legs) { const dx = x - q.o[0], dz = z - q.o[1], a = q.a0 + dx * q.u[0] + dz * q.u[1], c = dx * q.n[0] + dz * q.n[1], aa = Math.max(q.a0, Math.min(q.a0 + q.L, a)), dd = Math.hypot(aa - a, c); if (dd < bd) bd = dd, best = a; } return best / S; }) }));
-  const m = byFront(new THREE.MeshStandardMaterial({ map: fabric(), roughness: 0.95, side: THREE.DoubleSide }), U.geo);
-  const o = new THREE.Mesh(sheets(list, g + MM(TOPS.geo), MM(1200)), m); o.receiveShadow = true;
-  return o;
-}
 function rollMesh(r) {
   const w = MM(r.W - 20), geo = new THREE.CylinderGeometry(MM(60), MM(60), w, 18); geo.rotateZ(Math.PI / 2);
   const o = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: fabric(), roughness: 0.9 })); o.castShadow = true;
-  return o;
-}
-// the pavers: concrete (the photo of a concrete face), each its own shade; the edges chamfered 4 mm
-function paveMesh(r, U) {
-  const g = r.g, P = paversOf(r).map((p, i) => ({ p: p.p, yT: g + MM(TOPS.pave), yB: g - MM(PATH.paver), ord: i, rgb: p.rgb.map((v) => Math.min(1, v * 0.95)), s: p.ord }));
-  const m = byCount(new THREE.MeshStandardMaterial({ map: tex('pool_coat', 'col.jpg', true), normalMap: tex('pool_coat', 'nor.jpg', false), vertexColors: true, roughness: 0.88 }), U.pave);
-  const o = new THREE.Mesh(prisms(P, MM(4), MM(500)), m); o.receiveShadow = true;
-  return o;
-}
-// the joints filled: a sand-coloured sheet just under the pavers' top (seen only between them)
-function jointMesh(r, U) {
-  const legs = legsOf(r), list = paveQuads(r).map((p) => ({ p, s: p.map(([x, z]) => { let best = 0, bd = Infinity; for (const q of legs) { const dx = x - q.o[0], dz = z - q.o[1], a = q.a0 + dx * q.u[0] + dz * q.u[1], c = dx * q.n[0] + dz * q.n[1], aa = Math.max(q.a0, Math.min(q.a0 + q.L, a)), dd = Math.hypot(aa - a, c); if (dd < bd) bd = dd, best = a; } return best / S; }) }));
-  const m = byFront(new THREE.MeshStandardMaterial({ map: tex('dense_sand', 'diff.jpg', true), color: 0xd8cdb4, roughness: 1, side: THREE.DoubleSide }), U.joint);
-  const o = new THREE.Mesh(sheets(list, r.g - MM(7), MM(400)), m); o.receiveShadow = true;
   return o;
 }
