@@ -16,7 +16,7 @@ const W = +opt('w', 540), H = +opt('h', 960), DSF = +opt('dsf', 2), FPS = +opt('
 fs.mkdirSync(path.join(out, 'frames'), { recursive: true });
 const have = new Set(fs.readdirSync(path.join(out, 'frames')));
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const types = { '.js': 'text/javascript', '.html': 'text/html', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.wasm': 'application/wasm', '.css': 'text/css', '.glb': 'model/gltf-binary', '.webmanifest': 'application/json', '.webp': 'image/webp' };
+const types = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.wasm': 'application/wasm', '.css': 'text/css', '.glb': 'model/gltf-binary', '.webmanifest': 'application/json', '.webp': 'image/webp' };
 const server = http.createServer((req, res) => { let p = path.join(root, decodeURIComponent(new URL(req.url, 'http://x').pathname)); if (p.endsWith('/')) p += 'index.html'; fs.readFile(p, (e, d) => { if (e) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'Content-Type': types[path.extname(p)] || 'application/octet-stream' }); res.end(d); }); });
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 if (!ASSEMBLE) {

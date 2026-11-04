@@ -1909,4 +1909,12 @@ export default {
 "Перемычка без арматуры": "A lintel without rebar",
 "Рентген": "X-ray",
 "Мощность": "Power",
+"Ролик": "Film",
+"Снять видео": "Shoot the video",
+"Игра снимет ролик сама, кадр за кадром: плавно, 1080×1920, 60 кадров/с, со звуком. Займёт несколько минут.": "The game shoots the film itself, frame by frame: smooth, 1080×1920, 60 fps, with sound. It takes a few minutes.",
+"Смотреть вживую": "Watch it live",
+"Для записи экрана: сначала включите её.": "For a screen recording: start it first.",
+"Нажмите, чтобы начать": "Tap to start",
+"Сначала включите запись экрана.": "Start the screen recording first.",
+"Ролик снимается сам — ваш участок не тронется.": "The film shoots itself — your plot stays as it is.",
 };

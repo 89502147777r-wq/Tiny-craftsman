@@ -185,6 +185,7 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | three.js r180 (`vendor/three/`, включая `addons/loaders/HDRLoader.js`, `addons/loaders/GLTFLoader.js`, `addons/utils/BufferGeometryUtils.js`) | three.js authors | MIT (`vendor/three/LICENSE`) |
 | meshoptimizer decoder (`vendor/three/addons/libs/meshopt_decoder.module.js`) | Arseny Kapoulkine | MIT |
 | Rapier 3D 0.14.0, физический движок (`vendor/rapier/rapier.es.js`, `@dimforge/rapier3d-compat`, WebAssembly встроен в файл) | Dimforge (Sébastien Crozet и др.), https://rapier.rs | Apache-2.0 (`vendor/rapier/LICENSE`) |
+| mp4-muxer 5.2.1, сборка mp4 из кадров WebCodecs («Снять видео» в роликах, `vendor/mp4-muxer/mp4-muxer.mjs`) | Vanilagy, https://github.com/Vanilagy/mp4-muxer | MIT (`vendor/mp4-muxer/LICENSE`) |
 
 ## Сгенерировано процедурно (наше, без внешних источников)
 

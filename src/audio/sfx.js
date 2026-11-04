@@ -8,17 +8,34 @@ import { SOUNDS } from './sounds.js';
 
 const KT = 10.4651;   // (the model's scale: 1 unit = KT m)
 export class Sfx {
-  constructor() { this.ctx = null; this.enabled = true; this.scrape = null; this.buf = new Map(); this.loops = new Map(); this.ear = null; this._last = {}; }
-
-  unlock() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    this.ctx = new AC();
+  constructor() { this.ctx = null; this.enabled = true; this.scrape = null; this.buf = new Map(); this.loops = new Map(); this.ear = null; this._last = {}; this.clock = null; this._timers = []; }
+  // the time of the sound: the context's — or, a film shot frame by frame (film/recorder.js), the film's
+  get now() { return this.clock ? this.clock() : this.ctx.currentTime; }
+  // later by `s` seconds (of the film, when shot frame by frame: a frame then takes longer than its 60th)
+  _after(s, f) { if (!this.clock) return setTimeout(f, s * 1000); const T = { at: this.now + s, f }; this._timers.push(T); return T; }
+  _cancel(T) { if (!T) return; if (!this.clock) clearTimeout(T); else T.f = null; }
+  // the sound of a film shot frame by frame: an offline context `seconds` long on the film's clock (all the
+  // sounds loaded first — none may come too late); render() → the AudioBuffer
+  async offline(seconds, clock, rate = 48000) {
+    this.ctx = new OfflineAudioContext(2, Math.ceil(seconds * rate), rate);
+    this.clock = clock; this.buf.clear(); this.loops.clear(); this._last = {};
+    this._chain();
+    await Promise.all(Object.keys(SOUNDS).map((n) => this._load(n)));
+  }
+  _chain() {
     this.master = this.ctx.createGain(); this.master.gain.value = 0.8;
     // (a gentle limiter: many sounds at once do not clip)
     const comp = this.ctx.createDynamicsCompressor(); comp.threshold.value = -10; comp.knee.value = 12; comp.ratio.value = 6; comp.attack.value = 0.004; comp.release.value = 0.2;
     this.master.connect(comp).connect(this.ctx.destination);
+  }
+
+  unlock() {
+    if (this.clock) return;   // (shot frame by frame: the offline context, started at the end)
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this._chain();
     // (the sounds most heard come first; the rest after them, quietly in the background)
     const first = ['shovel_dig', 'soil_dump', 'brick', 'block', 'tap', 'click', 'mallet', 'birds'];
     for (const n of first) this._load(n);
@@ -28,7 +45,11 @@ export class Sfx {
   listen(pos) {
     this.ear = pos;
     // (a loop no one keeps going — a tool put down, a job done — fades out by itself)
-    if (this.ctx) { const t = this.ctx.currentTime; for (const [id, L] of this.loops) if (L.auto && t - L.seen > 0.35 && L.g.gain.value > 0.003) this.loop(id, L.name, 0); }
+    if (!this.ctx) return;
+    const t = this.now;
+    if (this._timers.length) for (const T of this._timers.filter((q) => q.at <= t)) { this._timers.splice(this._timers.indexOf(T), 1); T.f?.(); }
+    // (the loudness each loop was last set to: an offline context's gain reads its start value)
+    for (const [id, L] of this.loops) if (L.auto && t - L.seen > 0.35 && L.v > 0.003) this.loop(id, L.name, 0);
   }
 
   _load(name) {
@@ -51,7 +72,7 @@ export class Sfx {
   play(name, opt = {}) {
     if (!this.enabled || !this.ctx) return;
     const S = SOUNDS[name]; if (!S) return;
-    const now = this.ctx.currentTime, gap = opt.gap ?? S.gap ?? 0.05;
+    const now = this.now, gap = opt.gap ?? S.gap ?? 0.05;
     if (now - (this._last[name] ?? -9) < gap) return;
     const list = this._ready(name);
     if (!list) { this._load(name); return; }
@@ -67,7 +88,7 @@ export class Sfx {
   loop(id, name, vol, rate = 1, at = null, auto = false) {
     if (!this.ctx) return;
     vol = this.enabled ? vol : 0;
-    const t = this.ctx.currentTime, S = SOUNDS[name];
+    const t = this.now, S = SOUNDS[name];
     let L = this.loops.get(id);
     if (L && L.name !== name) { this._stopLoop(id, L); L = null; }
     if (!L && vol > 0.004 && S) {
@@ -76,15 +97,16 @@ export class Sfx {
       const src = this.ctx.createBufferSource(), g = this.ctx.createGain(), b = list[Math.floor(Math.random() * list.length)];
       src.buffer = b; src.loop = true; g.gain.value = 0;
       src.connect(g).connect(this.master); src.start(t, Math.random() * Math.max(0, b.duration - 0.5));
-      L = { src, g, name }; this.loops.set(id, L);
+      L = { src, g, name, v: 0 }; this.loops.set(id, L);
     }
     if (!L) return;
     if (vol > 0.004) { L.auto = auto; L.seen = t; }
-    L.g.gain.setTargetAtTime(Math.min(1.2, vol * (S?.vol ?? 0.8) * this._gainAt(at, S?.range)), t, 0.08);
+    L.v = Math.min(1.2, vol * (S?.vol ?? 0.8) * this._gainAt(at, S?.range));
+    L.g.gain.setTargetAtTime(L.v, t, 0.08);
     L.src.playbackRate.setTargetAtTime(rate * (S?.rate ?? 1), t, 0.1);
-    if (vol <= 0.004) { clearTimeout(L.end); L.end = setTimeout(() => { if (this.loops.get(id) === L && L.g.gain.value < 0.01) this._stopLoop(id, L); }, 700); }
+    if (vol <= 0.004) { this._cancel(L.end); L.end = this._after(0.7, () => { if (this.loops.get(id) === L && L.v < 0.01) this._stopLoop(id, L); }); }
   }
-  _stopLoop(id, L) { try { L.g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05); L.src.stop(this.ctx.currentTime + 0.3); } catch { /* stopped */ } if (this.loops.get(id) === L) this.loops.delete(id); }
+  _stopLoop(id, L) { try { L.g.gain.setTargetAtTime(0, this.now, 0.05); L.src.stop(this.now + 0.3); } catch { /* stopped */ } if (this.loops.get(id) === L) this.loops.delete(id); }
 
   // ---- the old calls ----------------------------------------------------------------------------
   // the scrape of a tool going along (its loudness follows how fast it goes): which tool — `name`
@@ -112,7 +134,7 @@ export class Sfx {
   }
   // a few sounds one after another (a piece of work done at a touch: the boards nailed, the bars tied):
   // list of names, gap s between them
-  seq(list, gap = 0.2, opt = {}) { list.forEach((n, i) => setTimeout(() => this.play(n, { ...opt, gap: 0 }), i * gap * 1000 * (0.8 + Math.random() * 0.4))); }
+  seq(list, gap = 0.2, opt = {}) { list.forEach((n, i) => this._after(i * gap * (0.8 + Math.random() * 0.4), () => this.play(n, { ...opt, gap: 0 }))); }
   stab() { this.play('tap'); }
   thud() { this.play('block'); return true; }
   cash() { this.play('cash'); }

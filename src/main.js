@@ -400,6 +400,7 @@ async function startFilm(name) {
   app.sfx.unlock?.();
   app.film = new Director(app, script, app.filmOffline);
 }
+app.resize = () => resize();
 app.filmStep = (dt, time = performance.now() / 1000, draw = true) => {
   const f = app.film; if (!f) return;
   if (app.filmOffline) time = f.t;   // (the water's waves, the grass: on the film's clock)
@@ -457,6 +458,8 @@ function viewportSize() {
 }
 
 function resize() {
+  // (a film shot frame by frame — film/recorder.js: the canvas the video's size, in a 9:16 box)
+  if (app.recBox) { const b = app.recBox; app.renderer.setPixelRatio(1); app.renderer.setSize(b.w, b.h, false); app.camera.aspect = b.w / b.h; app.camera.fov = 52; app.camera.updateProjectionMatrix(); return; }
   const [w, h] = viewportSize();
   const q = app.settings.quality;
   const dprCap = q === 'high' ? 2 : q === 'medium' ? 1.5 : 1.15;
