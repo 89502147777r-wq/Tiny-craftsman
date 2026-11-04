@@ -619,6 +619,9 @@ console.log('—', sec());
     Object.assign(tc.settings, { wallKind: 'slab', slabCant: 0 });
     wt.carry = { kind: 'slab', tray: true, snap: null }; wt._carryMove(tp, e(tp)); wt._carryDrop(); run();
     o.slab = tc.objects.all('belt').filter((b) => b.kind === 'slab').map((b) => b.piles).join();
+    // (and with a cantilever 1,5 m: the same slab set out reaches 1,5 m past the piles' edge — on its own props)
+    { const SL = await import('/src/tools/slab.js'), P0 = SL.findPileSlab(tc, tp, (v) => wt._screen(v), null, undefined, 0), P1 = SL.findPileSlab(tc, tp, (v) => wt._screen(v), null, undefined, 1500);
+      o.cant = P0 && P1 ? { cant: P1.rec.cant?.[2], grow: Math.round(((P1.rec.ni - P0.rec.ni) + (P1.rec.nj - P0.rec.nj)) * 100) } : null; }
     // the piles' starter bars end inside the slab cast on them (200 thick, 40 cover over them)
     { const CM = await import('/src/world/columns.js'), T3 = await import('three'), sl = tc.objects.all('belt').find((b) => b.kind === 'slab'), bb = new T3.Box3();
       o.starter = Math.max(...cols().slice(0, 3).map((r) => { const g = CM.cageParts({ ...r, starter: CM.STARTER }).rebar; g.computeBoundingBox(); return Math.round((g.boundingBox.max.y - (sl.top + sl.H)) * 10465); })); void bb; }
@@ -652,7 +655,7 @@ console.log('—', sec());
   });
   check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
   check('columns: three piles bored, their two-half formwork set; a column not on the bare soil; the cages carried in', c.formed === '2false,2false,2false' && c.sqOnSoil && c.caged, JSON.stringify(c));
-  check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3' && c.starter < -30, JSON.stringify(c));
+  check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles (and with a cantilever)', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3' && c.starter < -30 && c.cant?.cant === 1500 && c.cant.grow >= 1400 && c.cant.grow <= 1600, JSON.stringify(c));
   check('columns: either order (a cage first, the formwork round it), tied into a foundation cage (no formwork till it is cast), the sliders resize the picked one', c.cageFirst === '0true' && c.formAfter === 2 && c.preview === 400 && c.resized === '400,4' && c.tied > 250 && c.tied < 450 && c.tiedStage === '0true' && c.tiedNoForm && c.boredCage === 'true|1200|true' && c.landing, JSON.stringify(c));
   check('black topsoil: delivered (1 m³), the soil shader builds', Math.abs(c.black - 1) < 0.05 && c.shader === 0, JSON.stringify(c));
   check('columns: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
@@ -1073,9 +1076,19 @@ console.log('—', sec());
     let worst = 0; const c = t.cell;
     for (let a = -0.25; a <= 0.25; a += c) for (let b = -0.25; b <= 0.25; b += c) { const h0 = t.heightAt(x + a, z + b), h1 = t.heightAt(x + a + c, z + b), h2 = t.heightAt(x + a, z + b + c); worst = Math.max(worst, Math.abs(h1 - h0) / c, Math.abs(h2 - h0) / c); }
     o.heap = +((t.heightAt(x, z) - t.orig[t.index(x, z)]) / M).toFixed(0); o.slope = +(Math.atan(worst) * 180 / Math.PI).toFixed(1);
+    // the pump's end hose: the hand walks it (≤ 1,2 m/s), the stream starts at the spout, thinner below, lags when swept
+    { const { PumpHose } = await import('/src/world/pumpHose.js'), V = tc.camera.position.constructor, H = new PumpHose(), m = 1 / 10.4651;
+      H.group.visible = true; H.aim(new V(0, 0.6 * m, 0), new V(0, 1, 5), true); const gy = () => 0; let vmax = 0, top = 0, lag = 0, last = H.hand.clone();
+      H.target.set(2 * m, 0.6 * m, 0);
+      for (let i = 0; i < 150; i++) { H.update(1 / 30); const ln = H.setStream(true, gy, i / 30, 1 / 30); vmax = Math.max(vmax, H.hand.distanceTo(last) * 30 / m); last.copy(H.hand);
+        const sp = H.spout(), p0 = H.stream.geometry.attributes.position; if (p0) { let cx = 0, cy = 0, cz = 0; for (let k = 0; k < 10; k++) { cx += p0.getX(k); cy += p0.getY(k); cz += p0.getZ(k); } top = Math.max(top, Math.hypot(cx / 10 - sp.x, cy / 10 - sp.y, cz / 10 - sp.z) / m); } }
+      // (swept at 0,6 m/s: the foot of the stream behind the spout)
+      for (let i = 0; i < 60; i++) { H.target.x += 0.02 * m; H.update(1 / 30); const ln = H.setStream(true, gy, 5 + i / 30, 1 / 30); if (i > 40) lag = Math.max(lag, (H.spout().x - ln.x) / m); }
+      o.hose = { vmax: +vmax.toFixed(2), top: +(top * 1000).toFixed(1), lag: +(lag * 1000).toFixed(0), thin: H.stream.userData.bottomR <= H.stream.userData.topR }; }
     return o;
   });
   check('realist: a heap of sand lies at its angle of repose (≤ 36°), not as a column', o.heap > 40 && o.slope <= 36, JSON.stringify(o));
+  check('realist: the pump hose — walked by hand (≤ 1,3 m/s), the stream from the spout, thinner below, lagging when swept', o.hose.vmax <= 1.3 && o.hose.top < 6 && o.hose.thin && o.hose.lag > 5 && o.hose.lag < 250, JSON.stringify(o.hose));
   check('realist: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
