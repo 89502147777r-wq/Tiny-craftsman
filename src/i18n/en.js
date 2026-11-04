@@ -1943,4 +1943,10 @@ export default {
 "Сначала проём в перекрытии над лифтом (его делают в опалубке, до бетона) — лифт выйдет в этаж через него": "First an opening in the slab over the lift (made in the formwork, before the concrete) — the lift comes up into the floor through it",
 "Коснитесь залитой колонны под домом с той стороны, где встанет лифт — стеклянная шахта снаружи вдоль фасада в каждый этаж и решётка вокруг колонны; ещё тап — кабина едет": "Tap a cast column under the house on the side the lift goes — a glass shaft outside along the facade into each floor and a lattice round the column; tap again — the cabin rides",
 "Над колонной должно быть перекрытие — лифт ведёт в этажи": "There must be a slab over the column — the lift goes into the floors",
+"Лифт-шахта": "Lift shaft",
+"Лифт сняли": "The lift taken off",
+"Здесь уже стоит лифт": "There is a lift here already",
+"Коснитесь земли — встанет стеклянная шахта лифта высотой как колонна в «Размерах»; на её верх можно положить перекрытие, она его понесёт. Тап по лифту — кабина едет": "Tap the ground — a glass lift shaft as tall as the column in «Sizes» goes up; a slab can be laid on its top, it carries it. Tap the lift — the cabin rides",
+"Над лифтом ещё нет этажа — положите на шахту перекрытие (в нём будет проём)": "No floor over the lift yet — lay a slab on its top (it gets its opening)",
+"Шахта ниже {0} м — кабине не встать": "The shaft is under {0} m — the cabin does not fit",
 };

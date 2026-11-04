@@ -312,7 +312,8 @@ export function buildRoof(b, units, rec, live) {
       const [x, z] = toWorld(b, (s0 + s1) / 2, (t0 + t1) / 2), g = new THREE.BoxGeometry(s1 - s0, y1 - y0, t1 - t0);
       g.rotateY(yaw); g.translate(x, (y0 + y1) / 2, z); g.deleteAttribute('uv'); (list || []).push(g.toNonIndexed()); return g;
     };
-    for (const [a0, b0, a1, b1] of b.holes || []) {
+    for (const [a0, b0, a1, b1, isLift] of b.holes || []) {
+      if (isLift) continue;   // (a lift's: its shaft comes up through it, no skylight)
       const S0 = a0 * c, T0 = b0 * c, S1 = a1 * c, T1 = b1 * c;
       const hTop = Math.max(...[[S0, T0], [S1, T0], [S1, T1], [S0, T1]].map(([s2, t2]) => top(s2 - cw, t2 - cw))) + ROOF.mem;
       const y0 = top0, yC = top0 + MM(hTop + ROOF.upstand), curb = [], cap = [], frame = [], glass = [];

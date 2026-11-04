@@ -702,36 +702,41 @@ console.log('—', sec());
   await browser.close();
 }
 
-// ---- 2d''. The villa's parts: a lift by the column into the floor (only through an opening in the slab), its
-// cabin riding; the lattice round the column; the fascia on the slab's outer edges (not round the opening);
-// a green roof — sedum in the field, gravel 500 mm along the parapet ----
+// ---- 2d''. The villa's parts (the owner: no leg — the house stands on a glass lift shaft): the shaft on the
+// ground by the column tool, a slab laid on its top (cantilevered all round, its opening over the shaft), the
+// cabin riding up into the floor; the fascia on the slab's outer edges (not round the opening); a green roof —
+// sedum in the field, gravel 500 mm along the parapet ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, o = {}, MM = (v) => v / 1000 / 10.4651;
     const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); tc.camera.updateProjectionMatrix(); wt._rc = null; const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
     const SL = await import('/src/tools/slab.js'), LF = await import('/src/world/lift.js'), RL = await import('/src/world/railing.js');
-    const g = tc.terrain.heightAt(0, 0), H = 6500;
-    const col = tc.objects.add({ type: 'column', sec: 'rd', a: 500, h: +MM(H).toFixed(6), n: 26, course: 'block', tilt: [0, 0], x: 0, z: 0, y0: g, dep: 0, stage: 3, cage: true, fill: 1, on: 'concrete' });
-    tc.simulate(0.1);
-    const P = SL.findPileSlab(tc, new V(0, g + MM(H), 0), (v) => wt._screen(v), null, undefined, 3500), sl = tc.objects.add(P.rec);
-    const s2 = tc.objects.get(sl.id);
+    const g = tc.terrain.heightAt(0, 0);
+    // the shaft: as tall as the column in «Размеры» (26 courses of blocks ≈ 6,5 m), a tap on the ground
+    tc.rig.setState({ target: [0, g, 0], yaw: 0, pitch: 0.6, dist: 1.6 }); tc.simulate(0.05);
+    tc.setTool('column'); Object.assign(tc.settings, { colStage: 'lift', colCourse: 'block', colN: 26 });
+    const gp = new V(0, g, 0); tc.columnTool.down(gp, e(gp)); tc.columnTool.up(); tc.simulate(0.1);
+    const lf = tc.objects.all('lift')[0];
+    o.shaft = lf && { h: Math.round((lf.top - lf.y0) / MM(1)), u: lf.u };
+    o.again = (() => { tc.columnTool.down(new V(MM(1500), g, 0), e(new V(MM(1500), g, 0))); tc.columnTool.up(); return tc.objects.all('lift').length; })();
+    // the slab on its top: cantilevered 3,5 m all round, the opening over the shaft
+    const P = SL.findPileSlab(tc, new V(lf.x, lf.top, lf.z), (v) => wt._screen(v), null, undefined, 3500);
+    o.slab = P && { piles: P.rec.piles, cants: P.rec.cants?.length, holes: (P.rec.holes || []).length, liftHole: P.rec.holes?.[0]?.[4], w: P.rec.ni * 100 };
+    const sl = tc.objects.add(P.rec), s2 = tc.objects.get(sl.id);
     tc.objects.update(sl.id, { lv: s2.lv.map(() => Math.round(s2.H / MM(1))), fill: 1, castT: tc.clock - 1e6, pourT: tc.clock - 1e6, wetT: tc.clock - 1e6, stripped: true });
     tc.simulate(0.1);
-    o.capital = tc.wallView.fill.geometry.attributes.position.count;
-    // the lift by the column tool: a tap on the column on its +z side
-    tc.rig.setState({ target: [0, g + MM(3000), 0], yaw: 0, pitch: 0.15, dist: 1.6 }); tc.simulate(0.05);
-    tc.setTool('column'); tc.settings.colStage = 'lift'; const cp = new V(0, g + MM(2500), MM(250));
-    tc.columnTool.down(cp, e(cp)); tc.columnTool.up(); tc.simulate(0.1);
-    const lf = tc.objects.all('lift')[0], ss = tc.objects.get(sl.id);
-    o.lift = lf && { up: Math.round((lf.y1 - lf.y0) / MM(1)), stops: lf.stops.length, u: lf.u, lattice: lf.lattice, clear: lf.clear, outside: Math.round(lf.z / MM(1)) - Math.round((ss.o[1] + ss.nj * ss.c) / MM(1)) };
-    o.liftMesh = !!tc.wallView._liftG?.get(lf?.id);
-    if (lf) { tc.columnTool.down(cp, e(cp)); tc.columnTool.up(); o.busy = tc.wallView.liftBusy; tc.simulate(LF.rideTime(lf) + 0.5); o.at = tc.objects.get(lf.id).at; o.cabY = Math.round(tc.wallView._liftG.get(lf.id).userData.cab.position.y); }
+    o.stops = LF.liftStops(tc.objects, tc.objects.get(lf.id)).length;
+    o.liftMesh = !!tc.wallView._liftG?.get(lf.id);
+    // a tap on the lift: the cabin rides up into the floor
+    const lp = new V(lf.x, g, lf.z); tc.columnTool.down(lp, e(lp)); tc.columnTool.up(); o.busy = tc.wallView.liftBusy;
+    tc.simulate(LF.rideTime(tc.objects, tc.objects.get(lf.id), 0, 1) + 0.5); o.at = tc.objects.get(lf.id).at;
+    o.cabY = Math.round(tc.wallView._liftG.get(lf.id).userData.cab.position.y); o.floor = Math.round((s2.top + s2.H - lf.y0) / MM(1));
     // the fascia: four outer edges, none round the lift's opening
     const s3 = tc.objects.get(sl.id);
     for (const run of RL.slabRuns(s3)) { const m = new V((run.a[0] + run.b[0]) / 2, run.y, (run.a[1] + run.b[1]) / 2); const F = RL.findRail(tc, m, 'ral7016'); if (F && !F.why) tc.objects.add(F.rec); }
     o.fascias = tc.objects.all('rail').filter((q) => q.fascia).length;
-    o.again = RL.findRail(tc, new V(...[s3.o[0] + s3.ni * s3.c / 2, 0, s3.o[1]].map((v, i) => (i === 1 ? s3.top + s3.H : v))), 'ral7016')?.why;
+    o.again2 = RL.findRail(tc, new V(...[s3.o[0] + s3.ni * s3.c / 2, 0, s3.o[1]].map((v, i) => (i === 1 ? s3.top + s3.H : v))), 'ral7016')?.why;
     // the green roof (the membrane done): painted over the whole slab
     tc.objects.add({ type: 'roof', slab: sl.id, stage: 4, look: 'grey' }); tc.simulate(0.05);
     tc.setTool('wall'); Object.assign(tc.settings, { wallKind: 'roof', roofLayer: 'green' });
@@ -746,8 +751,8 @@ console.log('—', sec());
     o.greenEdge = Math.min(...(rf.green || [0]).map((k) => { const i = k % s3.ni, j = (k - i) / s3.ni; return Math.min(i, j, s3.ni - 1 - i, s3.nj - 1 - j); }));
     return o;
   });
-  check('villa: the lift outside along the facade (no opening in the punching zone, ≥ 6d off), its door into the house, 6.5 m up, the lattice round the column, the cabin rides up', o.lift?.outside > 0 && o.lift.clear >= 1860 && o.lift.u[1] < -0.9 && o.lift.stops === 1 && o.lift.up > 6500 && o.lift.lattice && o.liftMesh && o.busy && o.at === 1 && o.cabY > 6500, JSON.stringify(o));
-  check('villa: the fascia on the four outer edges, not twice; the capital under the slab', o.fascias === 4 && /уже/.test(o.again || ''), JSON.stringify(o));
+  check('villa: a lift shaft on the ground (≈ 6.5 m, one only there); a slab on its top cantilevered all round with the opening over it; the cabin rides up to the floor', o.shaft?.h > 6000 && o.again === 1 && o.slab?.piles === 1 && o.slab.cants === 4 && o.slab.holes === 1 && o.slab.liftHole === 1 && o.stops === 1 && o.liftMesh && o.busy && o.at === 1 && Math.abs(o.cabY - o.floor) < 5, JSON.stringify(o));
+  check('villa: the fascia on the four outer edges (not round the opening), not twice', o.fascias === 4 && /уже/.test(o.again2 || ''), JSON.stringify(o));
   check('villa: a green roof — sedum in the field, gravel 500 mm at the edge', o.green > 500 && o.grav > 100 && o.greenEdge >= 5, JSON.stringify(o));
   check('villa: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();

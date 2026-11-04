@@ -9,7 +9,7 @@ import { buildWindow, buildCorner } from './windows.js';
 import { buildRail } from './railing.js';
 import { castDone, colTop, secOf, axisAt } from './columns.js';
 import { SLAB } from '../tools/slab.js';
-import { buildLift, buildLattice, ride, rideTime, rideEase } from './lift.js';
+import { buildLift, liftStops, ride, rideTime, rideEase } from './lift.js';
 import { buildDoor, isDoor } from './doors.js';
 import { kitsLoaded } from './openingKits.js';
 import { buildRoof } from './roof.js';
@@ -482,6 +482,7 @@ export class WallView {
       if (rec?.type === 'rail' || rec?.type === 'lift' || this._railIds?.has(id)) { if (!(rec?.type === 'lift' && this._liftG?.has(id) && this._ride?.id === id)) this.railDirty = true; return; }
       if (rec?.type === 'facade' || this._facKnown.has(id)) { this.facadeDirty = true; if (rec?.type === 'facade') this._facKnown.add(id); return; }
       if (rec?.type === 'stock' || this._stockIds?.has(id)) { this.dirty = true; return; }
+      if (rec?.type === 'belt' && this._liftG?.size) this.railDirty = true;   // (a slab over a lift: its stops)
       if (['wall', 'unit', 'bed', 'opening', 'belt', 'window', 'roof'].includes(rec?.type) || this._known?.has(id)) { this.dirty = true; this._faces = null; if (rec?.type === 'unit' || !rec) this._byUnits = true; }
     });
   }
@@ -986,7 +987,8 @@ export class WallView {
   rideLift(id) {
     const r = this.objects.get(id); if (!r || this._ride) return 0;
     // (up one stop at a time; from the top, back down to the ground)
-    const n = r.stops?.length || 1, from = r.at || 0, to = from >= n ? 0 : from + 1, T = rideTime(r, from, to);
+    const n = liftStops(this.objects, r).length; if (!n) return 0;
+    const from = Math.min(r.at || 0, n), to = from >= n ? 0 : from + 1, T = rideTime(this.objects, r, from, to);
     this._ride = { id, from, to, t0: this.clock ?? 0, T };
     return T;
   }
@@ -998,13 +1000,11 @@ export class WallView {
     const recs = this.objects.all('rail'), lifts = this.objects.all('lift');
     this._railIds = new Set([...recs, ...lifts].map((r) => r.id));
     for (const r of recs) { const g = buildRail(r); g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; }); this.rails.add(g); }
-    // the lifts by their columns, the lattice round the column
+    // the lifts (their stops: the slabs over them with their opening)
     this._liftG = new Map();
     for (const r of lifts) {
-      const g = buildLift(r); g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; }); this.rails.add(g); this._liftG.set(r.id, g);
+      const g = buildLift(r, this.objects); g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; }); this.rails.add(g); this._liftG.set(r.id, g);
       if (this._ride?.id === r.id) ride(g, this._ride.from);
-      const col = r.lattice && this.objects.get(r.col);
-      if (col) { const m = buildLattice(col); m.userData.uOwner = r.id; this.rails.add(m); }
     }
     const lv = this.liveRail;
     if (lv) { const g = buildRail(lv.rec, lv.ok ? null : false); g.traverse((o) => { if (o.isMesh) o.userData.noPick = true; }); this.rails.add(g); }
