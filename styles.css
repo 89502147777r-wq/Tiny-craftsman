@@ -404,3 +404,19 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-rcpt .sum span { font-size: clamp(13px, 4vw, 24px); }
 #film .f-rcpt .sum b { font-size: clamp(24px, 8.4vw, 50px); color: #c8321f; font-family: -apple-system, "Inter Display", Arial, sans-serif; }
 #film .f-rcpt small.foot { border: 0; margin: 0.6em 0 0; padding: 0; letter-spacing: 0.04em; }
+/* the film shot frame by frame (film/recorder.js): the picture and its words in a 9:16 box, the progress over it */
+#film .f-gate button { font: inherit; font-size: clamp(16px, 4.8vw, 26px); font-weight: 800; padding: 0.7em 1.2em; border-radius: 16px; border: 0; background: #f2b134; color: #1b1406; pointer-events: auto; }
+#film .f-gate button.f-live { background: rgba(255,255,255,0.16); color: #fff; margin-top: 0.6em; }
+body.rec { background: #000; }
+body.rec #view, body.rec #film { left: var(--rec-l); top: var(--rec-t); width: var(--rec-w); height: var(--rec-h); right: auto; bottom: auto; }
+.rec-ui { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; padding: 0 16px calc(24px + env(safe-area-inset-bottom)); pointer-events: none; font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #fff; }
+.rec-ui .rec-card { pointer-events: auto; width: 100%; max-width: 460px; background: rgba(14,14,14,0.88); border-radius: 20px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+.rec-ui .rec-card.done { max-height: calc(100vh - 40px); }
+.rec-ui b { font-size: 19px; }
+.rec-ui small { opacity: 0.75; font-size: 13px; line-height: 1.35; }
+.rec-ui .rec-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.15); overflow: hidden; }
+.rec-ui .rec-bar i { display: block; height: 100%; width: 0; background: #f2b134; }
+.rec-ui video { width: 100%; max-height: 52vh; border-radius: 12px; background: #000; object-fit: contain; }
+.rec-ui .rec-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.rec-ui button { font: inherit; font-size: 15px; font-weight: 700; padding: 10px 14px; border-radius: 12px; border: 0; background: rgba(255,255,255,0.14); color: #fff; flex: 1 1 auto; }
+.rec-ui button.rec-save { background: #f2b134; color: #1b1406; flex-basis: 100%; }

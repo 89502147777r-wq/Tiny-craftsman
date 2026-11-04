@@ -312,3 +312,5 @@ function* sweep(d, pw, key, dur) {
   pw._save('pool-' + key, () => app.objects.update(r.id, { [key]: live[key] }));
   pw._live(null);
 }
+
+poolFilm.seconds = 61;   // (how long it runs: the shooting's progress — film/recorder.js)

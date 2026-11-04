@@ -21,6 +21,7 @@ export const look = (eye, at) => { const v = eye.clone().sub(at), dist = v.lengt
 
 export class Director {
   constructor(app, script, offline = false) {
+    this.estimate = script.seconds || 40;   // (s of film: the shooting's progress)
     this.app = app; this.t = 0; this.dt = 0; this.speed = 1; this.done = false;
     this.w = null; this.shot = null; this.tasks = new Set(); this.items = []; this.fx = [];
     this.stepAt = 0; this.stepT = 0; this.fin = null;
@@ -41,10 +42,18 @@ export class Director {
     if (this.gate) {
       const g = document.createElement('div');
       g.className = 'f-gate';
-      g.innerHTML = '<b>Нажмите, чтобы начать</b><span>Сначала включите запись экрана.<br>Ролик снимается сам — ваш участок не тронется.</span>';
+      // (two ways: shot by the game frame by frame into an mp4 — smooth whatever the phone; or played
+      // live for the phone's screen recording)
+      const rec = typeof VideoEncoder === 'function' && typeof VideoFrame === 'function' && typeof OfflineAudioContext === 'function';
+      g.innerHTML = (rec ? '<b>Ролик</b><button class="f-rec">🎬 Снять видео</button><span>Игра снимет ролик сама, кадр за кадром: плавно, 1080×1920, 60 кадров/с, со звуком. Займёт несколько минут.</span><button class="f-live">▶ Смотреть вживую</button><span>Для записи экрана: сначала включите её.</span>'
+        : '<b>Нажмите, чтобы начать</b><span>Сначала включите запись экрана.<br>Ролик снимается сам — ваш участок не тронется.</span>');
       el.appendChild(g);
       el.style.pointerEvents = 'auto';
-      el.addEventListener('pointerdown', () => { if (this.gate) { this.gate = false; g.remove(); app.sfx?.unlock?.(); el.style.pointerEvents = 'none'; } });
+      const go = () => { this.gate = false; g.remove(); el.style.pointerEvents = 'none'; };
+      if (rec) {
+        g.querySelector('.f-live').addEventListener('click', () => { if (this.gate) { go(); app.sfx?.unlock?.(); } });
+        g.querySelector('.f-rec').addEventListener('click', () => { if (this.gate) { go(); this.record(); } });
+      } else el.addEventListener('pointerdown', () => { if (this.gate) { go(); app.sfx?.unlock?.(); } });
     }
   }
   _advance() {
@@ -56,6 +65,13 @@ export class Director {
     }
   }
   leave() { location.href = location.pathname; }
+  // the film shot frame by frame into an mp4 (film/recorder.js), the screens round it
+  async record(o = {}) {
+    const { recordFilm, recordUi } = await import('./recorder.js');
+    const ui = recordUi(this.app);
+    this.byeArmed = true;   // (the end screen's buttons lead back, not a tap anywhere)
+    try { ui.done(await recordFilm(this.app, { onProgress: ui.set, ...o })); } catch (e) { ui.fail(e); }
+  }
   // a named moment of the film (the renderer moves the «hook» … «hookEnd» part to the front)
   mark(name) { this.marks = this.marks || {}; this.marks[name] = this.t; }
   // the words cleared at once (a clean shot)
@@ -222,6 +238,7 @@ export class Director {
     }
     this.app.rig.setState({ target: v.target.toArray(), yaw: v.yaw, pitch: v.pitch, dist: v.dist }, true);
     this.app.focusPoint = this.shot.f ? this.shot.at : null;
+    this.look = { blur, scale, white };   // (film/recorder.js paints them into the video)
     this.canvas.style.filter = blur > 0.2 ? `blur(${blur.toFixed(1)}px)` : '';
     this.canvas.style.transform = scale > 1.001 ? `scale(${scale.toFixed(4)})` : '';
     this.$('.f-flash').style.opacity = white.toFixed(3);

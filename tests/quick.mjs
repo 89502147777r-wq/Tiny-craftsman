@@ -1072,6 +1072,40 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2l'. A film shot in the game frame by frame (film/recorder.js): an mp4 of exactly a 60th a frame, the
+// hook first, the words painted into the frames (film/compose.js), the sounds on the film's clock ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, { Director } = await import('./src/film/director.js'), THREE = await import('three'), o = {};
+    const P = new THREE.Vector3(0, tc.terrain.heightAt(0, 0), 0);
+    function* script(d) {
+      d.bar(2); d.cut({ target: P, yaw: 0, pitch: 0.6, dist: 1.5 }); d.title('BIG WORDS', '', 1);
+      yield d.sec(0.5); d.mark('hook'); tc.sfx.play('block'); yield d.sec(0.4); d.mark('hookEnd'); yield d.sec(0.2);
+    }
+    const d = new Director(tc, script, true); tc.film = d;
+    const { recordFilm } = await import('./src/film/recorder.js');
+    // (the words: white text in the title's band of a frame after the title came up)
+    const onFrame = (x, i) => { if (i !== 20) return; const px = x.getImageData(0, 30, 180, 40).data; let n = 0; for (let j = 0; j < px.length; j += 4) if (px[j] > 235 && px[j + 1] > 235 && px[j + 2] > 235) n++; o.words = n; };
+    let r; try { r = await recordFilm(tc, { fps: 30, w: 180, h: 320, max: 3, onFrame }); } catch (e) { return { err: String(e) }; }
+    const buf = new Uint8Array(await r.blob.arrayBuffer());
+    o.ftyp = String.fromCharCode(...buf.slice(4, 8)); o.seconds = +r.seconds.toFixed(3); o.frames = r.frames;
+    // (the sound cut like the frames: the blow at the hook's start — the video's start; before it, in the film, quiet)
+    const peak = (a, b) => { let m = 0; for (let i = Math.round(a * r.rate); i < Math.round(b * r.rate); i++) m = Math.max(m, Math.abs(r.pcm[0][i])); return m; };
+    o.blow = +peak(0, 0.15).toFixed(3); o.before = +peak(0.5, r.seconds).toFixed(3);
+    o.sound = o.blow > 0.02 && o.before < o.blow * 0.2;
+    const v = document.createElement('video'); v.muted = true; v.src = URL.createObjectURL(r.blob);
+    await new Promise((res) => { v.onloadedmetadata = res; v.onerror = res; setTimeout(res, 8000); });
+    o.dur = +v.duration.toFixed(2); o.size = [v.videoWidth, v.videoHeight];
+    o.box = !!tc.recBox && tc.renderer.domElement.width === 180;
+    return o;
+  });
+  check('film shot frame by frame: an mp4, 180×320, the hook first (0.4 s), the film up to it after (0.5 s)', !o.err && o.ftyp === 'ftyp' && o.frames >= 26 && o.frames <= 30 && Math.abs(o.seconds - 0.93) < 0.07 && Math.abs(o.dur - o.seconds) < 0.1 && o.size[0] === 180 && o.size[1] === 320 && o.box, JSON.stringify(o));
+  check('film shot frame by frame: the title painted into the frame; the sound in it', o.words > 40 && o.sound, JSON.stringify(o));
+  check('film shot frame by frame: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
