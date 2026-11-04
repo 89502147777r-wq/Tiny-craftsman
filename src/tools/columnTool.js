@@ -46,7 +46,7 @@ export class ColumnWork {
   get sec() { return this.type; }
   get course() { return COURSES[this.s.colCourse] ? this.s.colCourse : 'block'; }
   get n() { return Math.max(1, Math.min(60, this.s.colN || (this.course === 'brick' ? 36 : this.course === 'cinder' ? 14 : 11))); }
-  get tiltDeg() { return Math.max(0, Math.min(15, Math.round(this.s.colTilt || 0))); }
+  get tiltDeg() { return Math.max(0, Math.min(40, Math.round(this.s.colTilt || 0))); }   // (to 40°: the branches of a tree column)
   get dirDeg() { return ((Math.round((this.s.colDir || 0) / 45) * 45) % 360 + 360) % 360; }
   get rec() { return this.app.objects.get(this.sel) || null; }
   toast(m) { this.app.ui?.toast(m); }
@@ -147,7 +147,13 @@ export class ColumnWork {
     if (why) { /* (said above) */ } else if (!sec.pile && !bore && LOOSE.has(H.on)) why = `Колонну ставят на фундамент, плиту, перекрытие, кладку или щебёночную подушку — ${ON[H.on]} нужна свая`;
     // (a column in the way: one standing where this one would be — not one under a slab it stands on: a frame
     // building goes up so, column over column, floor by floor)
-    const near = app.objects.all('column').filter((r) => Math.hypot(r.x - q.x, r.z - q.z) < MM((secOf(r).a + sec.a) / 2 + 120));
+    let near = app.objects.all('column').filter((r) => Math.hypot(r.x - q.x, r.z - q.z) < MM((secOf(r).a + sec.a) / 2 + 120));
+    // (on a column's top: a branch of a tree column — the trunk under it is its base, and the other branches
+    // out of the same top lean another way: they part as they rise)
+    if (H.on === 'column') {
+      const tv = this.tiltVec(), dirOf = (t) => Math.atan2(t[1], t[0]);
+      near = near.filter((r) => colTop(r) > y0 + MM(30) && !(Math.abs(r.y0 - y0) < MM(30) && Math.hypot(...r.tilt) > 0.05 && Math.hypot(...tv) > 0.05 && Math.abs(Math.atan2(Math.sin(dirOf(r.tilt) - dirOf(tv)), Math.cos(dirOf(r.tilt) - dirOf(tv)))) > 0.5));
+    }
     if (near.some((r) => y0 < colTop(r) - MM(30) && y0 + this.sizes().h > r.y0 - (r.dep || 0))) why = 'Здесь уже стоит колонна';
     else if (near.length && (H.on === 'slab' || H.on === 'belt')) snap = 'over';   // (over the column under the slab: its continuation)
     else if ((H.on === 'slab' || H.on === 'belt') && !near.length && app.objects.all('column').some((r) => colTop(r) < y0 && colTop(r) > y0 - MM(450) && Math.hypot(r.x - q.x, r.z - q.z) < MM(2500))) snap = 'off';   // (not over one: the slab takes it)

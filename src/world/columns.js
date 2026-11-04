@@ -36,9 +36,14 @@ export const COL_SECS = {
   r300: { name: 'Круглая колонна Ø300', round: true, a: 300, bars: 6, d: 12 },
 };
 // the kinds by the slider (the record: sec = 'sq' / 'rd' / 'pile', a = the size, mm); the old records'
-// fixed sections above still read. The bars by the size: 4 (square up to 300) … 8, Ø12 … 16
-export const COL_TYPES = { sq: { min: 150, max: 500, def: 250 }, rd: { min: 200, max: 500, def: 300 }, pile: { min: 200, max: 600, def: 300 } };
-const reinf = (round, a) => ({ bars: round ? (a <= 300 ? 6 : 8) : (a <= 300 ? 4 : 8), d: a <= 250 ? 12 : a <= 350 ? 14 : 16 });
+// fixed sections above still read. The bars by the size: 4 (square up to 300) … 8, Ø12 … 16; a big one (a
+// trunk that carries a house, Ø800 – 1500: 2 – 3 % of steel) — Ø25 … 32 every ~150 mm round its edge
+export const COL_TYPES = { sq: { min: 150, max: 1500, def: 250 }, rd: { min: 200, max: 1500, def: 300 }, pile: { min: 200, max: 800, def: 300 } };
+const reinf = (round, a) => {
+  if (a <= 500) return { bars: round ? (a <= 300 ? 6 : 8) : (a <= 300 ? 4 : 8), d: a <= 250 ? 12 : a <= 350 ? 14 : 16 };
+  const d = a <= 650 ? 20 : a <= 900 ? 25 : 32, per = (round ? Math.PI : 4) * (a - 2 * (COVER + d / 2));
+  return { bars: round ? Math.max(8, Math.round(per / 150)) : 4 * Math.max(2, Math.round(per / 4 / 150)), d };
+};
 export function secOf(r) {
   const o = COL_SECS[r?.sec];
   if (o) return r.a && r.a !== o.a ? { ...o, a: r.a, ...reinf(o.round, r.a), name: o.name.replace(/\d+( × \d+)?$/, o.round ? `${r.a}` : `${r.a} × ${r.a}`) } : o;
@@ -114,11 +119,13 @@ function rod(a, b, r, seg = 6) {
 
 // the cage: the bars along the axis (the starter bars on past the top: r.starter mm, 500 when
 // nothing is on it yet), the stirrups every 200, the plastic spacer wheels (the cover) on the bars
+// the bars of a square cage round its edge: k a side (8 → the corners and the middles), −1 … 1
+const squareRing = (k) => { const o = []; for (let i = 0; i < k; i++) { const u = -1 + 2 * i / k; o.push([u, -1], [1, u], [-u, 1], [-1, -u]); } return o; };
 export function cageParts(r) {
   const sec = secOf(r), half = MM(sec.a / 2 - COVER - sec.d / 2), d = MM(sec.d), y0 = r.anc ? r.y0 - MM(r.anc) : colBot(r) + MM(50), y1 = colTop(r);
   const ax = new THREE.Vector3(r.tilt[0], 1, r.tilt[1]).normalize(), st = MM(r.starter ?? STARTER) * ax.y;   // (the bars on along the axis; 0: cut flush)
   const offs = sec.round ? Array.from({ length: sec.bars }, (_, k) => [Math.cos(k / sec.bars * Math.PI * 2) * half, Math.sin(k / sec.bars * Math.PI * 2) * half])
-    : sec.bars === 8 ? [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]].map(([a, b]) => [a * half, b * half]) : [[-half, -half], [half, -half], [half, half], [-half, half]];
+    : sec.bars >= 8 ? squareRing(sec.bars / 4).map(([a, b]) => [a * half, b * half]) : [[-half, -half], [half, -half], [half, half], [-half, half]];
   const gs = [], pl = [];
   for (const [ox, oz] of offs) { const [a0, b0] = axisAt(r, y0), [a1, b1] = axisAt(r, y1 + st); gs.push(rod([a0 + ox, y0, b0 + oz], [a1 + ox, y1 + st, b1 + oz], d / 2)); }
   // (tied into the foundation's cage: each bar's foot bent out 250 mm along its bottom bars — the «лапки» —

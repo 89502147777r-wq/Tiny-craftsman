@@ -667,6 +667,41 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2d'. A tree column (a house on one support): a trunk Ø1200 with its bars round the edge, two branches
+// out of its top leaning apart (30°), a slab on them with its cantilevers all round, 350 thick ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, col = wt.col, o = {}, MM = (v) => v / 1000 / 10.4651;
+    const e = (p) => { tc.camera.updateMatrixWorld(); tc.camera.matrixWorldInverse.copy(tc.camera.matrixWorld).invert(); tc.camera.updateProjectionMatrix(); wt._rc = null; const sp = wt._screen(p); return { clientX: sp.x, clientY: sp.y }; };
+    const SL = await import('/src/tools/slab.js'), CM = await import('/src/world/columns.js');
+    const g = tc.terrain.heightAt(0, 0);
+    tc.objects.add({ type: 'column', sec: 'rd', a: 1200, h: +MM(3000).toFixed(6), n: 10, course: 'block', tilt: [0, 0], x: 0, z: 0, y0: g, dep: 0, stage: 3, cage: true, fill: 1, on: 'concrete' });
+    const tr = CM.secOf({ sec: 'rd', a: 1200 }); o.trunk = { bars: tr.bars, d: tr.d };
+    tc.simulate(0.1);
+    tc.rig.setState({ target: [0, g + MM(3000), 0], yaw: 0.3, pitch: 0.6, dist: 1.2 }); tc.simulate(0.05);
+    tc.setTool('column');
+    Object.assign(tc.settings, { colType: 'rd', colA: 700, colTilt: 30, colDir: 0, colN: 6, colCourse: 'block', colStage: 'form' });
+    const top = new V(0, g + MM(3000), 0), behind = () => { const c = tc.camera.position, d = top.clone().sub(c); return c.clone().add(d.multiplyScalar((c.y - g) / (c.y - top.y))); };
+    o.tilt = col.tiltDeg;
+    const P1 = col.plan(behind(), e(top)); o.b1 = P1 && { why: P1.why, on: P1.rec.on, foot: Math.round((P1.rec.y0 - g) / MM(1)) };
+    if (P1 && !P1.why) tc.objects.add({ ...P1.rec, stage: 3, fill: 1, cage: true });
+    tc.settings.colDir = 180; const P2 = col.plan(behind(), e(top)); o.b2 = P2?.why ?? 'ok';
+    if (P2 && !P2.why) tc.objects.add({ ...P2.rec, stage: 3, fill: 1, cage: true });
+    tc.settings.colDir = 0; o.b3 = col.plan(behind(), e(top))?.why;   // (the same way again: in the way)
+    tc.simulate(0.1);
+    const br = tc.objects.all('column').filter((r) => r.tilt[0] || r.tilt[1]), t0 = br[0] && CM.axisAt(br[0], CM.colTop(br[0]));
+    const S1 = t0 && SL.findPileSlab(tc, new V(t0[0], CM.colTop(br[0]), t0[1]), (v) => wt._screen(v), null, undefined, 3000);
+    o.slab = S1 && { piles: S1.rec.piles, cants: S1.rec.cants?.length, H: Math.round(S1.rec.H / MM(1)), w: S1.rec.ni * 100, l: S1.rec.nj * 100, text: SL.cantText(S1.rec) };
+    o.noCant = !!(t0 && SL.findPileSlab(tc, new V(t0[0], CM.colTop(br[0]), t0[1]), (v) => wt._screen(v), null, undefined, 0));
+    return o;
+  });
+  check('tree column: a trunk Ø1200 has Ø32 bars every ~150 mm; two branches out of its top lean apart, the same way again is in the way', o.trunk.bars >= 20 && o.trunk.d === 32 && o.tilt === 30 && o.b1?.why == null && o.b1?.on === 'column' && Math.abs(o.b1.foot - 3000) < 5 && o.b2 === 'ok' && !!o.b3, JSON.stringify(o));
+  check('tree column: a slab on its two branches — cantilevers all round (3 m), 350 thick; without a cantilever none', o.slab?.piles === 2 && o.slab.cants === 4 && o.slab.H === 350 && o.slab.w > 7500 && o.slab.l > 6500 && /кругом/.test(o.slab.text) && !o.noCant, JSON.stringify(o));
+  check('tree column: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2e. The fence by the post («Забор»): the string with its pegs, a peg moved for a wicket, the holes
 // one by one, the posts, the concrete by the bucket and the hose, the rails welded, the fill, the wicket
 {
