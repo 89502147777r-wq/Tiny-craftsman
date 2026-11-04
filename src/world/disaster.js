@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { loadPhysics } from './physics.js';
 import { Puffs } from './smoke.js';
-import { ShaftCollapse, slabPieces } from './collapse.js';
+import { ShaftCollapse, slabPieces, hullDesc } from './collapse.js';
 
 // Catastrophes (a show, not a change to the project: nothing in the records moves — at «Вернуть как было»
 // the house is as it was). The house is taken as it is drawn: every block, brick and lintel of the walls,
@@ -103,7 +103,8 @@ export class Disaster {
       p.off = new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z).multiply(o.matrix);
       const bd = W.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(c.x * S, c.y * S, c.z * S).setLinearDamping(0.1).setAngularDamping(0.4));
       const hx = Math.max(0.02, sz.x * S / 2), hy = Math.max(0.02, sz.y * S / 2), hz = Math.max(0.02, sz.z * S / 2), dens = sort === 'roof' ? 120 : sort === 'window' ? 350 : sort === 'slab' ? 2400 : 60;
-      W.createCollider(R.ColliderDesc.cuboid(hx, Math.min(hy, sort === 'roof' ? hy : 0.4), hz).setDensity(dens * (sort === 'roof' ? Math.min(1, 0.4 / hy) : 1)).setFriction(0.7), bd);
+      const hd = o.userData?.hull && hullDesc(R, o.userData.hull, c);   // (a slab's piece: its own shape)
+      W.createCollider((hd || R.ColliderDesc.cuboid(hx, Math.min(hy, sort === 'roof' ? hy : 0.4), hz)).setDensity(dens * (sort === 'roof' ? Math.min(1, 0.4 / hy) : 1)).setFriction(0.7), bd);
       p.body = bd; p.area = (sort === 'roof' ? sz.x * sz.z : Math.max(sz.x, sz.z) * sz.y) * S * S;
       p.under = this.chunks.filter((ch) => ch.box.max.x > b.min.x - M(0.05) && ch.box.min.x < b.max.x + M(0.05) && ch.box.max.z > b.min.z - M(0.05) && ch.box.min.z < b.max.z + M(0.05) && (sort === 'roof' ? ch.box.max.y > b.min.y - M(0.4) && ch.box.max.y < b.min.y + M(0.6) : ch.box.max.y > b.min.y && ch.box.min.y < b.max.y));
       p.cap = (sort === 'roof' ? 1300 : sort === 'window' ? 1800 : sort === 'slab' ? 1e9 : 2500) * (0.75 + 0.5 * rnd()) * (belt && sort === 'roof' ? 1.3 : 1);

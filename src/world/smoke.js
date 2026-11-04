@@ -12,7 +12,9 @@ const KIND = {
   flame: { color: 0xff8a2a, opacity: 0.85, size0: 0.6, size1: 1.6, rise: 2.2, life: 0.9, add: true },
   soot: { color: 0x1c1a19, opacity: 0.6, size0: 1.0, size1: 8, rise: 1.6, life: 5 },
   // (a building come down: grey concrete dust, slow, hanging long — 5–10 s — and drifting with the wind)
-  rubble: { color: 0x9a978f, opacity: 0.55, size0: 1.6, size1: 10, rise: 0.08, life: 8 },
+  rubble: { color: 0xb8a58a, opacity: 0.5, size0: 1.6, size1: 9, rise: 0.35, life: 8 },
+  // (the air pushed out from under a falling slab: a ring of dust running out along the ground — fast, stopping in a second)
+  ring: { color: 0xbfae94, opacity: 0.55, size0: 0.8, size1: 5, rise: 0.05, life: 3.2, damp: 2.6 },
 };
 
 export class Puffs {
@@ -43,7 +45,7 @@ export class Puffs {
       it.age += dt;
       const u = it.age / it.life;
       if (u >= 1) { it.s.visible = false; continue; }
-      it.s.position.addScaledVector(it.v, dt); it.v.multiplyScalar(1 - 0.8 * dt);
+      it.s.position.addScaledVector(it.v, dt); it.v.multiplyScalar(Math.max(0, 1 - (it.k.damp ?? 0.8) * dt));
       const sz = R(it.k.size0 + (it.k.size1 - it.k.size0) * Math.sqrt(u));
       it.s.scale.set(sz, sz, sz);
       it.s.material.opacity = it.k.opacity * it.str * Math.min(1, u * 6) * (1 - u) ** 1.5;
