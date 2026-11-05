@@ -39,7 +39,7 @@ export class SlabFormView {
     for (const c of [...this.decks.children]) { c.geometry.dispose(); this.decks.remove(c); }
     const m = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3();
     let nb = 0, np = 0, nq = 0;
-    const own = (this.owner = { beams: [], tubeLo: [], tubeHi: [], plates: [] });
+    const own = (this.owner = { beams: [], tubeLo: [], tubeHi: [], plates: [], soles: [] });
     for (const b of belts) {
       if (!isSlab(b) || b.stripped) continue;
       const F = slabForm(b, (x, z) => floor(x, z, b.top - MM(500)));

@@ -733,6 +733,7 @@ console.log('—', sec());
     const P = SL.findPileSlab(tc, new V(lf.x, lf.top, lf.z), (v) => wt._screen(v), null, undefined, 3500);
     o.slab = P && { piles: P.rec.piles, cants: P.rec.cants?.length, holes: (P.rec.holes || []).length, liftHole: P.rec.holes?.[0]?.[4], w: P.rec.ni * 100 };
     const sl = tc.objects.add(P.rec), s2 = tc.objects.get(sl.id);
+    tc.simulate(0.1); { const F = tc.wallView.slabForm; o.props = F.tubeLo.count; o.soles = F.soles.count; }   // (each prop on its timber sole)
     tc.objects.update(sl.id, { lv: s2.lv.map(() => Math.round(s2.H / MM(1))), fill: 1, castT: tc.clock - 1e6, pourT: tc.clock - 1e6, wetT: tc.clock - 1e6, stripped: true });
     tc.simulate(0.1);
     o.stops = LF.liftStops(tc.objects, tc.objects.get(lf.id)).length;
@@ -766,6 +767,7 @@ console.log('—', sec());
     return o;
   });
   check('villa: a lift shaft not on the bare ground, on a cast pad (≈ 6.5 m, one only there); a slab on its top cantilevered all round with the opening over it; the cabin rides up to the floor', o.onSoil === 0 && o.shaft?.h > 6000 && o.again === 1 && o.slab?.piles === 1 && o.slab.cants === 4 && o.slab.holes === 1 && o.slab.liftHole === 1 && o.stops === 1 && o.liftMesh && o.busy && o.at === 1 && Math.abs(o.cabY - o.floor) < 5, JSON.stringify(o));
+  check('villa: the slab\'s props each on a timber sole (not on the bare ground)', o.props > 20 && o.soles === o.props, JSON.stringify({ props: o.props, soles: o.soles }));
   check('villa: the fascia on the four outer edges (not round the opening), not twice', o.fascias === 4 && /уже/.test(o.again2 || ''), JSON.stringify(o));
   check('villa: a green roof — sedum in the field, gravel 500 mm at the edge', o.green > 500 && o.grav > 100 && o.greenEdge >= 5, JSON.stringify(o));
   check('villa film: its block and brick walls end at one height (±10 mm), the front opening left open', Math.abs(o.vf.block - o.vf.brick) <= 10 && o.vf.block > 3000 && o.vf.inGap === 0, JSON.stringify(o.vf));

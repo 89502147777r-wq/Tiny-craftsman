@@ -267,7 +267,8 @@ export function* villaFilm(d, app) {
   d.title('WHY THE REAL ONE LOOKS LIKE THIS', '', 0);
   d.trans('flash', true);
   // (the shaft carries nothing now: a wide pad, four columns Ø600 to the slab's underside)
-  castCells(cellsIn(4800, 4800), 300);   // (a raft under the whole house: the columns' braces stand on it too)
+  const raft = cellsIn(4800, 4800), was = raft.map(([i]) => [i, T.conc[i], T.cTime[i], T.cBase[i], T.cY[i], T.cSm[i]]);
+  castCells(raft, 300);   // (a raft under the whole house: the columns' braces stand on it too)
   yield d.sec(2.5);
   d.lock = true;
   const bot = O.get(s1.id).top, cols = [];
@@ -281,6 +282,9 @@ export function* villaFilm(d, app) {
   // the hook (put first by the renderer — film/recorder.js): the villa on its shaft alone, the cabin going up
   // in the glass, the question; the film ends here, so played round it goes on into the building of it
   for (const c of cols) O.remove(c.id);
+  // (and the raft taken back: the hook is the villa on its small pad, as it was built)
+  for (const [i, c, t, b, y, m] of was) { T.conc[i] = c; T.cTime[i] = t; T.cBase[i] = b; T.cY[i] = y; T.cSm[i] = m; }
+  { let a = 1e9, b = -1, c = 1e9, e = -1; for (const [i] of was) { const ix = i % T.nx, iz = Math.floor(i / T.nx); a = Math.min(a, ix); b = Math.max(b, ix); c = Math.min(c, iz); e = Math.max(e, iz); } T._concTouch(a, c, b, e); T.updateMesh?.(); }
   app.simulate(0.05);
   d.clear();
   tripod(A);
