@@ -3,6 +3,9 @@
 // one, never «sometimes one, sometimes two» (a threshold in milliseconds against frames that come with a little
 // jitter drew them 33 and 50 ms apart in turn: the camera, moved by the clock, jerked); still, twice a second.
 // fi — the display's frame interval (ms, kept by Pace from the frames' timestamps).
+// the shadows drawn again: work going on — each frame; their box moved — now; a finger (the camera only) — 10 a
+// second; still — every 2 s (the sun, the curing)
+export const shadowDue = (since, { work, box, recent } = {}) => !!(work || box || since > (recent ? 0.1 : 2));
 export class Pace {
   constructor() { this.fi = 1000 / 60; this.last = null; this.lastDraw = -1e9; this.since = 0; }
   // the display's next frame came at now (ms): is it drawn? live — something moves
@@ -11,7 +14,8 @@ export class Pace {
     this.last = now; this.since++;
     // (moving: every n-th display frame, n by the display's rate — counted, so a frame a little early or
     // late does not drop the next one; still: by the clock)
-    const n = Math.max(1, Math.floor((1000 / 60 + 1) / this.fi));
+    // (live 2: only the rain moves — at half that rate)
+    const n = Math.max(1, Math.floor((1000 / 60 + 1) / this.fi)) * (live === 2 ? 2 : 1);
     const go = live ? this.since >= n : now - this.lastDraw >= 480 - this.fi * 0.5;
     if (go) { this.fd = now - this.lastDraw; this.lastDraw = now; this.since = 0; }
     return go;

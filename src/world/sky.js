@@ -145,6 +145,7 @@ export class Sky {
       app.scene.add(mast);
       const spot = new THREE.SpotLight(0xfff1d8, 0, 0, 0.62, 0.55, 0);
       spot.position.set(x, y0 + H + MM(100), z); spot.target.position.set(-x * 0.2, y0, -z * 0.2);
+      spot.shadow.autoUpdate = false;   // (it stands still: its shadow drawn with the sun's — main.js — not each frame)
       spot.shadow.mapSize.set(1024, 1024); spot.shadow.bias = -0.0008; spot.shadow.normalBias = 0.004; spot.shadow.intensity = 0.6;
       app.scene.add(spot, spot.target);
       this.lamps.push({ mast, spot, glow, face });

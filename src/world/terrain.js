@@ -783,6 +783,7 @@ export class Terrain {
     }
     this.meshTiles.clear();
     if (!rects.length) return false;
+    this.rev = (this.rev || 0) + 1;   // (the ground changed: what is counted over it is counted again — ui.tick)
     // several updates before an upload add up: one span of cells per row
     const n = this.nx, attrs = [this.aPos, this.aNor, this.aSoil, this.aMat, this.aConc, this.aExtra];
     if (!this._rowLo) { this._rowLo = new Int32Array(this.nz).fill(1e9); this._rowHi = new Int32Array(this.nz).fill(-1); this._rowsUsed = false; }

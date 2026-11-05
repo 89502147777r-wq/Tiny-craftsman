@@ -90,6 +90,7 @@ export const SOUNDS = {
   fire: {"f": ["fire-0"], "loop": 1},
   explosion: {"f": ["explosion-0"], "vol": 1.0, "range": 6},
   creak: {"f": ["creak-0", "creak-1"]},
+  applause: {"f": ["applause-0", "applause-1"], "vol": 0.8},
   fabric: {"f": ["fabric-0", "fabric-1"], "loop": 1},
   cord: {"f": ["cord-0", "cord-1", "cord-2"], "vol": 0.5},
   water_pour: {"f": ["water_pour-0"]},

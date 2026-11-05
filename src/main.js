@@ -1,4 +1,4 @@
-import { Pace } from './core/pace.js';
+import { Pace, shadowDue } from './core/pace.js';
 import { upgrade } from './core/upgrade.js';
 import { Mirrors } from './render/mirrors.js';
 import * as THREE from 'three';
@@ -210,25 +210,30 @@ async function main() {
   app.lastInput = performance.now();
   app.poke = () => { app.lastInput = performance.now(); };
   for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown']) window.addEventListener(ev, app.poke, { passive: true, capture: true });
+  // (what works by itself — the shadows follow it each frame; the camera gliding is not it)
+  const working = () => !!app.physJob || app.terrain.active || app.particles.busy || app.shovelTool.busy || app.rakeTool.busy || app.wallTool.busy
+      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy() || app.wallView.liftBusy || app.disasterTool.running;
   const moving = (rain = true) => {
     const r = app.rig, g = r.goal;
     return app.settings.orbit || !!app.physJob || app.terrain.active || app.particles.busy || app.shovelTool.busy || app.rakeTool.busy || app.wallTool.busy
-      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy() || app.wallView.liftBusy || (rain && app.sky?.busy)
+      || Object.values(app.concreteTools).some((t) => t.busy) || Object.values(app.materialTools).some((t) => t.busy) || app.machineTool.busy() || app.wallView.liftBusy || app.disasterTool.running || (rain && app.sky?.busy)
       || Math.abs(r.dist - g.dist) > 1e-4 || r.target.distanceToSquared(g.target) > 1e-9 || Math.abs(r.yaw - g.yaw) > 1e-4 || Math.abs(r.pitch - g.pitch) > 1e-4 || Math.abs(r.focus - r.focusGoal) > 1e-3;
   };
+  app.moving = moving;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     if (app.film) { if (!app.filmOffline) app.filmStep(dt, now / 1000); requestAnimationFrame(frame); return; }
-    const recent = now - app.lastInput < 1500, mv = moving();
-    const due = pace.due(now, recent || mv);
+    const recent = now - app.lastInput < 1500, mv = moving(), still = !recent && !moving(false);
+    // (only the rain moves: half the display's rate — 30 a second, as the sky promises)
+    const due = pace.due(now, recent || mv ? (still ? 2 : 1) : 0);
     // (the hand-held sway runs only while drawn smoothly; the shadows are drawn again only when
     // something but the rain moves — else twice a second, for the sun)
     app.rig.live = recent || mv;
     // (the hand off and all still: the picture sharp again — coarser only while it works and the frames
     // lag; not while the camera still glides: a new canvas buffer then is a hitch in the move)
     if (app.dprAuto && now - app.lastInput > 700 && !mv) { app.dprAuto = 0; slowS = 0; resize(); }
-    app.shadowLive = recent || (mv && moving(false));
+    app.shadowLive = recent; app.shadowWork = working();
     if (due) {
       const fd = Math.min(1, pace.fd / 1000);
       fpsAcc += fd; fpsN++;
@@ -319,7 +324,7 @@ function checkGpuMemory() {
   app.ui?.toast(q !== 'low' ? `Не хватило видеопамяти — качество снижено до «${next === 'medium' ? 'среднее' : 'низкое'}»` : 'Не хватает видеопамяти устройства');
 }
 
-let concAcc = 0, shadowT = 0;   // (the time since the concrete last flowed / the shadows were drawn)
+let concAcc = 0, shadowT = 0, shadowBox = true, shadowVer = -1;   // (the time since the concrete last flowed / the shadows were drawn)
 function step(dt, time, render = true) {
   if (!document.hidden) app.clock += dt;
   const { terrain } = app;
@@ -362,7 +367,7 @@ function step(dt, time, render = true) {
   app.dust.update(dt, time);
   if (app.settings.orbit) app.rig.orbit(-dt * 0.12, 0);
   app.rig.update(dt);
-  app.workshop.followShadow(app.workshop.sun, app.rig.target, app.rig.dist, app.rig.yaw);
+  shadowBox = app.workshop.followShadow(app.workshop.sun, app.rig.target, app.rig.dist, app.rig.yaw) || shadowBox;
   app.backdrop.update();
   app.sky.update(dt);
   updateFocus();
@@ -374,7 +379,12 @@ function step(dt, time, render = true) {
     const sm = app.renderer.shadowMap;
     sm.autoUpdate = false;
     shadowT += dt;
-    if (app.shadowLive !== false || shadowT > 0.5) { sm.needsUpdate = true; shadowT = 0; }
+    // (something built or changed: its shadow at once, not up to 2 s later)
+    if (app.objects.ver !== shadowVer) { shadowVer = app.objects.ver; shadowBox = true; }
+    if (shadowDue(shadowT, { work: app.shadowWork, box: shadowBox, recent: app.shadowLive })) {
+      sm.needsUpdate = true; shadowT = 0; shadowBox = false;
+      for (const L of app.sky.lamps || []) if (L.spot) L.spot.shadow.needsUpdate = true;   // (the floodlight's still: with the rest)
+    }
     app.renderer.info.reset();   // (the frame's own counts — all its passes — for the menu's diagnostics)
     app.pipeline.render(app.scene, app.camera, time);
     app.mirrors.render(app.scene);
@@ -390,8 +400,8 @@ function step(dt, time, render = true) {
 // the film mode: the director's frame, then the work `speed` times as fast (in steps of a 30th
 // at most), drawn once
 async function startFilm(name) {
-  const [{ Director }, films] = await Promise.all([import('./film/director.js'), import('./film/poolFilm.js')]);
-  const script = { pool: films.poolFilm }[name];
+  const [{ Director }, films] = await Promise.all([import('./film/director.js'), name === 'villa' ? import('./film/villaFilm.js') : import('./film/poolFilm.js')]);
+  const script = { pool: films.poolFilm, villa: films.villaFilm }[name];
   if (!script) { app.ui.toast('Нет такого ролика: ' + name); return; }
   app.rig.shake = false;
   // (a back garden: a meadow round the plot, not the construction yard's blocks of flats)
@@ -407,7 +417,7 @@ app.filmStep = (dt, time = performance.now() / 1000, draw = true) => {
   f.update(dt);
   // (on the phone at most 5 steps a frame — it stays smooth; frame by frame, a 30th each)
   const sim = dt * f.speed, n = Math.max(1, Math.min(app.filmOffline ? 1e3 : 5, Math.ceil(sim / (1 / 30))));
-  app.rig.live = true; app.shadowLive = true;
+  app.rig.live = true; app.shadowLive = true; app.shadowWork = true;
   for (let i = 0; i < n; i++) step(sim / n, time, draw && i === n - 1);
 };
 
@@ -486,6 +496,9 @@ function setTool(t) {
   if (app.tool === 'mark' && t !== 'mark' && app.markTool.trench) app.markTool.finishTrench();
   if (app.tool === 'machine' && t !== 'machine') app.machineTool.finish();
   if (app.tool === 'disaster' && t !== 'disaster') app.disasterTool.finish();
+  // (the physics engine fetched when the catastrophes are opened, not when one is started: its first load was a
+  // stall of its own at the start)
+  if (t === 'disaster') import('./world/physics.js').then((m) => m.loadPhysics()).catch(() => {});
   app.tool = t;
   app.outlineView.setHandles(t === 'mark', app.markTool.selected);
   if (t !== 'shovel' && app.shovelTool.state === 'idle') {

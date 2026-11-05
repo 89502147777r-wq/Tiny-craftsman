@@ -158,6 +158,7 @@ export class UI {
     hb.addEventListener('click', () => showHints(ui.classList.contains('no-hints')));
     $('menu-close').addEventListener('click', () => this.openMenu(false));
     $('act-film').addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=pool'; });
+    $('act-film-villa')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=villa'; });
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     for (const b of document.querySelectorAll('#budget-row button')) b.addEventListener('click', () => { const v = +b.dataset.b; if (v) app.budget.start(v); else app.budget.stop(); this.openMenu(false); this.refresh(); });
     $('act-export').addEventListener('click', () => app.exportProject());
@@ -934,6 +935,12 @@ export class UI {
     if (this.statT < 0.3) return;
     this.statT = 0;
     const app = this.app;
+    // (counted over the whole ground — a million cells — only when it changed or another outline is chosen;
+    // a text written only when it changed: by the clock it was half the CPU of a phone at rest)
+    const outs0 = app.objects.all('outline'), o0 = (app.markTool.selected && app.objects.get(app.markTool.selected)) || outs0[0];
+    const key = `${app.terrain.rev}|${o0?.id}|${o0?.depth}|${o0?.kind}|${LANG}`;
+    if (key === this._statKey) { this.refresh(); return; }
+    this._statKey = key; this.matT = 0;
     // sand / crushed stone lying on the plot (real m³)
     if ((this.matT = (this.matT || 0) + 1) % 3 === 1) {
       const v = app.terrain.materialVolumes().map((x) => x * MODEL_SCALE ** 3);

@@ -17,14 +17,15 @@ page.setDefaultTimeout(1800000);
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(`http://127.0.0.1:${server.address().port}/?film=${film}&offline=1&dpr=1&quality=low`);
 await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
-const rows = await page.evaluate((FPS) => {
+const rows = await page.evaluate(async (FPS) => {
   const tc = window.__tc, f = tc.film, out = [];
   // (the words' boxes on the screen: which overlap)
   const boxes = () => [...document.querySelectorAll('#film .f-bill, #film .f-head, #film .f-kick, #film .f-count, #film .f-pin span, #film .f-rcpt .paper, #film .f-card')]
     
     .filter((e) => getComputedStyle(e).visibility !== 'hidden' && +getComputedStyle(e.closest('.f-pin') || e).opacity > 0.35 && +getComputedStyle(e).opacity > 0.35 && e.offsetParent !== null)
     .map((e) => { const r = e.getBoundingClientRect(); return { k: e.className.split(' ')[0] || e.tagName, txt: e.textContent.slice(0, 24), x0: r.left, y0: r.top, x1: r.right, y1: r.bottom }; });
-  for (let i = 0; i < 4000 && !f.done; i++) {
+  for (let i = 0; i < 6000 && !f.done; i++) {
+    if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0));   // (what the film waits for that is async — a catastrophe started — gets its turn)
     tc.filmStep(1 / FPS, 0, false);
     const c = tc.camera.position, q = tc.rig.target;
     out.push({ t: +f.t.toFixed(3), n: f.shot?.n || 0, fx: f.fx.some((e) => e.kind !== 'shake'), title: f.stepName || '', e: [c.x, c.y, c.z], a: [q.x, q.y, q.z], d: tc.rig.dist, b: boxes() });

@@ -79,6 +79,11 @@ function validate(src, name) {
     for (let k = 0; k < secs * hz; k++) { const now = 1000 + k * f + (rnd() - 0.5) * 3; if (P.due(now, live)) { if (last != null && k > hz) gaps.push(Math.round((now - last) / f)); last = now; } }
     return [...new Set(gaps)].sort().join(','); };
   const r = { hz60: run(60, true), hz120: run(120, true), hz90: run(90, true), still: run(60, false) };
+  { const rain = { hz60: run(60, 2), hz120: run(120, 2), hz90: run(90, 2) };
+    { const { shadowDue } = await import('../src/core/pace.js');
+    const ok = !shadowDue(0.05, { recent: true }) && shadowDue(0.11, { recent: true }) && shadowDue(0.01, { work: true }) && shadowDue(0, { box: true }) && !shadowDue(1.5, {}) && shadowDue(2.1, {});
+    check('shadows: drawn again for a cause — work each frame, the box moved now, a finger 10 a second, still every 2 s', ok, ''); }
+  check('frames: only the rain moving — half the rate (60 Hz: every other frame, 120 Hz: every 4th)', rain.hz60 === '2' && rain.hz120 === '4' && rain.hz90 === '2', JSON.stringify(rain)); }
   check('frames: drawn evenly while things move (60 Hz: every frame, 120 Hz: every other), twice a second when still', r.hz60 === '1' && r.hz120 === '2' && r.hz90 === '1' && r.still.split(',').every((g) => g >= 28 && g <= 31), JSON.stringify(r));
 }
 
@@ -753,11 +758,17 @@ console.log('—', sec());
     o.green = (rf.green || []).length; o.grav = (rf.grav || []).length;
     // (no green cell within 500 mm of the slab's edge)
     o.greenEdge = Math.min(...(rf.green || [0]).map((k) => { const i = k % s3.ni, j = (k - i) / s3.ni; return Math.min(i, j, s3.ni - 1 - i, s3.nj - 1 - j); }));
+    // (the villa film's walls: blocks and bricks — their tops meet (the next slab lies on both), the openings left open)
+    { const VF = await import('/src/film/villaFilm.js'), M1 = MM(1);
+      const top = (k) => Math.max(...VF.courses(0, VF.FLOORS[0]).filter((u) => u.kind === k).map((u) => (u.p[1] + u.s[1] / 2) / M1));
+      const inGap = VF.courses(0, VF.FLOORS[0]).filter((u) => u.p[1] > 0 && Math.abs(u.p[2] / M1 - 3850) < 200 && u.p[0] / M1 > -950 && u.p[0] / M1 < 1950).length;
+      o.vf = { block: Math.round(top('block')), brick: Math.round(top('brick')), inGap }; }
     return o;
   });
   check('villa: a lift shaft not on the bare ground, on a cast pad (≈ 6.5 m, one only there); a slab on its top cantilevered all round with the opening over it; the cabin rides up to the floor', o.onSoil === 0 && o.shaft?.h > 6000 && o.again === 1 && o.slab?.piles === 1 && o.slab.cants === 4 && o.slab.holes === 1 && o.slab.liftHole === 1 && o.stops === 1 && o.liftMesh && o.busy && o.at === 1 && Math.abs(o.cabY - o.floor) < 5, JSON.stringify(o));
   check('villa: the fascia on the four outer edges (not round the opening), not twice', o.fascias === 4 && /уже/.test(o.again2 || ''), JSON.stringify(o));
   check('villa: a green roof — sedum in the field, gravel 500 mm at the edge', o.green > 500 && o.grav > 100 && o.greenEdge >= 5, JSON.stringify(o));
+  check('villa film: its block and brick walls end at one height (±10 mm), the front opening left open', Math.abs(o.vf.block - o.vf.brick) <= 10 && o.vf.block > 3000 && o.vf.inGap === 0, JSON.stringify(o.vf));
   check('villa: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
@@ -1067,10 +1078,16 @@ console.log('—', sec());
     const got = await Promise.all(Object.keys(L).map(async (n) => [n, (await s._load(n))?.length || 0, L[n].f.length]));
     const bad = got.filter(([, a, b]) => a !== b).map(([n, a, b]) => `${n}:${a}/${b}`);
     const src = s.play('brick'); s.loop('t', 'loader', 0.5); const looping = s.loops.has('t'); s.loop('t', 'loader', 0);
-    return { n: got.length, bad, played: !!src, looping };
+    // (a loop kept at 0 every frame — the sky's crickets by day — is stopped, not put off for ever)
+    for (let i = 0; i < 90; i++) { s.loop('t', 'loader', 0); await new Promise((r) => setTimeout(r, 16)); }
+    // (the status line: the whole ground counted only when it changed — not 3 times a second at rest)
+    const T = window.__tc.terrain, ev = T.excavatedVolume; let calls = 0; T.excavatedVolume = function () { calls++; return ev.call(this); };
+    await new Promise((r) => setTimeout(r, 3000)); T.excavatedVolume = ev;
+    return { n: got.length, bad, played: !!src, looping, stopped: !s.loops.has('t'), statCalls: calls };
   });
   check('sounds: every sound asked for is in the library (no synthesised buzz left), its files there', !missing.size && !absent.length && asked.size > 50, JSON.stringify({ asked: asked.size, missing: [...missing], absent: absent.slice(0, 5) }));
-  check('sounds: every file decodes in the browser; a one-shot plays, a loop runs', o.n >= 85 && !o.bad.length && o.played && o.looping, JSON.stringify(o));
+  check('sounds: every file decodes in the browser; a one-shot plays, a loop runs', o.n >= 85 && !o.bad.length && o.played && o.looping && o.stopped, JSON.stringify(o));
+  check('status line: the ground not counted again while nothing changes', o.statCalls <= 1, JSON.stringify({ statCalls: o.statCalls }));
   check('sounds: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
@@ -1093,6 +1110,11 @@ console.log('—', sec());
     const D = tc.disasterTool, run = async (kind, power, secs) => { Object.assign(tc.settings, { catKind: kind, catPower: power }); const st = await D.run(); const t0 = performance.now(); for (let i = 0; i < secs * 30; i++) tc.simulate(1 / 30); const ms = (performance.now() - t0) / (secs * 30); const s = D.sim.stats(); D.reset(); return { pieces: st.pieces, share: +s.share.toFixed(2), ms: Math.round(ms) }; };
     o.weak = await run('quake', 1, 18);
     o.strong = await run('quake', 10, 18);
+    // (the ruins at rest cost nothing: after the show the physics is no longer stepped; while it goes, it is drawn)
+    { Object.assign(tc.settings, { catKind: 'quake', catPower: 10 }); await D.run(); o.live = tc.moving(); while (!D.sim.done) tc.simulate(1 / 30); for (let i = 0; i < 40; i++) tc.simulate(1 / 30);
+      let t0 = performance.now(); for (let i = 0; i < 60; i++) tc.simulate(1 / 30); const ms = (performance.now() - t0) / 60; o.restFlag = D.sim.resting; D.reset(); tc.simulate(0.1);
+      t0 = performance.now(); for (let i = 0; i < 60; i++) tc.simulate(1 / 30); const base = (performance.now() - t0) / 60;
+      o.rest = { resting: o.restFlag, ms: +ms.toFixed(2), base: +base.toFixed(2) }; }
     o.back = tc.wallView.blocks.visible && !tc.scene.getObjectByName('disaster') && !tc.wallView.frozen;
     o.kinds = {};
     for (const k of ['hurricane', 'tornado', 'tsunami', 'flood', 'fire', 'meteor']) o.kinds[k] = (await run(k, 10, 14)).share;
@@ -1120,6 +1142,7 @@ console.log('—', sec());
     return o;
   });
   check('catastrophes: 8 kinds, the power slider, run and back as it was; free blocks tinted (not black)', o.chips.split('|').length === 11 && o.slider && o.back && o.tint, JSON.stringify(o));
+  check('catastrophes: drawn while one goes on; the ruins at rest cost nothing (no physics stepped after the end)', o.live && o.rest.resting && o.rest.ms < o.rest.base + 1.5, JSON.stringify([o.live, o.rest]));
   check('catastrophes: a M 4 quake leaves the house standing, a M 9 one brings it down', o.weak.pieces > 250 && o.weak.share < 0.05 && o.strong.share > 0.4, JSON.stringify([o.weak, o.strong]));
   check('catastrophes: the tornado, the tsunami and the meteor at full power break the house', o.kinds.tornado > 0.1 && o.kinds.tsunami > 0.1 && o.kinds.meteor > 0.1, JSON.stringify(o.kinds));
   check('mistakes: a lintel without bars — the x-ray reddens, it breaks in weeks and creeps (to ≈24 mm over a window), three hinges, the arch of collapse cracks meet at the crown, nearly straight and ragged in the small, the sash jams then the glass cracks, the blocks stay in (chips fall), the bill; back as it was', o.misChip && o.mis?.ok && o.mis.arch >= 4 && o.mis.xray > 0.2 && o.mis.early > 0.012 && o.mis.sag > 0.018 && o.mis.sag <= 0.027 && o.mis.cracks >= 3 && o.mis.rough >= 1.02 && o.mis.roughMax <= 1.2 && o.mis.joint < 0.2 && o.mis.meet < 60 && o.mis.jam && o.mis.glass && o.mis.fell === 0 && o.mis.chips >= 1 && o.mis.done && o.mis.bill && o.mis.back, JSON.stringify(o.mis));
@@ -1150,9 +1173,11 @@ console.log('—', sec());
     for (let i = 0; i < 6; i++) tc.simulate(0.1);
     tc.setTool('disaster'); Object.assign(tc.settings, { catKind: 'shaft', catPower: 5 });
     o.chip = tc.ui.chips().some((c) => /Обрушение опоры/.test(c.label));
+    tc.objects.add(SL.slabCage(tc.objects.get(sl.id))); tc.simulate(0.05);   // (its bars: they go with its pieces, not left hanging)
     const sc0 = tc.wallView._liftG.get(lf.id).children.map((ch) => [ch.scale.y, ch.position.y]);
     const tr0 = performance.now(); await tc.disasterTool.run(); o.runMs = Math.round(performance.now() - tr0);
     const D = tc.disasterTool.sim, C = D.collapse, ST = CL.SHAFT_T;
+    o.barsHidden = !tc.rebarView.group.visible;
     // (the cast concrete is not hidden as a whole — only the slabs shown in pieces leave it; hiding it all left a slab's bars alone)
     { const wv = tc.wallView, ix = wv.fill.geometry.index.array, own = wv.owner.fill, cut = new Set(C.panels.filter((p) => p.sort === 'slab').map((p) => p.o.userData.slab));
       o.fill = { shown: wv.fill.visible, tris: ix.length / 3, want: own.filter((id) => !cut.has(id)).length, total: own.length, cut: cut.size }; }
@@ -1177,6 +1202,7 @@ console.log('—', sec());
     { const L = [...tc.wallView._liftG.get(lf.id).children].filter((ch) => ch.visible && ch.userData.y0 != null && ch.userData.y0 > 0.01);
       o.liftParts = L.length; o.hanging = L.filter((ch) => ch.scale.y < 0.99 * (ch.userData.sy0 ?? 1) && ch.position.y > ch.userData.y0 * 0.99).length; }
     tc.disasterTool.stop?.(); D.stop(); tc.simulate(0.1);
+    o.barsBack = tc.rebarView.group.visible;
     o.back = !tc.scene.getObjectByName('disaster') && !tc.wallView.frozen && tc.wallView._liftG.get(lf.id).children.every((ch, i) => ch.visible && ch.scale.y === sc0[i][0] && ch.position.y === sc0[i][1]);
     return o;
   });
@@ -1185,7 +1211,7 @@ console.log('—', sec());
   check('support collapse: the house falls as a body would (its drop ≥ 60 % of a free fall\'s), strikes, breaks; the slabs come down; nothing bounces up', o.fall && o.fall.drop > 0.6 * o.fall.free && o.struck && o.free > 0 && o.slabsDown && o.maxUp < 1.5, JSON.stringify(o));
   check('support collapse: not a Lego set — the slab in pieces all different, the walls split through their blocks — hundreds of pieces from a tenth of a block to many; a corner first (≥ 8°); no slab piece on edge (≤ 40° — lying on the heap), nothing over the walls', o.slabDistinct > 0.9 && o.chunkSizes[0] < 0.3 && o.chunkSizes[1] > 4 && o.chunkSizes[2] >= 150 && o.strikeAngle >= 8 && o.slabTilt <= 40 && !o.overTop, JSON.stringify(o));
   check('support collapse: nothing left hanging in the air — the shaft\'s parts come down as it is crushed', o.liftParts > 0 && o.hanging === 0, JSON.stringify(o));
-  check('catastrophe: the cast concrete stays shown — only the slabs in pieces leave it', o.fill.shown && o.fill.tris === o.fill.want && o.fill.cut === 1 && o.fill.total > 0, JSON.stringify(o.fill));
+  check('catastrophe: the cast concrete stays shown — only the slabs in pieces leave it (their bars with them, back after)', o.barsHidden && o.barsBack && o.fill.shown && o.fill.tris === o.fill.want && o.fill.cut === 1 && o.fill.total > 0, JSON.stringify(o.fill));
   check('support collapse: all back as it was; no console errors', o.back && errors.length === 0, errors.slice(0, 3).join(' | ') + JSON.stringify(o));
   await browser.close();
 }

@@ -142,13 +142,19 @@ function followShadow(sun, target, dist, yaw = 0) {
   }
   // shift the box away from the camera: the far side of the frame is wider
   const ax = target.x - Math.sin(yaw) * ext * 0.35, az = target.z - Math.cos(yaw) * ext * 0.35;
-  // snap to whole shadow texels so the edges do not crawl while panning
-  const texel = (2 * sc.right) / sun.shadow.mapSize.x;
-  _c.set(Math.round(ax / texel) * texel, Math.max(0.03, target.y - 0.04), Math.round(az / texel) * texel);
+  // snap to steps of ~10 % of the box, whole shadow texels (the edges do not crawl while panning; the shadows are
+  // drawn again only when it moved a step — main.js: a finger on the camera alone redrew 1,9 M triangles a frame)
+  const texel = (2 * sc.right) / sun.shadow.mapSize.x, step = texel * Math.max(1, Math.round(ext * 0.1 / texel));
+  _c.set(Math.round(ax / step) * step, Math.round(Math.max(0.03, target.y - 0.04) * 100) / 100, Math.round(az / step) * step);
+  const key = sc.right + '|' + _c.x + '|' + _c.y + '|' + _c.z;
+  if (key === _box) return false;
+  _box = key;
   sun.target.position.copy(_c);
   sun.position.copy(_c).addScaledVector(sun.userData.dir, 3 + ext);
   sun.target.updateMatrixWorld();
+  return true;
 }
+let _box = '';
 
 function plyEdgeTexture(vertical) {
   const c = document.createElement('canvas');
