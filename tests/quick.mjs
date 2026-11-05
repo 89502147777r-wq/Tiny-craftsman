@@ -1315,11 +1315,29 @@ console.log('—', sec());
     o.mirrored = cards.some((c) => { const a = c.geometry.attributes.aCor.array; for (let i = 0; i < a.length; i += 8) if (a[i] > a[i + 2]) return true; return false; });
     const tu = tc.terrainMat.userData.uniforms, P = tc.backdrop.panos.meadow;
     o.site = tu.uSite.value; o.low = P.sky.material.uniforms.uLow.value; o.fadeAt = +tc.backdrop.gU.uOut.value.x.toFixed(2);
+    // (the site's things: put round it once; the finger carries one, turns it, takes it away; undo brings it back)
+    const PR = () => tc.objects.all('siteprop'), V = tc.camera.position.constructor, W = tc.wallTool.prop;
+    o.props = PR().length; o.meshes = tc.siteProps.group.children.length;
+    const m0 = PR().find((r) => r.kind === 'mixer'), M1 = (m) => m / 10.4651;
+    Object.assign(tc.settings, { wallKind: 'siteprop', propMode: 'move' });
+    W.down(new V(m0.x, 0, m0.z)); W.move(new V(m0.x + M1(3), 0, m0.z - M1(2))); W.up(); tc.simulate(0.05);
+    const m1 = tc.objects.get(m0.id); o.moved = +((m1.x - m0.x) * 10.4651).toFixed(2);
+    tc.journal.undo?.(); tc.simulate(0.05); o.undone = Math.abs(tc.objects.get(m0.id).x - m0.x) < 1e-6;
+    tc.settings.propMode = 'turn'; W.down(new V(m0.x, 0, m0.z)); o.turned = +(tc.objects.get(m0.id).yaw - m0.yaw).toFixed(3);
+    tc.settings.propMode = 'del'; W.down(new V(m0.x, 0, m0.z)); tc.simulate(0.05); o.gone = !tc.objects.get(m0.id) && tc.siteProps.group.children.length === o.meshes - 1;
+    tc.settings.propMode = 'cabin'; W.down(new V(0, 0, 0)); o.added = PR().filter((r) => r.kind === 'cabin').length;
+    // (the ground changed under one — dug, heaped: it is stood on it again, not left in the air)
+    { const m = tc.siteProps.meshes.get(PR()[0].id), y = m.position.y; m.position.y = y + 1; tc.terrain.rev = (tc.terrain.rev || 0) + 1; tc.siteProps.update(); o.restood = Math.abs(m.position.y - y) < 1e-6; }
+    // (each thing its real height — a part lost in a comment, a roof gone, shows here)
+    { const SP = await import('/src/world/siteProps.js'), THREE = await import('three'); o.heights = {};
+      for (const k of Object.keys(SP.PROPS)) { const b = new THREE.Box3().setFromObject(SP.propMesh(k)); o.heights[k] = Math.round((b.max.y - b.min.y) * 10465.1); } }
     tc.settings.backdrop = 'workshop'; await tc.backdrop.set('workshop'); tc.simulate(0.1);
     o.hidden = !G.visible && tu.uSite.value === 0;
     return o;
   });
   check('surroundings: a fence, a street, a ring of trees (no mirrored cards), the site trodden, the photo\'s ground hidden; none in the workshop', o.shown && o.trees > 60 && o.kinds === 3 && o.street && o.fence && !o.mirrored && o.site === 1 && o.low === 1 && o.fadeAt > 3 && o.hidden, JSON.stringify(o));
+  check('site things: put round the site once (11), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 11 && o.meshes === 11 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.added === 2 && o.restood, JSON.stringify(o));
+  check('site things: each its real height (toilet 2,3 m with its roof, office 2,8, pallet 1,4, skip 1,3, barrow 0,73, cones 0,75)', Math.abs(o.heights.toilet - 2320) < 40 && Math.abs(o.heights.cabin - 2800) < 60 && Math.abs(o.heights.pallet - 1400) < 60 && Math.abs(o.heights.skip - 1300) < 60 && Math.abs(o.heights.barrow - 730) < 40 && Math.abs(o.heights.cones - 750) < 30, JSON.stringify(o.heights));
   check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

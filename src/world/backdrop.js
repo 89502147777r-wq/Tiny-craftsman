@@ -4,6 +4,7 @@ import { TRAY, SOIL_TILE, BACKDROP, MODEL_SCALE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 import { innerCorner } from './plotShape.js';
 import { Surround, SURROUND } from './surround.js';
+import { seedProps } from '../tools/sitePropTool.js';
 
 // Background / lighting modes:
 //   workshop – the diorama on the bench in the carpentry shop (HDRI + lamp)
@@ -146,6 +147,7 @@ export class Backdrop {
         const [walk, asphalt, gravel] = sur.street ? await Promise.all([this._groundTex('square_concrete_pavers'), this._groundTex('asphalt_02'), this._groundTex('gravel_floor_02')]) : [null, null, null];
         if (this.mode !== mode) return;
         await this.surround.set(mode, Rm, { walk, asphalt, gravel });
+        seedProps(app);   // (the site furnished, once: the office, the mixer, the pallets … — the finger moves them)
       } else this.surround.hide();
     } else { const g = this.gU; g.uTheme.value = 0; g.uOut.value.set(1e5, 1e5 + 1); this.surround?.hide(); const tu = app.terrainMat?.userData?.uniforms; if (tu?.uSite) tu.uSite.value = 0; }   // (the berm of the photo sheet shares this material)
     // the photo sheet glued round the box
