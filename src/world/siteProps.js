@@ -88,7 +88,7 @@ export function propMesh(kind) {
     const axle = cyl(g, steel, 15, 15, 1180, 0, 200, 450, 8); axle.rotation.z = Math.PI / 2;
     for (const s2 of [-1, 1]) { const w = cyl(g, tyre, 200, 200, 90, s2 * 540, 200, 450, 18); w.rotation.z = Math.PI / 2; }
     // the yoke under the drum, its arms up to the trunnions on the uprights (at 1000)
-    box(g, steel, 860, 50, 50, 0, 420, 0); for (const s2 of [-1, 1]) box(g, steel, 50, 580, 50, s2 * 405, 710, 0);   // (under the drum's lowest point, ≈ 470)
+    box(g, steel, 910, 50, 50, 0, 420, 0); for (const s2 of [-1, 1]) box(g, steel, 50, 580, 50, s2 * 430, 710, 0);   // (under the drum's lowest point, ≈ 470)
     for (const s2 of [-1, 1]) { const t = cyl(g, steel, 30, 30, 130, s2 * 470, 1000, 0, 10); t.rotation.z = Math.PI / 2; }
     // the motor on its bracket off the right upright; the tilting wheel on the left trunnion
     box(g, steel, 260, 30, 260, 635, 600, 0); box(g, motor, 240, 220, 240, 635, 725, 0);
@@ -113,15 +113,15 @@ export function propMesh(kind) {
     // a builder's barrow: the tray 950 along × 640 across with its floor; the handles from the wheel's axle (at 200)
     // up and back to the grips at ≈ 600; the wheel in its fork on the axle; two legs at the back
     const grn = mat('barrow', { color: 0x2f6b3a, roughness: 0.55, metalness: 0 });
-    // (an open tub: 1000 × 700 at the top, 600 × 450 at its floor, 250 deep — the floor on the handles at the back,
+    // (an open tub along the barrow: 1000 long × 700 at the top, 650 × 500 at its floor, 250 deep — the floor on the handles at the back,
     // on a bracket at the front)
-    const tub = (() => { const yb = 455, yt = 705, B = [[-300, -225], [300, -225], [300, 225], [-300, 225]], T = [[-500, -350], [500, -350], [500, 350], [-500, 350]], pos = [];
+    const tub = (() => { const yb = 480, yt = 730, B = [[-250, -325], [250, -325], [250, 325], [-250, 325]], T = [[-350, -500], [350, -500], [350, 500], [-350, 500]], pos = [];
       const P = ([x, z], y) => [MM(x), MM(y), MM(z)], q = (a, b, c, d) => pos.push(...a, ...b, ...c, ...a, ...c, ...d);
       q(P(B[0], yb), P(B[1], yb), P(B[2], yb), P(B[3], yb));
       for (let k = 0; k < 4; k++) { const n = (k + 1) % 4; q(P(B[k], yb), P(T[k], yt), P(T[n], yt), P(B[n], yb)); }
       const ge = new THREE.BufferGeometry(); ge.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); ge.computeVertexNormals(); return ge; })();
     const tray = new THREE.Mesh(tub, grn); tray.material.side = THREE.DoubleSide; g.add(tray);
-    for (const s2 of [-1, 1]) box(g, steel, 30, 135, 30, s2 * 160, 323 + 66, 200);   // (the front bracket: the handle → the floor)
+    for (const s2 of [-1, 1]) box(g, steel, 30, 178, 30, s2 * 145, 302 + 89, 300);   // (the front bracket: the handle (302 there) → the floor)
     const wh = cyl(g, tyre, 190, 190, 80, 0, 190, 700, 18); wh.rotation.z = Math.PI / 2;
     const ax = cyl(g, steel, 10, 10, 200, 0, 190, 700, 8); ax.rotation.z = Math.PI / 2;
     for (const s2 of [-1, 1]) {

@@ -1337,7 +1337,7 @@ console.log('—', sec());
   });
   check('surroundings: a fence, a street, a ring of trees (no mirrored cards), the site trodden, the photo\'s ground hidden; none in the workshop', o.shown && o.trees > 60 && o.kinds === 3 && o.street && o.fence && !o.mirrored && o.site === 1 && o.low === 1 && o.fadeAt > 3 && o.hidden, JSON.stringify(o));
   check('site things: put round the site once (11), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 11 && o.meshes === 11 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.added === 2 && o.restood, JSON.stringify(o));
-  check('site things: each its real height (toilet 2,3 m with its roof, office 2,8, pallet 1,4, skip 1,3, barrow 0,7, cones 0,75)', Math.abs(o.heights.toilet - 2320) < 40 && Math.abs(o.heights.cabin - 2800) < 60 && Math.abs(o.heights.pallet - 1400) < 60 && Math.abs(o.heights.skip - 1300) < 60 && Math.abs(o.heights.barrow - 705) < 40 && Math.abs(o.heights.cones - 750) < 30, JSON.stringify(o.heights));
+  check('site things: each its real height (toilet 2,3 m with its roof, office 2,8, pallet 1,4, skip 1,3, barrow 0,73, cones 0,75)', Math.abs(o.heights.toilet - 2320) < 40 && Math.abs(o.heights.cabin - 2800) < 60 && Math.abs(o.heights.pallet - 1400) < 60 && Math.abs(o.heights.skip - 1300) < 60 && Math.abs(o.heights.barrow - 730) < 40 && Math.abs(o.heights.cones - 750) < 30, JSON.stringify(o.heights));
   check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
