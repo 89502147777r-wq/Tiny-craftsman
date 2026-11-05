@@ -72,14 +72,16 @@ export function* villaFilm(d, app) {
   const A = view(5500, 0.35, 0.12, 26000);   // (the hero's angle: low in front — the hook, the striking, the end)
 
   // ---- 1 · the pad under the shaft: concrete 300 over 3 × 3 m (the shaft's foot + 300 all round) ----------
-  const pad = [];
-  for (let i = 0; i < T.conc.length; i++) { const x = T.toWorldX(i % T.nx), z = T.toWorldZ(Math.floor(i / T.nx)); if (Math.abs(x) < MM(1500) && Math.abs(z) < MM(1500)) pad.push([i, z]); }
+  // (the cells set through the ground's own concrete — its cure clock, smooth top — and their tiles redrawn)
+  const castCells = (list, mm) => { let a = 1e9, b = -1, c = 1e9, e = -1; for (const [i] of list) { const add = MM(mm) - T.conc[i]; if (add > 0) T._concAdd(i, add, 1); const ix = i % T.nx, iz = Math.floor(i / T.nx); a = Math.min(a, ix); b = Math.max(b, ix); c = Math.min(c, iz); e = Math.max(e, iz); } if (b >= 0) T._concTouch(a, c, b, e); T.updateMesh?.(); };
+  const cellsIn = (hx, hz) => { const out = []; for (let i = 0; i < T.conc.length; i++) { const x = T.toWorldX(i % T.nx), z = T.toWorldZ(Math.floor(i / T.nx)); if (Math.abs(x) < MM(hx) && Math.abs(z) < MM(hz)) out.push([i, z]); } return out; };
+  const pad = cellsIn(1500, 1500);
   pad.sort((p, q) => p[1] - q[1]);
   let padDone = 0;
   const padTo = (u) => {
     const n = Math.round(pad.length * u); if (n <= padDone) return;
-    for (let k = padDone; k < n; k++) T.conc[pad[k][0]] = MM(300);
-    padDone = n; T.updateMesh?.();
+    castCells(pad.slice(padDone, n), 300);
+    padDone = n;
     const z = pad[Math.min(pad.length - 1, n)][1];
     app.concreteGear?.set?.(u < 1 ? 'hose' : null, new V(Math.sin(d.t * 5) * MM(1100), g + MM(900), z));
     if (Math.random() < 0.15) app.sfx?.pour?.(0.5, 'concrete_splat');
@@ -218,7 +220,7 @@ export function* villaFilm(d, app) {
   const ST = SHAFT_T;
   yield d.until(() => D.t > 2.2);
   // (the foot of the shaft, close: the panes whitening bottom up — slowed)
-  d.cut(view(1200, 0.3, 0.1, 4500), { drift: 0, push: 0.01, hand: 0.4 });
+  d.cut(view(1500, 0.35, 0.22, 7000), { drift: 0, push: 0.01, hand: 0.4 });
   d.ramp(0.5, 0.2);
   yield d.until(() => D.t > ST.fail - 0.05);
   // (the match cut back: the house through the frame — slowed, the strike in real time)
@@ -239,8 +241,7 @@ export function* villaFilm(d, app) {
   d.title('WHY THE REAL ONE LOOKS LIKE THIS', '', 0);
   d.trans('flash', true);
   // (the shaft carries nothing now: a wide pad, four columns Ø600 to the slab's underside)
-  for (let i = 0; i < T.conc.length; i++) { const x = T.toWorldX(i % T.nx), z = T.toWorldZ(Math.floor(i / T.nx)); if (Math.abs(x) < MM(3400) && Math.abs(z) < MM(3400)) T.conc[i] = Math.max(T.conc[i], MM(300)); }
-  T.updateMesh?.();
+  castCells(cellsIn(3400, 3400), 300);
   yield d.sec(2.5);
   d.lock = true;
   const bot = O.get(s1.id).top, cols = [];

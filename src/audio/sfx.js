@@ -101,10 +101,13 @@ export class Sfx {
     }
     if (!L) return;
     if (vol > 0.004) { L.auto = auto; L.seen = t; }
-    L.v = Math.min(1.2, vol * (S?.vol ?? 0.8) * this._gainAt(at, S?.range));
-    L.g.gain.setTargetAtTime(L.v, t, 0.08);
-    L.src.playbackRate.setTargetAtTime(rate * (S?.rate ?? 1), t, 0.1);
-    if (vol <= 0.004) { this._cancel(L.end); L.end = this._after(0.7, () => { if (this.loops.get(id) === L && L.v < 0.01) this._stopLoop(id, L); }); }
+    // (the loudness and the pitch written only when they change — every frame for every loop, the
+    // AudioParams' queues of events grew; the stop is set once, not put off every frame: a loop at 0 was never stopped)
+    const v = Math.min(1.2, vol * (S?.vol ?? 0.8) * this._gainAt(at, S?.range)), r = rate * (S?.rate ?? 1);
+    if (Math.abs(v - L.v) > 0.003 || L.r == null) { L.v = v; L.g.gain.setTargetAtTime(v, t, 0.08); }
+    if (Math.abs(r - (L.r ?? -1)) > 0.003) { L.r = r; L.src.playbackRate.setTargetAtTime(r, t, 0.1); }
+    if (vol <= 0.004) { if (!L.end) L.end = this._after(0.7, () => { L.end = null; if (this.loops.get(id) === L && L.v < 0.01) this._stopLoop(id, L); }); }
+    else if (L.end) { this._cancel(L.end); L.end = null; }
   }
   _stopLoop(id, L) { try { L.g.gain.setTargetAtTime(0, this.now, 0.05); L.src.stop(this.now + 0.3); } catch { /* stopped */ } if (this.loops.get(id) === L) this.loops.delete(id); }
 

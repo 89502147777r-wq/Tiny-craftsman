@@ -992,7 +992,7 @@ export class WallView {
     this._ride = { id, from, to, t0: this.clock ?? 0, T };
     return T;
   }
-  get liftBusy() { return !!this._ride; }
+  get liftBusy() { return !!this._ride && !this.frozen; }
   // the glass railings (and the one in the hand: green — it goes there, red — it does not)
   _buildRails() {
     this.railDirty = false; this._liveRailAt = this.liveRail;

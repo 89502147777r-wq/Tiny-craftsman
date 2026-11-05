@@ -39,7 +39,8 @@ export class Disaster {
     if (this.on) this.stop();
     const R = (this.R = await loadPhysics());
     const app = this.app, wv = app.wallView, t = app.terrain;
-    this.kind = kind; this.power = power; this.t = 0; this.on = true; this.done = false; this.broken = 0; this.said = {};
+    this.kind = kind; this.power = power; this.t = 0; this.on = true; this.done = false; this.broken = 0; this.said = {}; this.resting = false; this._restN = 0;
+    wv._ride = null;   // (a lift's ride stopped: the view frozen, it would never get there — and keep the frames going)
     wv.update?.(); wv.frozen = true;
     this.root = new THREE.Group(); this.root.name = 'disaster'; app.scene.add(this.root);
     this.puffs = this.puffs || new Puffs(app.scene, 420);
@@ -124,6 +125,10 @@ export class Disaster {
       for (let t = 0; t < a.length / 3; t++) if (!cut.has(own[t])) keep.push(a[3 * t], a[3 * t + 1], a[3 * t + 2]);
       this.fillIdx = [fg, fg.index]; fg.setIndex(keep);
     }
+    // (the bars of the slabs in pieces went with them — their pieces show the stubs; drawn on, the cage hung in the air
+    // over the heap. Hidden when all the cages are in cast concrete or in those slabs: no bare cage would go missing)
+    const rv = app.rebarView?.group, cages = app.objects.all('cage');
+    if (rv?.visible && cut.size && cages.every((c) => cut.has(c.beltId) || (app.objects.get(c.beltId)?.fill ?? 0) > 0.9)) { rv.visible = false; this.hidden.push(rv); }
     const liftGs = new Set(wv._liftG ? [...wv._liftG.values()] : []);
     for (const g of [wv.facades, wv.blinds, wv.rails]) if (g) for (const ch of [...g.children]) if (!liftGs.has(ch)) panel(ch, 'skin');
     // the scene of it: water, the funnel, the meteor; the sky and the sound
@@ -164,11 +169,22 @@ export class Disaster {
   // ---- each frame ------------------------------------------------------------------------------------
   update(dt) {
     if (!this.on || !this.world) return;
+    // (the show over and the heap at rest: its bodies no longer stepped — a heap of hundreds of hulls never quite
+    // sleeps, its solver's jitter took a whole core while the ruins stood on the screen)
+    if (this.done && this._rest()) { this._fxFrame(Math.min(dt, 1 / 30)); return; }
     dt = Math.min(dt, 1 / 30);
     const steps = dt > 1 / 45 ? 2 : 1, h = dt / steps;
     for (let k = 0; k < steps; k++) { this.t += h; this._load(h); this.world.timestep = h; this.world.step(); }
     this._draw();
     this._fxFrame(dt);
+  }
+  _rest() {
+    if (this.resting) return true;
+    if ((this._restN = (this._restN || 0) + 1) % 15) return false;
+    let fast = 0;
+    this.world.forEachRigidBody((b) => { if (fast || !b.isDynamic() || b.isSleeping()) return; const v = b.linvel(), w = b.angvel();
+      if (v.x * v.x + v.y * v.y + v.z * v.z > 0.0025 || w.x * w.x + w.y * w.y + w.z * w.z > 0.09) fast++; });
+    return (this.resting = !fast || this.t > CATS[this.kind].dur + 14);
   }
   // the catastrophe's strength now (0 … 1: it comes, holds, goes)
   get env() { const D = CATS[this.kind].dur, t = this.t; return Math.max(0, Math.min(1, t / 2, (D - t) / 3)); }
