@@ -64,6 +64,7 @@ const clipHalf = (poly, m, d) => {
 const key = (p) => `${Math.round(p[0] * 1e5)},${Math.round(p[1] * 1e5)}`;
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 10007) / 10007; };
 const MATS = {};
+const roofMat = () => (MATS.r ||= new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: true }));
 const concMat = () => (MATS.c ||= new THREE.MeshStandardMaterial({ color: 0x86857f, roughness: 0.95, vertexColors: true }));   // (the slab's concrete: greyer than the aerated blocks)
 const barMat = () => (MATS.b ||= new THREE.MeshStandardMaterial({ color: 0x5b4b3f, roughness: 0.6, metalness: 0.4 }));
 export function slabPieces(objects) {
@@ -75,6 +76,7 @@ export function slabPieces(objects) {
     for (let k = 0; k < N; k++) seeds.push([s0 + (s1 - s0) * rnd(), t0 + (t1 - t0) * rnd()]);
     const onRim = (p) => Math.abs(p[0] - s0) < 1e-6 || Math.abs(p[0] - s1) < 1e-6 || Math.abs(p[1] - t0) < 1e-6 || Math.abs(p[1] - t1) < 1e-6;
     const amp = MM(45), H = b.H, y0 = b.top, holes = b.holes || [], c = b.c;
+    const rf = objects.all('roof').find((r) => r.slab === b.id), roofOn = rf && (rf.stage ?? 0) >= 1 ? { green: (rf.green || []).length > 0 } : null;
     for (let i = 0; i < N; i++) {
       let poly = [[s0, t0], [s1, t0], [s1, t1], [s0, t1]];
       for (let j = 0; j < N && poly.length; j++) if (j !== i) { const si = seeds[i], sj = seeds[j]; poly = clipHalf(poly, [(si[0] + sj[0]) / 2, (si[1] + sj[1]) / 2], [sj[0] - si[0], sj[1] - si[1]]); }
@@ -119,7 +121,23 @@ export function slabPieces(objects) {
         }
       }
       if (bars.length) { const bm = new THREE.Mesh(mergeIndexed(bars), barMat()); grp.add(bm); }
-      grp.userData.hull = W.flatMap(([x, z]) => [[x, y0, z], [x, y0 + H, z]]); grp.userData.slab = b.id;
+      // the roof on it (a flat roof's build-up, ~280: the insulation, the membrane, the substrate) torn with it at the same
+      // breaks — the sedum on top, the gravel within 500 mm of the edge (the roof's own picture hidden in the show)
+      let Ht = H;
+      if (roofOn) {
+        const T = MM(280), edge = Math.min(cs - s0, s1 - cs, ct - t0, t1 - ct) < MM(500), top = roofOn.green ? (edge ? [0.56, 0.55, 0.52] : [0.36, 0.47, 0.22]) : [0.24, 0.25, 0.26];
+        const rp = [], rc = [], tr = (p, q, r, c) => { rp.push(...p, ...q, ...r); for (let z = 0; z < 3; z++) rc.push(...c); };
+        const ya = y0 + H, yb = ya + T;
+        for (let e = 0; e < W.length; e++) {
+          const [ax, az] = W[e], [bx, bz] = W[(e + 1) % W.length], j = 0.9 + 0.2 * hash(String(e) + ct);
+          tr([cx, yb, cz], [bx, yb, bz], [ax, yb, az], top.map((v) => v * j));
+          const sd = [0.33, 0.27, 0.21];   // (the torn edge: the substrate brown over the dark membrane and the grey board)
+          tr([ax, ya, az], [ax, yb, az], [bx, yb, bz], sd); tr([ax, ya, az], [bx, yb, bz], [bx, ya, bz], sd);
+        }
+        const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); rg.setAttribute('color', new THREE.Float32BufferAttribute(rc, 3)); rg.computeVertexNormals();
+        const rm = new THREE.Mesh(rg, roofMat()); rm.castShadow = rm.receiveShadow = true; grp.add(rm); Ht = H + T;
+      }
+      grp.userData.hull = W.flatMap(([x, z]) => [[x, y0, z], [x, y0 + Ht, z]]); grp.userData.slab = b.id;
       out.push(grp);
     }
   }
@@ -262,7 +280,12 @@ export class ShaftCollapse {
   _shape(t) {
     const A = this._bow(t), yH = this.Hpost, fold = Math.min(1, Math.max(0, (t - SHAFT_T.fail) / 0.55)) ** 1.4, [lx, lz] = this.leanL;
     // (shortening: the arc's length kept — a bow A over H takes ≈ π²A²/(4H) off its height; folded, the posts lie down)
-    const short = Math.min(yH - 350, (Math.PI ** 2 * A * A) / (4 * yH) + fold * (yH - 550));
+    let short = Math.min(yH - 350, (Math.PI ** 2 * A * A) / (4 * yH) + fold * (yH - 550));
+    // (once the house is falling: the shaft's top is where the house's underside is over it — the head stays under the
+    // slab as it comes down; folded on its own clock it went down faster than the house fell: the house in the air)
+    this._shortClock = short;   // (the shaft's own folding: its collider goes down by it — the picture follows the house)
+    if (this._shortTo != null) short = Math.min(yH - 350, Math.max(this._shortLast ?? 0, this._shortTo));
+    this._shortLast = short;
     for (const q of this.posts) {
       const pos = q.m.geometry.attributes.position, b = q.base;
       for (let i = 0; i < pos.count; i++) {
@@ -292,6 +315,11 @@ export class ShaftCollapse {
   load(h) {
     const D = this.D, t = D.t, T = SHAFT_T, sfx = D.app.sfx, R = D.R;
     if (!this.ok) return;
+    if (this.free && !this.struck) {
+      // (the house's underside over the shaft, now: the shaft's top — in mm under its first top)
+      const v = new THREE.Vector3(this.L.r.x - this.p0.x, this.top - this.p0.y, this.L.r.z - this.p0.z).applyMatrix4(this._pose());
+      this._shortTo = (this.top - v.y) / MM(1);
+    }
     const short = this._shape(t);
     if (t > T.creak && !this.said.creak) { this.said.creak = true; sfx?.play?.('creak', { vol: 0.8, at: this.com }); }
     if (t > T.bow + 0.9 && !this.said.creak2) { this.said.creak2 = true; sfx?.play?.('creak', { vol: 1, at: this.com, rate: 0.8 }); }
@@ -324,7 +352,8 @@ export class ShaftCollapse {
       }
     } else if (!this.struck) {
       const u = Math.min(1, (t - T.fail) / 0.55), back = M(0.7) * S * u * u;
-      this.head.setNextKinematicTranslation({ x: this.L.r.x * S - this.lean.x * back, y: Math.max(this.y0 * S - 0.4, this.top * S - 0.15 - sinkM - 0.02), z: this.L.r.z * S - this.lean.z * back });
+      // (its collider a little lower than its picture: it goes down with the house, it does not hold it up)
+      this.head.setNextKinematicTranslation({ x: this.L.r.x * S - this.lean.x * back, y: Math.max(this.y0 * S - 0.4, this.top * S - 0.15 - (this._shortClock ?? short) / 1000 - 0.02), z: this.L.r.z * S - this.lean.z * back });
       // the strike: its lowest corner at the ground
       if (this._low() < D.groundY * S + 0.05 || t > T.fail + 3) this._strike();
     } else {
