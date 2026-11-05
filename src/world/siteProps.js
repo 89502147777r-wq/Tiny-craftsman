@@ -70,7 +70,7 @@ export function propMesh(kind) {
   } else if (kind === 'toilet') {
     // a portable toilet 1100 × 1100 × 2300: blue walls, a white roof, the door with its vent
     const blue = mat('blue', { color: 0x1f5fa8, roughness: 0.55 });
-    box(g, blue, 1100, 2160, 1100, 0, 40 + 1080, 0);   // (up to the roof at 2200) box(g, mat('white', { color: 0xeeeeea, roughness: 0.5 }), 1150, 120, 1150, 0, 2260, 0);
+    box(g, blue, 1100, 2160, 1100, 0, 40 + 1080, 0); box(g, mat('white', { color: 0xeeeeea, roughness: 0.5 }), 1150, 120, 1150, 0, 2260, 0);   // (the body up to the roof at 2200; the white roof on it)
     box(g, mat('blue2', { color: 0x194f8c, roughness: 0.55 }), 800, 1900, 20, 0, 1050, 560); box(g, dark, 400, 120, 22, 0, 1900, 562);
     box(g, mat('base', { color: 0x203d63, roughness: 0.7 }), 1150, 80, 1150, 0, 40, 0);
   } else if (kind === 'mixer') {
@@ -83,17 +83,17 @@ export function propMesh(kind) {
     const bottom = new THREE.Mesh(new THREE.CircleGeometry(MM(330), 24).rotateX(Math.PI / 2), orange); bottom.position.y = MM(-420); drum.add(bottom);
     const d = new THREE.Group(); d.add(drum); d.position.set(0, MM(1000), 0); d.rotation.x = 0.75; g.add(d);   // (its mouth up and forward, ≈ 45°)
     // the frame: two rails z −650…+450 at 150, the axle at the front, legs at the back to the ground
-    for (const s2 of [-1, 1]) { box(g, steel, 50, 50, 1100, s2 * 430, 150, -100); box(g, steel, 50, 175, 50, s2 * 430, 87, -620); box(g, steel, 50, 1000, 50, s2 * 430, 650, 0); }
+    for (const s2 of [-1, 1]) { box(g, steel, 50, 50, 1100, s2 * 430, 150, -100); box(g, steel, 50, 175, 50, s2 * 430, 87, -620); box(g, steel, 50, 1000, 50, s2 * 480, 650, 0); }   // (the uprights clear of the yoke's arms)
     box(g, steel, 910, 50, 50, 0, 150, -620); box(g, steel, 910, 50, 50, 0, 150, 420);
     const axle = cyl(g, steel, 15, 15, 1180, 0, 200, 450, 8); axle.rotation.z = Math.PI / 2;
     for (const s2 of [-1, 1]) { const w = cyl(g, tyre, 200, 200, 90, s2 * 540, 200, 450, 18); w.rotation.z = Math.PI / 2; }
     // the yoke under the drum, its arms up to the trunnions on the uprights (at 1000)
     box(g, steel, 860, 50, 50, 0, 420, 0); for (const s2 of [-1, 1]) box(g, steel, 50, 580, 50, s2 * 405, 710, 0);   // (under the drum's lowest point, ≈ 470)
-    for (const s2 of [-1, 1]) { const t = cyl(g, steel, 30, 30, 80, s2 * 455, 1000, 0, 10); t.rotation.z = Math.PI / 2; }
+    for (const s2 of [-1, 1]) { const t = cyl(g, steel, 30, 30, 130, s2 * 470, 1000, 0, 10); t.rotation.z = Math.PI / 2; }
     // the motor on its bracket off the right upright; the tilting wheel on the left trunnion
-    box(g, steel, 260, 30, 260, 560, 600, 0); box(g, motor, 240, 220, 240, 560, 725, 0);
-    const hw = new THREE.Mesh(new THREE.TorusGeometry(MM(180), MM(14), 6, 20), steel); hw.rotation.y = Math.PI / 2; hw.position.set(MM(-520), MM(1000), 0); g.add(hw);
-    const spoke = cyl(g, steel, 12, 12, 70, -485, 1000, 0, 6); spoke.rotation.z = Math.PI / 2;
+    box(g, steel, 260, 30, 260, 635, 600, 0); box(g, motor, 240, 220, 240, 635, 725, 0);
+    const hw = new THREE.Mesh(new THREE.TorusGeometry(MM(180), MM(14), 6, 20), steel); hw.rotation.y = Math.PI / 2; hw.position.set(MM(-560), MM(1000), 0); g.add(hw);
+    const spoke = cyl(g, steel, 12, 12, 60, -530, 1000, 0, 6); spoke.rotation.z = Math.PI / 2;
   } else if (kind === 'pallet') {
     // a pallet 1200 × 1000 of aerated blocks 600 × 250 × 300 (5 courses): their faces porous, joints between them, in
     // shrink film — seen by its sheen and a cap on top, not as a frosted box
@@ -113,14 +113,22 @@ export function propMesh(kind) {
     // a builder's barrow: the tray 950 along × 640 across with its floor; the handles from the wheel's axle (at 200)
     // up and back to the grips at ≈ 600; the wheel in its fork on the axle; two legs at the back
     const grn = mat('barrow', { color: 0x2f6b3a, roughness: 0.55, metalness: 0 });
-    const tray = new THREE.Mesh(new THREE.CylinderGeometry(MM(420), MM(290), MM(280), 4, 1, false), grn); tray.rotation.y = Math.PI / 4; tray.scale.set(0.95, 1, 1.4); tray.position.set(0, MM(560), MM(60)); tray.material.side = THREE.DoubleSide; g.add(tray);
-    const w = cyl(g, tyre, 190, 190, 80, 0, 190, 700, 18); w.rotation.z = Math.PI / 2;
+    // (an open tub: 1000 × 700 at the top, 600 × 450 at its floor, 250 deep — the floor on the handles at the back,
+    // on a bracket at the front)
+    const tub = (() => { const yb = 455, yt = 705, B = [[-300, -225], [300, -225], [300, 225], [-300, 225]], T = [[-500, -350], [500, -350], [500, 350], [-500, 350]], pos = [];
+      const P = ([x, z], y) => [MM(x), MM(y), MM(z)], q = (a, b, c, d) => pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+      q(P(B[0], yb), P(B[1], yb), P(B[2], yb), P(B[3], yb));
+      for (let k = 0; k < 4; k++) { const n = (k + 1) % 4; q(P(B[k], yb), P(T[k], yt), P(T[n], yt), P(B[n], yb)); }
+      const ge = new THREE.BufferGeometry(); ge.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); ge.computeVertexNormals(); return ge; })();
+    const tray = new THREE.Mesh(tub, grn); tray.material.side = THREE.DoubleSide; g.add(tray);
+    for (const s2 of [-1, 1]) box(g, steel, 30, 135, 30, s2 * 160, 323 + 66, 200);   // (the front bracket: the handle → the floor)
+    const wh = cyl(g, tyre, 190, 190, 80, 0, 190, 700, 18); wh.rotation.z = Math.PI / 2;
     const ax = cyl(g, steel, 10, 10, 200, 0, 190, 700, 8); ax.rotation.z = Math.PI / 2;
     for (const s2 of [-1, 1]) {
       // (a handle: from the axle's end (±90, 190, 700) to the grip (±290, 600, −760))
       const A = new THREE.Vector3(MM(s2 * 90), MM(190), MM(700)), B = new THREE.Vector3(MM(s2 * 290), MM(600), MM(-760)), dir = B.clone().sub(A);
       const h = new THREE.Mesh(new THREE.CylinderGeometry(MM(17), MM(17), dir.length(), 8), steel); h.position.copy(A).add(B).multiplyScalar(0.5); h.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize()); g.add(h);
-      box(g, steel, 30, 400, 30, s2 * 250, 200, -380);   // (a leg down from the handle to the ground)
+      box(g, steel, 30, 493, 30, s2 * 238, 246, -380);   // (a leg from the handle (493 there) down to the ground)
       box(g, dark, 40, 40, 120, s2 * 290, 600, -790);    // (the grip)
     }
   } else if (kind === 'cones') {
@@ -142,8 +150,8 @@ export function propMesh(kind) {
     // (an end: its foot at ±1400, its top at ±1800 — leaning out)
     for (const s2 of [-1, 1]) { const e = box(g, yel, 40, 1360, 1740, s2 * 1600, 650, 0); e.rotation.z = -s2 * Math.atan2(400, 1300); }
     for (const x of [-1100, -400, 400, 1100]) for (const z of [-900, 900]) box(g, yel, 120, 1300, 60, x * (1 + 0), 650, z);
-    const heap = new THREE.Mesh(new THREE.CylinderGeometry(MM(1000), MM(1350), MM(900), 8, 2), mat('rubble', { color: 0x8b8378, roughness: 1 }));
-    { const p = heap.geometry.attributes.position; for (let i = 0; i < p.count; i++) { const k = 1 + 0.08 * Math.sin(i * 2.3); p.setX(i, p.getX(i) * k); p.setY(i, p.getY(i) + (p.getY(i) > 0 ? MM(60) * Math.sin(i * 1.3) : 0)); } heap.geometry.computeVertexNormals(); }
+    const heap = new THREE.Mesh(new THREE.CylinderGeometry(MM(1000), MM(1300), MM(900), 8, 2), mat('rubble', { color: 0x8b8378, roughness: 1 }));
+    { const p = heap.geometry.attributes.position; for (let i = 0; i < p.count; i++) { const k = p.getY(i) < 0 ? 1 : 1 + 0.08 * Math.sin(i * 2.3); /* (the foot within the leaning ends) */ p.setX(i, p.getX(i) * k); p.setY(i, p.getY(i) + (p.getY(i) > 0 ? MM(60) * Math.sin(i * 1.3) : 0)); } heap.geometry.computeVertexNormals(); }
     heap.scale.set(1, 1, 0.58); heap.position.set(0, MM(40 + 450), 0); g.add(heap);
     const cols = [mat('rb1', { color: 0xc9c6bd, roughness: 0.95 }), mat('rb2', { color: 0x9c4a32, roughness: 0.9 }), mat('rb3', { color: 0xc8a878, roughness: 0.85 }), mat('rb4', { color: 0xe8e8e2, roughness: 0.5 })];
     for (let i = 0; i < 16; i++) { const x = -1000 + (i * 173) % 2000, z = -500 + (i * 113) % 1000, hgt = 940 - 120 * Math.abs(x) / 1000; box(g, cols[i % 4], 200 + (i * 97) % 300, 90 + (i * 53) % 120, 160 + (i * 71) % 260, x, hgt, z, i); }
