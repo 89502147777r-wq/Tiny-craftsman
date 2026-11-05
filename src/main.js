@@ -13,7 +13,7 @@ import { SoilParticles } from './world/particles.js';
 import { OutlineView, contains, gradeY } from './world/outlines.js';
 import { FormworkView } from './world/formwork.js';
 import { RebarView } from './world/rebar.js';
-import { SitePropView, setPropTex } from './world/siteProps.js';
+import { SitePropView } from './world/siteProps.js';
 import { WallView } from './world/walls.js';
 import { kitsPending, onKits } from './world/openingKits.js';
 import { buildStacks } from './world/stacks.js';
@@ -126,7 +126,7 @@ async function main() {
   app.projectView = new ProjectView(); scene.add(app.projectView.group);
   app.formView = new FormworkView(tex, app.objects, terrain); scene.add(app.formView.group);
   app.rebarView = new RebarView(app.objects); scene.add(app.rebarView.group);
-  setPropTex(app.tex); app.siteProps = new SitePropView(app);   // (the site's things: the office, the mixer, the pallets … — world/siteProps.js)
+  app.siteProps = new SitePropView(app);   // (the site's things: the office, the mixer, the pallets … — world/siteProps.js)
   app.wallView = new WallView(app.objects, tex); scene.add(app.wallView.group); app.wallView.app = app;
   app.wallView.terrain = terrain;   // (what the props of a slab stand on)
   app.poolView = new PoolView(app.objects); app.wallView.group.add(app.poolView.group);   // (picked as the walls are)

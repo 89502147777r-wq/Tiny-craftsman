@@ -1601,6 +1601,8 @@ export default {
 "Биотуалет": "Portable toilet",
 "Бетономешалка": "Concrete mixer",
 "Поддон с блоками": "Pallet of blocks",
+"Поддон кирпича": "Pallet of bricks",
+"Цемент в мешках": "Cement in bags",
 "Штабель досок": "Timber stack",
 "Тачка": "Wheelbarrow",
 "Конусы": "Cones",
