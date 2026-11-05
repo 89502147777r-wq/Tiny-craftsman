@@ -16,6 +16,8 @@
 | `assets/textures/gravel_floor_02/` (diff, nor_gl 1k) — щебень 5–20 и 20–40 (одно фото в двух масштабах, затемнено до серого гранита) | Gravel Floor 02 | Dimitrios Savva (фото), Jenelle van Heerden (обработка) | CC0 | https://polyhaven.com/a/gravel_floor_02 |
 | `assets/textures/coast_sand_01/` (diff, nor_gl 1k) — песок вокруг участка на фонах «У моря», «У озера» | Coast Sand 01 | Rob Tuytel | CC0 | https://polyhaven.com/a/coast_sand_01 |
 | `assets/textures/leafy_grass/` (diff, nor_gl 1k) — трава вокруг участка на фонах «Луг», «Горы» | Leafy Grass | Charlotte Baglioni | CC0 | https://polyhaven.com/a/leafy_grass |
+| `assets/textures/asphalt_02/` (diff, nor_gl 1k) — улица у стройки (`world/surround.js`) | Asphalt 02 | Rob Tuytel | CC0 | https://polyhaven.com/a/asphalt_02 |
+| `assets/textures/square_concrete_pavers/` (diff, nor_gl 1k) — тротуар у стройки (`world/surround.js`) | Square Concrete Pavers | Amal Kumar | CC0 | https://polyhaven.com/a/square_concrete_pavers |
 | `assets/textures/forest_leaves_04/` (diff, nor_gl 1k) — лесная подстилка вокруг участка на фоне «В лесу» | Forest Leaves 04 | Rob Tuytel | CC0 | https://polyhaven.com/a/forest_leaves_04 |
 
 ## Текстуры участка (ambientCG, CC0 1.0)

@@ -73,6 +73,7 @@ function baseUniforms(tex) {
     uFloorY: { value: TRAY.floor },
     tMask: { value: null },      // R chalk, G inside outline, B design depth
     uPlot: { value: new THREE.Vector4(-0.3, -0.225, 0.6, 0.45) }, // x0, z0, sizeX, sizeZ
+    uSite: { value: 0 }, uHalf: { value: new THREE.Vector2(1, 1) },   // (a real site round it — backdrop.js: the ground trodden; the plot's half sizes)
     uSoilY: { value: TRAY.soil },
     uChalk: { value: 1 },
     uLevel: { value: 0 },
@@ -132,6 +133,7 @@ const FRAG_DECL = `
         uniform float uTime;
         uniform float uLayer;
         uniform vec4 uPlot;
+        uniform float uSite; uniform vec2 uHalf;
         uniform vec4 uCorner;
         uniform vec2 uCornerSign;
         varying vec4 vSoil;
@@ -309,6 +311,26 @@ export function makeTerrainMaterial(tex) {
           topC.rgb = mix(topC.rgb, vec3(dot(topC.rgb, vec3(0.33))) * vec3(0.98, 0.96, 0.93), smoothstep(0.55, 0.8, 1.0 - m2) * 0.2);
           vec3 sec = tcStoch(tLoam, vWPos.xz * uLoamScale, uLoamMean).rgb;
           topC.rgb = mix(topC.rgb, sec, smoothstep(0.55, 0.8, tcFbm(vWPos.xz * 1.7 + 23.0)) * 0.3);
+          // a building site in a street (not the diorama's sand): the ground trodden and driven over — greyer, browner,
+          // darker damp patches, the lorries' ruts in from the gate, the grass coming in along the fence
+          if (uSite > 0.0) {
+            vec2 q = vWPos.xz;
+            float l = dot(topC.rgb, vec3(0.3, 0.59, 0.11));
+            vec3 trod = mix(topC.rgb, l * vec3(1.02, 0.9, 0.72), 0.42) * 0.88;
+            float damp = smoothstep(0.52, 0.78, tcFbm(q * 0.55 + 41.0));
+            trod *= mix(1.0, 0.72, damp) * mix(0.92, 1.06, tcFbm(q * 6.0 + 3.0));
+            // the ruts: two wheels 1,9 m apart, from the gate (the street side, +z) in, swinging a little, fading
+            float zz = uHalf.y - q.y, wob = 0.035 * sin(q.y * 2.3) + 0.02 * sin(q.y * 5.1 + 1.0);
+            float alongR = smoothstep(uHalf.y * 1.3, 0.0, zz) * step(0.0, zz);
+            float rut = 0.0;
+            for (int k = 0; k < 2; k++) { float cx = (k == 0 ? -0.091 : 0.091) + wob; rut = max(rut, 1.0 - smoothstep(0.012, 0.024, abs(q.x - cx))); }
+            trod *= 1.0 - 0.32 * rut * alongR * (0.75 + 0.5 * tcFbm(q * 14.0));
+            // grass along the fence: tufts, thicker at the edge
+            float edge = min(uHalf.x - abs(q.x), uHalf.y - abs(q.y));
+            float gr = smoothstep(0.09, 0.0, edge + (tcFbm(q * 9.0) - 0.5) * 0.08) * smoothstep(0.35, 0.6, tcFbm(q * 22.0 + 7.0));
+            trod = mix(trod, vec3(0.085, 0.12, 0.035) * (0.7 + 0.6 * tcFbm(q * 40.0)), gr * 0.85);
+            topC.rgb = mix(topC.rgb, trod, uSite);
+          }
         }
         vec3 bw = pow(abs(wn), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
         vec3 wallTopC = texture2D(tWall, vWPos.xz * uWallScale).rgb;
