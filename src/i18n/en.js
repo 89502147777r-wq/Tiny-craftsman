@@ -1594,6 +1594,7 @@ export default {
 "＋ Траншея": "＋ Trench",
 "🌧 Погода": "🌧 Weather",
 "🎥 Ролик: как строят бассейн (ваш участок не тронется)": "🎥 Film: how a pool is built (your site is left alone)",
+"🎥 Ролик: вилла на одной стеклянной шахте (ваш участок не тронется)": "🎥 Film: a villa on one glass shaft (your site is left alone)",
 "🎬 Тихий режим — одна кнопка вместо панелей": "🎬 Quiet mode — one button instead of the panels",
 "💰 Бюджет:": "💰 Budget:",
 "📏 Замер": "📏 Measure",
