@@ -1274,6 +1274,8 @@ console.log('—', sec());
       d.bar(2); d.cut({ target: P, yaw: 0, pitch: 0.6, dist: 1.5 }); d.title('BIG WORDS', '', 1);
       yield d.sec(0.5); d.mark('hook'); tc.sfx.play('block'); yield d.sec(0.4); d.mark('hookEnd'); yield d.sec(0.2);
     }
+    // (the sky's birds and wind off: the check is the blow against the film's quiet, not the ambience's random bars)
+    tc.sfx.ambience = () => {}; tc.sfx.rain = () => {};
     const d = new Director(tc, script, true); tc.film = d;
     const { recordFilm } = await import('./src/film/recorder.js');
     // (the words: white text in the title's band of a frame after the title came up)
