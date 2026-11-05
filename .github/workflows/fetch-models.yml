@@ -1,0 +1,36 @@
+# One-off (removed after use): downloads the chosen CC BY models from Sketchfab with the
+# repository secret SKETCHFAB_TOKEN and commits them to this branch, in incoming/.
+name: Fetch Sketchfab models
+on:
+  push:
+    branches: [fetch-props]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download
+        env:
+          TOKEN: ${{ secrets.SKETCHFAB_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "SKETCHFAB_TOKEN is not set"; exit 1; fi
+          mkdir -p incoming
+          for pair in office:7c7191524f8549239ecab26c8ed37339 toilet:b970702ea74a456e89673e73cfb6d873 mixer:6994b7287ecb4cd39b0917ec9fb49196 barrow:c0dcebcb0d4b47bd98df534334f4caf6 cones:e03b1d2dfdc0416bb8324d15573ea60c skip:f3cf49ea7ad54573a6f5526de75a13d6 cinderpallet:ee1dc525a33d499bbad75c4e110050cd bags:3c66c95bfbf4469186696b133e930f48 sitepack:a6cccf5af6514f2f9289beeead38fe1b sand:7a7533e1ecab4b1d96da55cc3ad9ad98 sand2:107f6a1f6aa74449bcd32ef136311d86; do
+            name=${pair%%:*}; uid=${pair##*:}
+            curl -sS -H "Authorization: Token $TOKEN" "https://api.sketchfab.com/v3/models/$uid/download" -o dl.json
+            url=$(python3 -c "import json;d=json.load(open('dl.json'));print((d.get('glb') or d.get('gltf') or {}).get('url','') if isinstance(d,dict) else '')")
+            kind=$(python3 -c "import json;d=json.load(open('dl.json'));print('glb' if isinstance(d,dict) and d.get('glb') else 'zip')")
+            if [ -z "$url" ]; then echo "no download for $name: $(head -c 200 dl.json)"; continue; fi
+            curl -sSL "$url" -o "incoming/$name.$kind"
+            ls -la "incoming/$name.$kind"
+          done
+          rm -f dl.json
+      - name: Commit
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add incoming
+          git commit -m "Downloaded Sketchfab models (CC BY)" || echo "nothing downloaded"
+          git push
