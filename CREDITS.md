@@ -398,6 +398,8 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | `assets/sounds/` — drill | drill in concrete 191013_0075.wav | klankbeeld | CC BY 4.0 | https://freesound.org/people/klankbeeld/sounds/501283/ |
 | `assets/sounds/` — bucket_pour | Water Pouring Out of Bucket | Breviceps | CC0 | https://freesound.org/people/Breviceps/sounds/508178/ |
 | `assets/sounds/` — creak | Old_Truck_Metal_Squeaks-Creaks-Rattle-Impact_Door_Hollow_Open_Close_Impact.wav | dilsun | CC0 | https://freesound.org/people/dilsun/sounds/508274/ |
+| `assets/sounds/` — applause (0) | applause cheer ext medium crowd enthusiastic whistling for outdoor show (cut 9 s) | kyles | CC0 | https://freesound.org/people/kyles/sounds/455659/ |
+| `assets/sounds/` — applause (1) | Small applause | Breviceps | CC0 | https://freesound.org/people/Breviceps/sounds/462362/ |
 | `assets/sounds/` — shovel_dig | Shoveling | andersmmg | CC BY 4.0 | https://freesound.org/people/andersmmg/sounds/516318/ |
 | `assets/sounds/` — crickets | Crickets Close and Distant Night | Clearwavsound | CC BY 3.0 | https://freesound.org/people/Clearwavsound/sounds/523438/ |
 | `assets/sounds/` — gate_open | Opening and closing a gate 1 | fthgurdy | CC0 | https://freesound.org/people/fthgurdy/sounds/528947/ |

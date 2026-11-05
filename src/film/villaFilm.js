@@ -53,6 +53,7 @@ export function* villaFilm(d, app) {
   app.sky.setHour(10.5);
   app.setTool('wall'); app.wallTool.setMode?.('lay');
   d.lock = true; d.hand = 0.3;
+  app.sfx?._load?.('applause');   // (the applause played live: fetched beforehand)
   const g = T.heightAt(0, 0), at = (h) => new V(0, g + MM(h), 0);
   // a fixed angle (the tripod): h mm over the ground at the shaft, yaw, pitch, dist mm
   const view = (h, yaw, pitch, dist) => ({ target: at(h), yaw, pitch, dist: MM(dist) });
@@ -201,12 +202,11 @@ export function* villaFilm(d, app) {
   d.lock = true;
   tripod(A);
   app.wallView.rideLift?.(lf.id);
-  d.mark('hook');
-  d.kick('WILL IT STAND?', 1.5);
-  yield d.sec(1.8);
-  d.mark('hookEnd');
-  sfx('birds', { vol: 0.5 });
-  yield d.sec(1.0);
+  const clap = sfx('applause', { vol: 0.9 });
+  yield d.sec(2.2);
+  // (the applause cut off at once — 0,3 s of silence, then the creak)
+  try { clap?.stop(app.sfx.now + 0.04); } catch { /* done already */ }
+  yield d.sec(0.3);
 
   // ---- 10 · the collapse: the applause cut off, the creak, the panes white, the house through the frame ----
   Object.assign(app.settings, { catKind: 'shaft', catPower: 5 });
@@ -249,11 +249,19 @@ export function* villaFilm(d, app) {
     cols.push(O.add({ type: 'column', sec: 'rd', a: 600, h: +(bot - y0).toFixed(6), n: 10, course: 'block', tilt: [0, 0], x: MM(x), z: MM(z), y0, dep: 0, stage: 2, cage: true, fill: 0, on: 'concrete' }));
   }
   yield* lapse(A, (u) => { for (const c of cols) { const r = O.get(c.id); const st2 = u < 0.75 ? 2 : u < 0.95 ? 3 : 4; if (r.stage !== st2 || Math.abs((r.fill || 0) - Math.min(1, u / 0.7)) > 0.05) O.update(c.id, { stage: st2, fill: +Math.min(1, u / 0.7).toFixed(3) }); } }, 5, 1.2, 0.3);
-  // the last frame — the first one: the cabin going up in the glass
-  app.sky.setHour(10.5);
+  yield d.sec(1.0);
+  // the hook (put first by the renderer — film/recorder.js): the villa on its shaft alone, the cabin going up
+  // in the glass, the question; the film ends here, so played round it goes on into the building of it
+  for (const c of cols) O.remove(c.id);
+  app.simulate(0.05);
+  d.clear();
   tripod(A);
   app.wallView.rideLift?.(lf.id);
-  yield d.sec(2.0);
+  d.mark('hook');
+  d.kick('WILL IT STAND?', 1.5);
+  yield d.sec(1.9);
+  d.mark('hookEnd');
+  yield d.sec(0.1);
 }
 
 villaFilm.seconds = 125;   // (how long it runs: the shooting's progress — film/recorder.js)
