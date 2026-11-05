@@ -758,11 +758,17 @@ console.log('—', sec());
     o.green = (rf.green || []).length; o.grav = (rf.grav || []).length;
     // (no green cell within 500 mm of the slab's edge)
     o.greenEdge = Math.min(...(rf.green || [0]).map((k) => { const i = k % s3.ni, j = (k - i) / s3.ni; return Math.min(i, j, s3.ni - 1 - i, s3.nj - 1 - j); }));
+    // (the villa film's walls: blocks and bricks — their tops meet (the next slab lies on both), the openings left open)
+    { const VF = await import('/src/film/villaFilm.js'), M1 = MM(1);
+      const top = (k) => Math.max(...VF.courses(0, VF.FLOORS[0]).filter((u) => u.kind === k).map((u) => (u.p[1] + u.s[1] / 2) / M1));
+      const inGap = VF.courses(0, VF.FLOORS[0]).filter((u) => u.p[1] > 0 && Math.abs(u.p[2] / M1 - 3850) < 200 && u.p[0] / M1 > -950 && u.p[0] / M1 < 1950).length;
+      o.vf = { block: Math.round(top('block')), brick: Math.round(top('brick')), inGap }; }
     return o;
   });
   check('villa: a lift shaft not on the bare ground, on a cast pad (≈ 6.5 m, one only there); a slab on its top cantilevered all round with the opening over it; the cabin rides up to the floor', o.onSoil === 0 && o.shaft?.h > 6000 && o.again === 1 && o.slab?.piles === 1 && o.slab.cants === 4 && o.slab.holes === 1 && o.slab.liftHole === 1 && o.stops === 1 && o.liftMesh && o.busy && o.at === 1 && Math.abs(o.cabY - o.floor) < 5, JSON.stringify(o));
   check('villa: the fascia on the four outer edges (not round the opening), not twice', o.fascias === 4 && /уже/.test(o.again2 || ''), JSON.stringify(o));
   check('villa: a green roof — sedum in the field, gravel 500 mm at the edge', o.green > 500 && o.grav > 100 && o.greenEdge >= 5, JSON.stringify(o));
+  check('villa film: its block and brick walls end at one height (±10 mm), the front opening left open', Math.abs(o.vf.block - o.vf.brick) <= 10 && o.vf.block > 3000 && o.vf.inGap === 0, JSON.stringify(o.vf));
   check('villa: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

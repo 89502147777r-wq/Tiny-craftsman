@@ -19,7 +19,7 @@ const E = 4000;            // (the walls' outer faces: ±4 m round the shaft —
 const STOREY = 3053;       // (12 courses of blocks = 40 of bricks: the tops meet, the next slab lies on both)
 // the walls of each floor: [kind, along, its outer face, from, to, openings [from, to], inwards];
 // blank brick on one side, the floor-to-ceiling glass on the other — swapped on the floor above
-const FLOORS = [
+export const FLOORS = [
   [['brick', 'x', E, -E, -1000, [], -1], ['block', 'x', E, 2000, E, [], -1], ['block', 'x', -E, -E, E, [[-1500, 1500]], 1],
     ['brick', 'z', -E, -E + 250, E - 250, [], 1], ['block', 'z', E, -E + 250, E - 250, [[-1000, 2000]], -1]],
   [['brick', 'x', E, 1000, E, [], -1], ['block', 'x', E, -E, -2000, [], -1], ['block', 'x', -E, -E, E, [[-1500, 1500]], 1],
@@ -27,7 +27,7 @@ const FLOORS = [
 ];
 
 // the units of one floor's walls, course by course (running bond, cut units at the ends and the openings)
-function courses(base, plan) {
+export function courses(base, plan) {
   const out = [];
   for (const [kind, ax, fixed, a0, a1, gaps, inw] of plan) {
     const blk = kind === 'block', L = blk ? 600 : 250, J = blk ? 3 : 10, n = blk ? 12 : 40, H = blk ? 250 : 65, b0 = blk ? 20 : 12;
@@ -199,7 +199,8 @@ export function* villaFilm(d, app) {
 
   // ---- 9 · the reveal: round the villa, the cabin going up — the hook is taken from here ---------------------
   d.lock = false;
-  d.reveal(at(6000), MM(30000), 7, { yaw0: -1.9, arc: 2.25, y0: MM(1500), y1: MM(5000) });
+  // (round the villa at 22–28 m, rising from 7 to 12 m — never under the cantilever)
+  { const keys = []; for (let i = 0; i <= 5; i++) { const u = i / 5, a = -1.9 + 2.25 * u, R = MM(22000 + 6000 * u); keys.push([new V(Math.sin(a) * R, g + MM(7000 + 5000 * u), Math.cos(a) * R), at(6000)]); } d.fly(keys, 7, { ease: 'start' }); }
   yield d.sec(5.2);
   d.lock = true;
   tripod(A);
