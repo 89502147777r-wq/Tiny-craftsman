@@ -19,7 +19,7 @@ export const SURROUND = {
   lake: { street: false, trees: ['tree', 'tree3', 'pine'], lawn: 'lawn' },
   beach: { street: false, trees: [], lawn: null },
 };
-const ROAD = { verge: 1.6, walk: 2.0, kerb: 0.18, road: 7.0 };   // (m, out from the fence: grass, pavement, kerb, the carriageway)
+const ROAD = { verge: 1.6, walk: 2.0, kerb: 0.15, road: 7.0 };   // (m, out from the fence: grass, pavement, kerb, the carriageway)
 
 export class Surround {
   constructor(app) {
