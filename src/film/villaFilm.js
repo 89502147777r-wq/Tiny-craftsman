@@ -4,7 +4,7 @@ import { planLift } from '../world/lift.js';
 import { findPileSlab, slabCage } from '../tools/slab.js';
 import { slabRuns, findRail } from '../world/railing.js';
 import { findOpenings } from '../tools/windowFit.js';
-import { unrle } from '../tools/belt.js';
+import { unrle, rle } from '../tools/belt.js';
 import { SHAFT_T } from '../world/collapse.js';
 
 // «Villa on one glass shaft» — after the owner's short (Mr. Building, «Villa house 3-story», 35 M): the
@@ -86,7 +86,18 @@ export function* villaFilm(d, app) {
     app.concreteGear?.set?.(u < 1 ? 'hose' : null, new V(Math.sin(d.t * 5) * MM(1100), g + MM(900), z));
     if (Math.random() < 0.15) app.sfx?.pour?.(0.5, 'concrete_splat');
   };
-  yield* lapse(view(0, 0.6, 0.85, 9000), padTo, 4, 1.5, 0.35);
+  // (as on a site: the boards round it on their stakes and the mesh Ø12 every 200 on its chairs first; the concrete
+  // runs to the boards — it does not stand on its own — and the boards come off when it has set)
+  const form = padForm(g, 1500, 300);
+  app.scene.add(form.group);
+  const padStage = (u) => {
+    form.boards.visible = u > 0.02; form.mesh.visible = u > 0.3;
+    if (u > 0.45) padTo(Math.min(1, (u - 0.45) / 0.45));
+    if (u >= 0.97) form.boards.visible = false;
+  };
+  yield* lapse(view(0, 0.6, 0.85, 9000), padStage, 6, 1.4, 0.35, (k) => { if (k === 0) app.sfx?.seq?.(['plank', 'hammer_nail', 'stake', 'hammer_nail']); if (k === 2) app.sfx?.seq?.(['rebar', 'wire', 'wire']); });
+  form.mesh.visible = false;   // (in the concrete now)
+  app.scene.remove(form.group); form.dispose();
   app.concreteGear?.set?.(null);
 
   // ---- 2 · the shaft: its feet on the anchors, the posts, the steel head, the glass — bottom to top -------
@@ -117,7 +128,21 @@ export function* villaFilm(d, app) {
   const slab = (rec) => O.add({ ...rec, fill: 0, stripped: false });
   const s1 = slab(P1.rec);
   // (the slabs above: the same plan a storey up, no opening — the shaft stops at the first floor)
-  const up = (src, top) => { const r = { ...src, top, holes: [], lv: src.lv.map(() => 0), fill: 0, stripped: false }; delete r.id; delete r.piles; delete r.castT; delete r.pourT; delete r.wetT; return O.add(r); };
+  // (the opening over the shaft closed: the shaft stops at the first floor — no hole in the floors above, none in the
+  // green roof)
+  const up = (src, top) => {
+    const n = src.ni * src.nj, mask = unrle(src.mask, n), deck = unrle(src.deck, n), cnt = [0, 0];
+    for (let k = 0; k < n; k++) if (mask[k]) cnt[deck[k] ? 1 : 0]++;
+    const dv = cnt[1] >= cnt[0] ? 1 : 0;
+    // (only the enclosed holes: what is open from the edge stays the slab's outline)
+    const out = new Uint8Array(n), st = [];
+    for (let i = 0; i < src.ni; i++) for (const j of [0, src.nj - 1]) st.push(j * src.ni + i);
+    for (let j = 0; j < src.nj; j++) for (const i of [0, src.ni - 1]) st.push(j * src.ni + i);
+    while (st.length) { const k = st.pop(); if (out[k] || mask[k]) continue; out[k] = 1; const i = k % src.ni, j = (k - i) / src.ni; if (i > 0) st.push(k - 1); if (i < src.ni - 1) st.push(k + 1); if (j > 0) st.push(k - src.ni); if (j < src.nj - 1) st.push(k + src.ni); }
+    for (let k = 0; k < n; k++) if (!mask[k] && !out[k]) { mask[k] = 1; deck[k] = dv; }
+    const r = { ...src, top, mask: rle(mask), deck: rle(deck), holes: [], lv: new Array(mask.reduce((a, v) => a + (v ? 1 : 0), 0)).fill(0), fill: 0, stripped: false };
+    delete r.id; delete r.piles; delete r.castT; delete r.pourT; delete r.wetT; return O.add(r);
+  };
   const pourer = (id) => {
     const b = O.get(id), n = b.ni * b.nj, mask = unrle(b.mask, n), cells = [];
     for (let k = 0; k < n; k++) if (mask[k]) { const i = k % b.ni, j = Math.floor(k / b.ni); cells.push({ i, j }); }
@@ -194,13 +219,13 @@ export function* villaFilm(d, app) {
   yield* lapse(view(6000, 0.6, 0.45, 26000), (u) => {
     const n = Math.round(ops.length * u);
     for (; wk < n; wk++) { const q = ops[wk]; O.add({ type: 'window', key: 'floor', col: 'anth', w: q.w, h: q.h, t: q.t, x: +q.x.toFixed(6), y: +q.y0.toFixed(6), z: +q.z.toFixed(6), yaw: +q.yaw.toFixed(5) }); sfx('glass', { vol: 0.4 }); }
-    app.sky.setHour(10.5 + 7 * u);
+    app.sky.setHour(10.5 + 5.5 * u);   // (to the late afternoon — low warm sun, the facade still lit)
   }, 5, 1.3, 0.3);
 
   // ---- 9 · the reveal: round the villa, the cabin going up — the hook is taken from here ---------------------
   d.lock = false;
   // (round the villa at 22–28 m, rising from 7 to 12 m — never under the cantilever)
-  { const keys = []; for (let i = 0; i <= 5; i++) { const u = i / 5, a = -1.9 + 2.25 * u, R = MM(22000 + 6000 * u); keys.push([new V(Math.sin(a) * R, g + MM(7000 + 5000 * u), Math.cos(a) * R), at(6000)]); } d.fly(keys, 7, { ease: 'start' }); }
+  { const keys = []; for (let i = 0; i <= 5; i++) { const u = i / 5, a = -0.95 + 1.3 * u, R = MM(22000 + 6000 * u); keys.push([new V(Math.sin(a) * R, g + MM(7000 + 5000 * u), Math.cos(a) * R), at(6000)]); } d.fly(keys, 7, { ease: 'start' }); }
   yield d.sec(5.2);
   d.lock = true;
   tripod(A);
@@ -242,7 +267,8 @@ export function* villaFilm(d, app) {
   d.title('WHY THE REAL ONE LOOKS LIKE THIS', '', 0);
   d.trans('flash', true);
   // (the shaft carries nothing now: a wide pad, four columns Ø600 to the slab's underside)
-  castCells(cellsIn(3400, 3400), 300);
+  const raft = cellsIn(4800, 4800), was = raft.map(([i]) => [i, T.conc[i], T.cTime[i], T.cBase[i], T.cY[i], T.cSm[i]]);
+  castCells(raft, 300);   // (a raft under the whole house: the columns' braces stand on it too)
   yield d.sec(2.5);
   d.lock = true;
   const bot = O.get(s1.id).top, cols = [];
@@ -250,11 +276,15 @@ export function* villaFilm(d, app) {
     const y0 = T.heightAt(MM(x), MM(z));
     cols.push(O.add({ type: 'column', sec: 'rd', a: 600, h: +(bot - y0).toFixed(6), n: 10, course: 'block', tilt: [0, 0], x: MM(x), z: MM(z), y0, dep: 0, stage: 2, cage: true, fill: 0, on: 'concrete' }));
   }
-  yield* lapse(A, (u) => { for (const c of cols) { const r = O.get(c.id); const st2 = u < 0.75 ? 2 : u < 0.95 ? 3 : 4; if (r.stage !== st2 || Math.abs((r.fill || 0) - Math.min(1, u / 0.7)) > 0.05) O.update(c.id, { stage: st2, fill: +Math.min(1, u / 0.7).toFixed(3) }); } }, 5, 1.2, 0.3);
-  yield d.sec(1.0);
+  // (the forms, filled, struck by u ≈ 0,6 — then the bare concrete columns held in the frame)
+  yield* lapse(A, (u) => { for (const c of cols) { const r = O.get(c.id), f = +Math.min(1, u / 0.4).toFixed(3), st2 = u < 0.45 ? 2 : u < 0.6 ? 3 : 4; if (r.stage !== st2 || Math.abs((r.fill || 0) - f) > 0.05) O.update(c.id, { stage: st2, fill: f }); } }, 4, 1.2, 0.3);
+  yield d.sec(1.8);
   // the hook (put first by the renderer — film/recorder.js): the villa on its shaft alone, the cabin going up
   // in the glass, the question; the film ends here, so played round it goes on into the building of it
   for (const c of cols) O.remove(c.id);
+  // (and the raft taken back: the hook is the villa on its small pad, as it was built)
+  for (const [i, c, t, b, y, m] of was) { T.conc[i] = c; T.cTime[i] = t; T.cBase[i] = b; T.cY[i] = y; T.cSm[i] = m; }
+  { let a = 1e9, b = -1, c = 1e9, e = -1; for (const [i] of was) { const ix = i % T.nx, iz = Math.floor(i / T.nx); a = Math.min(a, ix); b = Math.max(b, ix); c = Math.min(c, iz); e = Math.max(e, iz); } T._concTouch(a, c, b, e); T.updateMesh?.(); }
   app.simulate(0.05);
   d.clear();
   tripod(A);
@@ -264,6 +294,19 @@ export function* villaFilm(d, app) {
   yield d.sec(1.9);
   d.mark('hookEnd');
   yield d.sec(0.1);
+}
+
+// the pad's forms: boards 40 × 300 on stakes outside, every metre; the mesh Ø12 every 200 on chairs, 50 up
+function padForm(g, half, h) {
+  const group = new THREE.Group(), wood = new THREE.MeshStandardMaterial({ color: 0x9a7448, roughness: 0.85 }), steel = new THREE.MeshStandardMaterial({ color: 0x6e4a32, roughness: 0.6, metalness: 0.35 });
+  const boards = new THREE.Group(), mesh = new THREE.Group(), geos = [];
+  const box = (gr, mat, w, hh, d, x, y, z) => { const ge = new THREE.BoxGeometry(MM(w), MM(hh), MM(d)); geos.push(ge); const m = new THREE.Mesh(ge, mat); m.position.set(MM(x), g + MM(y), MM(z)); m.castShadow = true; gr.add(m); };
+  const o = half + 20, L = 2 * half + 80;
+  for (const sg of [-1, 1]) { box(boards, wood, L, h + 20, 40, 0, (h + 20) / 2, sg * o); box(boards, wood, 40, h + 20, L, sg * o, (h + 20) / 2, 0); }
+  for (let a = -half; a <= half + 1; a += 1000) for (const sg of [-1, 1]) { box(boards, wood, 50, h + 250, 50, a, (h + 250) / 2 - 150, sg * (o + 45)); box(boards, wood, 50, h + 250, 50, sg * (o + 45), (h + 250) / 2 - 150, a); }
+  for (let a = -half + 50; a <= half - 49; a += 200) { box(mesh, steel, 2 * half - 100, 12, 12, 0, 56, a); box(mesh, steel, 12, 12, 2 * half - 100, a, 68, 0); }
+  boards.visible = mesh.visible = false; group.add(boards, mesh);
+  return { group, boards, mesh, dispose: () => { for (const ge of geos) ge.dispose(); } };   // (the materials kept: a shader warm-up may still look at them)
 }
 
 villaFilm.seconds = 125;   // (how long it runs: the shooting's progress — film/recorder.js)

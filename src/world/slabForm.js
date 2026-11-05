@@ -22,12 +22,14 @@ export class SlabFormView {
     this.tubeLo = new THREE.InstancedMesh(cyl, new THREE.MeshStandardMaterial({ color: 0xc2401f, roughness: 0.5, metalness: 0.35 }), this.max.props);
     this.tubeHi = new THREE.InstancedMesh(cyl, new THREE.MeshStandardMaterial({ color: 0xa9adb1, roughness: 0.35, metalness: 0.85 }), this.max.props);
     this.plates = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x7d8186, roughness: 0.45, metalness: 0.8 }), this.max.props * 2);
-    for (const m of [this.beams, this.tubeLo, this.tubeHi, this.plates]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; group.add(m); }
-    this.owner = { beams: [], tubeLo: [], tubeHi: [], plates: [] };
+    // (each prop's foot on a timber sole 50 × 200 × 600 — on the ground it would sink in; the realist)
+    this.soles = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9a7448, roughness: 0.85 }), this.max.props);
+    for (const m of [this.beams, this.tubeLo, this.tubeHi, this.plates, this.soles]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; group.add(m); }
+    this.owner = { beams: [], tubeLo: [], tubeHi: [], plates: [], soles: [] };
   }
 
   ownerOf(hit) {
-    for (const k of ['beams', 'tubeLo', 'tubeHi', 'plates']) if (hit.object === this[k]) return this.owner[k][hit.instanceId] ?? null;
+    for (const k of ['beams', 'tubeLo', 'tubeHi', 'plates', 'soles']) if (hit.object === this[k]) return this.owner[k][hit.instanceId] ?? null;
     return null;
   }
 
@@ -37,7 +39,7 @@ export class SlabFormView {
     for (const c of [...this.decks.children]) { c.geometry.dispose(); this.decks.remove(c); }
     const m = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), Sv = new THREE.Vector3();
     let nb = 0, np = 0, nq = 0;
-    const own = (this.owner = { beams: [], tubeLo: [], tubeHi: [], plates: [] });
+    const own = (this.owner = { beams: [], tubeLo: [], tubeHi: [], plates: [], soles: [] });
     for (const b of belts) {
       if (!isSlab(b) || b.stripped) continue;
       const F = slabForm(b, (x, z) => floor(x, z, b.top - MM(500)));
@@ -71,9 +73,11 @@ export class SlabFormView {
       for (const [s0, t0, s1, t1] of F.sec) beam(s0, t0, s1, t1, F.yDeck);
       for (const [s0, t0, s1, t1] of F.prim) beam(s0, t0, s1, t1, F.ySec);
       // the props: a plate on the floor, the painted tube, the galvanised one out of it, the head plate
-      for (const [x, z, f, top] of F.props) {
+      const yaw = Math.atan2(-b.u[1], b.u[0]);
+      for (const [x, z, f0, top] of F.props) {
         if (np >= this.max.props) break;
-        const pl = MM(8), h = top - f - 2 * pl, lo = h * 0.55;
+        const sole = MM(50), f = f0 + sole, pl = MM(8), h = top - f - 2 * pl, lo = h * 0.55;
+        Q.setFromAxisAngle(_Y, yaw); this.soles.setMatrixAt(np, m.compose(P.set(x, f0 + sole / 2, z), Q, Sv.set(MM(600), sole, MM(200)))); own.soles[np] = b.id ?? null;
         Q.identity();
         this.tubeLo.setMatrixAt(np, m.compose(P.set(x, f + pl + lo / 2, z), Q, Sv.set(MM(30), lo, MM(30))));
         this.tubeHi.setMatrixAt(np, m.compose(P.set(x, f + pl + lo + (h - lo) / 2, z), Q, Sv.set(MM(24), h - lo + MM(60), MM(24))));
@@ -81,8 +85,8 @@ export class SlabFormView {
         for (const y of [f + pl / 2, top - pl / 2]) { this.plates.setMatrixAt(nq, m.compose(P.set(x, y, z), Q, Sv.set(MM(150), pl, MM(150)))); own.plates[nq++] = b.id ?? null; }
       }
     }
-    this.beams.count = nb; this.tubeLo.count = this.tubeHi.count = np; this.plates.count = nq;
-    for (const im of [this.beams, this.tubeLo, this.tubeHi, this.plates]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
+    this.beams.count = nb; this.tubeLo.count = this.tubeHi.count = this.soles.count = np; this.plates.count = nq;
+    for (const im of [this.beams, this.tubeLo, this.tubeHi, this.plates, this.soles]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
   }
 }
 

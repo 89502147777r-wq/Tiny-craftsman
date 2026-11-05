@@ -733,6 +733,7 @@ console.log('—', sec());
     const P = SL.findPileSlab(tc, new V(lf.x, lf.top, lf.z), (v) => wt._screen(v), null, undefined, 3500);
     o.slab = P && { piles: P.rec.piles, cants: P.rec.cants?.length, holes: (P.rec.holes || []).length, liftHole: P.rec.holes?.[0]?.[4], w: P.rec.ni * 100 };
     const sl = tc.objects.add(P.rec), s2 = tc.objects.get(sl.id);
+    tc.simulate(0.1); { const F = tc.wallView.slabForm; o.props = F.tubeLo.count; o.soles = F.soles.count; }   // (each prop on its timber sole)
     tc.objects.update(sl.id, { lv: s2.lv.map(() => Math.round(s2.H / MM(1))), fill: 1, castT: tc.clock - 1e6, pourT: tc.clock - 1e6, wetT: tc.clock - 1e6, stripped: true });
     tc.simulate(0.1);
     o.stops = LF.liftStops(tc.objects, tc.objects.get(lf.id)).length;
@@ -766,6 +767,7 @@ console.log('—', sec());
     return o;
   });
   check('villa: a lift shaft not on the bare ground, on a cast pad (≈ 6.5 m, one only there); a slab on its top cantilevered all round with the opening over it; the cabin rides up to the floor', o.onSoil === 0 && o.shaft?.h > 6000 && o.again === 1 && o.slab?.piles === 1 && o.slab.cants === 4 && o.slab.holes === 1 && o.slab.liftHole === 1 && o.stops === 1 && o.liftMesh && o.busy && o.at === 1 && Math.abs(o.cabY - o.floor) < 5, JSON.stringify(o));
+  check('villa: the slab\'s props each on a timber sole (not on the bare ground)', o.props > 20 && o.soles === o.props, JSON.stringify({ props: o.props, soles: o.soles }));
   check('villa: the fascia on the four outer edges (not round the opening), not twice', o.fascias === 4 && /уже/.test(o.again2 || ''), JSON.stringify(o));
   check('villa: a green roof — sedum in the field, gravel 500 mm at the edge', o.green > 500 && o.grav > 100 && o.greenEdge >= 5, JSON.stringify(o));
   check('villa film: its block and brick walls end at one height (±10 mm), the front opening left open', Math.abs(o.vf.block - o.vf.brick) <= 10 && o.vf.block > 3000 && o.vf.inGap === 0, JSON.stringify(o.vf));
@@ -1173,11 +1175,14 @@ console.log('—', sec());
     for (let i = 0; i < 6; i++) tc.simulate(0.1);
     tc.setTool('disaster'); Object.assign(tc.settings, { catKind: 'shaft', catPower: 5 });
     o.chip = tc.ui.chips().some((c) => /Обрушение опоры/.test(c.label));
-    tc.objects.add(SL.slabCage(tc.objects.get(sl.id))); tc.simulate(0.05);   // (its bars: they go with its pieces, not left hanging)
+    tc.objects.add(SL.slabCage(tc.objects.get(sl.id))); tc.simulate(0.05);
+    // (a green roof on it: torn with the slab's pieces, not falling whole)
+    { const b = tc.objects.get(sl.id), green = []; for (let j = 6; j < b.nj - 6; j++) for (let i = 6; i < b.ni - 6; i++) green.push(j * b.ni + i); tc.objects.add({ type: 'roof', slab: sl.id, stage: 4, look: 'grey', green }); tc.simulate(0.1); }   // (its bars: they go with its pieces, not left hanging)
     const sc0 = tc.wallView._liftG.get(lf.id).children.map((ch) => [ch.scale.y, ch.position.y]);
     const tr0 = performance.now(); await tc.disasterTool.run(); o.runMs = Math.round(performance.now() - tr0);
     const D = tc.disasterTool.sim, C = D.collapse, ST = CL.SHAFT_T;
     o.barsHidden = !tc.rebarView.group.visible;
+    o.roofTorn = { roofPanels: C.panels.filter((p) => p.sort === 'roof').length, hidden: tc.wallView.roofs.children.length > 0 && tc.wallView.roofs.children.every((ch) => !ch.visible), onPieces: C.panels.filter((p) => p.sort === 'slab' && p.o.children.length >= 2).length };
     // (the cast concrete is not hidden as a whole — only the slabs shown in pieces leave it; hiding it all left a slab's bars alone)
     { const wv = tc.wallView, ix = wv.fill.geometry.index.array, own = wv.owner.fill, cut = new Set(C.panels.filter((p) => p.sort === 'slab').map((p) => p.o.userData.slab));
       o.fill = { shown: wv.fill.visible, tris: ix.length / 3, want: own.filter((id) => !cut.has(id)).length, total: own.length, cut: cut.size }; }
@@ -1187,7 +1192,7 @@ console.log('—', sec());
     run(ST.white - 0.1); o.cracked = C.panes.filter((p) => p.crack.alphaTest < 0.9).length; o.panes = C.panes.length; o.bowSink = +((y0 - C.body.translation().y) * 1000).toFixed(1); o.lean = +(C.tilt * 180 / Math.PI).toFixed(2);
     run(ST.fail - 0.05); o.white = C.panes.filter((p) => p.whited).length;
     // (from the failure: the house's fall — its drop by ~0.6 s after it is free, against a free fall's ½gt²)
-    run(ST.fail + 0.1); const yA = C.body?.translation().y, tA = D.t; run(ST.fail + 0.6); const yB = C.body ? C.body.translation().y : null, tB = D.t;
+    run(ST.fail + 0.1); const yA = C.body?.translation().y, tA = D.t; run(ST.fail + 0.35); o.headGap = C.struck ? 0 : Math.round(C._shortLast >= C.Hpost - 351 ? 0 : Math.abs(C._shortLast - C._shortTo)); run(ST.fail + 0.6); const yB = C.body ? C.body.translation().y : null, tB = D.t;
     o.fall = yA != null && yB != null ? { drop: +(yA - yB).toFixed(2), free: +(0.5 * 9.81 * ((tB - ST.fail) ** 2 - (tA - ST.fail) ** 2)).toFixed(2) } : null;
     run(ST.fail + 4); o.struck = C.struck; o.free = C.chunks.filter((c) => c.free).length; o.slabMaxY = +Math.max(...C.panels.filter((p) => p.sort === 'slab').map((p) => p.body.translation().y - g * 10.4651)).toFixed(2); o.slabsDown = o.slabMaxY < 3;
     o.maxUp = Math.max(...C.chunks.map((c) => c.body.linvel().y));
@@ -1210,6 +1215,8 @@ console.log('—', sec());
   check('support collapse: the posts bow first — the house sinks a few mm and leans ≤ 3°; the panes crack bottom-up, then whiten', o.bowSink > 0.2 && o.bowSink < 60 && o.lean > 0 && o.lean <= 3 && o.cracked > 0 && o.white === o.panes, JSON.stringify(o));
   check('support collapse: the house falls as a body would (its drop ≥ 60 % of a free fall\'s), strikes, breaks; the slabs come down; nothing bounces up', o.fall && o.fall.drop > 0.6 * o.fall.free && o.struck && o.free > 0 && o.slabsDown && o.maxUp < 1.5, JSON.stringify(o));
   check('support collapse: not a Lego set — the slab in pieces all different, the walls split through their blocks — hundreds of pieces from a tenth of a block to many; a corner first (≥ 8°); no slab piece on edge (≤ 40° — lying on the heap), nothing over the walls', o.slabDistinct > 0.9 && o.chunkSizes[0] < 0.3 && o.chunkSizes[1] > 4 && o.chunkSizes[2] >= 150 && o.strikeAngle >= 8 && o.slabTilt <= 40 && !o.overTop, JSON.stringify(o));
+  check('support collapse: the falling house stays on the shaft\'s head (≤ 20 mm) — not in the air over it', o.headGap <= 20, JSON.stringify({ headGap: o.headGap }));
+  check('support collapse: the green roof torn with the slab (on its pieces), not one whole sheet', o.roofTorn.roofPanels === 0 && o.roofTorn.hidden && o.roofTorn.onPieces >= 10, JSON.stringify(o.roofTorn));
   check('support collapse: nothing left hanging in the air — the shaft\'s parts come down as it is crushed', o.liftParts > 0 && o.hanging === 0, JSON.stringify(o));
   check('catastrophe: the cast concrete stays shown — only the slabs in pieces leave it (their bars with them, back after)', o.barsHidden && o.barsBack && o.fill.shown && o.fill.tris === o.fill.want && o.fill.cut === 1 && o.fill.total > 0, JSON.stringify(o.fill));
   check('support collapse: all back as it was; no console errors', o.back && errors.length === 0, errors.slice(0, 3).join(' | ') + JSON.stringify(o));
@@ -1267,6 +1274,8 @@ console.log('—', sec());
       d.bar(2); d.cut({ target: P, yaw: 0, pitch: 0.6, dist: 1.5 }); d.title('BIG WORDS', '', 1);
       yield d.sec(0.5); d.mark('hook'); tc.sfx.play('block'); yield d.sec(0.4); d.mark('hookEnd'); yield d.sec(0.2);
     }
+    // (the sky's birds and wind off: the check is the blow against the film's quiet, not the ambience's random bars)
+    tc.sfx.ambience = () => {}; tc.sfx.rain = () => {};
     const d = new Director(tc, script, true); tc.film = d;
     const { recordFilm } = await import('./src/film/recorder.js');
     // (the words: white text in the title's band of a frame after the title came up)

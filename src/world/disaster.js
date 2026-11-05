@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { loadPhysics } from './physics.js';
 import { Puffs } from './smoke.js';
+import { isSlab } from '../tools/slab.js';
 import { ShaftCollapse, slabPieces, hullDesc } from './collapse.js';
 
 // Catastrophes (a show, not a change to the project: nothing in the records moves — at «Вернуть как было»
@@ -111,7 +112,14 @@ export class Disaster {
       p.cap = (sort === 'roof' ? 1300 : sort === 'window' ? 1800 : sort === 'slab' ? 1e9 : 2500) * (0.75 + 0.5 * rnd()) * (belt && sort === 'roof' ? 1.3 : 1);
       this.panels.push(p);
     };
-    for (const g of [wv.roofs, wv.proofs]) if (g) for (const ch of [...g.children]) { const parts = ch.children.length > 1 && ch.children.length < 60 ? [...ch.children] : [ch]; for (const o of parts) panel(o, 'roof'); }
+    // (a flat roof on a slab shown in pieces: its build-up goes on the pieces — collapse.js — its own picture hidden)
+    const pieced = (id) => { const b = app.objects.get(id); return b && isSlab(b) && b.fill > 0.5; };
+    for (const g of [wv.roofs, wv.proofs]) if (g) for (const ch of [...g.children]) {
+      let own = null; ch.traverse((o) => { if (own == null && o.userData?.uOwner != null) own = o.userData.uOwner; });
+      const rr = own != null && g === wv.roofs ? app.objects.get(own) : null;
+      if (rr?.slab && pieced(rr.slab)) { if (ch.visible) { ch.visible = false; this.hidden.push(ch); } continue; }
+      const parts = ch.children.length > 1 && ch.children.length < 60 ? [...ch.children] : [ch]; for (const o of parts) panel(o, 'roof');
+    }
     for (const ch of [...(wv.windows?.children || [])]) panel(ch, 'window');
     // (the slabs: their cast concrete is one mesh of the view, hidden — as pieces of their own, heavy, falling
     // when what carries them goes; the lifts stay out of it: a shaft that fails is shown by its own kind)
