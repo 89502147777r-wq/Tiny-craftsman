@@ -1326,12 +1326,14 @@ console.log('—', sec());
     tc.settings.propMode = 'turn'; W.down(new V(m0.x, 0, m0.z)); o.turned = +(tc.objects.get(m0.id).yaw - m0.yaw).toFixed(3);
     tc.settings.propMode = 'del'; W.down(new V(m0.x, 0, m0.z)); tc.simulate(0.05); o.gone = !tc.objects.get(m0.id) && tc.siteProps.group.children.length === o.meshes - 1;
     tc.settings.propMode = 'cabin'; W.down(new V(0, 0, 0)); o.added = PR().filter((r) => r.kind === 'cabin').length;
+    // (the ground changed under one — dug, heaped: it is stood on it again, not left in the air)
+    { const m = tc.siteProps.meshes.get(PR()[0].id), y = m.position.y; m.position.y = y + 1; tc.terrain.rev = (tc.terrain.rev || 0) + 1; tc.siteProps.update(); o.restood = Math.abs(m.position.y - y) < 1e-6; }
     tc.settings.backdrop = 'workshop'; await tc.backdrop.set('workshop'); tc.simulate(0.1);
     o.hidden = !G.visible && tu.uSite.value === 0;
     return o;
   });
   check('surroundings: a fence, a street, a ring of trees (no mirrored cards), the site trodden, the photo\'s ground hidden; none in the workshop', o.shown && o.trees > 60 && o.kinds === 3 && o.street && o.fence && !o.mirrored && o.site === 1 && o.low === 1 && o.fadeAt > 3 && o.hidden, JSON.stringify(o));
-  check('site things: put round the site once (11), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 11 && o.meshes === 11 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.added === 2, JSON.stringify(o));
+  check('site things: put round the site once (11), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 11 && o.meshes === 11 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.added === 2 && o.restood, JSON.stringify(o));
   check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
