@@ -64,6 +64,7 @@ const clipHalf = (poly, m, d) => {
 const key = (p) => `${Math.round(p[0] * 1e5)},${Math.round(p[1] * 1e5)}`;
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 10007) / 10007; };
 const MATS = {};
+const lin = (hex) => { const c = new THREE.Color().setHex(hex, THREE.SRGBColorSpace); return [c.r, c.g, c.b]; };
 const roofMat = () => (MATS.r ||= new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: true }));
 const concMat = () => (MATS.c ||= new THREE.MeshStandardMaterial({ color: 0x86857f, roughness: 0.95, vertexColors: true }));   // (the slab's concrete: greyer than the aerated blocks)
 const barMat = () => (MATS.b ||= new THREE.MeshStandardMaterial({ color: 0x5b4b3f, roughness: 0.6, metalness: 0.4 }));
@@ -125,13 +126,13 @@ export function slabPieces(objects) {
       // breaks — the sedum on top, the gravel within 500 mm of the edge (the roof's own picture hidden in the show)
       let Ht = H;
       if (roofOn) {
-        const T = MM(280), edge = Math.min(cs - s0, s1 - cs, ct - t0, t1 - ct) < MM(500), top = roofOn.green ? (edge ? [0.56, 0.55, 0.52] : [0.36, 0.47, 0.22]) : [0.24, 0.25, 0.26];
+        const T = MM(280), edge = Math.min(cs - s0, s1 - cs, ct - t0, t1 - ct) < MM(500), top = lin(roofOn.green ? (edge ? 0x8f8a80 : 0x5a7438) : 0x3e4044);   // (the roof's own colours: sRGB → linear, as vertex colours are read)
         const rp = [], rc = [], tr = (p, q, r, c) => { rp.push(...p, ...q, ...r); for (let z = 0; z < 3; z++) rc.push(...c); };
         const ya = y0 + H, yb = ya + T;
         for (let e = 0; e < W.length; e++) {
           const [ax, az] = W[e], [bx, bz] = W[(e + 1) % W.length], j = 0.9 + 0.2 * hash(String(e) + ct);
           tr([cx, yb, cz], [bx, yb, bz], [ax, yb, az], top.map((v) => v * j));
-          const sd = [0.33, 0.27, 0.21];   // (the torn edge: the substrate brown over the dark membrane and the grey board)
+          const sd = lin(0x5a4636);   // (the torn edge: the substrate brown over the dark membrane and the grey board)
           tr([ax, ya, az], [ax, yb, az], [bx, yb, bz], sd); tr([ax, ya, az], [bx, yb, bz], [bx, ya, bz], sd);
         }
         const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); rg.setAttribute('color', new THREE.Float32BufferAttribute(rc, 3)); rg.computeVertexNormals();
