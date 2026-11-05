@@ -1,8 +1,2 @@
-fabric|tarp unfold
-fabric2|plastic sheet rustle
-fabric3|unrolling
-cord|rope stretch
-cord2|string snap
-mixer2|cement mixer
-pool_water|pouring water large
-peg|wooden stake hammer
+applause|crowd applause outdoor clapping cheering
+applause2|small crowd applause clapping
