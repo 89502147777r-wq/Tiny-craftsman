@@ -47,7 +47,7 @@ export class Backdrop {
     const tex = app.tex.top;
     this.gU = {
       uFade: { value: new THREE.Color(0.55, 0.5, 0.44) }, tTheme: { value: tex.diff }, uThemeTile: { value: 1 / SOIL_TILE },
-      uTheme: { value: 0 }, uOut: { value: new THREE.Vector2(1e5, 1e5 + 1) }, uHole: { value: new THREE.Vector2(hx, hz) },
+      uTheme: { value: 0 }, uOut: { value: new THREE.Vector2(1e5, 1e5 + 1) }, uHole: { value: new THREE.Vector2(hx, hz) }, uRoad: { value: new THREE.Vector2(1e5, 1e5) },
     };
     const mat = new THREE.MeshStandardMaterial({ map: tex.diff, normalMap: tex.nor, roughness: 1, color: 0xf4e8d6, transparent: true });   // (the shade of the plot's own soil)
     mat.onBeforeCompile = (sh) => {
@@ -58,12 +58,13 @@ export class Backdrop {
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
         varying vec3 vGW;
         uniform vec3 uFade; uniform sampler2D tTheme; uniform float uThemeTile; uniform float uTheme;
-        uniform vec2 uOut; uniform vec2 uHole;
+        uniform vec2 uOut; uniform vec2 uHole; uniform vec2 uRoad;
         ` + STOCHASTIC_GLSL)
         .replace('#include <map_fragment>', `#include <map_fragment>
+        if (vGW.z > uRoad.x && vGW.z < uRoad.y) discard;   // (the street lies lower: surround.js)
         float gr = length(vGW.xz);
         // the place's own ground beyond the plot (the soil of the plot fades into it)
-        float th = uTheme * smoothstep(0.01, 0.07, max(abs(vGW.x) - uHole.x, abs(vGW.z) - uHole.y));   // (the place's ground from just past the plot's edge: the fence is the edge, no long smear)
+        float th = uTheme * smoothstep(0.0, 0.035, max(abs(vGW.x) - uHole.x, abs(vGW.z) - uHole.y));   // (the place's ground from just past the plot's edge: the fence is the edge, no long smear)
         diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(tTheme, vGW.xz * uThemeTile).rgb, th);
         diffuseColor.rgb *= mix(0.82, 1.1, tcFbm(vGW.xz * 2.6));
         // further off it fades out: the photo's own ground under it
@@ -142,9 +143,9 @@ export class Backdrop {
       { const tu = app.terrainMat?.userData?.uniforms; if (tu?.uSite) { tu.uSite.value = sur ? 1 : 0; tu.uHalf.value.set(TRAY.innerX / 2, TRAY.innerZ / 2); } }   // (the plot's ground trodden like a site's)
       this.surround = this.surround || new Surround(app);
       if (sur) {
-        const [walk, asphalt] = sur.street ? await Promise.all([this._groundTex('square_concrete_pavers'), this._groundTex('asphalt_02')]) : [null, null];
+        const [walk, asphalt, gravel] = sur.street ? await Promise.all([this._groundTex('square_concrete_pavers'), this._groundTex('asphalt_02'), this._groundTex('gravel_floor_02')]) : [null, null, null];
         if (this.mode !== mode) return;
-        await this.surround.set(mode, Rm, { walk, asphalt });
+        await this.surround.set(mode, Rm, { walk, asphalt, gravel });
       } else this.surround.hide();
     } else { const g = this.gU; g.uTheme.value = 0; g.uOut.value.set(1e5, 1e5 + 1); this.surround?.hide(); const tu = app.terrainMat?.userData?.uniforms; if (tu?.uSite) tu.uSite.value = 0; }   // (the berm of the photo sheet shares this material)
     // the photo sheet glued round the box
