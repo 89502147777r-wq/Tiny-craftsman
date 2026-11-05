@@ -10,16 +10,16 @@ const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 // each a model (Sketchfab, CC BY — CREDITS.md; cut out, stood on the ground at its middle, to its real size, light for a
 // phone — scratchpad prep.mjs); foot — its footprint (mm) for standing it on the ground
 export const PROPS = {
-  cabin: { name: 'Бытовка', model: 'office', r: 3200, foot: [6060, 2150] },
+  cabin: { name: 'Бытовка', model: 'office', r: 3200, foot: [6060, 2440], lift: 200, piers: [[-2830, -1020], [0, -1020], [2830, -1020], [-2830, 1020], [0, 1020], [2100, 1020]] },   // (on six blocks, 200 clear; the front one at the door end under the body — the door is in a recess)
   toilet: { name: 'Биотуалет', model: 'toilet', r: 700, foot: [1110, 1120] },
   mixer: { name: 'Бетономешалка', model: 'mixer', r: 900, foot: [810, 1220] },
   pallet: { name: 'Поддон с блоками', model: 'cinderpallet', r: 800, foot: [1200, 1090] },
-  bricks: { name: 'Поддон кирпича', model: 'brickpallet', r: 800, foot: [1060, 1150] },
+  bricks: { name: 'Поддон кирпича', model: 'brickpallet', r: 800, foot: [830, 1100] },
   bags: { name: 'Цемент в мешках', model: 'bags', r: 800, foot: [1250, 1180] },
   timber: { name: 'Штабель досок', model: 'timber', r: 2400, foot: [2460, 4500] },
   barrow: { name: 'Тачка', model: 'barrow', r: 800, foot: [1500, 660] },
   cones: { name: 'Конусы', model: 'cones', r: 900, foot: [1500, 1430] },
-  skip: { name: 'Контейнер для мусора', model: 'skip', r: 2400, foot: [4600, 1770] },
+  skip: { name: 'Контейнер для мусора', model: 'skip', r: 2100, foot: [3900, 1800] },
   sand: { name: 'Куча песка', model: 'sand', r: 1700, foot: [3390, 3400] },
 };
 // where they stand at first (m, in the plot's frame: x along it, z towards the street; clear of the gate and the middle)
@@ -29,9 +29,12 @@ export const PROP_SEED = [
   ['mixer', 3.6, 8.6, 0.6], ['barrow', 4.9, 7.0, -0.9], ['cones', 0, 11.4, 0],
 ];
 
+const PIER_GEO = new THREE.BoxGeometry(0.4, 1, 0.2), PIER_MAT = new THREE.MeshStandardMaterial({ color: 0x9b9890, roughness: 0.95 });
 // a thing: its model, coming in when it has loaded (the group stands at once — moved, turned, picked as it is)
 export function propMesh(kind) {
   const g = new THREE.Group(), P = PROPS[kind];
+  // (what it stands on: concrete blocks 400 × 200 × 200 — their height to the ground under each, set where it is put)
+  if (P?.piers) { g.userData.piers = P.piers.map(([x, z]) => { const b = new THREE.Mesh(PIER_GEO, PIER_MAT); b.position.set(x / 1000, 0, z / 1000); b.castShadow = b.receiveShadow = true; g.add(b); return b; }); }
   g.userData.ready = P ? loadModel('site/' + P.model).then(({ scene }) => { g.add(scene); return g; }).catch(() => g) : Promise.resolve(g);
   return g;
 }
@@ -66,7 +69,14 @@ export class SitePropView {
     const T = this.app.terrain, [fw, fd] = (PROPS[m.userData.kind]?.foot || [800, 800]).map((v) => MM(v) / 2), c = Math.cos(yaw || 0), sn = Math.sin(yaw || 0);
     // (its foot's middle and corners, turned with it — the highest of them: it stands on what is under it, not in it)
     let y = -Infinity; for (const [a, b] of [[0, 0], [fw, fd], [-fw, fd], [fw, -fd], [-fw, -fd]]) { const X = T.clampX(x + a * c + b * sn), Z = Math.max(-T.halfZ, Math.min(T.halfZ, z - a * sn + b * c)); y = Math.max(y, T.heightAt(X, Z)); }
+    const P = PROPS[m.userData.kind]; y += MM(P?.lift || 0);
     m.position.set(x, y, z); m.rotation.y = yaw || 0;
+    // (its blocks down to the ground under each: a little lower ground, a taller stack)
+    if (m.userData.piers) for (const b of m.userData.piers) {
+      const px = x + (b.position.x * c + b.position.z * sn) / MODEL_SCALE, pz = z + (-b.position.x * sn + b.position.z * c) / MODEL_SCALE;
+      const h = Math.max(MM(50), y - T.heightAt(T.clampX(px), Math.max(-T.halfZ, Math.min(T.halfZ, pz)))) * MODEL_SCALE;   // (metres, as the model)
+      b.scale.y = h; b.position.y = -h / 2;
+    }
   }
   // the prop under the finger (its id), by the ray
   pick(ray) { const h = ray.intersectObject(this.group, true)[0]; return h ? h.object.userData.propId ?? null : null; }
