@@ -1276,7 +1276,7 @@ console.log('—', sec());
     }
     // (the sky's birds and wind off: the check is the blow against the film's quiet, not the ambience's random bars)
     tc.sfx.ambience = () => {}; tc.sfx.rain = () => {};
-    const d = new Director(tc, script, true); tc.film = d;
+    tc.filmOffline = true; const d = new Director(tc, script, true); tc.film = d;   /* (held: the frame loop does not step it while the recorder is fetched) */
     const { recordFilm } = await import('./src/film/recorder.js');
     // (the words: white text in the title's band of a frame after the title came up)
     const onFrame = (x, i) => { if (i !== 20) return; const px = x.getImageData(0, 30, 180, 40).data; let n = 0; for (let j = 0; j < px.length; j += 4) if (px[j] > 235 && px[j + 1] > 235 && px[j + 2] > 235) n++; o.words = n; };
@@ -1330,14 +1330,17 @@ console.log('—', sec());
     { const m = tc.siteProps.meshes.get(PR()[0].id), y = m.position.y; m.position.y = y + 1; tc.terrain.rev = (tc.terrain.rev || 0) + 1; tc.siteProps.update(); o.restood = Math.abs(m.position.y - y) < 1e-6; }
     // (each thing its real height — a part lost in a comment, a roof gone, shows here)
     { const SP = await import('/src/world/siteProps.js'), THREE = await import('three'); o.heights = {};
-      for (const k of Object.keys(SP.PROPS)) { const b = new THREE.Box3().setFromObject(SP.propMesh(k)); o.heights[k] = Math.round((b.max.y - b.min.y) * 10465.1); } }
+      for (const k of Object.keys(SP.PROPS)) { const g = await SP.propMesh(k).userData.ready, b = new THREE.Box3().setFromObject(g.children.at(-1)); /* (the model, not its blocks) */ o.heights[k] = Math.round((b.max.y - b.min.y) * 1000); } }   // (the models in metres)
+    // (the office on its blocks, each down to the ground under it, 200 clear under its floor)
+    { const cab = PR().find((r) => r.kind === 'cabin'), m = tc.siteProps.meshes.get(cab.id); await m.userData.ready; tc.siteProps.place(m, cab.x, cab.z, cab.yaw); m.updateMatrixWorld(true);
+      const THREE = await import('three'), T = tc.terrain, P2 = new THREE.Vector3(); o.piers = m.userData.piers.map((b) => { b.getWorldPosition(P2); const bot = P2.y - b.scale.y / 2 / 10.4651; return Math.round((bot - T.heightAt(P2.x, P2.z)) * 10465.1); }); }
     tc.settings.backdrop = 'workshop'; await tc.backdrop.set('workshop'); tc.simulate(0.1);
     o.hidden = !G.visible && tu.uSite.value === 0;
     return o;
   });
   check('surroundings: a fence, a street, a ring of trees (no mirrored cards), the site trodden, the photo\'s ground hidden; none in the workshop', o.shown && o.trees > 60 && o.kinds === 3 && o.street && o.fence && !o.mirrored && o.site === 1 && o.low === 1 && o.fadeAt > 3 && o.hidden, JSON.stringify(o));
-  check('site things: put round the site once (11), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 11 && o.meshes === 11 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.added === 2 && o.restood, JSON.stringify(o));
-  check('site things: each its real height (toilet 2,3 m with its roof, office 2,8, pallet 1,4, skip 1,3, barrow 0,73, cones 0,75)', Math.abs(o.heights.toilet - 2320) < 40 && Math.abs(o.heights.cabin - 2800) < 60 && Math.abs(o.heights.pallet - 1400) < 60 && Math.abs(o.heights.skip - 1300) < 60 && Math.abs(o.heights.barrow - 730) < 40 && Math.abs(o.heights.cones - 750) < 30, JSON.stringify(o.heights));
+  check('site things: put round the site once (11), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 11 && o.meshes === 11 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.added === 2 && o.restood && o.piers?.length === 6 && o.piers.every((d) => Math.abs(d) <= 10), JSON.stringify(o));
+  check('site things: each its model, its real height (toilet 2,3 m, office 2,59 — taller than it, mixer 1,35, barrow 0,74, cones 0,75; none missing)', Math.abs(o.heights.toilet - 2300) < 30 && Math.abs(o.heights.cabin - 2590) < 40 && o.heights.cabin / o.heights.toilet >= 1.08 && Math.abs(o.heights.mixer - 1350) < 30 && o.heights.pallet > 500 && o.heights.bricks > 500 && o.heights.bags > 500 && Math.abs(o.heights.barrow - 740) < 40 && Math.abs(o.heights.cones - 750) < 30 && Object.values(o.heights).every((h) => h > 200), JSON.stringify(o.heights));
   check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
