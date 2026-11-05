@@ -22,6 +22,7 @@ import { PoolWork, isPoolBelt } from './poolTool.js';
 import { LandWork } from './landTool.js';
 import { FenceWork } from './fenceTool.js';
 import { ExtWork } from './extTool.js';
+import { PropWork } from './sitePropTool.js';
 import { ColumnWork } from './columnTool.js';
 import { PitchedWork, RoofWindowWork } from './pitchedTool.js';
 const winName = (k) => (WINDOWS[k] || DOORS[k]).name;
@@ -75,13 +76,14 @@ export class WallTool {
     this.cordBtn = typeof document !== 'undefined' ? document.getElementById('fence-cord') : null;
     this.cordBtn?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (this.kind === 'land') { const lawn = this.land.what === 'lawn', pw = lawn ? this.land.lw : this.land.pw; pw.cord = !pw.cord; app.ui.toast(pw.cord ? (lawn ? 'Шнур: растяните пальцем место под газон' : 'Шнур: тяните пальцем разметку дорожки') : (lawn ? 'Шнур убран: колышки двигают пальцем, тап по шнуру — новый колышек' : 'Шнур убран: угловые колышки двигают пальцем')); app.ui.refresh(); return; } this.fence.cord = !this.fence.cord; app.ui.toast(this.fence.cord ? 'Шнур: тяните пальцем разметку забора' : 'Шнур убран: колышки двигают пальцем вдоль шнура'); app.ui.refresh(); });
     this.ext = new ExtWork(app);
+    this.prop = new PropWork(app);
     this.col = new ColumnWork(app);
     this.proof = new PitchedWork(app);
     this.rwin = new RoofWindowWork(app);
     // the works this tool does besides the masonry, by the menu's «wallKind»: each has down / move / up
     // (a finger on its own work), status, and some: carryMove / carryDrop (a piece from the tray),
     // interrupt, update, remove. The masonry itself (blocks, bricks, lintels…) is this file's.
-    this.works = { roof: this.roof, facade: this.facade, blind: this.blind, pool: this.pool, land: this.land, fence: this.fence, ext: this.ext, column: this.col, proof: this.proof, rwin: this.rwin };
+    this.works = { roof: this.roof, facade: this.facade, blind: this.blind, pool: this.pool, land: this.land, fence: this.fence, ext: this.ext, column: this.col, proof: this.proof, rwin: this.rwin, siteprop: this.prop };
     this.mode = 'lay';
     this.drag = null;
     // the tray of blocks in the corner of the screen: drag a block out of it onto a wall

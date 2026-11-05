@@ -26,6 +26,7 @@ import { LAYERS as FAC_LAYERS, VLAYERS as FAC_VLAYERS, PLASTER_COLOURS, PLASTER_
 import { RWIN_TYPES } from '../world/roofWindows.js';
 import { ROOF_TYPES, PITCHES, PITCH_RANGE, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 import { LANG } from '../i18n/i18n.js';
+import { PROPS } from '../world/siteProps.js';
 
 const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
@@ -50,6 +51,7 @@ const GROUPS = [
   { id: 'extG', label: 'Экстерьер', svg: '<svg viewBox="0 0 24 24"><path d="M4 21V9l8-5 8 5v12"/><rect x="9.5" y="13" width="5" height="8"/><path d="M7 12h10"/><path d="M6 21h12M5 19h14"/></svg>', virt: { kinds: ['ext'], path: ['ext'] } },
   { id: 'fenceG', label: 'Забор', svg: '<svg viewBox="0 0 24 24"><path d="M5 21V7l2-3 2 3v14M15 21V7l2-3 2 3v14"/><path d="M3 10h18M3 16h18"/><path d="M2 21h20"/></svg>', virt: { kinds: ['fence'], path: ['fence'] } },
   { id: 'landG', label: 'Благоустройство', svg: '<svg viewBox="0 0 24 24"><path d="M9 21l2-9h2l2 9"/><path d="M10.4 15h3.2M9.6 18.5h4.8"/><circle cx="18" cy="7" r="3"/><path d="M18 10v5"/><path d="M3 9c1.5-3 4.5-3 6 0-1.5 1.5-4.5 1.5-6 0zM6 10v5"/><path d="M2 21h20"/></svg>', virt: { kinds: ['land'], path: ['land'] } },
+  { id: 'propG', label: 'Площадка', svg: '<svg viewBox="0 0 24 24"><rect x="2" y="9" width="10" height="8"/><path d="M4 12h3M2 17h20"/><path d="M15 17l2-7 2 7"/><path d="M15.6 14h2.8"/></svg>', virt: { kinds: ['siteprop'], path: ['siteprop'] } },
   { id: 'machines', label: 'Техника', icon: 'machine' },
   { id: 'disaster', label: 'Катаклизмы', icon: 'disaster' },
 ];
@@ -650,6 +652,15 @@ export class UI {
         hid(G('blind', 'Отмостка', [...blind, del()], null, C('', has('blind'), () => lay({ wallKind: 'blind' })))),
         hid(G('pool', 'Бассейн', [...pool, del()], null, C('', has('pool'), () => lay({ wallKind: 'pool' })))),
         hid(G('ext', 'Экстерьер', [G('flights', 'Освещение фасада', [...Object.entries(FLIGHTS).map(([q, F]) => C(F.name, has('ext') && ew.what === 'light' && ew.lightKind === q, () => eset({ extWhat: 'light', flKind: q }))), ...Object.entries(FLIGHT_TEMPS).map(([q, [n]]) => C('◐ ' + n, ew.lightTemp === q, () => eset({ extWhat: 'light', flTemp: q })))], null, C('', has('ext') && ew.what === 'light', () => eset({ extWhat: 'light' }))), G('canopies', 'Козырьки', Object.entries(CANOPIES).map(([q, K]) => C(K.name, has('ext') && ew.what === 'canopy' && (app.settings.canopyStyle || 'glass') === q, () => eset({ extWhat: 'canopy', canopyStyle: q }))), null, C('', has('ext') && ew.what === 'canopy', () => eset({ extWhat: 'canopy' }))), del()], null, C('', has('ext'), () => lay({ wallKind: 'ext' })))),
+        hid(G('siteprop', 'Площадка', (() => {
+          const pw = wt.prop, pm = pw.mode, pz = (o) => lay({ wallKind: 'siteprop', ...o });
+          return [
+            C('Переставить', has('siteprop') && pm === 'move', () => pz({ propMode: 'move' })),
+            C('Повернуть', has('siteprop') && pm === 'turn', () => pz({ propMode: 'turn' })),
+            G('propAdd', 'Поставить', Object.entries(PROPS).map(([k, P]) => C(P.name, has('siteprop') && pm === k, () => pz({ propMode: k })))),
+            C('Убрать', has('siteprop') && pm === 'del', () => pz({ propMode: 'del' }), 'warn'),
+          ];
+        })(), null, C('', has('siteprop'), () => lay({ wallKind: 'siteprop' })))),
         hid(G('fence', 'Забор', (() => {
           const fw = wt.fence, FL = fw.L, fz = (o) => lay({ wallKind: 'fence', ...o }), tab = (k, i) => C(`${i + 1} · ${F2_TABS[i][1]}`, has('fence') && FL === k, () => fz({ f2Layer: k }));
           return [
