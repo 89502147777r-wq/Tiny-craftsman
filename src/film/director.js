@@ -67,6 +67,7 @@ export class Director {
   leave() { location.href = location.pathname; }
   // the film shot frame by frame into an mp4 (film/recorder.js), the screens round it
   async record(o = {}) {
+    this.app.filmOffline = true;   // (held before the recorder is fetched: the frame loop would step the film on meanwhile)
     const { recordFilm, recordUi } = await import('./recorder.js');
     const ui = recordUi(this.app);
     this.byeArmed = true;   // (the end screen's buttons lead back, not a tap anywhere)

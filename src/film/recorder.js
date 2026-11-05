@@ -43,11 +43,13 @@ function wav(ch, rate) {
 // → { blob (mp4), wav (when the sound is not in it), seconds, frames }
 export async function recordFilm(app, o = {}) {
   const f = app.film, fps = o.fps || 60, W = o.w || 1080, H = o.h || 1920, RATE = 48000;
+  // (the film held at once — before anything is awaited: main.js's frame loop stepped it on while the encoder was asked
+  // about, and the film's first frames were gone from the video)
+  app.filmOffline = true;
   const MAX = o.max || Math.ceil((f.estimate || 40) * 1.4 + 10);   // (s of film at most: the sound's buffer is that long)
   const vc = await videoConfig(W, H, fps);
   if (!vc) throw new Error('no H.264 encoder');
   // the frame's box on the screen: 9:16 in the middle; the canvas drawn at the video's size
-  app.filmOffline = true;   // (main.js's frame loop steps the film no more: here, a 60th a frame)
   const bw = Math.min(innerWidth, innerHeight * W / H), bh = bw * H / W;
   app.recBox = { w: W, h: H, cssW: bw, cssH: bh, left: (innerWidth - bw) / 2, top: (innerHeight - bh) / 2 };
   const root = document.documentElement.style;

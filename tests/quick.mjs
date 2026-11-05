@@ -1276,7 +1276,7 @@ console.log('—', sec());
     }
     // (the sky's birds and wind off: the check is the blow against the film's quiet, not the ambience's random bars)
     tc.sfx.ambience = () => {}; tc.sfx.rain = () => {};
-    const d = new Director(tc, script, true); tc.film = d;
+    tc.filmOffline = true; const d = new Director(tc, script, true); tc.film = d;   /* (held: the frame loop does not step it while the recorder is fetched) */
     const { recordFilm } = await import('./src/film/recorder.js');
     // (the words: white text in the title's band of a frame after the title came up)
     const onFrame = (x, i) => { if (i !== 20) return; const px = x.getImageData(0, 30, 180, 40).data; let n = 0; for (let j = 0; j < px.length; j += 4) if (px[j] > 235 && px[j + 1] > 235 && px[j + 2] > 235) n++; o.words = n; };
