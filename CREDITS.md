@@ -28,7 +28,7 @@
 | `assets/models/site/bags.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Concrete bags and pallet | neverfollow81 | CC BY 4.0 | https://sketchfab.com/3d-models/concrete-bags-and-pallet-3c66c95bfbf4469186696b133e930f48 |
 | `assets/models/site/timber.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Construction Site Asset Pack | vmatthew | CC BY 4.0 | https://sketchfab.com/3d-models/construction-site-asset-pack-a6cccf5af6514f2f9289beeead38fe1b |
 | `assets/models/site/sand.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Photoscan Low-poly Construction Sand Pile | Martin Topolski | CC BY 4.0 | https://sketchfab.com/3d-models/photoscan-low-poly-construction-sand-pile-7a7533e1ecab4b1d96da55cc3ad9ad98 |
-| `assets/models/site/brickpallet.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Pallet of Bricks | Nadir | CC BY 4.0 | https://sketchfab.com/3d-models/pallet-of-bricks-aeab2b4fd7fb424cb7e68c692048e4f9 |
+| `assets/models/site/brickpallet.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | red bricks on pallet | vicente betoret ferrero | CC BY 4.0 | https://sketchfab.com/3d-models/red-bricks-on-pallet-1f32da1a103b4949963cbe09099eb0ca |
 | `assets/textures/forest_leaves_04/` (diff, nor_gl 1k) — лесная подстилка вокруг участка на фоне «В лесу» | Forest Leaves 04 | Rob Tuytel | CC0 | https://polyhaven.com/a/forest_leaves_04 |
 
 ## Текстуры участка (ambientCG, CC0 1.0)
