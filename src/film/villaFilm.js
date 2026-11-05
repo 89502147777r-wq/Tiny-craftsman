@@ -219,13 +219,13 @@ export function* villaFilm(d, app) {
   yield* lapse(view(6000, 0.6, 0.45, 26000), (u) => {
     const n = Math.round(ops.length * u);
     for (; wk < n; wk++) { const q = ops[wk]; O.add({ type: 'window', key: 'floor', col: 'anth', w: q.w, h: q.h, t: q.t, x: +q.x.toFixed(6), y: +q.y0.toFixed(6), z: +q.z.toFixed(6), yaw: +q.yaw.toFixed(5) }); sfx('glass', { vol: 0.4 }); }
-    app.sky.setHour(10.5 + 7 * u);
+    app.sky.setHour(10.5 + 5.5 * u);   // (to the late afternoon — low warm sun, the facade still lit)
   }, 5, 1.3, 0.3);
 
   // ---- 9 · the reveal: round the villa, the cabin going up — the hook is taken from here ---------------------
   d.lock = false;
   // (round the villa at 22–28 m, rising from 7 to 12 m — never under the cantilever)
-  { const keys = []; for (let i = 0; i <= 5; i++) { const u = i / 5, a = -1.9 + 2.25 * u, R = MM(22000 + 6000 * u); keys.push([new V(Math.sin(a) * R, g + MM(7000 + 5000 * u), Math.cos(a) * R), at(6000)]); } d.fly(keys, 7, { ease: 'start' }); }
+  { const keys = []; for (let i = 0; i <= 5; i++) { const u = i / 5, a = -0.95 + 1.3 * u, R = MM(22000 + 6000 * u); keys.push([new V(Math.sin(a) * R, g + MM(7000 + 5000 * u), Math.cos(a) * R), at(6000)]); } d.fly(keys, 7, { ease: 'start' }); }
   yield d.sec(5.2);
   d.lock = true;
   tripod(A);
@@ -302,7 +302,7 @@ function padForm(g, half, h) {
   for (let a = -half; a <= half + 1; a += 1000) for (const sg of [-1, 1]) { box(boards, wood, 50, h + 250, 50, a, (h + 250) / 2 - 150, sg * (o + 45)); box(boards, wood, 50, h + 250, 50, sg * (o + 45), (h + 250) / 2 - 150, a); }
   for (let a = -half + 50; a <= half - 49; a += 200) { box(mesh, steel, 2 * half - 100, 12, 12, 0, 56, a); box(mesh, steel, 12, 12, 2 * half - 100, a, 68, 0); }
   boards.visible = mesh.visible = false; group.add(boards, mesh);
-  return { group, boards, mesh, dispose: () => { for (const ge of geos) ge.dispose(); wood.dispose(); steel.dispose(); } };
+  return { group, boards, mesh, dispose: () => { for (const ge of geos) ge.dispose(); } };   // (the materials kept: a shader warm-up may still look at them)
 }
 
 villaFilm.seconds = 125;   // (how long it runs: the shooting's progress — film/recorder.js)

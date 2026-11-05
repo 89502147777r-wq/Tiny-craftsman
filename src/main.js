@@ -262,7 +262,9 @@ async function main() {
     const hid = [];
     scene.traverse((o) => { if (!o.visible) { hid.push(o); o.visible = true; } });
     let p = null;
-    try { p = renderer.compileAsync ? renderer.compileAsync(scene, camera) : (renderer.compile(scene, camera), null); } catch { /* not worth stopping for */ }
+    // (in a film at once, not in the background: the film builds and throws away as it goes — a material disposed
+    // while three's background poll still waited on it threw from its timer)
+    try { p = renderer.compileAsync && !app.film ? renderer.compileAsync(scene, camera) : (renderer.compile(scene, camera), null); } catch { /* not worth stopping for */ }
     for (const o of hid) o.visible = false;   // (the programs are made; they finish linking on their own)
     return p?.catch?.(() => {});
   };
