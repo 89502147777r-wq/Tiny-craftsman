@@ -1299,6 +1299,31 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2n. The place round the plot in the 360° backgrounds (world/surround.js): a fence, a street, a ring of trees
+// (impostor cards, none black — none mirrored by turning the card over), the plot's ground trodden; the photo's own ground
+// not shown; in the workshop none of it ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, o = {};
+    tc.settings.backdrop = 'meadow'; await tc.backdrop.set('meadow'); tc.simulate(0.1);
+    const G = tc.scene.getObjectByName('surround'), cards = G?.children.filter((c) => c.geometry?.attributes?.aCen) || [];
+    o.shown = !!G?.visible; o.trees = cards.reduce((a, c) => a + c.geometry.attributes.aCen.count / 4, 0); o.kinds = cards.length;
+    o.street = G?.children.some((c) => c.material?.map && c.geometry?.type === 'PlaneGeometry');
+    o.fence = G?.children.some((c) => c.isInstancedMesh && c.count > 50);
+    // (no card's corners mirrored: every quad's x run the same way)
+    o.mirrored = cards.some((c) => { const a = c.geometry.attributes.aCor.array; for (let i = 0; i < a.length; i += 8) if (a[i] > a[i + 2]) return true; return false; });
+    const tu = tc.terrainMat.userData.uniforms, P = tc.backdrop.panos.meadow;
+    o.site = tu.uSite.value; o.low = P.sky.material.uniforms.uLow.value; o.fadeAt = +tc.backdrop.gU.uOut.value.x.toFixed(2);
+    tc.settings.backdrop = 'workshop'; await tc.backdrop.set('workshop'); tc.simulate(0.1);
+    o.hidden = !G.visible && tu.uSite.value === 0;
+    return o;
+  });
+  check('surroundings: a fence, a street, a ring of trees (no mirrored cards), the site trodden, the photo\'s ground hidden; none in the workshop', o.shown && o.trees > 60 && o.kinds === 3 && o.street && o.fence && !o.mirrored && o.site === 1 && o.low === 1 && o.fadeAt > 3 && o.hidden, JSON.stringify(o));
+  check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
