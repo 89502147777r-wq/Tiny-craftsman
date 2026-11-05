@@ -83,6 +83,11 @@ export class Director {
   // the work done — and the shot on the screen long enough to be seen (min seconds)
   held(min = 1.3) { return () => !this.app.busy() && (!this.shot || this.t - (this.shot.tA ?? this.shot.t0) >= min); }
   until(f) { return f; }
+  // a jump in time (the time-lapse of one spot): the work run s seconds ahead between two frames, not drawn —
+  // the next frame is the same angle with the work moved on (a hard cut); the shot's clock goes on from it
+  jump(s, dt = 1 / 15) { if (s > 0) this.app.simulate(s, dt); this.jumps = (this.jumps || 0) + 1; this.log.push({ n: this.shotN || 0, t0: this.t, kind: 'jump', s }); }
+  // a jump till f() (the work at a point): at most max seconds of it
+  jumpTo(f, max = 600, dt = 1 / 15) { let t = 0; while (!f() && t < max) { this.app.simulate(0.5, dt); t += 0.5; } this.jumps = (this.jumps || 0) + 1; this.log.push({ n: this.shotN || 0, t0: this.t, kind: 'jump', s: t }); }
   // (something done every frame while the script goes on: f(dt of the work) → true when it is over)
   each(f) { this.tasks.add(f); return f; }
   // the work's speed eased to v in dur seconds (a speed ramp)
