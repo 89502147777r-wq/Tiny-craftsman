@@ -160,8 +160,7 @@ export class UI {
     showHints(hintsOn);
     hb.addEventListener('click', () => showHints(ui.classList.contains('no-hints')));
     $('menu-close').addEventListener('click', () => this.openMenu(false));
-    $('act-film').addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=pool'; });
-    $('act-film-villa')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=villa'; });
+    $('act-film').addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=plinth'; });
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     for (const b of document.querySelectorAll('#budget-row button')) b.addEventListener('click', () => { const v = +b.dataset.b; if (v) app.budget.start(v); else app.budget.stop(); this.openMenu(false); this.refresh(); });
     $('act-export').addEventListener('click', () => app.exportProject());

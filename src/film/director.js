@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// The film mode (?film=pool): a short played out by itself — the work done stage by stage by the
+// The film mode (?film=plinth): a short played out by itself — the work done stage by stage by the
 // same jobs the finger starts, filmed and cut in the game (what is recorded off the screen is the
 // short). A script is a generator: it does a thing, then yields what to wait for (d.sec(2),
 // d.job(), d.until(f)). Its time is the film's (real seconds); the work runs `speed` times faster.
