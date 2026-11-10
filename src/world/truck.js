@@ -121,16 +121,35 @@ export class Truck {
   }
   // the volume in the body's grid (model)
   _hfVol() { let v = 0; for (const h of this.hf) v += h; return v * this.cA; }
-  // a share `frac` of a full body tipped in at p (world): a heap there
-  pourAt(p, frac) {
+  // a share `frac` of a full body tipped in from p (world): it is counted in the load at once (the room left, the
+  // records), but the heap grows when it has fallen from p to what lies there — √(2h/g), not before it gets there
+  // (now: at once — the grid made to match a load)
+  pourAt(p, frac, now = false) {
     if (!this.bed || !(frac > 0)) return;
-    const q = this.bed.worldToLocal(p.clone()), NX = this.NX, NZ = this.NZ;
+    const q = this.bed.worldToLocal(p.clone());
+    if (now) { this._heap(q, frac); this.load = Math.min(1, this.load + frac); this._hfLoad = this.load; return; }
+    const had = this.load, h = Math.max(0, p.y - this.surfaceAt(p));
+    this.load = Math.min(1, this.load + frac); this._hfLoad = this.load;
+    const f = this.load - had; if (!(f > 0)) return;
+    (this.falling ||= []).push({ q, f, t: Math.min(1.5, Math.sqrt(2 * h / (9.81 / MODEL_SCALE))) }); this.air = (this.air || 0) + f;
+  }
+  // a heap of `frac` of a body round q (the bed's own frame)
+  _heap(q, frac) {
+    const NX = this.NX, NZ = this.NZ;
     const cx = Math.max(1, Math.min(NX - 2, (q.x - this.x0) / this.hx * (NX - 1))), cz = Math.max(1, Math.min(NZ - 2, (q.z / this.hz + 0.5) * (NZ - 1)));
     const vol = frac * this.cap, w = [], r = 3.0;
     let sum = 0;
     for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) { const d2 = ((ix - cx) ** 2 + (iz - cz) ** 2) / (r * r), k = Math.exp(-d2); w.push(k); sum += k; }
     for (let i = 0; i < w.length; i++) this.hf[i] += vol * w[i] / sum / this.cA;
-    this.load = Math.min(1, this.load + frac); this._hfLoad = this.load; this._hfDirty = true;
+    this._hfDirty = true;
+  }
+  // what is still falling into it: landed when its time has come (all of it at once: before it tips, is saved, read)
+  _landing(dt, all = false) {
+    const F = this.falling; if (!F?.length) { this.air = 0; return; }
+    // (emptied or set from a record meanwhile: what was in the air went with it)
+    if (this.load < (this.air || 0) - 1e-6) { F.length = 0; this.air = 0; return; }
+    let w = 0; for (const it of F) { it.t -= dt; if (all || it.t <= 0) { this._heap(it.q, it.f); this.air -= it.f; } else F[w++] = it; }
+    F.length = w; if (!w) this.air = 0;
   }
   // a bucketful falling off a lip `hw` wide along `dir` (world) round p: heaps along it
   pourLine(p, dir, hw, frac) {
@@ -152,7 +171,7 @@ export class Truck {
     let out = 0;
     const open = Math.min(1, Math.max(0, (this.tip - 0.25) / 0.3));
     if (open > 0) for (let iz = 0; iz < NZ; iz++) { const i = iz * NX, m = h[i] * Math.min(1, dt * 3 * open); h[i] -= m; out += m * this.cA; }
-    this.load = Math.max(0, this._hfVol() / this.cap); this._hfLoad = this.load; this._hfDirty = true;
+    this.load = Math.max(0, this._hfVol() / this.cap + (this.air || 0)); this._hfLoad = this.load; this._hfDirty = true;
     return out;
   }
   // where it falls out (world): under the middle of the tailgate
@@ -167,11 +186,11 @@ export class Truck {
   // the grid made to hold `load` of a body: what came in by itself (a record, a whole bucketful at
   // once) a heap in the middle; what went out (tipped, emptied) taken off evenly
   _sync() {
-    const want = this.load * this.cap, have = this._hfVol();
+    const want = Math.max(0, this.load - (this.air || 0)) * this.cap, have = this._hfVol();   // (what is still falling is not in the grid yet)
     if (Math.abs(want - have) < this.cap * 0.002) return;
     if (want <= 1e-9) this.hf.fill(0);
     else if (want < have) { const k = want / have; for (let i = 0; i < this.hf.length; i++) this.hf[i] *= k; }
-    else { const l = this.load; this.load = have / this.cap; this.pourAt(this.bed.localToWorld(new THREE.Vector3(this.x0 + this.hx * 0.5, 0, 0)), l - this.load); this.load = l; }
+    else { const l = this.load; this.load = have / this.cap; this.pourAt(this.bed.localToWorld(new THREE.Vector3(this.x0 + this.hx * 0.5, 0, 0)), want / this.cap - this.load, true); this.load = l; }
     this._hfDirty = true;
   }
   // it slumps: each pair of cells steeper than its repose shares the excess (a few sweeps a frame)
@@ -192,6 +211,7 @@ export class Truck {
   }
   update(dt) {
     if (!this.bed) return;
+    this._landing(dt, this.tip >= 0.12);
     this.outflow = (this.outflow || 0) + this._flowOut(dt);
     this._sync();
     if (this._slump() || this._hfDirty) {
