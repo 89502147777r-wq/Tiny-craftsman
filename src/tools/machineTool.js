@@ -557,7 +557,7 @@ export class MachineTool {
         // (it runs into the body as the bucket tips: a stream off the lip, the heap growing under it)
         const e = L.edgeWorld(new THREE.Vector3()), fx = Math.cos(L.yaw), fz = -Math.sin(L.yaw), r = Math.random, hw = L.bucketW / 2, land = landAt();
         const dv = Math.min(D.into - D.done, D.into * dt * 1.6); D.done += dv;
-        T.pourLine(land, new THREE.Vector3(Math.sin(L.yaw), 0, Math.cos(L.yaw)), hw, dv / TRUCK_LOAD);
+        T.pourLine(new THREE.Vector3(land.x, Math.max(land.y, e.y), land.z), new THREE.Vector3(Math.sin(L.yaw), 0, Math.cos(L.yaw)), hw, dv / TRUCK_LOAD);   // (from the lip's height: it heaps when it has fallen)
         const ly = land.clone(); ly.y = Math.max(T.surfaceAt(land), e.y - R(2));
         (this.streams ||= new Streams(app.scene)).set(1, e, ly, hw * 1.7, D.col, 1, new THREE.Vector3(-fz, 0, fx));
         const mw = this._mixW(); for (let j = 0; j < 6; j++) { const w = (r() * 2 - 1) * hw * 0.9; let m = 0, u = r(); for (let q = 0; q < 4; q++) { u -= mw[q]; if (u <= 0) { m = q; break; } } app.particles.emit(new THREE.Vector3(e.x + fz * w, e.y, e.z - fx * w), new THREE.Vector3(fx * R(0.4) * r(), -R(0.3) * r(), fz * R(0.4) * r()), 0, R(0.03 + r() * 0.05), 0, 0, m); }

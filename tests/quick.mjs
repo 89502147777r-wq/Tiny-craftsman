@@ -1056,7 +1056,11 @@ console.log('—', sec());
     mt.exit(); frames(5);
     // the truck: loaded, driven out past the plot's edge — to the tip, back empty
     mt.enter('truck'); for (let i = 0; i < 200 && !(mt.driving && mt.drv === 'truck'); i++) await new Promise((r) => setTimeout(r, 50));
-    const T = mt.truck, h0 = mt.recOf('truck')?.hauled || 0; T.load = 0.6; o.signs = !!mt._signs?.visible;
+    const T = mt.truck, h0 = mt.recOf('truck')?.hauled || 0;
+    // (tipped in from 2 m over the body: counted at once, the heap grows when it has fallen — not before)
+    { T.load = 0; T.update(0.01); const p = T.bedCentre(new V()); p.y += 2 * M; const v0 = T._hfVol(); T.pourAt(p, 0.1); for (let i = 0; i < 6; i++) T.update(1 / 30);
+      o.inAir = T._hfVol() - v0 < 1e-12 && T.load > 0.09; for (let i = 0; i < 30; i++) T.update(1 / 30); o.landed = Math.abs(T._hfVol() / T.cap - T.load) < 0.01 && !T.falling.length; }
+    T.load = 0.6; o.signs = !!mt._signs?.visible;
     mt.joystick('l', 0, -1); for (let i = 0; i < 2400 && T.load > 0.01; i++) tc.simulate(1 / 30); mt.joystick('l', 0, 0);
     o.tip = T.load < 0.01 && (mt.recOf('truck')?.hauled || 0) > h0 + 0.5;
     mt.exit();
@@ -1065,7 +1069,7 @@ console.log('—', sec());
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), lifted it keeps it (crowned, lumpy), opened it is empty, the crumbs fall at g; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove && o.carried >= 0.95 && o.crown > 0.15 && o.fallAt04 && o.fallAt12, JSON.stringify(o));
-  check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty', o.signs && o.tip, JSON.stringify(o));
+  check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty; what is tipped into it heaps when it lands', o.signs && o.tip && o.inAir && o.landed, JSON.stringify(o));
   check('machines: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
@@ -1338,14 +1342,15 @@ console.log('—', sec());
     { const m = tc.siteProps.meshes.get(PR()[0].id), y = m.position.y; m.position.y = y + 1; tc.terrain.rev = (tc.terrain.rev || 0) + 1; tc.siteProps.update(); o.restood = Math.abs(m.position.y - y) < 1e-6; }
     // (each thing its real height — a part lost in a comment, a roof gone, shows here)
     { const SP = await import('/src/world/siteProps.js'), THREE = await import('three'); o.heights = {};
-      for (const k of Object.keys(SP.PROPS)) { const g = await SP.propMesh(k).userData.ready, b = new THREE.Box3().setFromObject(g.children.at(-1)); /* (the model, not its blocks) */ o.heights[k] = Math.round((b.max.y - b.min.y) * 1000); } }   // (the models in metres)
+      for (const k of Object.keys(SP.PROPS)) { const g = await SP.propMesh(k).userData.ready, b = new THREE.Box3().setFromObject(g.children.at(-1)); /* (the model, not its blocks) */ o.heights[k] = Math.round((b.max.y - b.min.y) * 1000);
+        /* (its foot — what stands on the ground: no wider than the model, not much narrower) */ const f = SP.PROPS[k].foot, d = [(b.max.x - b.min.x) * 1000, (b.max.z - b.min.z) * 1000]; (o.feet ||= {})[k] = f.every((v, i) => v <= d[i] + 25 && v >= d[i] * 0.8); } }   // (the models in metres)
     tc.settings.backdrop = 'workshop'; await tc.backdrop.set('workshop'); tc.simulate(0.1);
     o.hidden = tu.uSite.value === 0;
     return o;
   });
   check('360° places: the photo\'s own ground laid round the plot (no disc, no fence, no trees), the site\'s soil rim; the trodden ground only at the site', o.oneLoad && o.laid && o.noDisc && o.noSurround && o.site === 0 && o.siteTrodden && o.hidden, JSON.stringify(o));
   check('site things: put round the site once (10), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 10 && o.meshes === 10 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.binTook && o.added === 2 && o.restood, JSON.stringify(o));
-  check('site things: each its model, its real height (toilet 2,3 m, cabin 2,55 — taller than it, mixer 1,35, barrow 0,74, cones 0,75; none missing)', Math.abs(o.heights.toilet - 2300) < 30 && Math.abs(o.heights.cabin - 2550) < 40 && o.heights.cabin / o.heights.toilet >= 1.08 && Math.abs(o.heights.mixer - 1350) < 30 && o.heights.pallet > 500 && o.heights.bricks > 500 && o.heights.bags > 500 && Math.abs(o.heights.barrow - 740) < 40 && Math.abs(o.heights.cones - 750) < 30 && Object.values(o.heights).every((h) => h > 200), JSON.stringify(o.heights));
+  check('site things: each its model, its real height (toilet 2,3 m, cabin 2,55 — taller than it, mixer 1,35, barrow 0,74, cones 0,75; none missing)', Object.values(o.feet).every(Boolean) && Math.abs(o.heights.toilet - 2300) < 30 && Math.abs(o.heights.cabin - 2550) < 40 && o.heights.cabin / o.heights.toilet >= 1.08 && Math.abs(o.heights.mixer - 1350) < 30 && o.heights.pallet > 500 && o.heights.bricks > 500 && o.heights.bags > 500 && Math.abs(o.heights.barrow - 740) < 40 && Math.abs(o.heights.cones - 750) < 30 && Object.values(o.heights).every((h) => h > 200), JSON.stringify(o.heights));
   check('360° places: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
