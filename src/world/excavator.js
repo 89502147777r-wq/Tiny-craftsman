@@ -110,7 +110,7 @@ export class Excavator {
     const pa = geo.attributes.position, v = new THREE.Vector3();
     for (let i = 0; i < pa.count; i++) { v.fromBufferAttribute(pa, i); const n = 1 + 0.16 * Math.sin(v.x * 9.1 + v.y * 4.3) * Math.cos(v.z * 7.7 - v.y * 3.1) + 0.08 * Math.sin(v.x * 23 + v.z * 19); pa.setXYZ(i, v.x * n, v.y * n, v.z * n); }
     geo.computeVertexNormals();
-    this.soil = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x5e4630, roughness: 1 }));
+    this.soil = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x5e4630, roughness: 1, vertexColors: true, side: THREE.DoubleSide, flatShading: true }));
     this.soil.visible = false; this.bucketP.add(this.soil); void geo;
     this._section();
     const ws = this.bucketP.getWorldScale(new THREE.Vector3()).x, bs = kb.getSize(new THREE.Vector3()), across = bs.z / ws;   // (its frame: x across, y up, z along the arm)
@@ -163,7 +163,7 @@ export class Excavator {
     const L = Math.hypot(this.lips[1][0] - this.lips[0][0], this.lips[1][1] - this.lips[0][1]);
     this.heapMax = L * L / 4 * Math.tan(25 * Math.PI / 180);   // (a heap at its angle of repose over the opening)
     this.secRef = area(poly) + this.heapMax;
-    this.chord = L;
+    this.chord = L; this._c = poly.reduce((a, p) => [a[0] + p[0] / poly.length, a[1] + p[1] / poly.length], [0, 0]);
     const ws = this.bucketP.getWorldScale(new THREE.Vector3()).x, kb = new THREE.Box3().setFromPoints(this.shell);
     this.secW = (kb.max.x - kb.min.x) * 0.86; this.secX = (kb.max.x + kb.min.x) / 2; void ws;
   }
@@ -175,53 +175,105 @@ export class Excavator {
     for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], fa = f(a), fb = f(b); if (fa <= 0) out.push(a); if ((fa <= 0) !== (fb <= 0)) { const u = fa / (fa - fb); out.push([a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]); } }
     return out;
   }
+  // the soil's top as it lies turned as it is: not level like water — it keeps its place in the bucket (its top along
+  // the opening) till the tilt passes its angle of repose (~38°, dug soil), then lies at that angle; it runs out over the
+  // teeth only (the back of the opening, at the pin, is closed by the stick and the linkage: curled in, a full heap
+  // leans on them); tipped toward the teeth the heap over the opening keeps what the repose lets it; facing down —
+  // what is under the lower lip. f(p) ≤ 0: under the top through the teeth; heap: the share of the heap it keeps
+  _surface(up) {
+    const H = (p) => p[0] * up[0] + p[1] * up[1], [t0, b0] = this.lips, L = this.chord, phi = 38 * Math.PI / 180;
+    let h = [up[1], -up[0]]; if (h[0] * (b0[0] - t0[0]) + h[1] * (b0[1] - t0[1]) < 0) h = [-h[0], -h[1]];
+    const D = (p) => p[0] * h[0] + p[1] * h[1], c = this._c, mid = [(t0[0] + b0[0]) / 2, (t0[1] + b0[1]) / 2];
+    const th = Math.atan2(H(b0) - H(t0), Math.max(1e-9, D(b0) - D(t0)));   // (+: the back higher than the teeth)
+    if (H(mid) <= H(c)) { const lo = Math.min(H(t0), H(b0)); return { H, k: 0, at: lo, heap: 0, lip: (p) => H(p) - lo }; }
+    const k = Math.tan(Math.max(-phi, Math.min(phi, th))), g = (p) => H(p) - k * D(p), at = g(t0);
+    let heap = 1; if (th > 0) { const A = phi - th, B = phi + th; heap = A <= 0 ? 0 : (Math.sin(A) * Math.sin(B) / (2 * Math.sin(A + B))) / (Math.tan(phi) / 4); }
+    return { H, k, D, g, at, heap, lip: (p) => g(p) - at };
+  }
+  // the section's part where fn ≤ 0
+  _belowF(fn) {
+    const out = [], P = this.sec;
+    for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], fa = fn(a), fb = fn(b); if (fa <= 0) out.push(a); if ((fa <= 0) !== (fb <= 0)) { const u = fa / (fa - fb); out.push([a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]); } }
+    return out;
+  }
   // how much it holds turned as it is now, as a share of what it holds upright and heaped (0 … 1)
   holdShare() {
     if (!this.sec) return 1;
-    const up = this._upLocal(), H = (p) => p[0] * up[0] + p[1] * up[1], lip = Math.min(H(this.lips[0]), H(this.lips[1]));
-    const A = this._area(this._below(up, lip));
-    // (the heap: only when the opening faces up — its chord level, more or less)
-    const d = [this.lips[1][0] - this.lips[0][0], this.lips[1][1] - this.lips[0][1]], L = Math.hypot(...d), tilt = Math.abs(H(d)) / L, mid = [(this.lips[0][0] + this.lips[1][0]) / 2, (this.lips[0][1] + this.lips[1][1]) / 2];
-    const c = this.sec.reduce((a, p) => [a[0] + p[0] / this.sec.length, a[1] + p[1] / this.sec.length], [0, 0]), opensUp = H(mid) > H(c);
-    const heap = opensUp ? this.heapMax * Math.max(0, 1 - tilt * 2.2) : 0;
-    return Math.min(1, (A + heap) / this.secRef);
+    const S = this._surface(this._upLocal());
+    return Math.min(1, (this._area(this._belowF(S.lip)) + this.heapMax * S.heap) / this.secRef);
+  }
+  // which way what runs out leaves the lip (world, unit): along the bottom, from the hollow out over the teeth
+  spillDir(out = new THREE.Vector3()) {
+    const a = new THREE.Vector3(this.secX, this._c[0], this._c[1]).applyMatrix4(this.bucketP.matrixWorld), b = new THREE.Vector3(this.secX, this.lips[0][0], this.lips[0][1]).applyMatrix4(this.bucketP.matrixWorld);
+    return out.subVectors(b, a).normalize();
   }
   // the lip it runs out over (world): the lower end of its opening
   // (u −1 … 1: across its width — what runs out comes off all along the lip, a curtain)
   lipWorld(out = new THREE.Vector3(), u = 0) {
-    const up = this._upLocal(), H = (p) => p[0] * up[0] + p[1] * up[1], l = H(this.lips[0]) < H(this.lips[1]) ? this.lips[0] : this.lips[1];
+    // (over the teeth — the back is closed by the stick; facing down, the lower of the two)
+    const up = this._upLocal(), S = this._surface(up), l = S.g ? this.lips[0] : (S.H(this.lips[0]) < S.H(this.lips[1]) ? this.lips[0] : this.lips[1]);
     return out.set(this.secX + u * this.secW / 2 * 0.9, l[0], l[1]).applyMatrix4(this.bucketP.matrixWorld);
   }
-  // the soil in it (share of a heaped bucket): level in it, a heap on top — extruded across its width
+  // the soil in it (share of a heaped bucket): up to where it would run out, a heap on top — as dug soil lies in a
+  // bucket: crowned in the middle, lower at the side plates, lumpy (clods), never a level plane
   _fill(share) {
     if (!this.sec) return;
-    const up = this._upLocal(), H = (p) => p[0] * up[0] + p[1] * up[1], hs = this.sec.map(H), want = share * this.secRef;
-    const lip = Math.min(H(this.lips[0]), H(this.lips[1])), Alip = this._area(this._below(up, lip));
-    let poly;
+    const up = this._upLocal(), want = share * this.secRef, L = this.chord, S = this._surface(up), H = S.H, g = S.g || H, tol = L * 1e-4, mound = new Set();
+    const Alip = this._area(this._belowF(S.lip)), gs = this.sec.map(g);
+    let poly, level;
     if (want <= Alip) {
-      let a = Math.min(...hs), b = lip; for (let k = 0; k < 24; k++) { const m = (a + b) / 2; if (this._area(this._below(up, m)) < want) a = m; else b = m; }
-      poly = this._below(up, (a + b) / 2);
+      let a = Math.min(...gs), b = S.at; for (let k = 0; k < 24; k++) { const m = (a + b) / 2; if (this._area(this._belowF((p) => g(p) - m)) < want) a = m; else b = m; }
+      level = (a + b) / 2; poly = this._belowF((p) => g(p) - level);
     } else {
-      // (level to the lip, then a heap over it: a parabola across the opening, its height for the rest)
-      poly = this._below(up, lip);
-      const extra = want - Alip, [e0, e1] = this.lips, L = this.chord, Hh = Math.min(L * 0.45, 1.5 * extra / L), n = 9, mound = [];
-      for (let k = 1; k < n; k++) { const u = k / n, bump = 4 * u * (1 - u) * Hh; mound.push([e0[0] + (e1[0] - e0[0]) * u + up[0] * bump, e0[1] + (e1[1] - e0[1]) * u + up[1] * bump]); }
-      // (inserted between the two lips where the outline runs from one to the other)
+      // (to the teeth, then a heap over the opening: a parabola across it, its height for the rest)
+      level = S.at; poly = this._belowF(S.lip);
+      const extra = want - Alip, [e0, e1] = this.lips, Hh = Math.min(L * 0.45, 1.5 * extra / L), n = 9, md = [];
+      for (let k = 1; k < n; k++) { const u = k / n, bump = 4 * u * (1 - u) * Hh, q = [e0[0] + (e1[0] - e0[0]) * u + up[0] * bump, e0[1] + (e1[1] - e0[1]) * u + up[1] * bump]; mound.add(q); md.push(q); }
       const i0 = poly.findIndex((p) => Math.hypot(p[0] - e0[0], p[1] - e0[1]) < 1e-6), i1 = poly.findIndex((p) => Math.hypot(p[0] - e1[0], p[1] - e1[1]) < 1e-6);
-      if (i0 >= 0 && i1 >= 0) { if ((i0 + 1) % poly.length === i1) poly.splice(i1, 0, ...mound); else if ((i1 + 1) % poly.length === i0) poly.splice(i0, 0, ...mound.reverse()); }
+      if (i0 >= 0 && i1 >= 0) { if ((i0 + 1) % poly.length === i1) poly.splice(i1, 0, ...md); else if ((i1 + 1) % poly.length === i0) poly.splice(i0, 0, ...md.reverse()); }
     }
     if (poly.length < 3) { this.soil.visible = false; return; }
-    // (an extruded section; its top a little lumpy)
-    const w = this.secW / 2, x0 = this.secX - w, x1 = this.secX + w, pos = [], cy = poly.reduce((a, p) => a + p[0], 0) / poly.length, cz = poly.reduce((a, p) => a + p[1], 0) / poly.length;
-    const lump = (p, x) => { const h = H(p) - Math.min(...hs); return 1 + 0.035 * Math.sin(x * 40 + p[0] * 31) * Math.cos(p[1] * 27) * Math.min(1, h * 30); };
+    // (its top: the points on the level or the heap — between two of them more points, for the lumps to show)
+    const isTop = (p) => mound.has(p) || Math.abs(g(p) - level) < tol || (level >= S.at - tol && this.lips.some((l) => Math.hypot(p[0] - l[0], p[1] - l[1]) < 1e-6));
+    const P = [], top = [];
     for (let i = 0; i < poly.length; i++) {
-      const a = poly[i], b = poly[(i + 1) % poly.length];
-      for (const [xa, xb] of [[x0, x1]]) { pos.push(xa, a[0], a[1], xb, b[0], b[1], xb, a[0], a[1], xa, a[0], a[1], xa, b[0], b[1], xb, b[0], b[1]); }
-      pos.push(x0, cy, cz, x0, b[0], b[1], x0, a[0], a[1], x1, cy, cz, x1, a[0], a[1], x1, b[0], b[1]);
+      const a = poly[i], b = poly[(i + 1) % poly.length], ta = isTop(a), tb = isTop(b); P.push(a); top.push(ta);
+      if (ta && tb) { const m = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (L / 9)); for (let k = 1; k < m; k++) { P.push([a[0] + (b[0] - a[0]) * k / m, a[1] + (b[1] - a[1]) * k / m]); top.push(true); } }
     }
-    for (let i = 0; i < pos.length; i += 3) { const k = lump([pos[i + 1], pos[i + 2]], pos[i]); pos[i + 1] = cy + (pos[i + 1] - cy) * k; pos[i + 2] = cz + (pos[i + 2] - cz) * k; }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
-    this.soil.geometry.dispose(); this.soil.geometry = g; this.soil.position.set(0, 0, 0); this.soil.scale.set(1, 1, 1); this.soil.visible = true;
+    // (each run of top points: 0 … 1 along it — the lumps and the crown die out at the walls)
+    const n = P.length, tt = new Float32Array(n);
+    for (let s = 0; s < n; s++) {
+      if (!top[s] || top[(s - 1 + n) % n]) continue;
+      const run = []; for (let i = s; top[i] && run.length < n; i = (i + 1) % n) run.push(i);
+      const len = [0]; for (let k = 1; k < run.length; k++) len.push(len[k - 1] + Math.hypot(P[run[k]][0] - P[run[k - 1]][0], P[run[k]][1] - P[run[k - 1]][1]));
+      const T = len[len.length - 1] || 1; run.forEach((i, k) => { tt[i] = len[k] / T; });
+    }
+    const ph = this._lumpPh ||= [0, 1, 2, 3].map(() => Math.random() * 6.28), NX = 10, w = this.secW / 2;
+    const heapAt = (p) => Math.max(0, g(p) - S.at), domeA = L * 0.05, lumpA = L * 0.05;
+    const slices = [];
+    for (let j = 0; j <= NX; j++) {
+      const u = j / NX * 2 - 1, cr = 1 - u * u, S = [];
+      for (let i = 0; i < n; i++) {
+        const p = P[i]; if (!top[i]) { S.push(p); continue; }
+        const t = tt[i], end = Math.sin(Math.PI * t), lump = 0.5 * Math.sin(7.3 * u + 9.1 * t + ph[0]) + 0.3 * Math.sin(13.7 * t - 5.2 * u + ph[1]) + 0.25 * Math.sin(23 * u + 19 * t + ph[2]) * Math.sin(31 * t - 17 * u + ph[3]);
+        // (the heap down to the plates' edge at the sides (1 : 1 off them), what it loses there in the middle; a crown over the level part; clods)
+        const d = heapAt(p) * (1.5 * cr - 1) + domeA * (end * cr - 0.42) + lumpA * lump * Math.sqrt(end) * (0.4 + 0.6 * cr);
+        S.push([p[0] + up[0] * d, p[1] + up[1] * d]);
+      }
+      slices.push(S);
+    }
+    const pos = [], col = [], X = (j) => this.secX - w + (2 * w) * j / NX, shade = (x, p) => 0.82 + 0.3 * (0.5 + 0.5 * Math.sin(x * 211 + p[0] * 173 + ph[0]) * Math.sin(p[1] * 197 + ph[1]));
+    const v = (x, p) => { pos.push(x, p[0], p[1]); const c = shade(x, p); col.push(c, c, c); };
+    for (let j = 0; j < NX; j++) for (let i = 0; i < n; i++) {
+      const i2 = (i + 1) % n, a = slices[j][i], b = slices[j][i2], c = slices[j + 1][i2], d = slices[j + 1][i], xa = X(j), xb = X(j + 1);
+      v(xa, a); v(xb, c); v(xa, b); v(xa, a); v(xb, d); v(xb, c);
+    }
+    for (const [j, x] of [[0, X(0)], [NX, X(NX)]]) {
+      const S = slices[j], cy = S.reduce((a, p) => a + p[0], 0) / n, cz = S.reduce((a, p) => a + p[1], 0) / n;
+      for (let i = 0; i < n; i++) { v(x, [cy, cz]); v(x, S[i]); v(x, S[(i + 1) % n]); }
+    }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.computeVertexNormals();
+    this.soil.geometry.dispose(); this.soil.geometry = geo; this.soil.position.set(0, 0, 0); this.soil.scale.set(1, 1, 1); this.soil.visible = true;
   }
   get loaded() { return !!this.bucketP; }
   soilColor(c) { this.soil?.material.color.copy(c); }

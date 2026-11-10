@@ -2,8 +2,11 @@ import * as THREE from 'three';
 import { mulberry32 } from '../core/rand.js';
 import { variant } from './assets.js';
 import { materialTint } from './soilColor.js';
+import { MODEL_SCALE } from '../config.js';
 
-const G = -9.81;
+// (the world is in model units — 1 : 10,47: real gravity in them; 9,81 here made crumbs fall ten times too fast — a frame
+// or two each, seen as clods hanging still between the bucket and the ground)
+const G = -9.81 / MODEL_SCALE, SLOW = 1 / Math.sqrt(MODEL_SCALE);
 
 // Falling soil crumbs. Each crumb carries a share of soil volume and hands it
 // to the heightfield where it lands, so a dumped scoop builds a real pile.
@@ -43,11 +46,13 @@ export class SoilParticles {
 
   get busy() { return this.items.length > 0; }
 
-  emit(pos, vel, vol, size, keep = 0.25, depth = 0, mat = 0) {
+  // (real: vel is a real speed (m/s in model units, R()); else it was set for the old 10× gravity — scaled by 1/√k, its
+  // drag and life with it: the same path in space as it was tuned, gone through at the real pace)
+  emit(pos, vel, vol, size, keep = 0.25, depth = 0, mat = 0, real = false) {
     if (this.items.length >= this.max) { this.terrain.deposit(pos.x, pos.z, vol, 0.002, depth, mat); return; }
     const r = this.rnd;
     this.items.push({
-      p: pos.clone(), v: vel.clone(), vol, size: size * (0.6 + r() * 0.8),
+      p: pos.clone(), v: real ? vel.clone() : vel.clone().multiplyScalar(SLOW), drag: real ? 0.1 : 0.6 * SLOW, life: real ? 3 : 3 / SLOW, vol, size: size * (0.6 + r() * 0.8),
       rot: new THREE.Euler(r() * 6, r() * 6, r() * 6), spin: (r() - 0.5) * 30, keep: r() < keep, age: 0, depth, mat,
     });
   }
@@ -83,12 +88,12 @@ export class SoilParticles {
       const it = items[i];
       it.age += dt;
       it.v.y += G * dt;
-      it.v.multiplyScalar(1 - 0.6 * dt);
+      it.v.multiplyScalar(1 - it.drag * dt);
       it.p.addScaledVector(it.v, dt);
       it.rot.x += it.spin * dt; it.rot.z += it.spin * 0.7 * dt;
       const inside = t.inside(it.p.x, it.p.z);
       const ground = inside ? t.heightAt(it.p.x, it.p.z) : 0;
-      if (it.p.y - it.size * 0.5 <= ground || it.age > 3) {
+      if (it.p.y - it.size * 0.5 <= ground || it.age > it.life) {
         const cx = t.clampX(it.p.x), cz = t.clampZ(it.p.z);
         this._land(it, cx, cz);
         continue;

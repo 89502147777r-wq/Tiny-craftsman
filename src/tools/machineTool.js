@@ -1113,9 +1113,13 @@ export class MachineTool {
     }
     // (what it does not hold turned as it is runs out over its lower lip — a little tipped: the heap's top; opened:
     // all of it — into the body of the truck under it, else onto the ground)
+    // (dug soil is a little sticky: it starts to run only when there is a few per cent more than the bucket holds turned
+    // so; once running, it runs down to what it holds)
     const holdNow = cap * E.holdShare();
-    if (g.load > holdNow + 1e-9) {
-      const m = E.lipWorld(new THREE.Vector3()), T = this.truck, part = Math.min(1, ((g.load - holdNow) / g.load) * Math.min(1, dt * 6) + (holdNow < cap * 0.02 ? dt * 1.5 : 0));
+    if (g.load <= holdNow + 1e-9) { this._excRun = false; this._lipPrev = null; }
+    if (g.load > holdNow + (this._excRun ? 1e-9 : cap * 0.04)) {
+      this._excRun = true;
+      const m = E.lipWorld(new THREE.Vector3()), T = this.truck, part = g.load - holdNow < cap * 0.006 ? (g.load - holdNow) / g.load : Math.min(1, ((g.load - holdNow) / g.load) * Math.min(1, dt * 6) + (holdNow < cap * 0.02 ? dt * 1.5 : 0));   // (the last of it at once — no endless trickle)
       let into = false;
       if (T?.loaded && T.root.visible) { const q = T.root.worldToLocal(m.clone()), b = T.bodyBox; into = q.x > b.min.x && q.x < b.max.x && q.z > b.min.z && q.z < b.max.z && m.y > T.y + b.min.y; }
       const take = [0, 0, 0, 0, 0]; for (let k = 0; k < 5; k++) { take[k] = g.carry[k] * (g.load * part < 1e-9 ? 1 : part); g.carry[k] -= take[k]; }
@@ -1127,11 +1131,24 @@ export class MachineTool {
         T.pourLine(m, new THREE.Vector3(Math.sin(E.yaw + E.swing), 0, Math.cos(E.yaw + E.swing)), E.bucketW / 2, inT / TRUCK_LOAD);
         const k = vol > 0 ? 1 - inT / vol : 0; if (k > 1e-6) { const sp = this._overSide(m); for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(sp.x, sp.z, take[j] * k * t.cellArea, R(0.4), 0, j); }
       } else {
-        // (onto the ground in a strip under the lip, all its width: a ridge at the soil's own slope, not a mound at a point)
-        for (let q = 0; q < 5; q++) { const lp = E.lipWorld(new THREE.Vector3(), -1 + q * 0.5); if (t.inside(lp.x, lp.z)) for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(lp.x, lp.z, take[j] * t.cellArea / 5, R(0.22), 0, j); }
+        // (onto the ground: it falls off all the lip's width as clods and crumbs, each with its share — the ridge under it
+        // grows where they land, not before they get there)
+        // (it leaves the teeth along the bottom, 0,5–1,2 m/s, with the bucket's own way — the ridge a little past the
+        // plumb of the lip; dug soil comes as clods of all sizes: many small, some fist-big, a few 200–300 mm; sand fine)
+        const P = app.particles, N = Math.max(1, Math.min(28, Math.round(v / Math.max(1e-12, cap) * 240))), crumbs = v > cap * 0.002;
+        const lp0 = E.lipWorld(new THREE.Vector3()), lv = this._lipPrev ? lp0.clone().sub(this._lipPrev).divideScalar(Math.max(dt, 1e-3)) : new THREE.Vector3(); this._lipPrev = lp0;
+        if (lv.length() > R(3)) lv.setLength(R(3));
+        const dir = E.spillDir(new THREE.Vector3()), sand = take[1] > v * 0.5, sz = [], ms = [];
+        for (let q = 0; q < N; q++) { const u = Math.random(); sz.push(sand ? R(0.01 + Math.random() * 0.02) : u < 0.7 ? R(0.03 + Math.random() * 0.03) : u < 0.95 ? R(0.08 + Math.random() * 0.07) : R(0.2 + Math.random() * 0.1));
+          let m = 0, w = Math.random() * v; for (; m < 4 && w > take[m]; m++) w -= take[m]; ms.push(m); }
+        const s3 = sz.reduce((a, b) => a + b ** 3, 0) || 1;
+        for (let q = 0; q < N; q++) { const lp = E.lipWorld(new THREE.Vector3(), Math.random() * 2 - 1), m = ms[q], share = v * sz[q] ** 3 / s3 * t.cellArea;
+          if (!P || !crumbs || !t.inside(lp.x, lp.z)) { if (t.inside(lp.x, lp.z)) t.deposit(lp.x, lp.z, share, R(0.22), 0, m); continue; }
+          const vel = dir.clone().multiplyScalar(R(0.5 + Math.random() * 0.7)).add(lv).add(new THREE.Vector3((Math.random() - 0.5) * R(0.2), 0, (Math.random() - 0.5) * R(0.2)));
+          P.emit(lp, vel, share, sz[q] / 1.0, m === 1 ? 0 : 0.06, 0, m, true); }
       }
-      // (the curtain: crumbs 20–60 mm all along the lip, falling)
-      for (let j = 0; j < 14; j++) { const lp = E.lipWorld(new THREE.Vector3(), Math.random() * 2 - 1); app.particles?.emit(lp, new THREE.Vector3((Math.random() - 0.5) * R(0.15), -R(0.4 + Math.random() * 0.4), (Math.random() - 0.5) * R(0.15)), 0, R(0.02 + Math.random() * 0.04), 0, 0, 0); }
+      // (into the truck: crumbs falling into its body, only for the look)
+      if (into) for (let j = 0; j < 10; j++) { const lp = E.lipWorld(new THREE.Vector3(), Math.random() * 2 - 1); app.particles?.emit(lp, new THREE.Vector3((Math.random() - 0.5) * R(0.15), -R(0.3 + Math.random() * 0.4), (Math.random() - 0.5) * R(0.15)), 0, R(0.02 + Math.random() * 0.04), 0, 0, 0, true); }
       if (g.load < cap * 0.01) g.carry.fill(0);
     }
     E.load = Math.min(1, g.load / cap);

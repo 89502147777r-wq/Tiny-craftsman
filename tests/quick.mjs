@@ -1039,8 +1039,16 @@ console.log('—', sec());
     go(40, [0, 1], [0, 0]); go(40, [0, 1], [-1, 0]); go(30, [0, 0], [-1, 0]);
     o.full = +E.load.toFixed(2);
     { const inB = mt.digG.load * t.cellArea, out = dug0 - soilV(); o.inBucket = +(inB / Math.max(1e-12, out)).toFixed(2); }
-    go(60, [0, 0], [0, -1]); go(70, [0, 0], [1, 0]); frames(30);
+    // (lifted curled in, it keeps what it holds — nothing runs out till it is tipped; the soil in it crowned and lumpy,
+    // not a level plane)
+    { const l0 = E.load; go(60, [0, 0], [0, -1]); o.carried = +(E.load / Math.max(1e-9, l0)).toFixed(2);
+      E._fill(E.load); const gp = E.soil.geometry.attributes.position, up = E._upLocal(), hs = []; for (let i = 0; i < gp.count; i++) hs.push(gp.getY(i) * up[0] + gp.getZ(i) * up[1]); hs.sort((a, b) => a - b);
+      const top = hs.slice(Math.floor(hs.length * 0.7)); o.crown = +((top[top.length - 1] - top[0]) / E.chord).toFixed(2); }
+    go(70, [0, 0], [1, 0]); frames(30);
     o.after = +E.load.toFixed(2);
+    // (a crumb off the lip falls as things fall: 2 m in ~0,65 s — not in a frame or two, seen hanging still)
+    { const P = tc.particles; P.emit(new V(0, t.heightAt(0, 0) + 2 * M, 0), new V(0, 0, 0), 0, 0.003, 0, 0, 0, true); const it = P.items[P.items.length - 1];
+      for (let i = 0; i < 12; i++) tc.simulate(1 / 30); o.fallAt04 = P.items.includes(it); for (let i = 0; i < 24; i++) tc.simulate(1 / 30); o.fallAt12 = !P.items.includes(it); }
     { let deepest = 0; mt.joystick('r', 0, 1); for (let i = 0; i < 60; i++) { tc.simulate(1 / 30); for (const q of E.hardPoints()) if (t.inside(q.x, q.z)) deepest = Math.max(deepest, t.heightAt(q.x, q.z) - q.y); }
       o.heave = +E.heave.toFixed(3); mt.joystick('r', 0, 0); frames(5); o.deepest = +(deepest / M * 1000).toFixed(0); }
 
@@ -1056,7 +1064,7 @@ console.log('—', sec());
   });
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
-  check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), opened it is empty; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove, JSON.stringify(o));
+  check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), lifted it keeps it (crowned, lumpy), opened it is empty, the crumbs fall at g; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove && o.carried >= 0.95 && o.crown > 0.15 && o.fallAt04 && o.fallAt12, JSON.stringify(o));
   check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty', o.signs && o.tip, JSON.stringify(o));
   check('machines: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
