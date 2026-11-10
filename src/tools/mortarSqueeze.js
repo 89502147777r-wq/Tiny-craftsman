@@ -13,7 +13,9 @@ export const FAT = 1.6;   // the bed as spread, × the joint
 
 export class Squeeze {
   // target: { p, q, s } of the brick in place; bedT: the joint; bedBot: the bottom of the bed
-  constructor(app, unitId, target, bedT, bedBot) {
+  // (ahead: [dx, dz] — the way a course goes while its spread bed still lies there: that end is not open, its mortar
+  // goes into the bed of the next brick; long: only the long faces are cut off — one stroke each, as in a course)
+  constructor(app, unitId, target, bedT, bedBot, ahead = null, long = false) {
     this.app = app;
     const yaw = 2 * Math.atan2(target.q.y, target.q.w), ux = Math.cos(yaw), uz = -Math.sin(yaw);
     this.c = { x: target.p.x, z: target.p.z, ux, uz, hl: target.s.x / 2, hw: target.s.z / 2 };
@@ -34,10 +36,11 @@ export class Squeeze {
       const px = C.x + f.n[0] * (f.half + out), pz = C.z + f.n[1] * (f.half + out);
       // (a neighbour: a unit standing beside it in its course — not the one under it)
       f.open = !others.some((b) => b.bot < this.bot + MM(20) && b.top > this.bot + MM(20) && Math.abs((px - b.x) * b.ux + (pz - b.z) * b.uz) <= b.hl + MM(2) && Math.abs(-(px - b.x) * b.uz + (pz - b.z) * b.ux) <= b.hw + MM(2));
+      if (ahead && f.n[0] * ahead[0] + f.n[1] * ahead[1] > 0.7) f.open = false;
       f.share = f.len / per;
       f.cut = 0;   // how far along the trowel has cut it off (0 … 1)
     }
-    this.sides = sides;
+    this.sides = sides; this.long = long;
     this.squeezed = 0;   // 0 … 1: how much of the extra thickness is pressed out
     this.lump = 0;       // the mortar on the trowel (model m³)
   }
@@ -106,5 +109,5 @@ export class Squeeze {
   }
 
   // the open sides, long ones first (the order the trowel goes)
-  get order() { return [0, 1, 2, 3].filter((k) => this.sides[k].open && this.area(this.sides[k]) > 0); }
+  get order() { return (this.long ? [0, 1] : [0, 1, 2, 3]).filter((k) => this.sides[k].open && this.area(this.sides[k]) > 0); }
 }

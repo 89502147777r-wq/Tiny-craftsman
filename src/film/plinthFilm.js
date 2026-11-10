@@ -65,6 +65,8 @@ export function* plinthFilm(d, app) {
   // ---- 2 · the wall to the next corner, sped up: the same work brick after brick — the first three whole (mallet,
   // mortar, trowel) three times as fast, the rest as a course is laid (the bed spread for ten bricks, each set down, one tap, its mortar cut off), ten times ----
   const wallA = C[0][0].filter((r) => r !== r0); let nA = 0;
+  // (the row's scene starts on the brick just laid, not on an empty place, and goes with the laying: a little ahead of the last brick)
+  const front = () => { const r = wallA[Math.max(0, Math.min(wallA.length - 1, nA))]; return new V(Math.max(P.x, r.p[0] - MM(250)), base + MM(40), MM(Z - 125)); };
   let bed = null, bedFrom = 0;
   // (to: how far along the wall this step goes; whole: how many bricks get the whole show; v: the speeds — whole, spreading, laying)
   const row = (to, whole, v) => () => {
@@ -83,7 +85,7 @@ export function* plinthFilm(d, app) {
   yield* d.grow([
     { n: 1, until: one, hold: 0.6, push: 0.05 },
     // (a little further: the next stretch of the wall — two more bricks whole, then the bed spread for ten and they on it)
-    { view: look(new V(MM(-X - 900), base + MM(1050), MM(Z + 1900)), new V(MM(-X + 900), base + MM(40), MM(Z - 125))), n: 12, until: row(12, 2, [4, 2.5, 5]), hold: 0.3 },
+    { view: look(new V(MM(-X - 1500), base + MM(1100), MM(Z + 2000)), new V(MM(-X + 300), base + MM(40), MM(Z - 125))), follow: front, lag: 2.5, n: 12, until: row(12, 2, [4, 2.5, 5]), hold: 0.3 },
     // (further: the wall to the next corner — the same, faster)
     { view: look(new V(MM(-X - 3100), base + MM(3000), MM(Z + 3700)), new V(MM(-X + 2800), base, MM(Z - 125))), n: wallA.length - 12, until: row(wallA.length, 0, [4, 7, 16]), hold: 0.35 },
     { view: wide, n: C[0][1].length, act: pop(C[0][1]), lead: 0.45, hold: 0.45 },

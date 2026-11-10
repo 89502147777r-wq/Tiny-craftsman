@@ -512,7 +512,7 @@ export class WallTool {
     const p = new THREE.Vector3().fromArray(rec.p), q = new THREE.Quaternion().fromArray(rec.q), s = new THREE.Vector3().fromArray(rec.s), b = bedT * S;
     const u = { type: 'unit', free: true, kind: rec.kind, ...(rec.face ? { face: rec.face } : {}), row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +b.toFixed(6), s: rec.s };
     if (piece) app.wallView.takeSpread(piece);   // (its piece of the spread bed: the brick's own pressed bed now)
-    app.physJob = new LayJob(app, null, u, { p, q, s, bedY: p.y - s.y / 2 - b / 2, bedT: b }, null, [], null, null, fast, !!piece);
+    app.physJob = new LayJob(app, null, u, { p, q, s, bedY: p.y - s.y / 2 - b / 2, bedT: b }, null, [], null, null, fast, piece || false);
     return true;
   }
   // the bed spread with the trowel for the next bricks of a course (recs as layUnit's) → its pieces, one a brick
@@ -545,7 +545,7 @@ export class WallTool {
     if (!app.budget.has(r.kind)) { this._rowStop(); app.budget.noStock(r.kind); return; }
     const u = { type: 'unit', free: true, kind: r.kind, ...this._face(r.kind), row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +r.bedT.toFixed(6), s: r.s.toArray().map((x) => +x.toFixed(6)), ...(r.half ? { cut: true } : {}) };
     const piece = D.kind === 'brick' ? J.bed?.[J.n - J.bedFrom] : null; if (piece) app.wallView.takeSpread(piece);
-    app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, [], null, null, true, !!piece);   // (a course: quick — one tap; a brick on its spread bed: the mortar pressed out, cut off)
+    app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, [], null, null, true, piece || false);   // (a course: quick — one tap; a brick on its spread bed: the mortar pressed out, cut off)
     // the rest of the plan follows where this one really went (and at its height)
     const dx = r.p.x - q.x, dz = r.p.z - q.z, bot = r.p.y - r.s.y / 2;
     for (let k = J.n + 1; k < J.plan.length; k++) { J.plan[k].x += dx; J.plan[k].z += dz; if (J.plan[k].bot == null) J.plan[k].bot = bot; }
@@ -1544,7 +1544,8 @@ class SpreadJob {
     for (const pl of places) {
       const [d, len, wid] = ax(pl); d.setY(0).normalize(); if (way.lengthSq() > 1e-12 && d.dot(way) < 0) d.negate();
       const at = pl.p.clone().addScaledVector(d, -len / 2 - MM(5)); at.y = pl.bedBot;
-      this.items.push(v.addSpread(at, d, len + MM(10), wid, pl.bedT * FAT));
+      const it = v.addSpread(at, d, len + MM(10), wid, pl.bedT * FAT); it.dir = d.clone(); it.more = this.items.length < places.length - 1;
+      this.items.push(it);
       this.spots.push({ at, d, len, wid, top: pl.bedBot + pl.bedT * FAT });
     }
     this.pos = this.spots[0].at.clone();
@@ -1608,11 +1609,15 @@ class LayJob {
     const brick = !!k?.nb && !unit.lintel && bedT > 0 && (!fast || onBed);   // (in a course: only onto a bed spread for it)
     const bedH = brick ? bedT * FAT : bedT;
     this.ep.staticBox(new THREE.Vector3(p.x, bedBot + bedH / 2, p.z), target.q, s.x / 2, bedH / 2, s.z / 2);
-    this.sq = brick ? new Squeeze(app, null, target, bedT, bedBot) : null;
+    const way = onBed && onBed.dir ? onBed.dir : null;
+    this.sq = brick ? new Squeeze(app, null, target, bedT, bedBot, way && onBed.more ? [way.x, way.z] : null, !!fast) : null;
     // the hand puts it down a few mm off and slightly askew, 2 cm above
     const j = (m) => (Math.random() - 0.5) * m;
     const q0 = target.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(j(0.03), j(0.05), j(0.03))));
     const p0 = p.clone().add(new THREE.Vector3(j(MM(fast ? 4 : 8)), MM(fast ? 8 : 20), j(MM(fast ? 4 : 8))));
+    // (in a course on its spread bed: set down 70 mm ahead and shoved back against the brick before it — its end takes a
+    // roll of the bed's mortar along: that is what fills the upright joint; it is not let down from above)
+    if (way) p0.addScaledVector(way, MM(70));
     this.body = this.ep.box(s.x / 2, s.y / 2, s.z / 2, p0, q0, { density: unit.lintel ? 2400 : unit.kind === 'block' || unit.kind === 'ublock' || unit.kind === 'prop' ? 500 : unit.kind === 'cinder' ? 1300 : 1800, friction: 0.9 });
     this.t = 0;
     this.phase = 'drop';
