@@ -488,6 +488,7 @@ export class WallTool {
   }
   _rowStop(msg) {
     const J = this.rowJob;
+    this.app.wallView.clearSpread();   // (the bed spread ahead and not laid on: scraped back)
     this.rowJob = null; this.rowDrag = null;
     this._rowShow();
     this.app.ui.hideMeasure();
@@ -506,12 +507,20 @@ export class WallTool {
   // a unit laid by itself, as the finger lays it — the same job: set down on the mortar, the mallet, a brick's mortar
   // pressed out and cut off with the trowel (fast: as in a course — set down, one tap). For the films (the owner: a
   // film shows the game's own work, never a thing appearing in its place). rec: { kind, p, q, s, face? }; bedT mm
-  layUnit(rec, fast = false, bedT = 12) {
+  layUnit(rec, fast = false, bedT = 12, piece = null) {
     const app = this.app; if (app.physJob || app.physLoading || !physicsReady()) return false;
     const p = new THREE.Vector3().fromArray(rec.p), q = new THREE.Quaternion().fromArray(rec.q), s = new THREE.Vector3().fromArray(rec.s), b = bedT * S;
     const u = { type: 'unit', free: true, kind: rec.kind, ...(rec.face ? { face: rec.face } : {}), row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +b.toFixed(6), s: rec.s };
-    app.physJob = new LayJob(app, null, u, { p, q, s, bedY: p.y - s.y / 2 - b / 2, bedT: b }, null, [], null, null, fast);
+    if (piece) app.wallView.takeSpread(piece);   // (its piece of the spread bed: the brick's own pressed bed now)
+    app.physJob = new LayJob(app, null, u, { p, q, s, bedY: p.y - s.y / 2 - b / 2, bedT: b }, null, [], null, null, fast, piece || false);
     return true;
+  }
+  // the bed spread with the trowel for the next bricks of a course (recs as layUnit's) → its pieces, one a brick
+  // (given to layUnit), or null while something else is going on
+  spreadBed(recs, bedT = 12) {
+    const app = this.app; if (app.physJob || app.physLoading || !recs.length) return null;
+    const b = bedT * S, J = new SpreadJob(app, recs.map((r) => { const p = new THREE.Vector3().fromArray(r.p), s = new THREE.Vector3().fromArray(r.s); return { p, q: new THREE.Quaternion().fromArray(r.q), s, bedBot: p.y - s.y / 2 - b, bedT: b }; }));
+    app.physJob = J; return J.items;
   }
   _rowStep() {
     const app = this.app, J = this.rowJob;
@@ -520,6 +529,14 @@ export class WallTool {
     const q = J.plan[J.n];
     if (!q) { this._rowStop('Ряд уложен по линии'); return; }
     const D = dims(J.kind, J.half), y = q.bot ?? (J.pts[0].y);
+    // (bricks: the bed spread with the trowel first — for the next ten or so, not the whole course)
+    if (D.kind === 'brick' && !(J.bed && J.n < J.bedTo)) {
+      const next = J.plan.slice(J.n, J.n + 10), Y = new THREE.Vector3(0, 1, 0);
+      const pl = next.map((e) => { const bot = (e.bot ?? J.pts[0].y); return { p: new THREE.Vector3(e.x, bot + D.B + D.H / 2, e.z), q: new THREE.Quaternion().setFromAxisAngle(Y, e.yaw || 0), s: new THREE.Vector3(D.L, D.H, D.W), bedBot: bot, bedT: D.B }; });
+      app.wallView.clearSpread();
+      const SJ = new SpreadJob(app, pl); app.physJob = SJ; J.bed = SJ.items; J.bedFrom = J.n; J.bedTo = J.n + next.length;
+      return;
+    }
     const r = placeUnit(app, J.kind, new THREE.Vector3(q.x, y, q.z), null, null, false, { yaw: q.yaw, half: J.half });
     if (!r || !r.ok || Math.hypot(r.p.x - q.x, r.p.z - q.z) > D.L * 0.3 || (q.bot != null && Math.abs(r.p.y - D.H / 2 - q.bot) > D.H * 0.4)) {
       this._rowStop(J.n ? 'Дальше по линии ряд не встаёт (мешает кладка, проём или нет опоры)' : 'Здесь ряд не встаёт: ведите линию от кирпича-ориентира по верху кладки или по плите');
@@ -527,7 +544,8 @@ export class WallTool {
     }
     if (!app.budget.has(r.kind)) { this._rowStop(); app.budget.noStock(r.kind); return; }
     const u = { type: 'unit', free: true, kind: r.kind, ...this._face(r.kind), row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +r.bedT.toFixed(6), s: r.s.toArray().map((x) => +x.toFixed(6)), ...(r.half ? { cut: true } : {}) };
-    app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, [], null, null, true);   // (a course: quick, no trimming)
+    const piece = D.kind === 'brick' ? J.bed?.[J.n - J.bedFrom] : null; if (piece) app.wallView.takeSpread(piece);
+    app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, [], null, null, true, piece || false);   // (a course: quick — one tap; a brick on its spread bed: the mortar pressed out, cut off)
     // the rest of the plan follows where this one really went (and at its height)
     const dx = r.p.x - q.x, dz = r.p.z - q.z, bot = r.p.y - r.s.y / 2;
     for (let k = J.n + 1; k < J.plan.length; k++) { J.plan[k].x += dx; J.plan[k].z += dz; if (J.plan[k].bot == null) J.plan[k].bot = bot; }
@@ -1510,13 +1528,61 @@ export class WallTool {
   }
 }
 
+// The bed spread before a course is laid (the owner: «сначала растирается кельмой раствор, затем ложится каждый
+// кирпич» — about ten bricks at a time, not the whole wall): the trowel brings mortar and draws it out along the places
+// of the next bricks — a rough thick bed with a furrow down its middle; each brick then goes onto its piece of it
+// (the piece gives way to the brick's own pressed bed, mortarSqueeze.js). Only seen: no journal entry.
+// places: [{ p (the brick's middle), q, s, bedBot, bedT }] → this.items (a piece each: wallView.takeSpread)
+class SpreadJob {
+  constructor(app, places) {
+    this.app = app; this.done = false; this.t = 0; this.T = 0.26; this.LOAD = 3;   // (s a brick's length; a trowelful: three)
+    const v = app.wallView, a = places[0], far = places.reduce((m, q) => (q.p.distanceToSquared(a.p) > m.p.distanceToSquared(a.p) ? q : m), a);
+    // (the way the course goes: toward its far end, along the bricks' own axis — the long one)
+    const ax = (pl) => { const x = new THREE.Vector3(1, 0, 0).applyQuaternion(pl.q), z = new THREE.Vector3(0, 0, 1).applyQuaternion(pl.q); return pl.s.x >= pl.s.z ? [x, pl.s.x, pl.s.z] : [z, pl.s.z, pl.s.x]; };
+    const way = far.p.clone().sub(a.p).setY(0);
+    this.items = []; this.spots = [];
+    for (const pl of places) {
+      const [d, len, wid] = ax(pl); d.setY(0).normalize(); if (way.lengthSq() > 1e-12 && d.dot(way) < 0) d.negate();
+      const at = pl.p.clone().addScaledVector(d, -len / 2 - MM(5)); at.y = pl.bedBot;
+      const it = v.addSpread(at, d, len + MM(10), wid, pl.bedT * FAT); it.dir = d.clone(); it.more = this.items.length < places.length - 1;
+      this.items.push(it);
+      this.spots.push({ at, d, len, wid, top: pl.bedBot + pl.bedT * FAT });
+    }
+    this.pos = this.spots[0].at.clone();
+    app.sfx?.play?.('concrete_splat', { vol: 0.3, at: this.pos });
+  }
+  get busy() { return !this.done; }
+  update(dt) {
+    if (this.done) return;
+    this.t += dt;
+    const n = this.items.length, k = Math.min(n - 1, Math.floor(this.t / this.T)), u = Math.min(1, this.t / this.T - k), g = this.app.concreteGear, sp = this.spots[k];
+    for (let i = 0; i < n; i++) this.items[i].grow(i < k ? 1 : i === k ? u : 0);
+    // (the trowel: its blade across the bed, drawn along it with a little side-to-side — the mortar runs off it; a new
+    // trowelful every third brick)
+    const across = new THREE.Vector3(-sp.d.z, 0, sp.d.x), goal = sp.at.clone().addScaledVector(sp.d, u * sp.len).addScaledVector(across, Math.sin(this.t * 16) * sp.wid * 0.12 - sp.wid * 0.2); goal.y = sp.top + MM(4);
+    this.pos.lerp(goal, Math.min(1, dt * 22));
+    const left = 1 - ((k % this.LOAD) + u) / this.LOAD;
+    g.ktrowelTilt = 0.22 + 0.08 * Math.sin(this.t * 16); g.ktrowelLump = MM(26) * Math.cbrt(Math.max(0, left));
+    g.set('ktrowel', this.pos, Math.atan2(across.x, across.z), this.t <= dt * 1.5);
+    if (this._k !== k) { this._k = k; this.app.sfx?.play?.(k % this.LOAD === 0 ? 'concrete_splat' : 'trowel_tap', { vol: 0.3, gap: 0.12, at: this.pos }); }
+    if (this.t >= n * this.T) this.finish();
+  }
+  finish() {
+    if (this.done) return;
+    for (const it of this.items) it.grow(1);
+    this.done = true; this.app.concreteGear.set(null);
+    if (this.app.physJob === this) this.app.physJob = null;
+  }
+  abort() { if (this.done) return false; this.finish(); this.app.wallView.clearSpread(); return true; }
+}
+
 // One unit: lowered by hand onto the mortar a little off, it settles (physics: the
 // units around, the bed, the foundation), then three taps of the rubber mallet bring it
 // to the cord and the level; a brick's pressed-out mortar is cut off with the trowel. One
 // journal entry. In a course laid along a line (`fast`) it goes quicker: set down, one tap,
 // the joint left clean (the whole show is for the unit laid by hand).
 class LayJob {
-  constructor(app, w, unit, target, st, beds = [], newWall = null, cap = null, fast = false) {
+  constructor(app, w, unit, target, st, beds = [], newWall = null, cap = null, fast = false, onBed = false) {
     this.app = app;
     this.fast = fast;
     this.unit = unit;
@@ -1540,14 +1606,18 @@ class LayJob {
     const bedBot = (w ? rowY(w, unit.row) : target.bedY + bedT / 2) - bedT;
     // a brick goes onto mortar spread thicker than the joint: it is pressed down into it and
     // squeezes the rest out of the open sides (mortarSqueeze.js), then the trowel cuts it off
-    const brick = !!k?.nb && !unit.lintel && bedT > 0 && !fast;
+    const brick = !!k?.nb && !unit.lintel && bedT > 0 && (!fast || onBed);   // (in a course: only onto a bed spread for it)
     const bedH = brick ? bedT * FAT : bedT;
     this.ep.staticBox(new THREE.Vector3(p.x, bedBot + bedH / 2, p.z), target.q, s.x / 2, bedH / 2, s.z / 2);
-    this.sq = brick ? new Squeeze(app, null, target, bedT, bedBot) : null;
+    const way = onBed && onBed.dir ? onBed.dir : null;
+    this.sq = brick ? new Squeeze(app, null, target, bedT, bedBot, way && onBed.more ? [way.x, way.z] : null, !!fast) : null;
     // the hand puts it down a few mm off and slightly askew, 2 cm above
     const j = (m) => (Math.random() - 0.5) * m;
     const q0 = target.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(j(0.03), j(0.05), j(0.03))));
     const p0 = p.clone().add(new THREE.Vector3(j(MM(fast ? 4 : 8)), MM(fast ? 8 : 20), j(MM(fast ? 4 : 8))));
+    // (in a course on its spread bed: set down 70 mm ahead and shoved back against the brick before it — its end takes a
+    // roll of the bed's mortar along: that is what fills the upright joint; it is not let down from above)
+    if (way) p0.addScaledVector(way, MM(70));
     this.body = this.ep.box(s.x / 2, s.y / 2, s.z / 2, p0, q0, { density: unit.lintel ? 2400 : unit.kind === 'block' || unit.kind === 'ublock' || unit.kind === 'prop' ? 500 : unit.kind === 'cinder' ? 1300 : 1800, friction: 0.9 });
     this.t = 0;
     this.phase = 'drop';
@@ -1593,7 +1663,7 @@ class LayJob {
     }
     if (this.phase === 'trim') {
       // the trowel: set against the face at the joint, slanted, drawn along it in 0,18 s
-      const sq = this.sq, order = sq.order, g = this.app.concreteGear, T = 0.18, lead = 0.05;   // (one quick stroke a side)
+      const sq = this.sq, order = sq.order, g = this.app.concreteGear, T = this.fast ? 0.1 : 0.18, lead = this.fast ? 0.03 : 0.05;   // (one quick stroke a side)
       this.trimT += dt;
       const k = order[this.trimK];
       const t = Math.min(1, Math.max(0, (this.trimT - lead) / T));
