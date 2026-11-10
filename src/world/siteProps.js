@@ -10,7 +10,7 @@ const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 // each a model (Sketchfab, CC BY — CREDITS.md; cut out, stood on the ground at its middle, to its real size, light for a
 // phone — scratchpad prep.mjs); foot — its footprint (mm) for standing it on the ground
 export const PROPS = {
-  cabin: { name: 'Бытовка', model: 'office', r: 3200, foot: [6060, 2440], lift: 200, piers: [[-2830, -1020], [0, -1020], [2830, -1020], [-2830, 1020], [0, 1020], [2100, 1020]] },   // (on six blocks, 200 clear; the front one at the door end under the body — the door is in a recess)
+  cabin: { name: 'Бытовка', model: 'office', r: 3200, foot: [6000, 2800] },   // (a metal site cabin on its own timber skids)
   toilet: { name: 'Биотуалет', model: 'toilet', r: 700, foot: [1110, 1120] },
   mixer: { name: 'Бетономешалка', model: 'mixer', r: 900, foot: [810, 1220] },
   pallet: { name: 'Поддон с блоками', model: 'cinderpallet', r: 800, foot: [1200, 1090] },

@@ -1305,6 +1305,8 @@ console.log('—', sec());
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, o = {};
+    // (two choices of one place at once — the start, a tap: one load, the sky kept, not dropped by the other)
+    tc.settings.backdrop = 'lake'; await Promise.all([tc.backdrop.set('lake'), tc.backdrop.set('lake')]); o.oneLoad = !!tc.backdrop.panos.lake?.sky?.parent && tc.backdrop.panos.lake.sky.visible;
     tc.settings.backdrop = 'meadow'; await tc.backdrop.set('meadow'); tc.simulate(0.1);
     const P = tc.backdrop.panos.meadow, U = P.sky.material.uniforms, tu = tc.terrainMat.userData.uniforms;
     o.laid = /vGr = 1\.0/.test(P.sky.material.vertexShader) && !!U.tSoil.value && U.uLow.value === 0;
@@ -1329,16 +1331,13 @@ console.log('—', sec());
     // (each thing its real height — a part lost in a comment, a roof gone, shows here)
     { const SP = await import('/src/world/siteProps.js'), THREE = await import('three'); o.heights = {};
       for (const k of Object.keys(SP.PROPS)) { const g = await SP.propMesh(k).userData.ready, b = new THREE.Box3().setFromObject(g.children.at(-1)); /* (the model, not its blocks) */ o.heights[k] = Math.round((b.max.y - b.min.y) * 1000); } }   // (the models in metres)
-    // (the office on its blocks, each down to the ground under it, 200 clear under its floor)
-    { const cab = PR().find((r) => r.kind === 'cabin'), m = tc.siteProps.meshes.get(cab.id); await m.userData.ready; tc.siteProps.place(m, cab.x, cab.z, cab.yaw); m.updateMatrixWorld(true);
-      const THREE = await import('three'), T = tc.terrain, P2 = new THREE.Vector3(); o.piers = m.userData.piers.map((b) => { b.getWorldPosition(P2); const bot = P2.y - b.scale.y / 2 / 10.4651; return Math.round((bot - T.heightAt(P2.x, P2.z)) * 10465.1); }); }
     tc.settings.backdrop = 'workshop'; await tc.backdrop.set('workshop'); tc.simulate(0.1);
     o.hidden = tu.uSite.value === 0;
     return o;
   });
-  check('360° places: the photo\'s own ground laid round the plot (no disc, no fence, no trees), the site\'s soil rim; the trodden ground only at the site', o.laid && o.noDisc && o.noSurround && o.site === 0 && o.siteTrodden && o.hidden, JSON.stringify(o));
-  check('site things: put round the site once (10), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 10 && o.meshes === 10 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.binTook && o.added === 2 && o.restood && o.piers?.length === 6 && o.piers.every((d) => Math.abs(d) <= 10), JSON.stringify(o));
-  check('site things: each its model, its real height (toilet 2,3 m, office 2,59 — taller than it, mixer 1,35, barrow 0,74, cones 0,75; none missing)', Math.abs(o.heights.toilet - 2300) < 30 && Math.abs(o.heights.cabin - 2590) < 40 && o.heights.cabin / o.heights.toilet >= 1.08 && Math.abs(o.heights.mixer - 1350) < 30 && o.heights.pallet > 500 && o.heights.bricks > 500 && o.heights.bags > 500 && Math.abs(o.heights.barrow - 740) < 40 && Math.abs(o.heights.cones - 750) < 30 && Object.values(o.heights).every((h) => h > 200), JSON.stringify(o.heights));
+  check('360° places: the photo\'s own ground laid round the plot (no disc, no fence, no trees), the site\'s soil rim; the trodden ground only at the site', o.oneLoad && o.laid && o.noDisc && o.noSurround && o.site === 0 && o.siteTrodden && o.hidden, JSON.stringify(o));
+  check('site things: put round the site once (10), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 10 && o.meshes === 10 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.binTook && o.added === 2 && o.restood, JSON.stringify(o));
+  check('site things: each its model, its real height (toilet 2,3 m, cabin 2,55 — taller than it, mixer 1,35, barrow 0,74, cones 0,75; none missing)', Math.abs(o.heights.toilet - 2300) < 30 && Math.abs(o.heights.cabin - 2550) < 40 && o.heights.cabin / o.heights.toilet >= 1.08 && Math.abs(o.heights.mixer - 1350) < 30 && o.heights.pallet > 500 && o.heights.bricks > 500 && o.heights.bags > 500 && Math.abs(o.heights.barrow - 740) < 40 && Math.abs(o.heights.cones - 750) < 30 && Object.values(o.heights).every((h) => h > 200), JSON.stringify(o.heights));
   check('360° places: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

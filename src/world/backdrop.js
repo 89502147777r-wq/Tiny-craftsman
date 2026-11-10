@@ -223,8 +223,14 @@ export class Backdrop {
 
   // a panorama: the light from it (its HDRI), where its sun is, the haze colour along its
   // horizon; the photo on its sphere round the plot
-  async _loadPano(key) {
-    if (this.panos[key]) return this.panos[key];
+  // (one load of a place at a time: two set()s at once — the start, a choice — loaded it twice, and the one dropped
+  // the other's: no sky, black)
+  _loadPano(key) {
+    if (this.panos[key]) return Promise.resolve(this.panos[key]);
+    this._loading = this._loading || {};
+    return (this._loading[key] ||= this._loadPano1(key).finally(() => { delete this._loading[key]; }));
+  }
+  async _loadPano1(key) {
     const cfg = PANOS[key];
     const [t, photo] = await Promise.all([
       new Promise((res, rej) => new HDRLoader().load(`assets/hdri/${cfg.id}_1k.hdr`, res, undefined, rej)),
