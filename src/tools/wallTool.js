@@ -503,6 +503,16 @@ export class WallTool {
     this._rowShow(); app.ui.hideMeasure();
     app.ui.toast(`Кладу ${d.up ? 'следующий ряд сверху' : 'ряд'}: ${plan.length} шт. — коснитесь, чтобы остановить`);
   }
+  // a unit laid by itself, as the finger lays it — the same job: set down on the mortar, the mallet, a brick's mortar
+  // pressed out and cut off with the trowel (fast: as in a course — set down, one tap). For the films (the owner: a
+  // film shows the game's own work, never a thing appearing in its place). rec: { kind, p, q, s, face? }; bedT mm
+  layUnit(rec, fast = false, bedT = 12) {
+    const app = this.app; if (app.physJob || app.physLoading || !physicsReady()) return false;
+    const p = new THREE.Vector3().fromArray(rec.p), q = new THREE.Quaternion().fromArray(rec.q), s = new THREE.Vector3().fromArray(rec.s), b = bedT * S;
+    const u = { type: 'unit', free: true, kind: rec.kind, ...(rec.face ? { face: rec.face } : {}), row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +b.toFixed(6), s: rec.s };
+    app.physJob = new LayJob(app, null, u, { p, q, s, bedY: p.y - s.y / 2 - b / 2, bedT: b }, null, [], null, null, fast);
+    return true;
+  }
   _rowStep() {
     const app = this.app, J = this.rowJob;
     if (app.physJob || app.physLoading || !physicsReady()) return;
