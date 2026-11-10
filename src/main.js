@@ -411,8 +411,9 @@ async function startFilm(name) {
   if (!script) { app.ui.toast('Нет такого ролика: ' + name); return; }
   app.rig.shake = false;
   // (a back garden: a meadow round the plot, not the construction yard's blocks of flats)
-  app.settings.backdrop = 'meadow';
-  try { await app.backdrop.set('meadow'); } catch (e) { console.warn(e); }
+  const place = script.place || 'meadow';   // (the film's own place: rule 3 — worth looking at)
+  app.settings.backdrop = place;
+  try { await app.backdrop.set(place); } catch (e) { console.warn(e); }
   app.sfx.unlock?.();
   app.film = new Director(app, script, app.filmOffline);
 }

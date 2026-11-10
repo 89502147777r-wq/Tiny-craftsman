@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { look } from './director.js';
+import { look, low } from './director.js';
 import { loadPhysics, physicsReady } from '../world/physics.js';
 
 // «A plinth of five courses» — the training film of the owner's first rule of shooting, «нарастание»
@@ -63,19 +63,29 @@ export function* plinthFilm(d, app) {
   let began = false;
   const one = () => { if (!began) { began = W.layUnit(r0); if (began) d.jobs = 1; } return began && !app.busy(); };
   // ---- 2 · the wall to the next corner, sped up: the same work brick after brick — the first three whole (mallet,
-  // mortar, trowel) three times as fast, the rest as a course is laid (set down, one tap), eight times ----
+  // mortar, trowel) three times as fast, the rest as a course is laid (the bed spread for ten bricks, each set down, one tap, its mortar cut off), ten times ----
   const wallA = C[0][0].filter((r) => r !== r0); let nA = 0;
-  const row = () => {
-    if (!app.physJob && nA < wallA.length) { const fast = nA >= 3; d.speed = fast ? 8 : 3; if (W.layUnit(wallA[nA], fast)) { nA++; d.jobs++; } }
-    if (nA >= wallA.length && !app.busy()) { d.speed = 1; return true; }
+  let bed = null, bedFrom = 0;
+  // (to: how far along the wall this step goes; whole: how many bricks get the whole show; v: the speeds — whole, spreading, laying)
+  const row = (to, whole, v) => () => {
+    if (!app.physJob && nA < to) {
+      const fast = nA >= whole; d.speed = fast ? v[2] : v[0];
+      // (as a course is laid: the bed spread with the trowel for the next ten bricks, then each brick onto it)
+      if (fast && (!bed || nA >= bedFrom + bed.length)) { bed = W.spreadBed(wallA.slice(nA, Math.min(to, nA + 10))); bedFrom = nA; if (bed) d.spreads = (d.spreads || 0) + 1; d.speed = v[1]; return false; }
+      if (W.layUnit(wallA[nA], fast, 12, fast ? bed?.[nA - bedFrom] : null)) { nA++; d.jobs++; }
+    }
+    if (nA >= to && !app.busy()) { d.speed = 1; return true; }
     return false;
   };
   // ---- 3 · further: the first course of the second wall at once, of the third, of the fourth ----
   // ---- 4 · another angle: the second course whole, the third, the fourth, the fifth ----
-  const wide = look(new V(MM(-X - 3600), base + MM(4600), MM(Z + 6200)), mid), other = look(new V(MM(X + 4200), base + MM(3600), MM(Z + 6000)), new V(0, base + MM(200), 0));
+  const wide = look(new V(MM(-X - 3600), base + MM(4600), MM(Z + 6200)), mid), other = low(new V(0, base + MM(250), 0), 0.62, MM(9500), MM(1500))   /* (rule 3: nothing hides whole courses coming — low, the horizon and the mountains in frame) */;
   yield* d.grow([
     { n: 1, until: one, hold: 0.6, push: 0.05 },
-    { view: look(new V(MM(-X - 3100), base + MM(3000), MM(Z + 3700)), new V(MM(-X + 2800), base, MM(Z - 125))), n: wallA.length, until: row, hold: 0.35 },
+    // (a little further: the next stretch of the wall — two more bricks whole, then the bed spread for ten and they on it)
+    { view: look(new V(MM(-X - 900), base + MM(1050), MM(Z + 1900)), new V(MM(-X + 900), base + MM(40), MM(Z - 125))), n: 12, until: row(12, 2, [4, 2.5, 5]), hold: 0.3 },
+    // (further: the wall to the next corner — the same, faster)
+    { view: look(new V(MM(-X - 3100), base + MM(3000), MM(Z + 3700)), new V(MM(-X + 2800), base, MM(Z - 125))), n: wallA.length - 12, until: row(wallA.length, 0, [4, 7, 16]), hold: 0.35 },
     { view: wide, n: C[0][1].length, act: pop(C[0][1]), lead: 0.45, hold: 0.45 },
     { n: C[0][2].length, act: pop(C[0][2]), lead: 0, hold: 0.4 },
     { n: C[0][3].length, act: pop(C[0][3]), lead: 0, hold: 0.55 },
@@ -88,10 +98,11 @@ export function* plinthFilm(d, app) {
   // ---- the result, round it (the hook: put first by the recorder) ----
   d.lock = false;
   d.mark('hook');
-  d.reveal(new V(0, base + MM(200), 0), MM(9000), 3.2, { yaw0: other.yaw, arc: 1.4, y0: MM(1800), y1: MM(4200) });
+  d.reveal(new V(0, base + MM(200), 0), MM(9000), 3.2, { yaw0: other.yaw, arc: 1.4, y0: MM(1300), y1: MM(2600) });
   d.count('BRICKS', total, '', 1.0);
   yield d.sec(3.2);
   d.mark('hookEnd');
   yield d.sec(0.1);
 }
-plinthFilm.seconds = 15;
+plinthFilm.seconds = 20;
+plinthFilm.place = 'alps';   // (rule 3: a place worth looking at behind the work)

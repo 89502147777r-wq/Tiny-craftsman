@@ -442,6 +442,9 @@ export class WallView {
     this.squeeze = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x7c776e, roughness: 0.7, side: THREE.DoubleSide }));
     this.squeeze.castShadow = this.squeeze.receiveShadow = true; this.squeeze.frustumCulled = false; this.squeeze.visible = false;
     this.group.add(this.squeeze);
+    // the bed spread with the trowel ahead of a course being laid (wallTool's SpreadJob): a piece under each brick to come
+    this.spreadG = new THREE.Group(); this.group.add(this.spreadG);
+    this.spreadMat = new THREE.MeshStandardMaterial({ color: 0x66625b, roughness: 0.82 });   // (fresh mortar: wet, darker than set concrete)
     // where the carried unit would go: green — it can, red — it cannot
     this.hlMesh = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x35d06a, transparent: true, opacity: 0.45, depthWrite: false }));
     this.hlMesh.renderOrder = 5; this.hlMesh.visible = false; this.group.add(this.hlMesh);
@@ -994,6 +997,29 @@ export class WallView {
   }
 
   // a lift's cabin sent on: up a stop, from the top down to the ground (its ride takes rideTime)
+  // a piece of spread mortar: from `at` (the middle of its start edge, on what it lies on) `len` along dir (unit, level),
+  // `wid` across, `h` thick — rough, thicker than the joint, the trowel's furrow down its middle, ragged edges.
+  // → { grow(u): how much of it the trowel has laid, mesh }
+  addSpread(at, dir, len, wid, h) {
+    const NX = 9, NZ = 5, pos = [], idx = [], rnd = (i, j) => { const v = Math.sin(i * 12.9898 + j * 78.233 + at.x * 5113 + at.z * 3571) * 43758.5453; return v - Math.floor(v); };
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+      const u = i / (NX - 1), w = j / (NZ - 1) - 0.5, edge = j === 0 || j === NZ - 1;
+      const z = w * wid * (edge ? 0.94 + 0.1 * rnd(i, j) : 1), y = edge ? h * 0.25 : h * (0.82 + 0.3 * rnd(i, j + 7)) - h * 0.4 * Math.exp(-((w / 0.16) ** 2));
+      pos.push(u * len, y, z);
+    }
+    for (let j = 0; j < NZ - 1; j++) for (let i = 0; i < NX - 1; i++) { const a = j * NX + i; idx.push(a, a + NX, a + 1, a + 1, a + NX, a + NX + 1); }
+    // (its sides down to what it lies on)
+    const base = pos.length / 3;
+    for (const j of [0, NZ - 1]) for (let i = 0; i < NX; i++) pos.push(i / (NX - 1) * len, 0, (j ? 0.5 : -0.5) * wid * 0.97);
+    for (let i = 0; i < NX - 1; i++) { idx.push(i, i + 1, base + i, i + 1, base + i + 1, base + i); const a = (NZ - 1) * NX + i, b = base + NX + i; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, this.spreadMat); mesh.receiveShadow = mesh.castShadow = true; mesh.frustumCulled = false;
+    mesh.position.copy(at); mesh.rotation.y = Math.atan2(-dir.z, dir.x); mesh.scale.x = 1e-4; mesh.visible = false;
+    this.spreadG.add(mesh); this.dirty = true;
+    return { mesh, grow: (u) => { mesh.visible = u > 0.001; mesh.scale.x = Math.max(1e-4, u); } };
+  }
+  clearSpread() { for (const m of [...this.spreadG.children]) { m.geometry.dispose(); this.spreadG.remove(m); } }
+  takeSpread(it) { if (it?.mesh.parent) { it.mesh.geometry.dispose(); this.spreadG.remove(it.mesh); } }
   rideLift(id) {
     const r = this.objects.get(id); if (!r || this._ride) return 0;
     // (up one stop at a time; from the top, back down to the ground)

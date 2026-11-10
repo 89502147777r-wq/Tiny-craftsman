@@ -20,6 +20,8 @@ import * as THREE from 'three';
 // animates (a brick set on its mortar, the mallet, the mortar pressed out, the trowel cutting it off; and so for
 // forms, insulation, facades, roofs…). The close step and the sped-up step of a growth run the same jobs (a step's
 // `until`), faster by d.speed; only the far steps («at once») may add things as they are.
+// THE THIRD RULE (the owner, 2026-11-10): the camera near level whenever the work lets it — the horizon and the view in
+// frame; higher only to see work that a low camera would lose behind a form, a wall, an edge (low(), over() below).
 const clamp01 = (u) => Math.max(0, Math.min(1, u));
 const ease = (u) => u * u * (3 - 2 * u);
 const easeOut = (u) => 1 - (1 - u) ** 3;
@@ -27,6 +29,12 @@ const back = (u) => { const c = 1.9; return 1 + (c + 1) * (u - 1) ** 3 + c * (u 
 const _v = new THREE.Vector3();
 // a view from a point at a point: the rig's target, yaw, pitch, distance
 export const look = (eye, at) => { const v = eye.clone().sub(at), dist = v.length(); return { target: at.clone(), yaw: Math.atan2(v.x, v.z), pitch: Math.asin(v.y / dist), dist }; };
+
+// rule 3 (the owner, 2026-11-10): the camera as near level as the work lets it — the horizon and the place (mountains, the
+// sea) in frame; raised only as far as it takes to see the work over what hides it (a form's side, a wall, a pit's edge).
+// low: a view of `at` from `eye` up over it, `dist` away; over: the same raised to look `down` deep behind a rim `away` off
+export const low = (at, yaw, dist, eye) => ({ target: at.clone(), yaw, pitch: Math.max(0.08, Math.asin(Math.min(0.95, eye / dist))), dist });
+export const over = (at, yaw, dist, eye, down, away) => { const v = low(at, yaw, dist, eye); v.pitch = Math.max(v.pitch, Math.min(1.35, Math.atan2(down, Math.max(1e-6, away)) + 0.12)); return v; };
 
 export class Director {
   constructor(app, script, offline = false) {
@@ -176,7 +184,7 @@ export class Director {
       else if (s.dur > 0) yield this.until(() => { const u = clamp01((this.t - t0) / s.dur); s.act?.(u); return u >= 1; });
       else { if ((s.lead ?? 0.25) > 0) yield this.sec(s.lead ?? 0.25); s.act?.(1); this.punch(s.punch ?? 0.97, 0.3); }
       yield this.sec(s.hold ?? 0.5);
-      this.grows.push({ n: s.n || 1, s: +(this.t - t0).toFixed(2), dist, turn: !!s.turn, shot: this.shotN });
+      this.grows.push({ n: s.n || 1, s: +(this.t - t0).toFixed(2), dist, pitch: +(this.shot?.goal?.pitch ?? 0).toFixed(3), turn: !!s.turn, shot: this.shotN });
     }
   }
 
