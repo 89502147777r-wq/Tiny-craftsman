@@ -268,7 +268,9 @@ async function main() {
     // while three's background poll still waited on it threw from its timer)
     try { p = renderer.compileAsync && !app.film ? renderer.compileAsync(scene, camera) : (renderer.compile(scene, camera), null); } catch { /* not worth stopping for */ }
     for (const o of hid) o.visible = false;   // (the programs are made; they finish linking on their own)
-    return p?.catch?.(() => {});
+    // (while it waits, nothing it compiled is disposed — backdrop.js holds its disposals till then)
+    app.warming = p ? p.catch(() => {}).finally(() => { if (app.warming === w) app.warming = null; }) : null; const w = app.warming;
+    return app.warming;
   };
   // the modelled doors, gates and windows (openingKits.js): waited for a little while the loading
   // screen is up (the openings are drawn of them from the start), else they come in the background

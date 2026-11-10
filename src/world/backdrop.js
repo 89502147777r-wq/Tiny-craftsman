@@ -3,7 +3,6 @@ import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { TRAY, SOIL_TILE, BACKDROP, MODEL_SCALE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 import { innerCorner } from './plotShape.js';
-import { Surround, SURROUND } from './surround.js';
 import { seedProps } from '../tools/sitePropTool.js';
 
 // Background / lighting modes:
@@ -48,7 +47,7 @@ export class Backdrop {
     const tex = app.tex.top;
     this.gU = {
       uFade: { value: new THREE.Color(0.55, 0.5, 0.44) }, tTheme: { value: tex.diff }, uThemeTile: { value: 1 / SOIL_TILE },
-      uTheme: { value: 0 }, uOut: { value: new THREE.Vector2(1e5, 1e5 + 1) }, uHole: { value: new THREE.Vector2(hx, hz) }, uRoad: { value: new THREE.Vector2(1e5, 1e5) },
+      uTheme: { value: 0 }, uOut: { value: new THREE.Vector2(1e5, 1e5 + 1) }, uHole: { value: new THREE.Vector2(hx, hz) },
     };
     const mat = new THREE.MeshStandardMaterial({ map: tex.diff, normalMap: tex.nor, roughness: 1, color: 0xf4e8d6, transparent: true });   // (the shade of the plot's own soil)
     mat.onBeforeCompile = (sh) => {
@@ -59,10 +58,9 @@ export class Backdrop {
       sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
         varying vec3 vGW;
         uniform vec3 uFade; uniform sampler2D tTheme; uniform float uThemeTile; uniform float uTheme;
-        uniform vec2 uOut; uniform vec2 uHole; uniform vec2 uRoad;
+        uniform vec2 uOut; uniform vec2 uHole;
         ` + STOCHASTIC_GLSL)
         .replace('#include <map_fragment>', `#include <map_fragment>
-        if (vGW.z > uRoad.x && vGW.z < uRoad.y) discard;   // (the street lies lower: surround.js)
         float gr = length(vGW.xz);
         // the place's own ground beyond the plot (the soil of the plot fades into it)
         float th = uTheme * smoothstep(0.0, 0.035, max(abs(vGW.x) - uHole.x, abs(vGW.z) - uHole.y));   // (the place's ground from just past the plot's edge: the fence is the edge, no long smear)
@@ -131,25 +129,13 @@ export class Backdrop {
       app.rig.goal.dist = Math.min(app.rig.goal.dist, lim.maxDist); app.rig.clampTarget();
     }
     if (pano) {
-      const cfg = PANOS[mode], Rm = cfg.R / MODEL_SCALE, g = this.gU, sur = SURROUND[mode];
-      // (with the place round it in 3D — surround.js — the ground goes out to the trees, behind them it fades: no smeared
-      // band of a flat disc going into the photo just past the plot)
-      const o0 = sur ? Rm * 0.8 : Math.max(1.7, Rm * 0.2), o1 = sur ? Rm * 0.93 : Math.max(o0 + 0.8, Rm * 0.45);
-      this._groundTo(o1 + 0.3);
-      g.uOut.value.set(o0, o1); g.uFade.value.copy(P.haze);
-      const ground = sur?.lawn || cfg.ground;
-      g.uTheme.value = ground ? 1 : 0;
-      if (ground) { const t = await this._groundTex(ground); g.tTheme.value = t.diff; g.uThemeTile.value = MODEL_SCALE / (cfg.tile || 2); }
-      if (P.sky) P.sky.material.uniforms.uLow.value = sur ? 1 : 0;
-      { const tu = app.terrainMat?.userData?.uniforms; if (tu?.uSite) { tu.uSite.value = sur ? 1 : 0; tu.uHalf.value.set(TRAY.innerX / 2, TRAY.innerZ / 2); } }   // (the plot's ground trodden like a site's)
-      this.surround = this.surround || new Surround(app);
-      if (sur) {
-        const [walk, asphalt, gravel] = sur.street ? await Promise.all([this._groundTex('square_concrete_pavers'), this._groundTex('asphalt_02'), this._groundTex('gravel_floor_02')]) : [null, null, null];
-        if (this.mode !== mode) return;
-        await this.surround.set(mode, Rm, { walk, asphalt, gravel });
-        seedProps(app);   // (the site furnished, once: the office, the mixer, the pallets … — the finger moves them)
-      } else this.surround.hide();
-    } else { const g = this.gU; g.uTheme.value = 0; g.uOut.value.set(1e5, 1e5 + 1); this.surround?.hide(); const tu = app.terrainMat?.userData?.uniforms; if (tu?.uSite) tu.uSite.value = 0; }   // (the berm of the photo sheet shares this material)
+      // (the place's ground is the photo's own, laid on the ground — panoSphere; no disc of other ground over it)
+      this.ground.visible = false;
+      const g = this.gU; g.uTheme.value = 0; g.uOut.value.set(1e5, 1e5 + 1);
+      const U = P.sky?.material.uniforms; if (U) { U.uLow.value = 0; U.tSoil.value = app.tex.top.diff; U.uSite.value = mode === 'site' ? 1 : 0; }
+      { const tu = app.terrainMat?.userData?.uniforms; if (tu?.uSite) { tu.uSite.value = mode === 'site' ? 1 : 0; tu.uHalf.value.set(TRAY.innerX / 2, TRAY.innerZ / 2); } }   // (the plot's ground trodden like a site's)
+      seedProps(app);   // (the site furnished, once: the office, the mixer, the pallets … — the finger moves them)
+    } else { const g = this.gU; g.uTheme.value = 0; g.uOut.value.set(1e5, 1e5 + 1); const tu = app.terrainMat?.userData?.uniforms; if (tu?.uSite) tu.uSite.value = 0; }   // (the berm of the photo sheet shares this material)
     // the photo sheet glued round the box
     if (mode === 'posters' && !this.posters) await this._buildPosters();
     if (this.mode !== mode) return;
@@ -237,8 +223,14 @@ export class Backdrop {
 
   // a panorama: the light from it (its HDRI), where its sun is, the haze colour along its
   // horizon; the photo on its sphere round the plot
-  async _loadPano(key) {
-    if (this.panos[key]) return this.panos[key];
+  // (one load of a place at a time: two set()s at once — the start, a choice — loaded it twice, and the one dropped
+  // the other's: no sky, black)
+  _loadPano(key) {
+    if (this.panos[key]) return Promise.resolve(this.panos[key]);
+    this._loading = this._loading || {};
+    return (this._loading[key] ||= this._loadPano1(key).finally(() => { delete this._loading[key]; }));
+  }
+  async _loadPano1(key) {
     const cfg = PANOS[key];
     const [t, photo] = await Promise.all([
       new Promise((res, rej) => new HDRLoader().load(`assets/hdri/${cfg.id}_1k.hdr`, res, undefined, rej)),
@@ -261,10 +253,11 @@ export class Backdrop {
   _drop(keep) {
     for (const [k, P] of Object.entries(this.panos)) {
       if (P === keep) continue;
-      this.app.scene.remove(P.sky); P.sky.geometry.dispose(); P.sky.material.dispose();
-      P.photo.dispose(); delete this.cache[P.photo.userData.url];
-      P.env.dispose();
-      delete this.panos[k];
+      // (out of the scene now; disposed once the shaders' background warm-up is done — disposed under it, three's poll
+      // of the material threw from its timer)
+      this.app.scene.remove(P.sky); delete this.cache[P.photo.userData.url]; delete this.panos[k];
+      const gone = () => { P.sky.geometry.dispose(); P.sky.material.dispose(); P.photo.dispose(); P.env.dispose(); };
+      if (this.app.warming) this.app.warming.then(gone); else gone();
     }
   }
 
@@ -461,14 +454,23 @@ function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
 function panoSphere(map, haze, R, exposure) {
   const m = new THREE.ShaderMaterial({
     // the time of day and the weather (sky.js): the light on the place, dusk, night, rain
-    uniforms: { tMap: { value: map }, uHaze: { value: haze }, uLow: { value: 0 }, uDim: { value: new THREE.Color(1, 1, 1) }, uNight: { value: 0 }, uDusk: { value: 0 }, uOver: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) } },
-    vertexShader: `varying vec3 vDir; varying float vUp;
+    uniforms: { tMap: { value: map }, uHaze: { value: haze }, uLow: { value: 0 }, uEye: { value: EYE / MODEL_SCALE }, uHalf: { value: new THREE.Vector2(TRAY.innerX / 2, TRAY.innerZ / 2) },
+      tSoil: { value: null }, uSoilTile: { value: 1 / SOIL_TILE }, uSoilK: { value: 1.75 }, uSite: { value: 0 }, uEdge: { value: 1.6 / MODEL_SCALE }, uDim: { value: new THREE.Color(1, 1, 1) }, uNight: { value: 0 }, uDusk: { value: 0 }, uOver: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) } },
+    // the photo's own ground below its horizon laid flat onto the ground (its camera stood EYE over it): the place's sand,
+    // grass, yard round the plot in true perspective as the camera moves — not a disc of other ground fading into the photo
+    vertexShader: `varying vec3 vDir; varying float vUp; varying float vGr; uniform float uEye;
       void main() {
-        vDir = position;
+        vec3 p = position, d = normalize(position);
+        vGr = 0.0;
+        if (d.y < -0.002) { float t = uEye / -d.y; if (t < length(position)) { p = d * t; vGr = 1.0; } }
+        vDir = p;
         vUp = cameraPosition.y - modelMatrix[3].y;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
       }`,
-    fragmentShader: `uniform sampler2D tMap; uniform vec3 uHaze; varying vec3 vDir; varying float vUp;
+    fragmentShader: `uniform sampler2D tMap; uniform vec3 uHaze; varying vec3 vDir; varying float vUp; varying float vGr;
+      uniform vec2 uHalf; uniform sampler2D tSoil; uniform float uSoilTile; uniform float uSoilK; uniform float uSite; uniform float uEdge;
+      float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(gHash(i), gHash(i + vec2(1, 0)), f.x), mix(gHash(i + vec2(0, 1)), gHash(i + vec2(1, 1)), f.x), f.y); }
       uniform vec3 uDim; uniform float uLow; uniform float uNight; uniform float uDusk; uniform float uOver; uniform vec3 uSunDir;
       // the inverse of three's ACES filmic (the final pass tone-maps everything)
       vec3 unACES(vec3 y) {
@@ -486,8 +488,26 @@ function panoSphere(map, haze, R, exposure) {
         vec2 gx = dFdx(uv), gy = dFdy(uv);
         gx.x -= floor(gx.x + 0.5); gy.x -= floor(gy.x + 0.5);
         vec3 c = unACES(textureGrad(tMap, uv, gx, gy).rgb);
+        // (the ground far off as the photo saw it: from its camera a thin band at its horizon, laid flat it smears into
+        // streaks — there its colour only (a blurred look-up: the place's sand, grass, water kept) and a fine grain on it)
+        if (vGr > 0.5) {
+          float sharp = smoothstep(0.1, 0.32, -d.y);
+          vec3 cb = unACES(textureGrad(tMap, uv, vec2(0.008, 0.0), vec2(0.0, 0.008)).rgb);
+          vec2 q2 = vDir.xz; float gr = gNoise(q2 * 60.0) * 0.5 + gNoise(q2 * 190.0) * 0.3 + gNoise(q2 * 13.0) * 0.2;
+          c = mix(cb * (0.8 + 0.4 * gr), c, sharp);
+        }
         // seen from high up the photo's ground below its horizon is a bowl: haze there
-        c = mix(c, uHaze, smoothstep(0.0, -0.12, d.y) * ${HIGH_GLSL});
+        c = mix(c, uHaze, smoothstep(0.0, -0.12, d.y) * ${HIGH_GLSL} * (1.0 - vGr));
+        // (round the plot, on the ground: a narrow ragged rim of the site's own soil, trodden out over the place's ground —
+        // the edge not a straight line, not a smeared band)
+        if (vGr > 0.5) {
+          vec2 q = vDir.xz; float e = max(abs(q.x) - uHalf.x, abs(q.y) - uHalf.y);
+          float n = gNoise(q * 9.0) * 0.6 + gNoise(q * 31.0) * 0.4;
+          float k = 1.0 - smoothstep(0.0, uEdge, e + (n - 0.5) * uEdge * 1.1);
+          vec3 soil = texture2D(tSoil, q * uSoilTile).rgb;
+          float l = dot(soil, vec3(0.3, 0.59, 0.11)); soil = mix(soil, mix(soil, l * vec3(1.02, 0.9, 0.72), 0.42) * 0.88, uSite) * uSoilK;
+          c = mix(c, soil, clamp(k, 0.0, 1.0));
+        }
         // (the place round the plot in 3D: the photo's own ground under the horizon never shown — haze behind the trees)
         c = mix(c, uHaze, smoothstep(0.01, -0.03, d.y) * uLow);
         // the sky in the photo: bright, up, bluish or white (not the trees, the buildings)
@@ -513,9 +533,9 @@ function panoSphere(map, haze, R, exposure) {
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
-    side: THREE.BackSide, depthWrite: false, depthTest: false, toneMapped: true,
+    side: THREE.DoubleSide, depthWrite: false, depthTest: false, toneMapped: true,
   });
-  const s = new THREE.Mesh(new THREE.SphereGeometry(R, 96, 48), m);
+  const s = new THREE.Mesh(new THREE.SphereGeometry(R, 160, 96), m);
   s.renderOrder = -100; s.frustumCulled = false;
   return s;
 }

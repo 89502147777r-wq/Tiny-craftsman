@@ -3,14 +3,14 @@ import { MODEL_SCALE } from '../config.js';
 import { loadModel } from './machines/models.js';
 
 // What stands about a building site (the owner's picture: the site office, the toilet, the mixer, the pallets of blocks
-// in their film, the timber on its bearers, a barrow, cones at the gate, a skip, a heap of sand) — each a record
+// in their film, the timber on its bearers, a barrow, cones at the gate, a skip) — each a record
 // { type: 'siteprop', kind, x, z, yaw } the finger moves, turns or takes away (sitePropTool.js) when it is in the way.
 // Drawn here, each of simple parts in its real size (mm), on what it stands on (blocks, a pallet, bearers).
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 // each a model (Sketchfab, CC BY — CREDITS.md; cut out, stood on the ground at its middle, to its real size, light for a
 // phone — scratchpad prep.mjs); foot — its footprint (mm) for standing it on the ground
 export const PROPS = {
-  cabin: { name: 'Бытовка', model: 'office', r: 3200, foot: [6060, 2440], lift: 200, piers: [[-2830, -1020], [0, -1020], [2830, -1020], [-2830, 1020], [0, 1020], [2100, 1020]] },   // (on six blocks, 200 clear; the front one at the door end under the body — the door is in a recess)
+  cabin: { name: 'Бытовка', model: 'office', r: 3200, foot: [6000, 2800] },   // (a metal site cabin on its own timber skids)
   toilet: { name: 'Биотуалет', model: 'toilet', r: 700, foot: [1110, 1120] },
   mixer: { name: 'Бетономешалка', model: 'mixer', r: 900, foot: [810, 1220] },
   pallet: { name: 'Поддон с блоками', model: 'cinderpallet', r: 800, foot: [1200, 1090] },
@@ -20,11 +20,10 @@ export const PROPS = {
   barrow: { name: 'Тачка', model: 'barrow', r: 800, foot: [1500, 660] },
   cones: { name: 'Конусы', model: 'cones', r: 900, foot: [1500, 1430] },
   skip: { name: 'Контейнер для мусора', model: 'skip', r: 2100, foot: [3900, 1800] },
-  sand: { name: 'Куча песка', model: 'sand', r: 1700, foot: [3390, 3400] },
 };
 // where they stand at first (m, in the plot's frame: x along it, z towards the street; clear of the gate and the middle)
 export const PROP_SEED = [
-  ['cabin', -13.2, -10.8, 0], ['toilet', -9.0, -11.6, 0], ['skip', 12.6, -10.6, 0.1], ['sand', 12.4, 7.2, 0],
+  ['cabin', -13.2, -10.8, 0], ['toilet', -9.0, -11.6, 0], ['skip', 12.6, -10.6, 0.1],
   ['pallet', 6.2, 10.7, 0], ['bricks', 7.7, 10.7, 0], ['bags', 9.2, 10.7, 0.05], ['timber', -11.0, 9.6, 1.5708],
   ['mixer', 3.6, 8.6, 0.6], ['barrow', 4.9, 7.0, -0.9], ['cones', 0, 11.4, 0],
 ];
@@ -52,6 +51,7 @@ export class SitePropView {
     if (!this.dirty) return; this.dirty = false;
     const O = this.app.objects, T = this.app.terrain, seen = new Set();
     for (const r of O.all('siteprop')) {
+      if (!PROPS[r.kind]) continue;   // (a kind taken off the list — the sand heap: not drawn)
       seen.add(r.id);
       let m = this.meshes.get(r.id);
       if (!m || m.userData.kind !== r.kind) {
@@ -62,7 +62,7 @@ export class SitePropView {
       }
       this.place(m, r.x, r.z, r.yaw);
     }
-    for (const [id, m] of this.meshes) if (!seen.has(id)) { this.group.remove(m); m.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); this.meshes.delete(id); }
+    for (const [id, m] of this.meshes) if (!seen.has(id)) { this.group.remove(m); this.meshes.delete(id); }   // (its geometry is the model's, shared by the copies: not disposed)
   }
   // (standing on the ground there: its lowest point under the middle and the four corners of its foot)
   place(m, x, z, yaw = 0) {

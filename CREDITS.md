@@ -16,9 +16,7 @@
 | `assets/textures/gravel_floor_02/` (diff, nor_gl 1k) — щебень 5–20 и 20–40 (одно фото в двух масштабах, затемнено до серого гранита) | Gravel Floor 02 | Dimitrios Savva (фото), Jenelle van Heerden (обработка) | CC0 | https://polyhaven.com/a/gravel_floor_02 |
 | `assets/textures/coast_sand_01/` (diff, nor_gl 1k) — песок вокруг участка на фонах «У моря», «У озера» | Coast Sand 01 | Rob Tuytel | CC0 | https://polyhaven.com/a/coast_sand_01 |
 | `assets/textures/leafy_grass/` (diff, nor_gl 1k) — трава вокруг участка на фонах «Луг», «Горы» | Leafy Grass | Charlotte Baglioni | CC0 | https://polyhaven.com/a/leafy_grass |
-| `assets/textures/asphalt_02/` (diff, nor_gl 1k) — улица у стройки (`world/surround.js`) | Asphalt 02 | Rob Tuytel | CC0 | https://polyhaven.com/a/asphalt_02 |
-| `assets/textures/square_concrete_pavers/` (diff, nor_gl 1k) — тротуар у стройки (`world/surround.js`) | Square Concrete Pavers | Amal Kumar | CC0 | https://polyhaven.com/a/square_concrete_pavers |
-| `assets/models/site/office.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Single office End door unit | marc.digiaimo | CC BY 4.0 | https://sketchfab.com/3d-models/single-office-end-door-unit-7c7191524f8549239ecab26c8ed37339 |
+| `assets/models/site/office.glb` — бытовка (к 6,0×2,55×2,8 м, текстуры 512 webp, meshopt) | Building | Container | Metal | YadroGames | CC BY 4.0 | https://sketchfab.com/3d-models/building-container-metal-36380c606bae46848237e9bbe073fa3b |
 | `assets/models/site/toilet.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Porta Potty | Porta Loo | CC BY 4.0 | CC Attribution |
 | `assets/models/site/mixer.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Cement Mixer | Víctor Hernández | CC BY 4.0 | https://sketchfab.com/3d-models/cement-mixer-6994b7287ecb4cd39b0917ec9fb49196 |
 | `assets/models/site/barrow.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Wheelbarrow | Alex | CC BY 4.0 | https://sketchfab.com/3d-models/wheelbarrow-c0dcebcb0d4b47bd98df534334f4caf6 |
@@ -27,7 +25,6 @@
 | `assets/models/site/cinderpallet.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Construction Pallet - Photoscan (Optimized) | Coozy | CC BY 4.0 | https://sketchfab.com/3d-models/construction-pallet-photoscan-optimized-ee1dc525a33d499bbad75c4e110050cd |
 | `assets/models/site/bags.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Concrete bags and pallet | neverfollow81 | CC BY 4.0 | https://sketchfab.com/3d-models/concrete-bags-and-pallet-3c66c95bfbf4469186696b133e930f48 |
 | `assets/models/site/timber.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Construction Site Asset Pack | vmatthew | CC BY 4.0 | https://sketchfab.com/3d-models/construction-site-asset-pack-a6cccf5af6514f2f9289beeead38fe1b |
-| `assets/models/site/sand.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Photoscan Low-poly Construction Sand Pile | Martin Topolski | CC BY 4.0 | https://sketchfab.com/3d-models/photoscan-low-poly-construction-sand-pile-7a7533e1ecab4b1d96da55cc3ad9ad98 |
 | `assets/models/site/brickpallet.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | red bricks on pallet | vicente betoret ferrero | CC BY 4.0 | https://sketchfab.com/3d-models/red-bricks-on-pallet-1f32da1a103b4949963cbe09099eb0ca |
 | `assets/textures/forest_leaves_04/` (diff, nor_gl 1k) — лесная подстилка вокруг участка на фоне «В лесу» | Forest Leaves 04 | Rob Tuytel | CC0 | https://polyhaven.com/a/forest_leaves_04 |
 
@@ -158,7 +155,14 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 
 | Файл | Модель | Автор | Лицензия | Источник |
 |---|---|---|---|---|
-| `assets/textures/brick_scan/` — кирпич | Red Brick | jimmy_jee | CC BY 4.0 | https://sketchfab.com/3d-models/60e8f501a6dc421e9eae3adf7d08789e |
+| `assets/textures/brick_scan/` — кирпич | Red Brick | jimmy_jee | CC BY 4.0 | https://sketchfab.com/3d-models/60e8f501a6dc421e9eae3adf7d08789e | (полоса 0 атласа `brick_atlas`)
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Red Brick | Poly Haven | CC0 | https://polyhaven.com/a/red_brick |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Large Red Bricks | Poly Haven | CC0 | https://polyhaven.com/a/large_red_bricks |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Factory Brick | Poly Haven | CC0 | https://polyhaven.com/a/factory_brick |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Brick Wall 10 | Poly Haven | CC0 | https://polyhaven.com/a/brick_wall_10 |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Dark Brick Wall | Poly Haven | CC0 | https://polyhaven.com/a/dark_brick_wall |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Yellow Brick | Poly Haven | CC0 | https://polyhaven.com/a/yellow_brick |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Brick Wall 08 | Poly Haven | CC0 | https://polyhaven.com/a/brick_wall_08 |
 | `assets/models/cinder/` — шлакоблок | Cinderblock/concrete brick | william.sayin | CC BY 4.0 | https://sketchfab.com/3d-models/2358b37cb7d142dca00aff66c678f5cd |
 
 ## Окна, двери, гаражные ворота (Sketchfab, CC BY 4.0)
