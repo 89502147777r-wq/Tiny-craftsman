@@ -1,12 +1,12 @@
 // Checks a film (src/film/) frame by frame without drawing it: the camera's jerks within a shot
 // (a jump or a shudder of the eye or of where it looks), the shots too short to read, and the
 // words over each other (bills, titles, counters, big words, pins). Usage:
-//   node scripts/check-film.mjs pool
+//   node scripts/check-film.mjs plinth
 import { createRequire } from 'node:module';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 const require = createRequire(import.meta.url);
 let pw; try { pw = require('playwright'); } catch { pw = require('/opt/node22/lib/node_modules/playwright'); }
-const film = process.argv[2] || 'pool', FPS = 30;
+const film = process.argv[2] || 'plinth', FPS = 30;
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const types = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.css': 'text/css', '.glb': 'model/gltf-binary' };
 const server = http.createServer((req, res) => { let p = path.join(root, decodeURIComponent(new URL(req.url, 'http://x').pathname)); if (p.endsWith('/')) p += 'index.html'; fs.readFile(p, (e, d) => { if (e) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'Content-Type': types[path.extname(p)] || 'application/octet-stream' }); res.end(d); }); });
