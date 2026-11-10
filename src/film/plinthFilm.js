@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { look } from './director.js';
+import { loadPhysics, physicsReady } from '../world/physics.js';
 
 // «A plinth of five courses» — the training film of the owner's first rule of shooting, «нарастание»
 // (growth, 2026-11-10): the first brick very close, laid at its real pace (from the corner, as on a site);
@@ -52,26 +53,29 @@ export function* plinthFilm(d, app) {
   const total = C.flat(2).length;
   // (a piece of work added at once: its bricks, the sound of a few of them)
   const pop = (list) => () => { for (const r of list) O.add(r); app.sfx?.seq?.(['brick', 'brick', 'brick']); };
-  // ---- 1 · the first brick, very close, at its real pace: carried to the corner, set down, tapped home ----
-  // (the corner's first whole brick — not the bat beside it)
-  const r0 = C[0][0].find((r) => r.s[0] > MM(L - 1)), P = new V(...r0.p);
-  let id0 = null, tapped = false;
-  const one = (u) => {
-    const e = Math.min(1, u / 0.7), k = 1 - e * e * (3 - 2 * e), tap = u > 0.78 && u < 0.9 ? Math.sin((u - 0.78) / 0.12 * Math.PI) * 4 : 0;
-    const p = [P.x - MM(40) * k, P.y + MM(220) * k + MM(tap), P.z + MM(160) * k];
-    if (id0 == null) id0 = O.add({ ...r0, p }).id; else O.update(id0, { p });
-    if (u > 0.72 && !tapped) { tapped = true; sfx('brick', { at: P }); }
-    if (u >= 1) O.update(id0, { p: r0.p });
-  };
-  // ---- 2 · the wall to the next corner, sped up: brick after brick, faster and faster ----
+  // ---- 1 · the first brick, very close, at its real pace — the game's own job (wallTool.layUnit): set down on the
+  // mortar, three taps of the mallet, the mortar pressed out of the bed, the trowel cutting it off ----
+  const W = app.wallTool, r0 = C[0][0].find((r) => r.s[0] > MM(L - 1)), P = new V(...r0.p);
+  const close = look(new V(P.x - MM(420), P.y + MM(380), P.z + MM(820)), P);
+  loadPhysics().catch(() => {});
+  d.cut(close, { drift: 0.03, push: 0.05, hand: 0.5 });   // (the corner waiting for its brick while the physics comes)
+  yield d.until(() => physicsReady());
+  let began = false;
+  const one = () => { if (!began) { began = W.layUnit(r0); if (began) d.jobs = 1; } return began && !app.busy(); };
+  // ---- 2 · the wall to the next corner, sped up: the same work brick after brick — the first three whole (mallet,
+  // mortar, trowel) three times as fast, the rest as a course is laid (set down, one tap), eight times ----
   const wallA = C[0][0].filter((r) => r !== r0); let nA = 0;
-  const row = (u) => { const n = Math.round(wallA.length * Math.pow(u, 1.5)); if (n > nA) { for (; nA < n; nA++) O.add(wallA[nA]); sfx('brick', { vol: 0.5, gap: 0.09 }); } };
+  const row = () => {
+    if (!app.physJob && nA < wallA.length) { const fast = nA >= 3; d.speed = fast ? 8 : 3; if (W.layUnit(wallA[nA], fast)) { nA++; d.jobs++; } }
+    if (nA >= wallA.length && !app.busy()) { d.speed = 1; return true; }
+    return false;
+  };
   // ---- 3 · further: the first course of the second wall at once, of the third, of the fourth ----
   // ---- 4 · another angle: the second course whole, the third, the fourth, the fifth ----
   const wide = look(new V(MM(-X - 3600), base + MM(4600), MM(Z + 6200)), mid), other = look(new V(MM(X + 4200), base + MM(3600), MM(Z + 6000)), new V(0, base + MM(200), 0));
   yield* d.grow([
-    { view: look(new V(P.x - MM(420), P.y + MM(380), P.z + MM(820)), P), n: 1, dur: 2.2, act: one, hold: 0.5, push: 0.05 },
-    { view: look(new V(MM(-X - 1500), base + MM(1250), MM(Z + 1700)), new V(MM(-400), base, MM(Z - 125))), n: wallA.length, dur: 2.6, act: row, hold: 0.35 },
+    { n: 1, until: one, hold: 0.6, push: 0.05 },
+    { view: look(new V(MM(-X - 3100), base + MM(3000), MM(Z + 3700)), new V(MM(-X + 2800), base, MM(Z - 125))), n: wallA.length, until: row, hold: 0.35 },
     { view: wide, n: C[0][1].length, act: pop(C[0][1]), lead: 0.45, hold: 0.45 },
     { n: C[0][2].length, act: pop(C[0][2]), lead: 0, hold: 0.4 },
     { n: C[0][3].length, act: pop(C[0][3]), lead: 0, hold: 0.55 },

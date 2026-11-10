@@ -16,6 +16,10 @@ import * as THREE from 'three';
 // the row to the next corner, sped up; further still — whole parts appear at once, one after another; then from
 // another angle whole layers at once. Never the whole thing at one pace from one distance. d.grow(steps) plays
 // it and logs it (d.grows); the model film is film/plinthFilm.js (?film=plinth).
+// THE SECOND RULE (the owner, 2026-11-10): a film shows the game's own work — what the finger starts and the game
+// animates (a brick set on its mortar, the mallet, the mortar pressed out, the trowel cutting it off; and so for
+// forms, insulation, facades, roofs…). The close step and the sped-up step of a growth run the same jobs (a step's
+// `until`), faster by d.speed; only the far steps («at once») may add things as they are.
 const clamp01 = (u) => Math.max(0, Math.min(1, u));
 const ease = (u) => u * u * (3 - 2 * u);
 const easeOut = (u) => 1 - (1 - u) ** 3;
@@ -161,14 +165,15 @@ export class Director {
   // the first piece very close, at its real pace; the camera a little further — the row of them, sped up;
   // further still — whole parts at once; then from another angle whole layers at once. steps: [{ view (none:
   // the same shot goes on), n (pieces done in it), dur (s the work is played over; 0 — at once, after `lead`),
-  // act(u) (the work, 0 … 1), hold (s after it), turn (another angle: the distance may start again) }] — each
+  // act(u) (the work, 0 … 1) or until(t) (the game's own jobs run: → true when done), hold (s after it), turn (another angle: the distance may start again) }] — each
   // step no nearer than the one before (but a turn) and more pieces a second than it (d.grows: checked by tests)
   *grow(steps) {
     this.grows = this.grows || [];
     for (const s of steps) {
       if (s.view) this.cut(s.view, { drift: s.drift ?? 0.03, push: s.push ?? 0.02, hand: s.hand ?? 0.5 });
       const t0 = this.t, dist = s.view?.dist ?? this.grows.at(-1)?.dist ?? 0;
-      if (s.dur > 0) yield this.until(() => { const u = clamp01((this.t - t0) / s.dur); s.act?.(u); return u >= 1; });
+      if (s.until) yield this.until(() => s.until(this.t - t0));
+      else if (s.dur > 0) yield this.until(() => { const u = clamp01((this.t - t0) / s.dur); s.act?.(u); return u >= 1; });
       else { if ((s.lead ?? 0.25) > 0) yield this.sec(s.lead ?? 0.25); s.act?.(1); this.punch(s.punch ?? 0.97, 0.3); }
       yield this.sec(s.hold ?? 0.5);
       this.grows.push({ n: s.n || 1, s: +(this.t - t0).toFixed(2), dist, turn: !!s.turn, shot: this.shotN });

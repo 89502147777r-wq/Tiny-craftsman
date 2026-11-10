@@ -1279,9 +1279,9 @@ console.log('—', sec());
     for (let i = 0; i < 3000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
     const G = f.grows || [], rate = G.map((g) => g.n / g.s);
     return { done: f.done, steps: G.length, first: G[0], near: G.every((g, i) => !i || g.turn || g.dist >= G[i - 1].dist * 0.999), faster: rate.every((r, i) => !i || r > rate[i - 1] * 0.5) /* (a shorter wall, the last hold for the eye: not under half the pace before) */ && rate[1] > rate[0] * 10 && rate[2] > rate[1] * 2 && rate[5] > rate[4], up: rate.at(-1) / rate[0],
-      laid: f.laid, t: +f.t.toFixed(1), hook: f.marks?.hook != null && f.marks?.hookEnd != null };
+      laid: f.laid, jobs: f.jobs, t: +f.t.toFixed(1), hook: f.marks?.hook != null && f.marks?.hookEnd != null };
   });
-  check('film: «нарастание» — one brick close at its real pace, then more and more at once, the camera further each step; all the bricks laid', o.done && o.steps >= 8 && o.first.n === 1 && o.first.s >= 2 && o.near && o.faster && o.up > 100 && o.laid.total === o.laid.done && o.laid.total > 500 && o.hook && o.t < 20, JSON.stringify(o));
+  check('film: «нарастание» — one brick close at its real pace (the game\'s own job: mallet, mortar, trowel), then more and more at once, the camera further each step; all the bricks laid', o.done && o.steps >= 8 && o.first.n === 1 && o.first.s >= 2 && o.near && o.faster && o.up > 100 && o.laid.total === o.laid.done && o.laid.total > 500 && o.jobs >= 40 /* (the close and the sped-up steps: the game's own laying job, brick by brick) */ && o.hook && o.t < 22, JSON.stringify(o));
   check('film (plinth): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
