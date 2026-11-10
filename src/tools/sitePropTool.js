@@ -16,7 +16,7 @@ export class PropWork {
     if (e && e.clientX !== undefined) { _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera); const id = V.pick(_ray); if (id != null) return app.objects.get(id); }
     // (or the nearest one round the point, within its own size)
     let best = null, bd = Infinity;
-    for (const r of app.objects.all('siteprop')) { const d = Math.hypot(r.x - p.x, r.z - p.z); if (d < M((PROPS[r.kind]?.r || 600) / 1000) && d < bd) bd = d, best = r; }
+    for (const r of app.objects.all('siteprop')) { if (!PROPS[r.kind]) continue; const d = Math.hypot(r.x - p.x, r.z - p.z); if (d < M((PROPS[r.kind]?.r || 600) / 1000) && d < bd) bd = d, best = r; }
     return best;
   }
   down(p, e) {
@@ -31,11 +31,22 @@ export class PropWork {
     const r = this._at(e, p);
     if (!r) { app.ui?.toast(en ? 'Touch a thing on the site' : 'Коснитесь вещи на площадке: бытовки, поддона, тачки…'); return true; }
     this.last = r.id;
-    if (mode === 'del') { app.journal.act('prop-del', {}, app.clock, () => O.remove(r.id)); app.sfx?.play?.('plank', { vol: 0.4 }); app.ui?.toast(en ? 'Taken away' : `${PROPS[r.kind]?.name || ''}: убрали с площадки`); return true; }
+    if (mode === 'del') { this._take(r); return true; }
     if (mode === 'turn') { app.journal.act('prop-turn', {}, app.clock, () => O.update(r.id, { yaw: +(((r.yaw || 0) + Math.PI / 4) % (Math.PI * 2)).toFixed(4) })); return true; }
     // carried: it follows the finger over the ground, put down where it is let go
     this.drag = { id: r.id, dx: r.x - p.x, dz: r.z - p.z, x: r.x, z: r.z };
     return true;
+  }
+  // the bin (wallTool's «Удалить») in this tab: the thing under the finger taken away
+  remove(p, e) {
+    const r = this._at(e, p), en = LANG === 'en';
+    if (!r) { this.app.ui?.toast(en ? 'Touch a thing on the site to take it away' : 'Коснитесь вещи на площадке — её уберут'); return; }
+    this._take(r);
+  }
+  _take(r) {
+    const app = this.app, en = LANG === 'en';
+    app.journal.act('prop-del', {}, app.clock, () => app.objects.remove(r.id)); app.sfx?.play?.('plank', { vol: 0.4 });
+    app.ui?.toast(en ? 'Taken away' : `${PROPS[r.kind]?.name || ''}: убрали с площадки`);
   }
   move(p) {
     const D = this.drag; if (!D) return;

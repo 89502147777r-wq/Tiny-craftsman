@@ -1410,6 +1410,8 @@ export class WallTool {
     }[r.type] || null;
   }
   _delete(p, e) {
+    // («Площадка»: the bin takes away the site's things — the office, a pallet — not the masonry under the finger)
+    if (this.kind === 'siteprop') { this.prop.remove(p, e); return; }
     const app = this.app, id = app.pickObject(e.clientX, e.clientY, 'wall');
     if (id && app.objects.get(id)?.type === 'opening') {
       const o = app.objects.get(id);

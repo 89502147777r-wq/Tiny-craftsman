@@ -1299,22 +1299,18 @@ console.log('—', sec());
   await browser.close();
 }
 
-// ---- 2n. The place round the plot in the 360° backgrounds (world/surround.js): a fence, a street, a ring of trees
-// (impostor cards, none black — none mirrored by turning the card over), the plot's ground trodden; the photo's own ground
-// not shown; in the workshop none of it ----
+// ---- 2n. The 360° places: the photo's own ground laid on the ground round the plot (no disc of other ground over it,
+// no fence, no trees), a ragged rim of the site's soil at the plot's edge; the site's things round it ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, o = {};
     tc.settings.backdrop = 'meadow'; await tc.backdrop.set('meadow'); tc.simulate(0.1);
-    const G = tc.scene.getObjectByName('surround'), cards = G?.children.filter((c) => c.geometry?.attributes?.aCen) || [];
-    o.shown = !!G?.visible; o.trees = cards.reduce((a, c) => a + c.geometry.attributes.aCen.count / 4, 0); o.kinds = cards.length;
-    o.street = G?.children.some((c) => c.material?.map && c.geometry?.type === 'PlaneGeometry');
-    o.fence = G?.children.some((c) => c.isInstancedMesh && c.count > 50);
-    // (no card's corners mirrored: every quad's x run the same way)
-    o.mirrored = cards.some((c) => { const a = c.geometry.attributes.aCor.array; for (let i = 0; i < a.length; i += 8) if (a[i] > a[i + 2]) return true; return false; });
-    const tu = tc.terrainMat.userData.uniforms, P = tc.backdrop.panos.meadow;
-    o.site = tu.uSite.value; o.low = P.sky.material.uniforms.uLow.value; o.fadeAt = +tc.backdrop.gU.uOut.value.x.toFixed(2);
+    const P = tc.backdrop.panos.meadow, U = P.sky.material.uniforms, tu = tc.terrainMat.userData.uniforms;
+    o.laid = /vGr = 1\.0/.test(P.sky.material.vertexShader) && !!U.tSoil.value && U.uLow.value === 0;
+    o.noDisc = !tc.backdrop.ground.visible; o.noSurround = !tc.scene.getObjectByName('surround');
+    o.site = tu.uSite.value;
+    tc.settings.backdrop = 'site'; await tc.backdrop.set('site'); tc.simulate(0.1); o.siteTrodden = tu.uSite.value === 1 && tc.backdrop.panos.site.sky.material.uniforms.uSite.value === 1;
     // (the site's things: put round it once; the finger carries one, turns it, takes it away; undo brings it back)
     const PR = () => tc.objects.all('siteprop'), V = tc.camera.position.constructor, W = tc.wallTool.prop;
     o.props = PR().length; o.meshes = tc.siteProps.group.children.length;
@@ -1325,6 +1321,8 @@ console.log('—', sec());
     tc.journal.undo?.(); tc.simulate(0.05); o.undone = Math.abs(tc.objects.get(m0.id).x - m0.x) < 1e-6;
     tc.settings.propMode = 'turn'; W.down(new V(m0.x, 0, m0.z)); o.turned = +(tc.objects.get(m0.id).yaw - m0.yaw).toFixed(3);
     tc.settings.propMode = 'del'; W.down(new V(m0.x, 0, m0.z)); tc.simulate(0.05); o.gone = !tc.objects.get(m0.id) && tc.siteProps.group.children.length === o.meshes - 1;
+    // (the bin — «Удалить» — in this tab: the thing under the finger, nothing else)
+    { const t0 = PR().find((r) => r.kind === 'toilet'), n0 = tc.objects.all().length; tc.wallTool._delete(new V(t0.x, 0, t0.z)); tc.simulate(0.05); o.binTook = !tc.objects.get(t0.id) && tc.objects.all().length === n0 - 1; }
     tc.settings.propMode = 'cabin'; W.down(new V(0, 0, 0)); o.added = PR().filter((r) => r.kind === 'cabin').length;
     // (the ground changed under one — dug, heaped: it is stood on it again, not left in the air)
     { const m = tc.siteProps.meshes.get(PR()[0].id), y = m.position.y; m.position.y = y + 1; tc.terrain.rev = (tc.terrain.rev || 0) + 1; tc.siteProps.update(); o.restood = Math.abs(m.position.y - y) < 1e-6; }
@@ -1335,13 +1333,13 @@ console.log('—', sec());
     { const cab = PR().find((r) => r.kind === 'cabin'), m = tc.siteProps.meshes.get(cab.id); await m.userData.ready; tc.siteProps.place(m, cab.x, cab.z, cab.yaw); m.updateMatrixWorld(true);
       const THREE = await import('three'), T = tc.terrain, P2 = new THREE.Vector3(); o.piers = m.userData.piers.map((b) => { b.getWorldPosition(P2); const bot = P2.y - b.scale.y / 2 / 10.4651; return Math.round((bot - T.heightAt(P2.x, P2.z)) * 10465.1); }); }
     tc.settings.backdrop = 'workshop'; await tc.backdrop.set('workshop'); tc.simulate(0.1);
-    o.hidden = !G.visible && tu.uSite.value === 0;
+    o.hidden = tu.uSite.value === 0;
     return o;
   });
-  check('surroundings: a fence, a street, a ring of trees (no mirrored cards), the site trodden, the photo\'s ground hidden; none in the workshop', o.shown && o.trees > 60 && o.kinds === 3 && o.street && o.fence && !o.mirrored && o.site === 1 && o.low === 1 && o.fadeAt > 3 && o.hidden, JSON.stringify(o));
-  check('site things: put round the site once (11), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 11 && o.meshes === 11 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.added === 2 && o.restood && o.piers?.length === 6 && o.piers.every((d) => Math.abs(d) <= 10), JSON.stringify(o));
+  check('360° places: the photo\'s own ground laid round the plot (no disc, no fence, no trees), the site\'s soil rim; the trodden ground only at the site', o.laid && o.noDisc && o.noSurround && o.site === 0 && o.siteTrodden && o.hidden, JSON.stringify(o));
+  check('site things: put round the site once (10), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 10 && o.meshes === 10 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.binTook && o.added === 2 && o.restood && o.piers?.length === 6 && o.piers.every((d) => Math.abs(d) <= 10), JSON.stringify(o));
   check('site things: each its model, its real height (toilet 2,3 m, office 2,59 — taller than it, mixer 1,35, barrow 0,74, cones 0,75; none missing)', Math.abs(o.heights.toilet - 2300) < 30 && Math.abs(o.heights.cabin - 2590) < 40 && o.heights.cabin / o.heights.toilet >= 1.08 && Math.abs(o.heights.mixer - 1350) < 30 && o.heights.pallet > 500 && o.heights.bricks > 500 && o.heights.bags > 500 && Math.abs(o.heights.barrow - 740) < 40 && Math.abs(o.heights.cones - 750) < 30 && Object.values(o.heights).every((h) => h > 200), JSON.stringify(o.heights));
-  check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  check('360° places: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 
