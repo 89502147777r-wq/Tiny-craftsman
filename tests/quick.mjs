@@ -1275,6 +1275,23 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2l''. «Нарастание» (the owner's first rule of shooting): the plinth film — the first brick close at its pace, then
+// the wall sped up, then walls and courses at once: each step no nearer (but a new angle) and more bricks a second ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '&film=plinth&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, f = tc.film;
+    for (let i = 0; i < 3000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
+    const G = f.grows || [], rate = G.map((g) => g.n / g.s);
+    return { done: f.done, steps: G.length, first: G[0], near: G.every((g, i) => !i || g.turn || g.dist >= G[i - 1].dist * 0.999), faster: rate.every((r, i) => !i || r > rate[i - 1] * 0.5) /* (a shorter wall, the last hold for the eye: not under half the pace before) */ && rate[1] > rate[0] * 10 && rate[2] > rate[1] * 2 && rate[5] > rate[4], up: rate.at(-1) / rate[0],
+      laid: f.laid, t: +f.t.toFixed(1), hook: f.marks?.hook != null && f.marks?.hookEnd != null };
+  });
+  check('film: «нарастание» — one brick close at its real pace, then more and more at once, the camera further each step; all the bricks laid', o.done && o.steps >= 8 && o.first.n === 1 && o.first.s >= 2 && o.near && o.faster && o.up > 100 && o.laid.total === o.laid.done && o.laid.total > 500 && o.hook && o.t < 20, JSON.stringify(o));
+  check('film (plinth): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2l'. A film shot in the game frame by frame (film/recorder.js): an mp4 of exactly a 60th a frame, the
 // hook first, the words painted into the frames (film/compose.js), the sounds on the film's clock ----
 {

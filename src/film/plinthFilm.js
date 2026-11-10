@@ -1,0 +1,93 @@
+import * as THREE from 'three';
+import { MODEL_SCALE } from '../config.js';
+import { look } from './director.js';
+
+// «A plinth of five courses» — the training film of the owner's first rule of shooting, «нарастание»
+// (growth, 2026-11-10): the first brick very close, laid at its real pace (from the corner, as on a site);
+// the camera a little further — the wall to the next corner, its bricks laid sped up; further still — the
+// first course of the second wall at once, then of the third and the fourth; from another angle the second
+// course whole, then the third, the fourth, the fifth. Every process is to be shot so (Director.grow).
+const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
+const X = 3000, Z = 2500;                       // (the walls' outer faces, mm: a plinth 6 × 5 m)
+const L = 250, T = 120, H = 65, J = 10, BED = 12, ROWS = 5;
+
+// the bricks, course by course, wall by wall (front → right → back → left), each wall from its corner on,
+// in the order a bricklayer lays them: [course][wall] → records; a wall 250 thick (two stretchers side by
+// side), the corners lapped course by course
+export function plinthCourses(base) {
+  const out = [];
+  for (let k = 0; k < ROWS; k++) {
+    const y = base + MM(BED + k * (H + J) + H / 2), lap = k % 2, walls = [];
+    // [along x?, the outer face, from, to (the way it is laid), inwards]
+    const plan = [[true, Z, -X, X, -1], [false, X, Z, -Z, -1], [true, -Z, X, -X, 1], [false, -X, -Z, Z, 1]];
+    for (const [ax, face, from, to, inw] of plan) {
+      const full = ax ? !lap : !!lap, cut = full ? 0 : 2 * T + J, a0 = Math.min(from, to) + cut, a1 = Math.max(from, to) - cut, list = [];
+      for (const [r, half] of [[T / 2, 0], [T + J + T / 2, 1]]) {
+        const off = ((k + half) % 2) * (L + J) / 2;
+        for (let a = a0 - off; a < a1; a += L + J) {
+          const lo = Math.max(a, a0), hi = Math.min(a + L, a1); if (hi - lo < 60) continue;
+          const m = (lo + hi) / 2, w = face + inw * r, len = hi - lo;
+          list.push({ m, rec: { type: 'unit', kind: 'brick', free: true, face: 'red', p: ax ? [MM(m), y, MM(w)] : [MM(w), y, MM(m)], s: (ax ? [len, H, T] : [T, H, len]).map(MM), q: [0, 0, 0, 1] } });
+        }
+      }
+      list.sort((p, q) => (to > from ? p.m - q.m : q.m - p.m));
+      walls.push(list.map((e) => e.rec));
+    }
+    out.push(walls);
+  }
+  return out;
+}
+
+export function* plinthFilm(d, app) {
+  const V = THREE.Vector3, O = app.objects, Tn = app.terrain, sfx = (n, o) => app.sfx?.play?.(n, o);
+  Object.assign(app.settings, { dayHour: 10.5 }); app.sky.setHour(10.5);
+  app.setTool('wall'); app.wallTool.setMode?.('lay');
+  d.lock = true; d.hand = 0.35;
+  // the strip under the walls: concrete 300 high, 450 wide, cast and set before the film starts
+  const g = Tn.heightAt(0, 0), cells = [];
+  for (let i = 0; i < Tn.conc.length; i++) { const x = Math.abs(Tn.toWorldX(i % Tn.nx)), z = Math.abs(Tn.toWorldZ(Math.floor(i / Tn.nx))); if (x < MM(X + 100) && z < MM(Z + 100) && !(x < MM(X - 350) && z < MM(Z - 350))) cells.push(i); }
+  { let a = 1e9, b = -1, c = 1e9, e = -1; for (const i of cells) { const add = MM(300) - Tn.conc[i]; if (add > 0) Tn._concAdd(i, add, 1); const ix = i % Tn.nx, iz = Math.floor(i / Tn.nx); a = Math.min(a, ix); b = Math.max(b, ix); c = Math.min(c, iz); e = Math.max(e, iz); } if (b >= 0) Tn._concTouch(a, c, b, e); Tn.updateMesh?.(); }
+  app.clock += 600;
+  const base = Tn.heightAt(MM(-X + 125), MM(Z - 125)), C = plinthCourses(base), mid = new V(0, base, 0);
+  const total = C.flat(2).length;
+  // (a piece of work added at once: its bricks, the sound of a few of them)
+  const pop = (list) => () => { for (const r of list) O.add(r); app.sfx?.seq?.(['brick', 'brick', 'brick']); };
+  // ---- 1 · the first brick, very close, at its real pace: carried to the corner, set down, tapped home ----
+  // (the corner's first whole brick — not the bat beside it)
+  const r0 = C[0][0].find((r) => r.s[0] > MM(L - 1)), P = new V(...r0.p);
+  let id0 = null, tapped = false;
+  const one = (u) => {
+    const e = Math.min(1, u / 0.7), k = 1 - e * e * (3 - 2 * e), tap = u > 0.78 && u < 0.9 ? Math.sin((u - 0.78) / 0.12 * Math.PI) * 4 : 0;
+    const p = [P.x - MM(40) * k, P.y + MM(220) * k + MM(tap), P.z + MM(160) * k];
+    if (id0 == null) id0 = O.add({ ...r0, p }).id; else O.update(id0, { p });
+    if (u > 0.72 && !tapped) { tapped = true; sfx('brick', { at: P }); }
+    if (u >= 1) O.update(id0, { p: r0.p });
+  };
+  // ---- 2 · the wall to the next corner, sped up: brick after brick, faster and faster ----
+  const wallA = C[0][0].filter((r) => r !== r0); let nA = 0;
+  const row = (u) => { const n = Math.round(wallA.length * Math.pow(u, 1.5)); if (n > nA) { for (; nA < n; nA++) O.add(wallA[nA]); sfx('brick', { vol: 0.5, gap: 0.09 }); } };
+  // ---- 3 · further: the first course of the second wall at once, of the third, of the fourth ----
+  // ---- 4 · another angle: the second course whole, the third, the fourth, the fifth ----
+  const wide = look(new V(MM(-X - 3600), base + MM(4600), MM(Z + 6200)), mid), other = look(new V(MM(X + 4200), base + MM(3600), MM(Z + 6000)), new V(0, base + MM(200), 0));
+  yield* d.grow([
+    { view: look(new V(P.x - MM(420), P.y + MM(380), P.z + MM(820)), P), n: 1, dur: 2.2, act: one, hold: 0.5, push: 0.05 },
+    { view: look(new V(MM(-X - 1500), base + MM(1250), MM(Z + 1700)), new V(MM(-400), base, MM(Z - 125))), n: wallA.length, dur: 2.6, act: row, hold: 0.35 },
+    { view: wide, n: C[0][1].length, act: pop(C[0][1]), lead: 0.45, hold: 0.45 },
+    { n: C[0][2].length, act: pop(C[0][2]), lead: 0, hold: 0.4 },
+    { n: C[0][3].length, act: pop(C[0][3]), lead: 0, hold: 0.55 },
+    { view: other, turn: true, n: C[1].flat().length, act: pop(C[1].flat()), lead: 0.4, hold: 0.45 },
+    { n: C[2].flat().length, act: pop(C[2].flat()), lead: 0, hold: 0.4 },
+    { n: C[3].flat().length, act: pop(C[3].flat()), lead: 0, hold: 0.35 },
+    { n: C[4].flat().length, act: pop(C[4].flat()), lead: 0, hold: 0.6 },
+  ]);
+  d.laid = { total, done: O.all('unit').length };
+  // ---- the result, round it (the hook: put first by the recorder) ----
+  d.lock = false;
+  d.mark('hook');
+  d.reveal(new V(0, base + MM(200), 0), MM(9000), 3.2, { yaw0: other.yaw, arc: 1.4, y0: MM(1800), y1: MM(4200) });
+  d.count('BRICKS', total, '', 1.0);
+  yield d.sec(3.2);
+  d.mark('hookEnd');
+  yield d.sec(0.1);
+}
+plinthFilm.seconds = 15;
