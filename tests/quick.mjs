@@ -1399,7 +1399,7 @@ console.log('—', sec());
     return o;
   });
   check('realist: a heap of sand lies at its angle of repose (≤ 36°), not as a column', o.heap > 40 && o.slope <= 36, JSON.stringify(o));
-  check('realist: the pump hose — walked by hand (≤ 1,3 m/s), the stream from the spout, thinner below, lagging when swept', o.hose.vmax <= 1.3 && o.hose.top < 6 && o.hose.thin && o.hose.lag > 5 && o.hose.lag < 250, JSON.stringify(o.hose));
+  check('realist: the pump hose — led by hand (≤ 2,7 m/s — between a walk and the finger), the stream from the spout, thinner below, lagging when swept', o.hose.vmax <= 2.7 && o.hose.vmax > 1.5 && o.hose.top < 6 && o.hose.thin && o.hose.lag > 2 && o.hose.lag < 250, JSON.stringify(o.hose));
   check('realist: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

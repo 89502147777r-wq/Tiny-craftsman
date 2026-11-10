@@ -18,7 +18,8 @@ const N = 24;                 // rope points
 const LEN = 4.0 * G;          // hose length (model units)
 const R = 0.07 * G;           // outer radius
 const SEG = LEN / (N - 1);
-const VMAX = 1.2 * M, AMAX = 4 * M, GRAV = 9.81 * M, OUT = 1.0 * M;   // the hand's speed / acceleration; g; the concrete's exit speed
+// (the owner: the real walking pace (1,2 m/s, 4 m/s²) is too slow to work with — halfway to following the finger)
+const VMAX = 2.6 * M, AMAX = 12 * M, GRAV = 9.81 * M, OUT = 1.0 * M;   // the hand's speed / acceleration; g; the concrete's exit speed
 const STROKE = 3.0;           // s between the pistons' switches
 
 export class PumpHose {
@@ -86,7 +87,7 @@ export class PumpHose {
     }
   }
   // the flow just now (×, 1 on the average): nearly nothing at a stroke's switch, a surge after it
-  pulse() { const u = (this.t % STROKE) / STROKE; return u < 0.08 ? 0.1 : u < 0.2 ? 1.6 : 1 - 0.06 * Math.sin(u * Math.PI); }
+  pulse() { const u = (this.t % STROKE) / STROKE; return u < 0.08 ? 0.6 : u < 0.2 ? 1.25 : 1 - 0.06 * Math.sin(u * Math.PI); }   // (the stroke softened: a dip and a swell, not a spit — the owner: real, but awkward)
 
   update(dt) {
     if (!this.ready || !this.group.visible) return;
@@ -95,7 +96,7 @@ export class PumpHose {
     // the hand: toward the finger no faster than a man walks a full hose, getting going and stopping as he can
     {
       const want = this.target.clone().sub(this.hand), d = want.length();
-      const vGoal = d > 1e-9 ? want.multiplyScalar(Math.min(VMAX, d * 3) / d) : want.set(0, 0, 0);
+      const vGoal = d > 1e-9 ? want.multiplyScalar(Math.min(VMAX, d * 5) / d) : want.set(0, 0, 0);
       const dv = vGoal.sub(this.hv), a = dv.length(), amax = AMAX * dt;
       if (a > amax) dv.multiplyScalar(amax / a);
       this.hv.add(dv); this.hand.addScaledVector(this.hv, dt);
@@ -105,7 +106,7 @@ export class PumpHose {
       const dx = this.hand.x - this.anchor.x, dz = this.hand.z - this.anchor.z, off = Math.hypot(dx, dz);
       if (off > 1.2 * M) { this.anchorGoal = new THREE.Vector3(this.hand.x - dx / off * 0.6 * M, this.anchor.y, this.hand.z - dz / off * 0.6 * M); }
       this.anchorGoal.y = this.hand.y + LEN * 0.9;
-      const step = this.anchorGoal.clone().sub(this.anchor), l = step.length(), vmax = 0.5 * M * dt;
+      const step = this.anchorGoal.clone().sub(this.anchor), l = step.length(), vmax = 1.0 * M * dt;
       if (l > vmax) step.multiplyScalar(vmax / l);
       this.anchor.add(step);
     }
