@@ -23,6 +23,7 @@ import { LandWork } from './landTool.js';
 import { FenceWork } from './fenceTool.js';
 import { ExtWork } from './extTool.js';
 import { PropWork } from './sitePropTool.js';
+import { FACING } from '../world/walls.js';
 import { ColumnWork } from './columnTool.js';
 import { PitchedWork, RoofWindowWork } from './pitchedTool.js';
 const winName = (k) => (WINDOWS[k] || DOORS[k]).name;
@@ -148,6 +149,8 @@ export class WallTool {
   get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || [this.pool, this.land, this.ext, this.col, this.fence].some((w) => this._held(w)); }
   // the work under the menu's choice (null: the masonry); a work a finger is on now
   get work() { return this.works[this.kind] || null; }
+  // a brick laid now: the facing one's colour (the filler brick has none — «Кирпич» → «Забутовочный» / «Облицовочный»)
+  _face(kind) { const f = this.app.settings.brickFace; return /^brick/.test(kind || '') && FACING[f] ? { face: f } : {}; }
   _held(w) { return w === this.land ? !!(w.drag || w.pw.drag || w.lw.drag) : !!w.drag; }
   _holding() { for (const w of Object.values(this.works)) if (w !== this.rwin && this._held(w)) return w; return null; }
   // one finger works on the wall in every mode (the camera: two fingers)
@@ -513,7 +516,7 @@ export class WallTool {
       return;
     }
     if (!app.budget.has(r.kind)) { this._rowStop(); app.budget.noStock(r.kind); return; }
-    const u = { type: 'unit', free: true, kind: r.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +r.bedT.toFixed(6), s: r.s.toArray().map((x) => +x.toFixed(6)), ...(r.half ? { cut: true } : {}) };
+    const u = { type: 'unit', free: true, kind: r.kind, ...this._face(r.kind), row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +r.bedT.toFixed(6), s: r.s.toArray().map((x) => +x.toFixed(6)), ...(r.half ? { cut: true } : {}) };
     app.physJob = new LayJob(app, null, u, { p: r.p, q: r.q, s: r.s, bedY: r.bedY, bedT: r.bedT }, null, [], null, null, true);   // (a course: quick, no trimming)
     // the rest of the plan follows where this one really went (and at its height)
     const dx = r.p.x - q.x, dz = r.p.z - q.z, bot = r.p.y - r.s.y / 2;
@@ -882,7 +885,7 @@ export class WallTool {
   }
 
   _unitFor(w, r, sl, pose) {
-    const u = { type: 'unit', wall: w.id, row: r, i: sl.i, s0: +sl.s0.toFixed(1), s1: +sl.s1.toFixed(1), off: sl.off, kind: w.kind, s: pose.s.toArray().map((x) => +x.toFixed(6)) };
+    const u = { type: 'unit', wall: w.id, row: r, i: sl.i, s0: +sl.s0.toFixed(1), s1: +sl.s1.toFixed(1), off: sl.off, kind: w.kind, ...this._face(w.kind), s: pose.s.toArray().map((x) => +x.toFixed(6)) };
     if (sl.lintel) u.lintel = true;
     if (sl.cut) u.cut = true;
     return u;
@@ -1040,7 +1043,7 @@ export class WallTool {
       c.free = f; c.snap = null;
       if (f) {
         const lift = f.p.clone(); lift.y += MM(25);
-        v.live = { type: 'unit', kind: f.kind, row: 0, i: 0, s: f.s.toArray(), p: lift.toArray(), q: f.q.toArray(), ...(f.kind === 'lintel' ? { lintel: true } : {}), ...(f.post != null ? { post: f.post } : {}) };
+        v.live = { type: 'unit', kind: f.kind, ...this._face(f.kind), row: 0, i: 0, s: f.s.toArray(), p: lift.toArray(), q: f.q.toArray(), ...(f.kind === 'lintel' ? { lintel: true } : {}), ...(f.post != null ? { post: f.post } : {}) };
         v.hl = { p: f.p.toArray(), q: f.q.toArray(), s: f.s.toArray(), ok: f.ok };
       } else { v.live = null; v.hl = null; }
       v.liveBed = null; v.dirty = true;
@@ -1064,7 +1067,7 @@ export class WallTool {
       const k = KINDS[c.kind], yaw = c.pallet ? (() => { const ax = axis(c.pallet); return Math.atan2(-ax.uz, ax.ux); })() : app.rig?.yaw || 0;
       const s = new THREE.Vector3(k.L * S, k.H * S, (k.nb ? k.W : k.T) * S);
       const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw).toArray();
-      v.live = { type: 'unit', kind: c.kind, row: 0, i: 0, s: s.toArray(), p: [p.x, p.y + MM(350), p.z], q };
+      v.live = { type: 'unit', kind: c.kind, ...this._face(c.kind), row: 0, i: 0, s: s.toArray(), p: [p.x, p.y + MM(350), p.z], q };
       // nothing to set it on here: the spot under the finger in red
       const g = app.terrain.inside(p.x, p.z) ? Math.max(p.y, app.terrain.heightAt(p.x, p.z)) : p.y;
       v.hl = { p: [p.x, g + s.y / 2, p.z], q, s: s.toArray(), ok: false };
@@ -1310,7 +1313,7 @@ export class WallTool {
         return;
       }
       if (!app.budget.has(free.kind)) { app.budget.noStock(free.kind); return; }
-      const u = { type: 'unit', free: true, kind: free.kind, row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)), ...(free.half ? { cut: true } : {}),
+      const u = { type: 'unit', free: true, kind: free.kind, ...this._face(free.kind), row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)), ...(free.half ? { cut: true } : {}),
         ...(free.kind === 'lintel' ? { lintel: true } : {}), ...(free.post != null ? { post: +free.post.toFixed(6) } : {}) };
       if (free.kind === 'lintel') app.ui.toast(`Перемычка ${free.lenMm} мм над проёмом ${free.gapMm} мм — опора по ${Math.round((free.lenMm - free.gapMm) / 2)} мм`);
       if (free.kind === 'prop') app.ui.toast('Подпорка стоит — кладите на неё U-блоки (стыкуются с кладкой по бокам)');

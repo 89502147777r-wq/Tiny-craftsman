@@ -158,7 +158,14 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 
 | Файл | Модель | Автор | Лицензия | Источник |
 |---|---|---|---|---|
-| `assets/textures/brick_scan/` — кирпич | Red Brick | jimmy_jee | CC BY 4.0 | https://sketchfab.com/3d-models/60e8f501a6dc421e9eae3adf7d08789e |
+| `assets/textures/brick_scan/` — кирпич | Red Brick | jimmy_jee | CC BY 4.0 | https://sketchfab.com/3d-models/60e8f501a6dc421e9eae3adf7d08789e | (полоса 0 атласа `brick_atlas`)
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Red Brick | Poly Haven | CC0 | https://polyhaven.com/a/red_brick |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Large Red Bricks | Poly Haven | CC0 | https://polyhaven.com/a/large_red_bricks |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Factory Brick | Poly Haven | CC0 | https://polyhaven.com/a/factory_brick |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Brick Wall 10 | Poly Haven | CC0 | https://polyhaven.com/a/brick_wall_10 |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Dark Brick Wall | Poly Haven | CC0 | https://polyhaven.com/a/dark_brick_wall |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Yellow Brick | Poly Haven | CC0 | https://polyhaven.com/a/yellow_brick |
+| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Brick Wall 08 | Poly Haven | CC0 | https://polyhaven.com/a/brick_wall_08 |
 | `assets/models/cinder/` — шлакоблок | Cinderblock/concrete brick | william.sayin | CC BY 4.0 | https://sketchfab.com/3d-models/2358b37cb7d142dca00aff66c678f5cd |
 
 ## Окна, двери, гаражные ворота (Sketchfab, CC BY 4.0)

@@ -27,6 +27,7 @@ import { RWIN_TYPES } from '../world/roofWindows.js';
 import { ROOF_TYPES, PITCHES, PITCH_RANGE, COVERS, COVER_COLOURS, STAGES as PROOF_STAGES, RWIN, RWIN_COLOURS, GUTTERS, GUTTER_COLOURS } from '../world/pitched.js';
 import { LANG } from '../i18n/i18n.js';
 import { PROPS } from '../world/siteProps.js';
+import { FACING } from '../world/walls.js';
 
 const $ = (id) => document.getElementById(id);
 const real = (mmModel) => mmModel * MODEL_SCALE / 10; // model mm → real cm
@@ -521,7 +522,13 @@ export class UI {
       const K = (k, l) => C(l, L && wk === k, () => lay({ wallKind: k }));
       const has = (...ks) => L && ks.includes(wk);
       // the masonry
-      const masonry = [K('block', 'Газоблок'), K('brick', 'Кирпич'), K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];
+      // (the brick: the filler one, or a facing one of its colour)
+      const bf = FACING[s.brickFace] ? s.brickFace : null;
+      const brickG = G('brickG', 'Кирпич', [
+        C('Забутовочный', has('brick') && !bf, () => lay({ wallKind: 'brick', brickFace: null })),
+        G('brickF', 'Облицовочный', Object.entries(FACING).map(([k, F]) => C('◼ ' + F.name, has('brick') && bf === k, () => lay({ wallKind: 'brick', brickFace: k }))), null, C('', has('brick') && !!bf, () => lay({ wallKind: 'brick', brickFace: bf || 'red' }))),
+      ], null, C('', has('brick'), () => lay({ wallKind: 'brick' })));
+      const masonry = [K('block', 'Газоблок'), brickG, K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];
       // («↻ Повернуть»: a button on the right, over «Ряд»)
       if (has('block', 'brick', 'cinder')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
       // the budget: pallets bought onto the plot (the units laid come off them)

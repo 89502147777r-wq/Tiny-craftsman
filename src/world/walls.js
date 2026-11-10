@@ -33,6 +33,13 @@ import { mortarOf } from '../tools/freeBrick.js';
 //          a course, s along the axis from a (real mm)
 //   unit { wall, row, i, s0, s1, off, p, q, s, kind } – a block / brick as it was laid
 // Sizes in real millimetres, converted with MODEL_SCALE.
+// the facing bricks (Poly Haven photos of brick walls, CC0 — single stretchers cut out of them, CREDITS.md): their
+// colours, each a band of the brick atlas (assets/textures/brick_atlas: band 0 — the filler brick's scan)
+export const FACING = {
+  red: { name: 'Красный гладкий', layer: 1 }, handmade: { name: 'Ручной формовки', layer: 2 }, brown: { name: 'Коричневый', layer: 3 },
+  darkred: { name: 'Тёмно-красный', layer: 4 }, anthracite: { name: 'Антрацит', layer: 5 }, yellow: { name: 'Жёлтый', layer: 6 }, grey: { name: 'Серый', layer: 7 },
+};
+const BRICK_LAYERS = 8;
 export const KINDS = {
   block: { name: 'Газоблок', L: 600, H: 250, T: 300, bed0: 20, bed: 3, head: 3, min: 100, lintelRows: 1 },     // aerated concrete on glue (first course on mortar)
   cinder: { name: 'Шлакоблок', L: 390, H: 188, T: 190, W: 190, bed0: 12, bed: 10, head: 10, min: 90, lintelRows: 1 },   // hollow cinder block on mortar (free masonry only)
@@ -377,6 +384,7 @@ export class WallView {
     this.blocks = new THREE.InstancedMesh(box, block, this.max.block);
     this.bricks = new THREE.InstancedMesh(atlasBox(), brick, this.max.brick);
     this.bricks.geometry.setAttribute('aSkin', new THREE.InstancedBufferAttribute(new Float32Array(this.max.brick), 1));
+    this.bricks.geometry.setAttribute('aLayer', new THREE.InstancedBufferAttribute(new Float32Array(this.max.brick), 1));
     // cinder blocks: the scanned hollow block (CC BY, CREDITS.md) — a box until it loads
     this.cinders = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x8d8a84, roughness: 0.95 }), this.max.cinder);
     loadCinder(this.cinders);
@@ -564,8 +572,10 @@ export class WallView {
         if (f4 & 1) Q.multiply(TURN);
         if (f4 & 2) Q.multiply(FLIP);
         this.bricks.geometry.attributes.aSkin.array[nk] = Math.floor(h * 7919) % 2 || 0;
+        const fc = FACING[u.face];   // (a facing brick: its colour's band, its own colours — only the slight spread of a batch)
+        this.bricks.geometry.attributes.aLayer.array[nk] = fc ? fc.layer : 0;
         this.bricks.setMatrixAt(nk, m.compose(P, Q, Sv));
-        this.bricks.setColorAt(nk, brickTint(c, h));
+        this.bricks.setColorAt(nk, fc ? c.setRGB(0.95 + h * 0.08, 0.95 + h * 0.07, 0.95 + h * 0.06) : brickTint(c, h));
         this.owner.bricks[nk++] = id;
       }
     };
@@ -610,7 +620,7 @@ export class WallView {
           const a = (ia - (na - 1) / 2) * (L + 4), c = (ic - (nc - 1) / 2) * (Tt + 4), y = 122 + lay * (Hh + 2) + Hh / 2;
           at(a, y, c, L, Hh, Tt);
           if (bl && nb < this.max.block) { this.blocks.setMatrixAt(nb, m.compose(P, pq, Sv)); this.blocks.setColorAt(nb, c3.setRGB(0.86, 0.855, 0.83)); this.owner.blocks[nb++] = null; }
-          else if (!bl && nk < this.max.brick) { const h = hash(i * 7 + w.id); this.bricks.setMatrixAt(nk, m.compose(P, pq, Sv)); this.bricks.setColorAt(nk, brickTint(c3, h)); this.owner.bricks[nk++] = null; }
+          else if (!bl && nk < this.max.brick) { const h = hash(i * 7 + w.id); this.bricks.geometry.attributes.aLayer.array[nk] = FACING[w.face]?.layer || 0; this.bricks.setMatrixAt(nk, m.compose(P, pq, Sv)); this.bricks.setColorAt(nk, brickTint(c3, h)); this.owner.bricks[nk++] = null; }
         }
       }
       // planned openings: an orange frame on both faces until the masonry is round them
@@ -790,7 +800,7 @@ export class WallView {
     for (const im of [this.blocks, this.bricks, this.cinders, this.mortar, this.lintels, this.frames, this.wood, this.ublocks, this.beltBoards]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     if (!late) this._buildFill(); else this.fillDirty = true;
     for (const im of [this.blocks, this.bricks, this.cinders]) if (im.instanceColor) im.instanceColor.needsUpdate = true;
-    this.bricks.geometry.attributes.aSkin.needsUpdate = true;
+    this.bricks.geometry.attributes.aSkin.needsUpdate = true; this.bricks.geometry.attributes.aLayer.needsUpdate = true;
   }
 
   // the concrete in the U-block channels: a surface over the levels of each block (UN
@@ -1186,10 +1196,12 @@ function atlasBox() {
 }
 function scanBrick(mat) {
   mat.onBeforeCompile = (sh) => {
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aSkin;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_MAP\nvMapUv.x += aSkin * 0.5;\n#endif\n#ifdef USE_NORMALMAP\nvNormalMapUv.x += aSkin * 0.5;\n#endif');
+    // (the skin: left or right half; the band: the filler brick or a facing colour — 8 bands down the atlas)
+    const NL = BRICK_LAYERS.toFixed(1), band = (v) => `${v}.x += aSkin * 0.5; ${v}.y = (${v}.y + ${NL} - 1.0 - aLayer) / ${NL};`;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aSkin; attribute float aLayer;')
+      .replace('#include <uv_vertex>', `#include <uv_vertex>\n#ifdef USE_MAP\n${band('vMapUv')}\n#endif\n#ifdef USE_NORMALMAP\n${band('vNormalMapUv')}\n#endif`);
   };
-  const L = new THREE.TextureLoader(), base = 'assets/textures/brick_scan/';
+  const L = new THREE.TextureLoader(), base = 'assets/textures/brick_atlas/';
   mat.color.set(0xa04a34);
   L.load(base + 'col.jpg', (t) => {
     mat.color.set(0xffffff);

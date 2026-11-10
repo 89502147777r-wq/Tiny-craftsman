@@ -1345,6 +1345,27 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2o. Facing bricks («Стены» → «Кладка» → «Кирпич» → «Облицовочный»): a brick laid takes the colour chosen, drawn
+// with its colour's band of the atlas; the filler brick none ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, wt = tc.wallTool, M = 1 / 1000 / 10.4651, o = {}, W = await import('/src/world/walls.js');
+    o.colours = Object.keys(W.FACING).length;
+    tc.settings.brickFace = 'anthracite'; o.face = wt._face('brick').face; o.blockNone = !wt._face('block').face;
+    tc.settings.brickFace = null; o.fillerNone = !wt._face('brick').face;
+    const g = tc.terrain.heightAt(0, 0), add = (x, face) => tc.objects.add({ type: 'unit', kind: 'brick', free: true, ...(face ? { face } : {}), p: [x, g + 32.5 * M, 0], s: [250 * M, 65 * M, 120 * M], q: [0, 0, 0, 1] });
+    add(0, 'yellow'); add(260 * M, null); tc.simulate(0.2);
+    const a = tc.wallView.bricks.geometry.attributes.aLayer.array, own = tc.wallView.owner.bricks, recs = tc.objects.all('unit');
+    o.layers = own.slice(0, tc.wallView.bricks.count).map((id, i) => [recs.find((r) => r.id === id)?.face || 'filler', a[i]]);
+    o.tex = !!tc.wallView.bricks.material.map?.image?.src?.includes('brick_atlas');
+    return o;
+  });
+  check('facing bricks: 7 colours; a brick laid takes the colour chosen (the filler one none, a block none); drawn with its band of the atlas', o.colours === 7 && o.face === 'anthracite' && o.blockNone && o.fillerNone && o.layers.some(([f, l]) => f === 'yellow' && l === 6) && o.layers.some(([f, l]) => f === 'filler' && l === 0), JSON.stringify(o));
+  check('facing bricks: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
