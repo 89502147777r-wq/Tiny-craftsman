@@ -184,7 +184,9 @@ console.log('—', sec());
     tc.shovelTool.down(new V(0.12, 0.1, -0.1)); for (let s = 0; s < 1 && tc.shovelTool.state === 'dig'; s += 0.04) tc.shovelTool.move(new V(0.12 + 0.12 * s, 0.1, -0.1)); tc.shovelTool.up();
     mats.loadSand = tc.shovelTool.mat === 1;
     if (tc.shovelTool.state === 'loaded') { tc.shovelTool.down(new V(-0.2, 0.1, 0.25)); tc.shovelTool.up(); }
-    for (let i = 0; i < 400 && tc.shovelTool.state !== 'idle'; i++) tc.simulate(0.05);
+    // (till the sand has landed and lain still: crumbs fall at the real g now — a snapshot taken with some still in the air,
+    // or the heap still slumping, differed from what redo brings back: the test «blinked»)
+    for (let i = 0; i < 800 && (tc.shovelTool.state !== 'idle' || tc.particles.busy || t.active || tc.busy()); i++) tc.simulate(0.05);
     mats.dumpedSand = t.topMat(t.index(-0.2, 0.25)) === 1;
     const lH = t.lH.slice();
     tc.undo(); tc.undo(); tc.redo(); tc.redo();

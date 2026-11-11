@@ -23,7 +23,7 @@ Tiny Craftsman — браузерная 3D-игра-стройка на Three.js
 1. Поднять `BUILD` в `src/config.js`.
 1a. Всё, что показывает стройку или физику, — **на проверку реалисту до выпуска** (хозяин: «Реалист проверил?»).
 2. `timeout 900 node tests/quick.mjs` — все тесты должны пройти (сейчас 117/117, ~16 мин; один прогон за раз; timeout 1500, без параллельных рендеров).
-   Тест «sand: … undo» изредка мигает — перезапустить.
+   Тест «sand: … undo» мигал: снимок делался, пока песок ещё падал/оседал — с 289 ждёт (`particles.busy`, `terrain.active`).
 3. Ветка от свежего main: `git fetch -q origin main && git checkout -q -B build-NNN origin/main`
    (локальные правки: `git stash -u` → checkout → `git stash pop`). Никогда не force-push.
 4. Коммит (по-английски, что и почему) с трейлерами:
