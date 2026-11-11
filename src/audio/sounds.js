@@ -76,6 +76,7 @@ export const SOUNDS = {
   footstep: {"f": ["footstep-0", "footstep-1", "footstep-2", "footstep-3", "footstep-4"], "vol": 0.4},
   water: {"f": ["water-0"], "loop": 1},
   cash: {"f": ["cash-0"], "vol": 0.6, "range": 99},
+  till: {"f": ["till-0"], "vol": 0.75, "range": 99},   // (a cash register's bell: a stage's bill in the films)
   tap: {"f": ["tap-0"], "vol": 0.35, "range": 99},
   car_door: {"f": ["car_door-0"]},
   collapse: {"f": ["collapse-0", "collapse-1"], "vol": 1.0, "range": 4},

@@ -28,7 +28,7 @@ export function* slabFilm(d, app) {
   loadPhysics().catch(() => {});
   // (the game's budget: every stage billed as its work goes into the journal)
   if (!app.budget.on) O.add({ type: 'budget', money: 60000, start: 60000 });
-  d.money(true);
+  d.money(true); d.byStages();
   // the outline of the slab (the marking is not the film's matter: it is there)
   const ol = O.add({ type: 'outline', kind: 'rect', x0: -H, z0: -H, x1: H, z1: H, depth: 0 });
 
@@ -56,7 +56,8 @@ export function* slabFilm(d, app) {
   d.cut(look(P(-9500, 6500, 11500), P(0, 0, 0)), { drift: 0.03, push: 0.02, hand: 0.4 });
   F._fitRuns(rest, false, save(rest));
   yield d.until(idle);
-  yield d.sec(0.35);
+  d.stageBill('BOARDS & STAKES');
+  yield d.sec(0.7);
 
   // ---- 2 · the slab's cage: bar after bar, on its chairs ---------------------------------------------------
   app.setTool('rebar'); app.rebarTool.setMode('cage');
@@ -73,7 +74,8 @@ export function* slabFilm(d, app) {
   d.cut(look(P(8500, 6000, 10500), P(0, 0, 0)), { drift: 0.03, push: 0.02, hand: 0.4 });
   yield d.until(idle);
   d.speed = 1;
-  yield d.sec(0.3);
+  d.stageBill('REBAR Ø12');
+  yield d.sec(0.7);
 
   // ---- 3 · the columns' cages: carried from the button to each corner (the ghost under the finger), lowered into
   // the slab's cage, their feet wired to it — each from another angle ----------------------------------------
@@ -105,6 +107,8 @@ export function* slabFilm(d, app) {
     yield d.sec(i ? 0.15 : 0.3);
   }
   d.speed = 1;
+  d.stageBill('COLUMN CAGES × 4');
+  yield d.sec(0.6);
   const cols = O.all('column');
 
   // ---- 4 · the concrete: out of the hose, row by row — it heaps under the stream, flows, creeps to the boards -----
@@ -170,6 +174,8 @@ export function* slabFilm(d, app) {
     yield d.until(idle);
   }
   d.speed = 1; G.set(null);
+  d.stageBill(`CONCRETE · ${Math.round(T.concVolume() / S ** 3 / 1e9)} m³`);
+  yield d.sec(0.8);
 
   // ---- 6 · it sets: a day and a night on the clock (low, the horizon in frame — the slab is low yet) ------------
   d.hud(null);
@@ -189,12 +195,14 @@ export function* slabFilm(d, app) {
     yield d.until(idle);
     d.speed = 1;
     if ((O.get(r.id).stage || 0) < 2) O.update(r.id, { stage: 2 }); }   // (never left without: the hose waits for it)
-  const formAt = (r) => { O.update(r.id, { stage: 2 }); app.sfx?.seq?.(['plank', 'hammer_nail', 'plank']); d.punch(0.97, 0.3); };
+  const formAt = (r) => { app.journal.act('column-form', {}, app.clock, () => O.update(r.id, { stage: 2 })); app.sfx?.seq?.(['plank', 'hammer_nail', 'plank']); d.punch(0.97, 0.3); };
   d.cut(look(P(-10500, 5200, 9500), P(0, 1500, 800)), { drift: 0.03, push: 0.02, hand: 0.4 });
   yield d.sec(0.4); formAt(cols[1]);
   yield d.sec(0.45); formAt(cols[2]);
   yield d.sec(0.4); formAt(cols[3]);
-  yield d.sec(0.5);
+  yield d.sec(0.35);
+  d.stageBill('COLUMN FORMWORK × 4');
+  yield d.sec(0.8);
 
   // ---- 8 · their concrete: the hose into each (seen from over its top) ---------------------------------------
   app.setTool('hose');
@@ -218,6 +226,8 @@ export function* slabFilm(d, app) {
     yield d.sec(0.15);
   }
   G.set(null);
+  d.stageBill('CONCRETE · COLUMNS');
+  yield d.sec(0.6);
   d.done4 = O.all('column').filter((r) => (r.fill || 0) >= 0.99).length;
 
   // ---- the result, round it (the hook: put first by the recorder) -------------------------------------------
@@ -225,12 +235,11 @@ export function* slabFilm(d, app) {
   hud(3, ['*Done'], 'hose');
   d.mark('hook');
   d.reveal(P(0, 1500, 0), MM(15000), 3.4, { yaw0: -0.6, arc: 1.5, y0: MM(1500), y1: MM(4200) });
-  app.sfx?.play?.('cash');
-  d.count('CONCRETE, m³', Math.round((T.concVolume() + 4 * MM(300) * MM(300) * cols[0].h) / S ** 3 / 1e9), '', 1.0);
+  d.count('SPENT, $', 60000 - app.budget.money, '', 1.0);
   yield d.sec(3.4);
   d.mark('hookEnd');
   yield d.sec(0.1);
 }
 slabFilm.seconds = 48;
 slabFilm.place = 'lake';
-slabFilm.sounds = ['hammer_nail', 'plank', 'stake', 'rebar', 'wire', 'tap', 'pump', 'concrete', 'concrete_splat', 'vibrator', 'screed', 'cash', 'birds', 'wind', 'crickets'];
+slabFilm.sounds = ['hammer_nail', 'plank', 'stake', 'rebar', 'wire', 'tap', 'pump', 'concrete', 'concrete_splat', 'vibrator', 'screed', 'cash', 'till', 'birds', 'wind', 'crickets'];

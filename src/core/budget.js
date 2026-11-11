@@ -343,7 +343,7 @@ export class Budget {
     if (!usd) return;
     app.objects.update(r.id, { money: Math.round(r.money - usd) });
     if (app.film) { if (usd > 0) app.film.bill(usd, at); } else this.popup(usd, items, at);
-    if (usd > 0) app.sfx?.cash?.(); else app.sfx?.stab?.();
+    if (usd > 0) { if (!app.film?.byStage) app.sfx?.cash?.(); } else app.sfx?.stab?.();   // (a film billed by stages: the till rings once, with the stage's bill)
     this.refresh();
     if (r.money - usd < 0 && r.money >= 0 && !app.film) app.ui.toast('Бюджет кончился — дальше стройка в долг (сумма красная)');
   }

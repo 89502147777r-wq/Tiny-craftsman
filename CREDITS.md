@@ -388,6 +388,7 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | `assets/sounds/` — stake | Hammering wood | felix.blume | CC0 | https://freesound.org/people/felix.blume/sounds/369813/ |
 | `assets/sounds/` — block, stone | Stone dropping to ground_northern87 | northern87 | CC0 | https://freesound.org/people/northern87/sounds/369981/ |
 | `assets/sounds/` — cash | 16. Cash-register_closing.wav | 13GPanska_Jirova_Tereza | CC0 | https://freesound.org/people/13GPanska_Jirova_Tereza/sounds/378269/ |
+| `assets/sounds/` — till | Cha Ching.wav | deleted_user_96253 (Freesound) | CC0 | https://freesound.org/people/deleted_user_96253/sounds/351304/ |
 | `assets/sounds/` — vibrator | Vibrator.wav | 13GPanska_Tatar_Filip | CC BY 3.0 | https://freesound.org/people/13GPanska_Tatar_Filip/sounds/378596/ |
 | `assets/sounds/` — saw | Hand Saw Sawing Wood | deleted_user_7146007 | CC0 | https://freesound.org/people/deleted_user_7146007/sounds/383725/ |
 | `assets/sounds/` — screed | Metal Scraping on Concrete | deleted_user_7146007 | CC0 | https://freesound.org/people/deleted_user_7146007/sounds/383794/ |
