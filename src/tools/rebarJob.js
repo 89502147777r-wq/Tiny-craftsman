@@ -106,8 +106,12 @@ export class RebarJob {
     at += 0.3;
     bottom.filter((b) => Math.abs(b[3] - b[0]) < Math.abs(b[5] - b[2])).forEach(single);
     if (top.length) {
+      // (the owner: the frogs go in between the two mats — stood on the bottom one when it is laid, one after another;
+      // they were there before the first bar. Shown from frogAt on, over frogDur; the top mat comes after the last)
+      this.frogAt = at + 0.35; this.frogDur = Math.min(2.2, 0.25 + (r.frogs?.length || 0) * 0.03);
+      at = this.frogAt + this.frogDur;
       // the top mat is tied as one piece and lowered onto the frogs
-      at += 0.6;
+      at += 0.4;
       let cx = 0, cy = Infinity, cz = 0;
       for (const b of top) { cx += b[0] + b[3]; cz += b[2] + b[5]; cy = Math.min(cy, b[1]); }
       const c = [cx / (2 * top.length), cy, cz / (2 * top.length)];
@@ -139,7 +143,11 @@ export class RebarJob {
 
   _show() {
     const v = this.app.rebarView;
-    v.live = { rods: this.pieces.flatMap((pc) => this._world(pc)), chairs: this.chairs || [], frogs: this.frogs || [] };
+    // (the frogs: none till the bottom mat lies, then one by one — each set down with a clink)
+    const F = this.frogs || [], nF = this.frogAt == null ? F.length : Math.max(0, Math.min(F.length, Math.ceil(F.length * (this.t - this.frogAt) / this.frogDur)));
+    if (nF > (this._nF || 0)) { this._nF = nF; this.app.sfx?.play?.('rebar', { vol: 0.35, gap: 0.08 }); }
+    this.nFrogs = nF;
+    v.live = { rods: this.pieces.flatMap((pc) => this._world(pc)), chairs: this.chairs || [], frogs: nF === F.length ? F : F.slice(0, nF) };
     v.dirty = true;
   }
 
