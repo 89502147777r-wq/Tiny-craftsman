@@ -205,13 +205,19 @@ export class PumpHose {
 
   // the stream: on while pumping; groundAt(x, z) → the height it lands on there. Returns where it lands (the
   // first piece to reach the surface this frame — or under the spout before any has), or null when off
-  setStream(on, groundAt = null, time = 0, dt = 1 / 60) {
-    if (!on) { this.stream.visible = false; this.drops.length = 0; this.landing = null; return null; }
+  // (still: into a narrow thing — a column's formwork, a post's hole: the spout is held over it, the stream goes straight down)
+  setStream(on, groundAt = null, time = 0, dt = 1 / 60, still = false) {
+    if (!on) { this.stream.visible = false; this.drops.length = 0; this.landing = null; this._sp0 = null; return null; }
     // (the worker keeps the spout pointing down: the concrete goes out mostly downward, whatever the hose's lean)
     const sp = this.spout(), fl = this.flow().lerp(_down, 0.7).normalize(), gAt = groundAt || (() => sp.y - 0.5 * M);
     dt = Math.min(dt, 1 / 20);
     // (the spout's own speed: the pieces keep it)
-    const sv = this._sp0 ? sp.clone().sub(this._sp0).divideScalar(Math.max(1e-4, dt)) : new THREE.Vector3(); this._sp0 = sp.clone();
+    // (the owner's screenshot: over a column the stream ran off sideways as a long ribbon. The spout's speed was its
+    // move since the last call over this step's dt — the hose brought to a new place, or several steps of the work to
+    // one of the hose (a film sped up), made it tens of metres a second: no faster than the hand goes, none after a jump)
+    const sv = new THREE.Vector3();
+    if (this._sp0 && !still) { sv.copy(sp).sub(this._sp0); if (sv.length() > 0.5 * M) sv.set(0, 0, 0); else { sv.divideScalar(Math.max(1e-4, dt)); if (sv.length() > VMAX) sv.setLength(VMAX); } }
+    this._sp0 = sp.clone();
     const pu = this.pulse();
     if (pu > 0.2) this.drops.push({ p: sp.clone(), v: sv.clone().multiplyScalar(0.8).addScaledVector(fl, OUT * pu), r: 0.89 * R * (0.9 + 0.2 * Math.min(1.3, pu)) * (0.92 + 0.16 * Math.random()), age: 0 });
     let land = null;

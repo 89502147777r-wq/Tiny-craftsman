@@ -330,7 +330,7 @@ export class HoseTool extends ConcreteTool {
     const ch = this.ch, sp = pump.ready ? pump.spout() : this.p, si = ch.at(sp.x, sp.z), open = this.uT.type === 'column' || this.uT.type === 'fpost';
     const fullHere = !open && (ch.full || ch.h[si] >= (ch.brim ? ch.brim(si) : ch.cap) - 2);
     let i = si;
-    if (!fullHere) { const land = pump.setStream(true, (x, z) => ch.point(ch.at(x, z)).y, app.clock, dt); if (land) i = ch.at(land.x, land.z); }
+    if (!fullHere) { const land = pump.setStream(true, (x, z) => ch.point(ch.at(x, z)).y, app.clock, dt, open); if (land) i = ch.at(land.x, land.z); }
     else pump.setStream(false);
     // (a ring beam takes the hose near its pump rate: 37 … 60 l/s; the narrow channel of the
     // U-blocks 8 l/s)
