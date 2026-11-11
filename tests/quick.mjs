@@ -1439,11 +1439,14 @@ console.log('—', sec());
       for (let i = 0; i < 60; i++) { H.target.x += 0.02 * m; H.update(1 / 30); const ln = H.setStream(true, gy, 5 + i / 30, 1 / 30); if (i > 40) lag = Math.max(lag, (H.spout().x - ln.x) / m); }
       // (full of concrete it is stiff: straight down out of the clamp — its first half metre no more than a few degrees off plumb, even swept)
       let root = 0; for (let i = 0; i < 40; i++) { H.target.x += 0.03 * m; H.update(1 / 30); root = Math.max(root, Math.atan2(Math.hypot(H.p[3].x - H.p[0].x, H.p[3].z - H.p[0].z), H.p[0].y - H.p[3].y) * 180 / Math.PI); }
-      o.hose = { root: +root.toFixed(1), vmax: +vmax.toFixed(2), top: +(top * 1000).toFixed(1), lag: +(lag * 1000).toFixed(0), thin: H.stream.userData.bottomR <= H.stream.userData.topR }; }
+      // (the stream never runs off sideways: brought to a new place 6 m away, and stepped many times to one move of the
+      // hose (a film sped up), its pieces stay under the spout — within a metre of it; over a column: straight down)
+      let side = 0; { H.setStream(false); H.aim(new V(6 * m, 3.4 * m, 2 * m), new V(0, 1, 5), true); for (let i = 0; i < 30; i++) { H.target.x += 0.004 * m; H.update(1 / 30); for (let k = 0; k < 8; k++) { H.setStream(true, gy, 9 + i / 30, 1 / 240, i >= 15); const sp = H.spout(); for (const q of H.drops) side = Math.max(side, Math.hypot(q.p.x - sp.x, q.p.z - sp.z) / m); } } }
+      o.hose = { side: +side.toFixed(2), root: +root.toFixed(1), vmax: +vmax.toFixed(2), top: +(top * 1000).toFixed(1), lag: +(lag * 1000).toFixed(0), thin: H.stream.userData.bottomR <= H.stream.userData.topR }; }
     return o;
   });
   check('realist: a heap of sand lies at its angle of repose (≤ 36°), not as a column', o.heap > 40 && o.slope <= 36, JSON.stringify(o));
-  check('realist: the pump hose — led by hand (≤ 2,7 m/s — between a walk and the finger), the stream from the spout, thinner below, lagging when swept', o.hose.vmax <= 2.7 && o.hose.vmax > 1.5 && o.hose.root < 12 && o.hose.top < 6 && o.hose.thin && o.hose.lag >= 0 /* (never ahead of the spout; the stiff hose sways little, so the stream lags by a millimetre or two) */ && o.hose.lag < 250, JSON.stringify(o.hose));
+  check('realist: the pump hose — led by hand (≤ 2,7 m/s — between a walk and the finger), the stream from the spout, thinner below, lagging when swept', o.hose.vmax <= 2.7 && o.hose.vmax > 1.5 && o.hose.root < 12 && o.hose.side < 1 && o.hose.top < 6 && o.hose.thin && o.hose.lag >= 0 /* (never ahead of the spout; the stiff hose sways little, so the stream lags by a millimetre or two) */ && o.hose.lag < 250, JSON.stringify(o.hose));
   check('realist: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
