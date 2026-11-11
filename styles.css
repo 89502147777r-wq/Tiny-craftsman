@@ -363,6 +363,15 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-sub { display: inline-block; margin-top: 0.55em; font-size: clamp(12px, 3.8vw, 28px); font-weight: 700; line-height: 1.25; padding: 0.3em 0.7em; border-radius: 8px; background: rgba(12,12,12,0.55); backdrop-filter: blur(4px); }
 #film .f-kick { position: absolute; left: 50%; top: 45%; width: 92%; text-align: center; line-height: 1.0; font-size: clamp(28px, 11vw, 86px); font-weight: 900; letter-spacing: -0.01em; text-transform: uppercase; color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,0.25), 0 6px 30px rgba(0,0,0,0.7); }
 #film .f-kick.gold { color: #f2b134; }
+/* the game's face over a film: the chips' rows at the top, the round tool button at the bottom (as the quiet mode's) */
+#film .f-hud { position: absolute; inset: 0; pointer-events: none; }
+#film .f-row { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 0.5em; white-space: nowrap; font-size: clamp(11px, 3.3vw, 25px); }
+#film .f-row:nth-child(1) { top: 4.4%; }
+#film .f-row:nth-child(2) { top: 9.6%; }
+#film .f-row b { font-weight: 600; padding: 0.5em 0.95em; border-radius: 999px; background: rgba(24, 19, 15, 0.6); border: 1px solid rgba(255, 255, 255, 0.16); color: #f4efe6; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); }
+#film .f-row b.on { background: #f2b134; color: #1c1509; border-color: rgba(0, 0, 0, 0); }
+#film .f-fab { position: absolute; right: 6%; bottom: 6.5%; width: clamp(44px, 14vw, 104px); height: clamp(44px, 14vw, 104px); border-radius: 50%; background: rgba(24, 19, 15, 0.55); border: 1px solid rgba(255, 255, 255, 0.22); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
+#film .f-fab img { position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; }
 #film .f-count { position: absolute; left: 50%; top: 57%; text-align: center; padding: 0.35em 0.9em 0.45em; border-radius: 14px; background: rgba(12,12,12,0.62); backdrop-filter: blur(5px); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
 #film .f-count small { display: block; font-size: clamp(10px, 3vw, 20px); font-weight: 800; letter-spacing: 0.14em; color: #f2b134; text-transform: uppercase; }
 #film .f-count b { display: block; font-size: clamp(26px, 10vw, 76px); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.05; }

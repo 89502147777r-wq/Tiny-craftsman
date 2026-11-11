@@ -44,6 +44,8 @@ export function* plinthFilm(d, app) {
   Object.assign(app.settings, { dayHour: 10.5 }); app.sky.setHour(10.5);
   app.setTool('wall'); app.wallTool.setMode?.('lay');
   d.lock = true; d.hand = 0.35;
+  // (the game's face: what is chosen — the brick; how it is laid — by hand, then as a course)
+  d.hud([['Wall', 'Brick', '*Facing · red'], ['*By hand', 'Course']], 'wall');
   // the strip under the walls: concrete 300 high, 450 wide, cast and set before the film starts
   const g = Tn.heightAt(0, 0), cells = [];
   for (let i = 0; i < Tn.conc.length; i++) { const x = Math.abs(Tn.toWorldX(i % Tn.nx)), z = Math.abs(Tn.toWorldZ(Math.floor(i / Tn.nx))); if (x < MM(X + 100) && z < MM(Z + 100) && !(x < MM(X - 350) && z < MM(Z - 350))) cells.push(i); }
@@ -73,7 +75,7 @@ export function* plinthFilm(d, app) {
     if (!app.physJob && nA < to) {
       const fast = nA >= whole; d.speed = fast ? v[2] : v[0];
       // (as a course is laid: the bed spread with the trowel for the next ten bricks, then each brick onto it)
-      if (fast && (!bed || nA >= bedFrom + bed.length)) { bed = W.spreadBed(wallA.slice(nA, Math.min(to, nA + 10))); bedFrom = nA; if (bed) d.spreads = (d.spreads || 0) + 1; d.speed = v[1]; return false; }
+      if (fast && (!bed || nA >= bedFrom + bed.length)) { bed = W.spreadBed(wallA.slice(nA, Math.min(to, nA + 10))); bedFrom = nA; if (bed) { if (!d.spreads) d.hudPick(1, 1); d.spreads = (d.spreads || 0) + 1; } d.speed = v[1]; return false; }
       if (W.layUnit(wallA[nA], fast, 12, fast ? bed?.[nA - bedFrom] : null)) { nA++; d.jobs++; }
     }
     if (nA >= to && !app.busy()) { d.speed = 1; return true; }
