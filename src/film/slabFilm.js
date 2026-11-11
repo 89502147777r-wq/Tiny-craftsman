@@ -126,7 +126,7 @@ export function* slabFilm(d, app) {
     else { const k = Math.min(3, Math.floor((pt - TP) / 1.2)), [x, z] = corners[k]; hose.move(P(x * 0.9, 0, z * 0.9)); }
     const row = Math.min(rows - 1, Math.floor(pt / TP * rows)), want3 = row < 3 ? 0 : row < 6 ? 1 : 2;
     if (want3 !== at) { at = want3; stand(at === 1 ? 4 : 6.4, at === 1 ? -1 : 1); }
-    return T.concVolume() >= want * 1.0 || pt > TP + 6;
+    return T.concVolume() >= want * 0.975 || pt > TP + 6;   // (a finger under the boards' tops: brim-full, the poker and the rule sent it over them)
   });
   hose.up();
   d.speed = 3;
@@ -163,7 +163,7 @@ export function* slabFilm(d, app) {
   d.speed = 5;
   for (let k = 0; k < 5; k++) {
     fresh();
-    const x = (-HALF + 1000 + k * 2000), z0 = k % 2 ? -HALF + 150 : HALF - 150, z1 = -z0;
+    const x = (-HALF + 1000 + k * 2000), z0 = k % 2 ? -HALF + 150 : HALF - 150, z1 = -z0 * 0.9;   /* (stopped short of the far boards: what it pushes ahead stays in) */
     rule.down(P(x, 0, z0)); let u = 0;
     yield d.until(() => { u = Math.min(1, u + d.dt * d.speed / 4.5); rule.move(P(x, 0, z0 + (z1 - z0) * u)); return u >= 1; });
     rule.up();
