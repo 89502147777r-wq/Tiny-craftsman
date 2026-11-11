@@ -455,14 +455,20 @@ function panoSphere(map, haze, R, exposure) {
   const m = new THREE.ShaderMaterial({
     // the time of day and the weather (sky.js): the light on the place, dusk, night, rain
     uniforms: { tMap: { value: map }, uHaze: { value: haze }, uLow: { value: 0 }, uEye: { value: EYE / MODEL_SCALE }, uHalf: { value: new THREE.Vector2(TRAY.innerX / 2, TRAY.innerZ / 2) },
-      tSoil: { value: null }, uSoilTile: { value: 1 / SOIL_TILE }, uSoilK: { value: 1.75 }, uSite: { value: 0 }, uEdge: { value: 1.6 / MODEL_SCALE }, uDim: { value: new THREE.Color(1, 1, 1) }, uNight: { value: 0 }, uDusk: { value: 0 }, uOver: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) } },
+      tSoil: { value: null }, uSoilTile: { value: 1 / SOIL_TILE }, uSoilK: { value: 1.75 }, uSite: { value: 0 }, uEdge: { value: 7 / MODEL_SCALE }, uFlat: { value: Math.min(R * 0.9, 36 / MODEL_SCALE) }, uDim: { value: new THREE.Color(1, 1, 1) }, uNight: { value: 0 }, uDusk: { value: 0 }, uOver: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) } },
     // the photo's own ground below its horizon laid flat onto the ground (its camera stood EYE over it): the place's sand,
     // grass, yard round the plot in true perspective as the camera moves — not a disc of other ground fading into the photo
-    vertexShader: `varying vec3 vDir; varying float vUp; varying float vGr; uniform float uEye;
+    vertexShader: `varying vec3 vDir; varying float vUp; varying float vGr; uniform float uEye; uniform float uFlat;
       void main() {
         vec3 p = position, d = normalize(position);
         vGr = 0.0;
-        if (d.y < -0.002) { float t = uEye / -d.y; if (t < length(position)) { p = d * t; vGr = 1.0; } }
+        // (the photo's ground lies flat only near the plot — out to uFlat; what the photo shows farther than that — a bank,
+        // bushes, trunks, the far shore — stands upright there, as it stood: laid flat it ran out in long streaks, and any
+        // blur over them was a smeared band. The standing part leans back to the far sphere as it rises: the sky, the hills
+        // stay far)
+        float hl = max(length(d.xz), 1e-5), R0 = length(position);
+        if (d.y < -0.002 && uEye / -d.y * hl <= uFlat) { p = d * (uEye / -d.y); vGr = 1.0; }
+        else { float Dw = mix(uFlat, R0, smoothstep(0.0, 0.55, d.y)); p = d * (Dw / hl); if (length(p) > R0) p = d * R0; }
         vDir = p;
         vUp = cameraPosition.y - modelMatrix[3].y;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
@@ -488,24 +494,31 @@ function panoSphere(map, haze, R, exposure) {
         vec2 gx = dFdx(uv), gy = dFdy(uv);
         gx.x -= floor(gx.x + 0.5); gy.x -= floor(gy.x + 0.5);
         vec3 c = unACES(textureGrad(tMap, uv, gx, gy).rgb);
-        // (the ground far off as the photo saw it: from its camera a thin band at its horizon, laid flat it smears into
-        // streaks — there its colour only (a blurred look-up: the place's sand, grass, water kept) and a fine grain on it)
+        // (the photo's own ground, laid flat: seen from about its camera's height it is the photo itself — sharp right up to
+        // the horizon, no seam with what stands over it. A blurred look-up used to stand in for all of it beyond a few
+        // metres: a dark smeared band under the trees (the owner's screenshot). Only from well above the photo's eye, where
+        // the far ground is stretched many times over, is it softened — a little, and only far off)
         if (vGr > 0.5) {
-          float sharp = smoothstep(0.1, 0.32, -d.y);
-          vec3 cb = unACES(textureGrad(tMap, uv, vec2(0.008, 0.0), vec2(0.0, 0.008)).rgb);
-          vec2 q2 = vDir.xz; float gr = gNoise(q2 * 60.0) * 0.5 + gNoise(q2 * 190.0) * 0.3 + gNoise(q2 * 13.0) * 0.2;
-          c = mix(cb * (0.8 + 0.4 * gr), c, sharp);
+          float high = ${HIGH_GLSL}, far = 1.0 - smoothstep(0.03, 0.14, -d.y);
+          vec3 cb = unACES(textureGrad(tMap, uv, gx * 6.0, gy * 6.0).rgb);
+          c = mix(c, cb, high * far * 0.8);
         }
         // seen from high up the photo's ground below its horizon is a bowl: haze there
         c = mix(c, uHaze, smoothstep(0.0, -0.12, d.y) * ${HIGH_GLSL} * (1.0 - vGr));
-        // (round the plot, on the ground: a narrow ragged rim of the site's own soil, trodden out over the place's ground —
-        // the edge not a straight line, not a smeared band)
+        // (round the plot, on the ground: the site's own soil trodden out over the place's ground — a wide ragged margin,
+        // patchy, thinning out; and it takes on the place's own colour as it goes (the soil's grain, the photo's hue and
+        // light): no line where the plot ends, no band, whichever way the camera looks)
         if (vGr > 0.5) {
           vec2 q = vDir.xz; float e = max(abs(q.x) - uHalf.x, abs(q.y) - uHalf.y);
-          float n = gNoise(q * 9.0) * 0.6 + gNoise(q * 31.0) * 0.4;
-          float k = 1.0 - smoothstep(0.0, uEdge, e + (n - 0.5) * uEdge * 1.1);
+          float n = gNoise(q * 2.3) * 0.45 + gNoise(q * 7.0) * 0.3 + gNoise(q * 23.0) * 0.17 + gNoise(q * 71.0) * 0.08;
+          float u = clamp(e / uEdge, 0.0, 1.0);
+          float k = 1.0 - smoothstep(0.0, 1.0, u * 0.75 + (n - 0.5) * 1.5 * u + u * u * 0.5);
           vec3 soil = texture2D(tSoil, q * uSoilTile).rgb;
           float l = dot(soil, vec3(0.3, 0.59, 0.11)); soil = mix(soil, mix(soil, l * vec3(1.02, 0.9, 0.72), 0.42) * 0.88, uSite) * uSoilK;
+          // (the place's colour there: the photo much blurred)
+          vec3 hue = unACES(textureGrad(tMap, uv, vec2(0.02, 0.0), vec2(0.0, 0.02)).rgb);
+          vec3 soilThere = soil * hue / max(dot(soil, vec3(0.3, 0.59, 0.11)), 0.04);
+          soil = mix(soil, soilThere, smoothstep(0.0, 0.85, u) * 0.85);
           c = mix(c, soil, clamp(k, 0.0, 1.0));
         }
         // (the place round the plot in 3D: the photo's own ground under the horizon never shown — haze behind the trees)
