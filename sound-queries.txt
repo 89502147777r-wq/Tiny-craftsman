@@ -1,2 +1,3 @@
-applause|crowd applause outdoor clapping cheering
-applause2|small crowd applause clapping
+till|cash register cha ching
+till2|cash register bell ding
+receipt|receipt printer
