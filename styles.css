@@ -375,6 +375,10 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-fab img { position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; }
 #film .f-logo { position: absolute; left: 5%; top: calc(3.2% + 14px); margin-top: clamp(8px, 3.3vw, 26px); width: 34%; max-width: 300px; opacity: 0.94; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55)); }   /* (the owner: at the top, level with the budget) */
 #film.hud .f-logo { top: 15%; }
+/* a stage's bill: what it was and what it cost */
+#film .f-stage { position: absolute; left: 50%; top: 66%; text-align: center; white-space: nowrap; padding: 0.4em 1.1em 0.5em; border-radius: 16px; background: rgba(12, 12, 12, 0.66); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); }
+#film .f-stage small { display: block; font-size: clamp(11px, 3.5vw, 26px); font-weight: 800; letter-spacing: 0.12em; color: #f4efe6; }
+#film .f-stage b { display: block; font-size: clamp(26px, 9.5vw, 72px); font-weight: 900; color: #ff5b4a; font-variant-numeric: tabular-nums; line-height: 1.08; }
 #film .f-clock { position: absolute; left: 50%; top: 15%; transform: translateX(-50%); text-align: center; padding: 0.3em 1em 0.4em; border-radius: 16px; background: rgba(12, 12, 12, 0.6); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); color: #fff; }
 #film .f-clock b { display: block; font-size: clamp(30px, 12vw, 92px); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.05; }
 #film .f-clock small { display: block; font-size: clamp(10px, 3.2vw, 22px); font-weight: 800; letter-spacing: 0.16em; color: #f2b134; }

@@ -376,8 +376,30 @@ export class Director {
   // the game's budget (budget.js) shown the film's way: the money in the corner running down,
   // each bill a «−$…» flying up from the work (with the till's sound)
   money(on) { this.$('.f-money').hidden = !on; this.cash = this.app.budget.money; }
+  // the budget goes down stage by stage (the owner: «вычитание из бюджета после каждого этапа» — «доски − … $»): while a
+  // stage is on, what its work costs is only added up — no pop-ups, the sum on the screen stands; at its end stageBill
+  // names it, shows what it cost, rings the till, and the sum drops by that
+  byStages(on = true) { this.byStage = !!on; this._billFrom = this._billShown = this.app.budget.money; this.stageBillsLog = []; }
+  stageBill(label) {
+    const now = this.app.budget.money, usd = Math.round((this._billFrom ?? now) - now);
+    this._billFrom = this._billShown = now;
+    if (usd <= 0) return 0;
+    this.stageBillsLog?.push({ label, usd });
+    for (const q of this.items) if (q.stage) q.t1 = -1;
+    const e = document.createElement('div'); e.className = 'f-stage';
+    e.innerHTML = '<small></small><b></b>'; e.firstChild.textContent = label; e.lastChild.textContent = `−$${usd.toLocaleString('en-US')}`;
+    const it = this._item(e, this.el, this.t + 1.9, (el, age) => {
+      const p = clamp01(age / 0.22);
+      el.style.opacity = (Math.min(1, p * 2) * (1 - clamp01((age - 1.5) / 0.4))).toFixed(3);
+      el.style.transform = `translate(-50%, -50%) scale(${(0.6 + 0.4 * back(p)).toFixed(3)})`;
+    });
+    it.stage = true; this.moneyKick = this.t;
+    this.app.sfx?.play?.('till', { vol: 1 });   // (the till's bell: «cha-ching» — what a spend sounds like)
+    return usd;
+  }
   bill(usd, at) {
     (this.bills = this.bills || []).push({ step: this.stepName || 'SETTING OUT', usd });
+    if (this.byStage) return;   // (shown with its stage's bill)
     // (bills that come together — the forms and the bars of one go — shown as one sum)
     const last = this.items.find((q) => q.bill && this.t - q.t0 < 0.9);
     if (last) { last.usd += usd; last.el.textContent = `−$${Math.round(last.usd).toLocaleString('en-US')}`; last.t0 = this.t; last.t1 = this.t + 1.6; this.moneyKick = this.t; return; }
@@ -454,7 +476,7 @@ export class Director {
     for (let i = 0; i < segs.length; i++) segs[i].style.setProperty('--f', i < this.stepAt - 1 ? 1 : i === this.stepAt - 1 ? clamp01((this.t - this.stepT) / 0.5).toFixed(3) : 0);
     bar.style.opacity = this.fin != null ? clamp01(1 - (this.t - this.fin) / 0.3) : this.stepAt ? 1 : 0;
     if (!this.$('.f-money').hidden) {
-      const m = this.app.budget.money;
+      const m = this.byStage ? this._billShown : this.app.budget.money;
       this.cash += (m - this.cash) * (1 - Math.exp(-this.dt * 5));
       const b = this.$('.f-money b'), k = this.moneyKick != null ? clamp01((this.t - this.moneyKick) / 0.35) : 1;
       b.textContent = `$${Math.round(this.cash).toLocaleString('en-US')}`;
