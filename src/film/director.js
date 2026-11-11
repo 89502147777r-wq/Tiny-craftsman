@@ -22,7 +22,9 @@ import * as THREE from 'three';
 // `until`), faster by d.speed; only the far steps («at once») may add things as they are.
 // THE THIRD RULE (the owner, 2026-11-10): sometimes (not by default) a near-level camera with the horizon and the view in
 // frame — mostly early on, while the building is low; higher wherever the work would hide or the building has grown tall
-// (low(), over() below). And a scene never starts on an empty place: its first frame holds what was just done, the
+// (low(), over() below). THE FOURTH (2026-11-11): the film wears the game's face — the round tool button at the bottom and
+// the rows of chips at the top, as in the quiet mode (d.hud, d.hudPick): it is seen to be a game all the way, at no cost of
+// time; no finger in the frame (seen now and then it reads as a glitch), no stop to choose a material. And a scene never starts on an empty place: its first frame holds what was just done, the
 // work goes on from it (a growth step's `follow`: the camera goes with the work).
 const clamp01 = (u) => Math.max(0, Math.min(1, u));
 const ease = (u) => u * u * (3 - 2 * u);
@@ -459,8 +461,30 @@ export class Director {
       this.$('.f-money').classList.toggle('hit', k < 1);
       this.$('.f-money').style.opacity = this.fin != null ? clamp01(1 - (this.t - this.fin) / 0.3) : 1;
     }
+    if (this.hudPress) { const P = this.hudPress, u = clamp01((this.t - P.t0) / 0.32), k = 1 - 0.14 * Math.sin(Math.PI * u); P.el.style.transform = u < 1 ? `scale(${k.toFixed(3)})` : ''; const f = this.hudEl?.querySelector('.f-fab'); if (f) f.style.transform = u < 1 ? `scale(${(1 + 0.1 * Math.sin(Math.PI * u)).toFixed(3)})` : ''; if (u >= 1) this.hudPress = null; }
     const e = this.$('.f-end');
     if (this.fin != null) { const u = clamp01((this.t - this.fin) / 0.5); e.style.opacity = u; e.querySelector('img').style.transform = `scale(${(0.7 + 0.3 * back(u)).toFixed(3)})`; } else e.style.opacity = 0;
+  }
+
+  // ---- the game's own face over the film (the owner: «с кнопкой внизу и строками вверху, как в тихом режиме») ----
+  // always there, small, costs the film no time: rows of chips at the top (what is chosen: the material, the way of
+  // working — '*' marks the chosen one) and the round tool button at the bottom. rows: [['Wall', '*Brick'], …]; none: off
+  hud(rows, tool) {
+    if (this.hudEl) { this.hudEl.remove(); this.hudEl = null; }
+    if (!rows) return;
+    const h = (this.hudEl = document.createElement('div')); h.className = 'f-hud';
+    const svg = document.querySelector(`#toolrow [data-tool="${tool || this.app.tool}"] svg`);
+    let img = '';
+    if (svg) { const c = svg.cloneNode(true); for (const [k, v] of [['xmlns', 'http://www.w3.org/2000/svg'], ['fill', 'none'], ['stroke', '#f4efe6'], ['stroke-width', '1.7'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round']]) c.setAttribute(k, v); img = `<img src="data:image/svg+xml;utf8,${encodeURIComponent(c.outerHTML)}">`; }
+    h.innerHTML = rows.map((r) => `<div class="f-row">${r.map((t) => (t[0] === '*' ? `<b class="on">${t.slice(1)}</b>` : `<b>${t}</b>`)).join('')}</div>`).join('') + `<div class="f-fab">${img}</div>`;
+    this.el.appendChild(h);
+  }
+  // a chip chosen (row, index): it lights up with a short press — the game's hand, without a finger in the frame
+  hudPick(row, i) {
+    const R = this.hudEl?.children[row]; if (!R || !R.children[i]) return;
+    [...R.children].forEach((b, k) => b.classList.toggle('on', k === i));
+    this.hudPress = { el: R.children[i], t0: this.t };
+    this.app.sfx?.play?.('tap', { vol: 0.5 });
   }
 
   // ---- a frame: dt — real seconds -------------------------------------------------------------
