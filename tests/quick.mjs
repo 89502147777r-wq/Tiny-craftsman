@@ -188,6 +188,10 @@ console.log('—', sec());
     // or the heap still slumping, differed from what redo brings back: the test «blinked»)
     for (let i = 0; i < 800 && (tc.shovelTool.state !== 'idle' || tc.particles.busy || t.active || tc.busy()); i++) tc.simulate(0.05);
     mats.dumpedSand = t.topMat(t.index(-0.2, 0.25)) === 1;
+    // (what the journal holds is the ground as it was when the dump was committed; the heap may creep a hair after that —
+    // by how much depends on the machine's load (the settling has a time budget a frame): the layers are compared with
+    // the journal's own state — brought to it by one undo / redo — not with the creep. That was the «blinking».)
+    tc.undo(); tc.redo();
     const lH = t.lH.slice();
     tc.undo(); tc.undo(); tc.redo(); tc.redo();
     let le = 0; for (let i = 0; i < lH.length; i++) le = Math.max(le, Math.abs(lH[i] - t.lH[i]));
