@@ -110,7 +110,7 @@ export function* slabFilm(d, app) {
   app.setTool('hose');
   hud(3, ['*Hose', 'Vibrator', 'Rule'], 'hose');
   const hose = app.concreteTools.hose, want = 4 * H * H * MM(THICK), rows = 8, TP = 44;
-  const path = (u) => { const k = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - k, z = H * 0.9 - (2 * H * 0.9) * (k + 0.5) / rows, x = (k % 2 ? 1 - f : f) * 2 * H * 0.93 - H * 0.93; return new V(x, g, z); };
+  const path = (u) => { const k = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - k, z = H * 0.9 - (2 * H * 0.9) * (k + 0.5) / rows, x = (k % 2 ? 1 - f : f) * 2 * H * 0.84 - H * 0.84; return new V(x, g, z); };   // (short of the boards: the stream swings on a little past the hand — it went over them)
 
   // (the camera stands: low, looking along the rows — the hose comes toward it and goes away, its cut top over the frame's
   // top edge all the way; three places for the eight rows, from one side and the other)
@@ -123,7 +123,7 @@ export function* slabFilm(d, app) {
   yield d.until(() => {
     pt += d.dt * d.speed;
     if (pt < TP) hose.move(path(pt / TP));
-    else { const k = Math.min(3, Math.floor((pt - TP) / 1.2)), [x, z] = corners[k]; hose.move(P(x * 0.97, 0, z * 0.97)); }
+    else { const k = Math.min(3, Math.floor((pt - TP) / 1.2)), [x, z] = corners[k]; hose.move(P(x * 0.9, 0, z * 0.9)); }
     const row = Math.min(rows - 1, Math.floor(pt / TP * rows)), want3 = row < 3 ? 0 : row < 6 ? 1 : 2;
     if (want3 !== at) { at = want3; stand(at === 1 ? 4 : 6.4, at === 1 ? -1 : 1); }
     return T.concVolume() >= want * 1.0 || pt > TP + 6;
