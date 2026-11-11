@@ -181,7 +181,7 @@ async function main() {
   // (the columns moved from «Стены → Монолит» to «Фундамент»: a saved wall kind of them is masonry again)
   if (app.settings.wallKind === 'column') { app.settings.wallKind = 'block'; if (app.tool === 'wall') app.tool = 'column'; }
   if (!['form', 'cage', 'strip', 'del'].includes(app.settings.colStage)) app.settings.colStage = 'form';
-  if (app.filmMode) { app.objects.load({ nextId: 1, items: [] }); app.settings.quiet = false; app.settings.orbit = false; app.settings.hints = false; }
+  if (app.filmMode) { app.objects.load({ nextId: 1, items: [] }); app.settings.quiet = false; app.settings.orbit = false; app.settings.hints = false; app.settings.weather = 'clear'; }   // (a film: no rain of the «auto» weather — the owner: «почему-то постоянно идёт дождь»)
 
   app.ui = new UI(app);
   app.gestures = new Gestures(app, canvas);
