@@ -1288,6 +1288,28 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2l'''. The slab film: every stage is the game's own work, started as the finger starts it — the formwork, the slab's
+// cage, the columns' cages carried and tied into it, the hose, the poker, the rule, a day on the clock, the columns' forms
+// and concrete; the slab ends level, the columns full ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '&film=slab&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, f = tc.film, t = tc.terrain, M = 1 / 10.4651, H = 5 * M;
+    const toast = tc.ui.toast.bind(tc.ui), said = []; tc.ui.toast = (m) => { said.push(String(m)); return toast(m); };
+    const g = t.heightAt(0, 0);
+    let ghosts = 0, hudMax = 0;
+    for (let i = 0; i < 3600 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); if (tc.columnTool.col.V?.ghost) ghosts++; const R = document.querySelector('#film .f-hud .f-row')?.getBoundingClientRect(); if (R) hudMax = Math.max(hudMax, R.right - innerWidth, -R.left); }
+    const hs = []; for (let x = -H * 0.95; x <= H * 0.95; x += H / 10) for (let z = -H * 0.95; z <= H * 0.95; z += H / 10) hs.push((t.heightAt(x, z) - g) / M * 1000); hs.sort((a, b) => a - b);
+    const cols = tc.objects.all('column');
+    return { done: f.done, t: +f.t.toFixed(1), forms: tc.objects.all('form').length, cages: tc.objects.all('cage').length, cols: cols.length, tied: cols.filter((r) => r.anc > 100).length, full: cols.filter((r) => (r.fill || 0) >= 0.99 && r.stage >= 3).length,
+      m3: +(t.concVolume() / M ** 3).toFixed(1), p10: Math.round(hs[Math.floor(hs.length * 0.1)]), p90: Math.round(hs[Math.floor(hs.length * 0.9)]), ghosts, hudOut: Math.round(hudMax), refused: said.filter((m) => /Сначала опалубка|привязан к фундаменту/.test(m)).length, hook: f.marks?.hook != null && f.marks?.hookEnd != null };
+  });
+  check('film (slab): the formwork, the cage, four column cages carried under the finger and tied in, 30 m³ out of the hose run level by the poker and the rule, the columns formed and cast — all by the game\'s own jobs', o.done && o.t < 60 && o.forms === 4 && o.cages === 1 && o.cols === 4 && o.tied === 4 && o.full === 4 && o.m3 > 29 && o.m3 < 31 && o.p10 > 255 && o.p90 < 335 && o.ghosts > 20 && o.hudOut <= 0 && o.refused === 0 && o.hook, JSON.stringify(o));
+  check('film (slab): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2l'. A film shot in the game frame by frame (film/recorder.js): an mp4 of exactly a 60th a frame, the
 // hook first, the words painted into the frames (film/compose.js), the sounds on the film's clock ----
 {

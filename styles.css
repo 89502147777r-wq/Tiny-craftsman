@@ -366,6 +366,7 @@ body.filming #view { transform-origin: 50% 50%; }
 /* the game's face over a film: the chips' rows at the top, the round tool button at the bottom (as the quiet mode's) */
 #film .f-hud { position: absolute; inset: 0; pointer-events: none; }
 #film .f-row { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 0.5em; white-space: nowrap; font-size: clamp(11px, 3.3vw, 25px); }
+#film .f-row.long { font-size: clamp(9px, 2.55vw, 19px); gap: 0.4em; }   /* (four chips: all of them inside the frame) */
 #film .f-row:nth-child(1) { top: 4.4%; }
 #film .f-row:nth-child(2) { top: 9.6%; }
 #film .f-row b { font-weight: 600; padding: 0.5em 0.95em; border-radius: 999px; background: rgba(24, 19, 15, 0.6); border: 1px solid rgba(255, 255, 255, 0.16); color: #f4efe6; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); }

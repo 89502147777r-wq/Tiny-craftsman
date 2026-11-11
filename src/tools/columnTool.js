@@ -90,7 +90,7 @@ export class ColumnWork {
     for (const m of app.objects.all('mesh')) if (x >= Math.min(m.x0, m.x1) && x <= Math.max(m.x0, m.x1) && z >= Math.min(m.z0, m.z1) && z <= Math.max(m.z0, m.z1)) { top = Math.max(top, m.y); bot = Math.min(bot, m.y); }
     if (top === -Infinity) return null;
     const t = app.terrain;
-    if (t.inside(x, z) && t.conc[t.index(x, z)] > 1e-6 && t.heightAt(x, z) > top) return null;   // (cast already: it is concrete now)
+    if (t.inside(x, z) && t.conc[t.index(x, z)] > 1e-6 && t.heightAt(x, z) > top - MM(40)) return null;   // (cast already: it is concrete now — a hollow of the poured top just over a bar does not make it a bare cage again)
     let ft = -Infinity;
     for (const f of app.objects.all('form')) { if (!f.a || !f.b) continue; const az = f.a[f.a.length - 1], bz = f.b[f.b.length - 1]; if (segD(x, z, f.a[0], az, f.b[0], bz) < MM(1500)) ft = Math.max(ft, f.y1 ?? -Infinity); }
     const y0 = ft > top ? ft : top + MM(50);

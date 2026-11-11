@@ -476,7 +476,7 @@ export class Director {
     const svg = document.querySelector(`#toolrow [data-tool="${tool || this.app.tool}"] svg`);
     let img = '';
     if (svg) { const c = svg.cloneNode(true); for (const [k, v] of [['xmlns', 'http://www.w3.org/2000/svg'], ['fill', 'none'], ['stroke', '#f4efe6'], ['stroke-width', '1.7'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round']]) c.setAttribute(k, v); img = `<img src="data:image/svg+xml;utf8,${encodeURIComponent(c.outerHTML)}">`; }
-    h.innerHTML = rows.map((r) => `<div class="f-row">${r.map((t) => (t[0] === '*' ? `<b class="on">${t.slice(1)}</b>` : `<b>${t}</b>`)).join('')}</div>`).join('') + `<div class="f-fab">${img}</div>`;
+    h.innerHTML = rows.map((r) => `<div class="f-row${r.join('').length > 26 ? ' long' : ''}">${r.map((t) => (t[0] === '*' ? `<b class="on">${t.slice(1)}</b>` : `<b>${t}</b>`)).join('')}</div>`).join('') + `<div class="f-fab">${img}</div>`;
     this.el.appendChild(h);
   }
   // a chip chosen (row, index): it lights up with a short press — the game's hand, without a finger in the frame
