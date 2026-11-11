@@ -119,7 +119,8 @@ export class PumpHose {
     for (let s = 0; s < steps; s++) {
       for (let i = 1; i < N; i++) {
         const p = this.p[i], o = this.o[i];
-        const vx = (p.x - o.x) * 0.985, vy = (p.y - o.y) * 0.985, vz = (p.z - o.z) * 0.985;
+        // (a hose full of concrete — ~35 kg a metre: it does not flutter, it swings slowly and stops)
+        const vx = (p.x - o.x) * 0.955, vy = (p.y - o.y) * 0.97, vz = (p.z - o.z) * 0.955;
         o.copy(p);
         p.x += vx; p.y += vy + g; p.z += vz;
       }
@@ -137,8 +138,10 @@ export class PumpHose {
           b.x -= dx * k * wb / sum; b.y -= dy * k * wb / sum; b.z -= dz * k * wb / sum;
         }
         // (stiff to bend: each point drawn a little toward the line between its neighbours — no kinks)
-        if (it % 2 === 0) for (let i = 1; i < N - 1; i++) { const a = this.p[i - 1], b = this.p[i + 1], q = this.p[i]; q.x += ((a.x + b.x) / 2 - q.x) * 0.12; q.y += ((a.y + b.y) / 2 - q.y) * 0.12; q.z += ((a.z + b.z) / 2 - q.z) * 0.12; }
+        // (the owner: it dangled right under the head like an empty rag — a full rubber hose DN125 is stiff: bent every pass, harder)
+        for (let i = 1; i < N - 1; i++) { const a = this.p[i - 1], b = this.p[i + 1], q = this.p[i]; q.x += ((a.x + b.x) / 2 - q.x) * 0.2; q.y += ((a.y + b.y) / 2 - q.y) * 0.2; q.z += ((a.z + b.z) / 2 - q.z) * 0.2; }
         this.p[0].copy(this.anchor);
+        this._root();
         this._hold();
       }
     }
@@ -149,6 +152,12 @@ export class PumpHose {
     this.tip.rotation.set(0, Math.atan2(this.anchor.x - this.hand.x, this.anchor.z - this.hand.z) - Math.PI / 2, 0);
   }
 
+  // out of the clamp at the elbow the hose goes straight down: its first half metre stands in the coupling, it bends
+  // only below that — in a wide curve, not at the clamp
+  _root() {
+    const a = this.anchor, w = [0.92, 0.7, 0.4, 0.18];
+    for (let k = 1; k <= 4; k++) { const q = this.p[k]; q.x += (a.x - q.x) * w[k - 1]; q.z += (a.z - q.z) * w[k - 1]; q.y += (a.y - SEG * k - q.y) * w[k - 1] * 0.6; }
+  }
   // the worker holds the last ~0,5 m of the hose: it hangs down from the hands, leaning with the walk (≤ ~25°)
   _hold() {
     const e = this.p[N - 1];

@@ -1302,16 +1302,17 @@ console.log('—', sec());
     const tc = window.__tc, f = tc.film, t = tc.terrain, M = 1 / 10.4651, H = 5 * M;
     const toast = tc.ui.toast.bind(tc.ui), said = []; tc.ui.toast = (m) => { said.push(String(m)); return toast(m); };
     const g = t.heightAt(0, 0);
-    let ghosts = 0, hudMax = 0;
-    for (let i = 0; i < 3600 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); if (tc.columnTool.col.V?.ghost) ghosts++; const R = document.querySelector('#film .f-hud .f-row')?.getBoundingClientRect(); if (R) hudMax = Math.max(hudMax, R.right - innerWidth, -R.left); }
+    let ghosts = 0, hudMax = 0, frogEarly = 0, frogEnd = 0, frogAll = 0;
+    for (let i = 0; i < 3600 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); if (tc.columnTool.col.V?.ghost) ghosts++;
+      { const J = tc.physJob; if (J?.frogAt != null) { frogAll = J.frogs.length; if (J.t < J.frogAt - 0.05) frogEarly = Math.max(frogEarly, J.nFrogs || 0); else frogEnd = Math.max(frogEnd, J.nFrogs || 0); } } const R = document.querySelector('#film .f-hud .f-row')?.getBoundingClientRect(); if (R) hudMax = Math.max(hudMax, R.right - innerWidth, -R.left); }
     const hs = []; for (let x = -H * 0.95; x <= H * 0.95; x += H / 10) for (let z = -H * 0.95; z <= H * 0.95; z += H / 10) hs.push((t.heightAt(x, z) - g) / M * 1000); hs.sort((a, b) => a - b);
     const cols = tc.objects.all('column');
     // (what went over the boards: the concrete lying outside the outline)
     let over = 0; for (let i = 0; i < t.conc.length; i++) { if (t.conc[i] <= 1e-7) continue; const x = t.toWorldX(i % t.nx), z = t.toWorldZ(Math.floor(i / t.nx)); if (Math.abs(x) > H + 0.008 || Math.abs(z) > H + 0.008) over += t.conc[i]; }
-    return { over: +(over * t.cellArea / M ** 3).toFixed(2), money: tc.budget.money, weather: tc.settings.weather, raining: !!tc.sky.raining, moneyShown: !document.querySelector('#film .f-money')?.hidden, done: f.done, t: +f.t.toFixed(1), forms: tc.objects.all('form').length, cages: tc.objects.all('cage').length, cols: cols.length, tied: cols.filter((r) => r.anc > 100).length, full: cols.filter((r) => (r.fill || 0) >= 0.99 && r.stage >= 3).length,
+    return { frogEarly, frogEnd, frogAll, over: +(over * t.cellArea / M ** 3).toFixed(2), money: tc.budget.money, weather: tc.settings.weather, raining: !!tc.sky.raining, moneyShown: !document.querySelector('#film .f-money')?.hidden, done: f.done, t: +f.t.toFixed(1), forms: tc.objects.all('form').length, cages: tc.objects.all('cage').length, cols: cols.length, tied: cols.filter((r) => r.anc > 100).length, full: cols.filter((r) => (r.fill || 0) >= 0.99 && r.stage >= 3).length,
       m3: +(t.concVolume() / M ** 3).toFixed(1), p10: Math.round(hs[Math.floor(hs.length * 0.1)]), p90: Math.round(hs[Math.floor(hs.length * 0.9)]), ghosts, hudOut: Math.round(hudMax), refused: said.filter((m) => /Сначала опалубка|привязан к фундаменту/.test(m)).length, hook: f.marks?.hook != null && f.marks?.hookEnd != null };
   });
-  check('film (slab): the formwork, the cage, four column cages carried under the finger and tied in, 30 m³ out of the hose run level by the poker and the rule, the columns formed and cast — all by the game\'s own jobs', o.done && o.t < 60 && o.forms === 4 && o.cages === 1 && o.cols === 4 && o.tied === 4 && o.full === 4 && o.m3 > 28.5 && o.m3 < 31 && o.p10 > 255 && o.p90 < 335 && o.ghosts > 20 && o.hudOut <= 0 && o.refused === 0 && o.hook && o.over < 0.12 /* (not over the boards) */ && o.money < 56000 && o.money > 40000 && o.moneyShown /* (the budget billed and shown) */ && o.weather === 'clear' && !o.raining, JSON.stringify(o));
+  check('film (slab): the formwork, the cage, four column cages carried under the finger and tied in, 30 m³ out of the hose run level by the poker and the rule, the columns formed and cast — all by the game\'s own jobs', o.done && o.t < 60 && o.forms === 4 && o.cages === 1 && o.cols === 4 && o.tied === 4 && o.full === 4 && o.m3 > 28.5 && o.m3 < 31 && o.p10 > 255 && o.p90 < 335 && o.ghosts > 20 && o.hudOut <= 0 && o.refused === 0 && o.hook && o.over < 0.12 /* (not over the boards) */ && o.frogAll > 20 && o.frogEarly === 0 && o.frogEnd === o.frogAll /* (the frogs: none before the bottom mat lies, all before the top one) */ && o.money < 56000 && o.money > 40000 && o.moneyShown /* (the budget billed and shown) */ && o.weather === 'clear' && !o.raining, JSON.stringify(o));
   check('film (slab): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
@@ -1436,11 +1437,13 @@ console.log('—', sec());
         const sp = H.spout(), p0 = H.stream.geometry.attributes.position; if (p0) { let cx = 0, cy = 0, cz = 0; for (let k = 0; k < 10; k++) { cx += p0.getX(k); cy += p0.getY(k); cz += p0.getZ(k); } top = Math.max(top, Math.hypot(cx / 10 - sp.x, cy / 10 - sp.y, cz / 10 - sp.z) / m); } }
       // (swept at 0,6 m/s: the foot of the stream behind the spout)
       for (let i = 0; i < 60; i++) { H.target.x += 0.02 * m; H.update(1 / 30); const ln = H.setStream(true, gy, 5 + i / 30, 1 / 30); if (i > 40) lag = Math.max(lag, (H.spout().x - ln.x) / m); }
-      o.hose = { vmax: +vmax.toFixed(2), top: +(top * 1000).toFixed(1), lag: +(lag * 1000).toFixed(0), thin: H.stream.userData.bottomR <= H.stream.userData.topR }; }
+      // (full of concrete it is stiff: straight down out of the clamp — its first half metre no more than a few degrees off plumb, even swept)
+      let root = 0; for (let i = 0; i < 40; i++) { H.target.x += 0.03 * m; H.update(1 / 30); root = Math.max(root, Math.atan2(Math.hypot(H.p[3].x - H.p[0].x, H.p[3].z - H.p[0].z), H.p[0].y - H.p[3].y) * 180 / Math.PI); }
+      o.hose = { root: +root.toFixed(1), vmax: +vmax.toFixed(2), top: +(top * 1000).toFixed(1), lag: +(lag * 1000).toFixed(0), thin: H.stream.userData.bottomR <= H.stream.userData.topR }; }
     return o;
   });
   check('realist: a heap of sand lies at its angle of repose (≤ 36°), not as a column', o.heap > 40 && o.slope <= 36, JSON.stringify(o));
-  check('realist: the pump hose — led by hand (≤ 2,7 m/s — between a walk and the finger), the stream from the spout, thinner below, lagging when swept', o.hose.vmax <= 2.7 && o.hose.vmax > 1.5 && o.hose.top < 6 && o.hose.thin && o.hose.lag > 2 && o.hose.lag < 250, JSON.stringify(o.hose));
+  check('realist: the pump hose — led by hand (≤ 2,7 m/s — between a walk and the finger), the stream from the spout, thinner below, lagging when swept', o.hose.vmax <= 2.7 && o.hose.vmax > 1.5 && o.hose.root < 12 && o.hose.top < 6 && o.hose.thin && o.hose.lag > 2 && o.hose.lag < 250, JSON.stringify(o.hose));
   check('realist: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

@@ -112,6 +112,9 @@ export function* slabFilm(d, app) {
   const hose = app.concreteTools.hose, want = 4 * H * H * MM(THICK), rows = 8, TP = 44;
   const path = (u) => { const k = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - k, z = H * 0.9 - (2 * H * 0.9) * (k + 0.5) / rows, x = (k % 2 ? 1 - f : f) * 2 * H * 0.84 - H * 0.84; return new V(x, g, z); };   // (short of the boards: the stream swings on a little past the hand — it went over them)
 
+  // (the film's pour runs many times faster than the game's clock of setting: the concrete is kept workable — fresh —
+  // till the rule has gone over it, as a real slab is for its hour or two)
+  const fresh = () => { const now = T.clock || app.clock; for (let i = 0; i < T.conc.length; i++) if (T.conc[i] > 0) T.cTime[i] = now; };
   // (the camera stands: low, looking along the rows — the hose comes toward it and goes away, its cut top over the frame's
   // top edge all the way; three places for the eight rows, from one side and the other)
   const rowZ = (k) => HALF * 0.9 - (2 * HALF * 0.9) * (k + 0.5) / rows;
@@ -121,7 +124,7 @@ export function* slabFilm(d, app) {
   let pt = 0, at = 0;
   d.speed = 8;
   yield d.until(() => {
-    pt += d.dt * d.speed;
+    pt += d.dt * d.speed; fresh();
     if (pt < TP) hose.move(path(pt / TP));
     else { const k = Math.min(3, Math.floor((pt - TP) / 1.2)), [x, z] = corners[k]; hose.move(P(x * 0.9, 0, z * 0.9)); }
     const row = Math.min(rows - 1, Math.floor(pt / TP * rows)), want3 = row < 3 ? 0 : row < 6 ? 1 : 2;
@@ -132,10 +135,6 @@ export function* slabFilm(d, app) {
   d.speed = 3;
   yield d.until(idle);
 
-  // (the film's pour runs many times faster than the game's clock of setting: the concrete is kept workable — fresh —
-  // till the rule has gone over it, as a real slab is for its hour or two)
-  const fresh = () => { const now = T.clock || app.clock; for (let i = 0; i < T.conc.length; i++) if (T.conc[i] > 0) T.cTime[i] = now; };
-  fresh();
   // ---- 5 · the poker: here, there — where it is put the concrete runs level, the paste comes up; then the rule -----
   app.setTool('vibro'); d.hudPick(1, 1);
   hud(3, ['Hose', '*Vibrator', 'Rule'], 'vibro');
@@ -150,7 +149,7 @@ export function* slabFilm(d, app) {
   const round = () => { for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) T.vibrate(i * H * 0.24, j * H * 0.24, MM(1300)); };
   d.speed = 7;
   let half2 = false;
-  yield d.until(() => { vt += d.dt * d.speed; round(); const k = Math.floor(vt / DW); if (k < spots.length) vib.move(new V(spots[k][0], g, spots[k][1]));
+  yield d.until(() => { vt += d.dt * d.speed; round(); fresh(); const k = Math.floor(vt / DW); if (k < spots.length) vib.move(new V(spots[k][0], g, spots[k][1]));
     if (!half2 && k >= spots.length / 2) { half2 = true; d.cut(look(P(HALF + 5200, 2500, -1800), P(HALF - 6800, 0, -1800)), { drift: 0.015, push: 0.01, hand: 0.35 }); }
     return k >= spots.length; });
   vib.up();
