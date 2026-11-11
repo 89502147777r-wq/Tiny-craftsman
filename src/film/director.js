@@ -476,7 +476,7 @@ export class Director {
     const svg = document.querySelector(`#toolrow [data-tool="${tool || this.app.tool}"] svg`);
     let img = '';
     if (svg) { const c = svg.cloneNode(true); for (const [k, v] of [['xmlns', 'http://www.w3.org/2000/svg'], ['fill', 'none'], ['stroke', '#f4efe6'], ['stroke-width', '1.7'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round']]) c.setAttribute(k, v); img = `<img src="data:image/svg+xml;utf8,${encodeURIComponent(c.outerHTML)}">`; }
-    h.innerHTML = rows.map((r) => `<div class="f-row">${r.map((t) => (t[0] === '*' ? `<b class="on">${t.slice(1)}</b>` : `<b>${t}</b>`)).join('')}</div>`).join('') + `<div class="f-fab">${img}</div>`;
+    h.innerHTML = rows.map((r) => `<div class="f-row${r.join('').length > 26 ? ' long' : ''}">${r.map((t) => (t[0] === '*' ? `<b class="on">${t.slice(1)}</b>` : `<b>${t}</b>`)).join('')}</div>`).join('') + `<div class="f-fab">${img}</div>`;
     this.el.appendChild(h);
   }
   // a chip chosen (row, index): it lights up with a short press — the game's hand, without a finger in the frame
@@ -485,6 +485,21 @@ export class Director {
     [...R.children].forEach((b, k) => b.classList.toggle('on', k === i));
     this.hudPress = { el: R.children[i], t0: this.t };
     this.app.sfx?.play?.('tap', { vol: 0.5 });
+  }
+
+  // time going by on the clock (the concrete sets, the paint dries): `days` days and nights in `dur` s of film — the sun
+  // round, the hours spinning, the day counted; each(u, dt) — what goes on meanwhile
+  *lapse(days, dur, each) {
+    const el = document.createElement('div'); el.className = 'f-clock'; el.innerHTML = '<b>10:00</b><small>DAY 1</small>'; this.el.appendChild(el);
+    const sky = this.app.sky, h0 = sky.hour ?? 10, t0 = this.t;
+    yield this.until(() => {
+      const u = clamp01((this.t - t0) / dur), h = h0 + u * days * 24, hh = Math.floor(h % 24), mm = Math.floor((h % 1) * 6) * 10;
+      sky.setHour(h); each?.(u);
+      el.firstChild.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`; el.lastChild.textContent = `DAY ${1 + Math.floor((h - 0.001) / 24)}`;
+      el.style.opacity = Math.min(1, u * 8, (1 - u) * 8 + 0.001).toFixed(3);
+      return u >= 1;
+    });
+    el.remove();
   }
 
   // ---- a frame: dt — real seconds -------------------------------------------------------------

@@ -188,6 +188,10 @@ console.log('—', sec());
     // or the heap still slumping, differed from what redo brings back: the test «blinked»)
     for (let i = 0; i < 800 && (tc.shovelTool.state !== 'idle' || tc.particles.busy || t.active || tc.busy()); i++) tc.simulate(0.05);
     mats.dumpedSand = t.topMat(t.index(-0.2, 0.25)) === 1;
+    // (what the journal holds is the ground as it was when the dump was committed; the heap may creep a hair after that —
+    // by how much depends on the machine's load (the settling has a time budget a frame): the layers are compared with
+    // the journal's own state — brought to it by one undo / redo — not with the creep. That was the «blinking».)
+    tc.undo(); tc.redo();
     const lH = t.lH.slice();
     tc.undo(); tc.undo(); tc.redo(); tc.redo();
     let le = 0; for (let i = 0; i < lH.length; i++) le = Math.max(le, Math.abs(lH[i] - t.lH[i]));
@@ -1285,6 +1289,28 @@ console.log('—', sec());
   });
   check('film: «нарастание» — one brick close at its real pace (the game\'s own job: mallet, mortar, trowel), then more and more at once, the camera further each step; all the bricks laid', o.done && o.steps >= 8 && o.first.n === 1 && o.first.s >= 2 && o.near && o.faster && o.up > 100 && o.laid.total === o.laid.done && o.laid.total > 500 && o.hud.rows === 2 && o.hud.on === 'Course' && o.hud.fab /* (the game's face over the film: the chips' rows, the tool button; the way of laying switched) */ && o.spreads >= 4 && o.spreadLeft === 0 /* (the bed spread with the trowel ten bricks at a time, none left unlaid) */ && Math.min(...o.pitch.slice(-4)) < 0.25 /* (rule 3: the courses seen from near level — the horizon in frame) */ && o.jobs >= 40 /* (the close and the sped-up steps: the game's own laying job, brick by brick) */ && o.hook && o.t < 22, JSON.stringify(o));
   check('film (plinth): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2l'''. The slab film: every stage is the game's own work, started as the finger starts it — the formwork, the slab's
+// cage, the columns' cages carried and tied into it, the hose, the poker, the rule, a day on the clock, the columns' forms
+// and concrete; the slab ends level, the columns full ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '&film=slab&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, f = tc.film, t = tc.terrain, M = 1 / 10.4651, H = 5 * M;
+    const toast = tc.ui.toast.bind(tc.ui), said = []; tc.ui.toast = (m) => { said.push(String(m)); return toast(m); };
+    const g = t.heightAt(0, 0);
+    let ghosts = 0, hudMax = 0;
+    for (let i = 0; i < 3600 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); if (tc.columnTool.col.V?.ghost) ghosts++; const R = document.querySelector('#film .f-hud .f-row')?.getBoundingClientRect(); if (R) hudMax = Math.max(hudMax, R.right - innerWidth, -R.left); }
+    const hs = []; for (let x = -H * 0.95; x <= H * 0.95; x += H / 10) for (let z = -H * 0.95; z <= H * 0.95; z += H / 10) hs.push((t.heightAt(x, z) - g) / M * 1000); hs.sort((a, b) => a - b);
+    const cols = tc.objects.all('column');
+    return { done: f.done, t: +f.t.toFixed(1), forms: tc.objects.all('form').length, cages: tc.objects.all('cage').length, cols: cols.length, tied: cols.filter((r) => r.anc > 100).length, full: cols.filter((r) => (r.fill || 0) >= 0.99 && r.stage >= 3).length,
+      m3: +(t.concVolume() / M ** 3).toFixed(1), p10: Math.round(hs[Math.floor(hs.length * 0.1)]), p90: Math.round(hs[Math.floor(hs.length * 0.9)]), ghosts, hudOut: Math.round(hudMax), refused: said.filter((m) => /Сначала опалубка|привязан к фундаменту/.test(m)).length, hook: f.marks?.hook != null && f.marks?.hookEnd != null };
+  });
+  check('film (slab): the formwork, the cage, four column cages carried under the finger and tied in, 30 m³ out of the hose run level by the poker and the rule, the columns formed and cast — all by the game\'s own jobs', o.done && o.t < 60 && o.forms === 4 && o.cages === 1 && o.cols === 4 && o.tied === 4 && o.full === 4 && o.m3 > 29 && o.m3 < 31 && o.p10 > 255 && o.p90 < 335 && o.ghosts > 20 && o.hudOut <= 0 && o.refused === 0 && o.hook, JSON.stringify(o));
+  check('film (slab): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 

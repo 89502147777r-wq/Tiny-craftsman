@@ -1615,6 +1615,7 @@ export default {
 "Контейнер для мусора": "Skip",
 "Куча песка": "Sand heap",
 "🎥 Ролик: кладка цоколя (ваш участок не тронется)": "🎥 Film: laying a brick plinth (your site is left alone)",
+"🎥 Ролик: плита 10 × 10 и колонны (ваш участок не тронется)": "🎥 Film: a slab 10 × 10 m and columns (your site is left alone)",
 "🎬 Тихий режим — одна кнопка вместо панелей": "🎬 Quiet mode — one button instead of the panels",
 "💰 Бюджет:": "💰 Budget:",
 "📏 Замер": "📏 Measure",
