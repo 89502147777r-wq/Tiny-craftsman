@@ -487,6 +487,21 @@ export class Director {
     this.app.sfx?.play?.('tap', { vol: 0.5 });
   }
 
+  // time going by on the clock (the concrete sets, the paint dries): `days` days and nights in `dur` s of film — the sun
+  // round, the hours spinning, the day counted; each(u, dt) — what goes on meanwhile
+  *lapse(days, dur, each) {
+    const el = document.createElement('div'); el.className = 'f-clock'; el.innerHTML = '<b>10:00</b><small>DAY 1</small>'; this.el.appendChild(el);
+    const sky = this.app.sky, h0 = sky.hour ?? 10, t0 = this.t;
+    yield this.until(() => {
+      const u = clamp01((this.t - t0) / dur), h = h0 + u * days * 24, hh = Math.floor(h % 24), mm = Math.floor((h % 1) * 6) * 10;
+      sky.setHour(h); each?.(u);
+      el.firstChild.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`; el.lastChild.textContent = `DAY ${1 + Math.floor((h - 0.001) / 24)}`;
+      el.style.opacity = Math.min(1, u * 8, (1 - u) * 8 + 0.001).toFixed(3);
+      return u >= 1;
+    });
+    el.remove();
+  }
+
   // ---- a frame: dt — real seconds -------------------------------------------------------------
   update(dt) {
     this.dt = dt;
