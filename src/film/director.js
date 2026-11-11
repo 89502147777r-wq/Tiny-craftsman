@@ -71,7 +71,8 @@ export class Director {
         : '<b>Нажмите, чтобы начать</b><span>Сначала включите запись экрана.<br>Ролик снимается сам — ваш участок не тронется.</span>');
       el.appendChild(g);
       el.style.pointerEvents = 'auto';
-      const go = () => { this.gate = false; g.remove(); el.style.pointerEvents = 'none'; };
+      // (the film's own sounds fetched first, at the tap: one first heard half a minute in — the poker — was still on its way)
+      const go = () => { this.gate = false; g.remove(); el.style.pointerEvents = 'none'; setTimeout(() => { for (const n of script.sounds || []) app.sfx?._load?.(n); }, 0); };
       if (rec) {
         g.querySelector('.f-live').addEventListener('click', () => { if (this.gate) { go(); app.sfx?.unlock?.(); } });
         g.querySelector('.f-rec').addEventListener('click', () => { if (this.gate) { go(); this.record(); } });
@@ -471,6 +472,7 @@ export class Director {
   // working — '*' marks the chosen one) and the round tool button at the bottom. rows: [['Wall', '*Brick'], …]; none: off
   hud(rows, tool) {
     if (this.hudEl) { this.hudEl.remove(); this.hudEl = null; }
+    this.el.classList.toggle('hud', !!rows);
     if (!rows) return;
     const h = (this.hudEl = document.createElement('div')); h.className = 'f-hud';
     const svg = document.querySelector(`#toolrow [data-tool="${tool || this.app.tool}"] svg`);

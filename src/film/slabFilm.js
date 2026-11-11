@@ -25,6 +25,9 @@ export function* slabFilm(d, app) {
   const idle = () => !app.busy();
   const hud = (i, row2, tool) => d.hud([['Formwork', 'Rebar', 'Columns', 'Concrete'].map((t, k) => (k === i ? '*' + t : t)), row2], tool);
   loadPhysics().catch(() => {});
+  // (the game's budget: every stage billed as its work goes into the journal)
+  if (!app.budget.on) O.add({ type: 'budget', money: 60000, start: 60000 });
+  d.money(true);
   // the outline of the slab (the marking is not the film's matter: it is there)
   const ol = O.add({ type: 'outline', kind: 'rect', x0: -H, z0: -H, x1: H, z1: H, depth: 0 });
 
@@ -37,16 +40,15 @@ export function* slabFilm(d, app) {
   const front = runs[0], rest = runs.slice(1), nStakes = runPieces(front, T).filter((q) => q.k === 'stake').length;
   const save = (list) => () => app.journal.act('formwork', { outlineId: ol.id }, app.clock, () => { for (const r of list) O.add(r); });
   const a0 = new V(front.a[0], g, front.a[1]), b0 = new V(front.b[0], g, front.b[1]), along = b0.clone().sub(a0).normalize();
-  // (the camera goes with the work: the last piece shown)
-  const last = () => { const J = app.physJob; let p = null; if (J?.parts) for (const m of J.parts) if (m.visible) p = m.position; return p ? p.clone() : a0.clone(); };
-  d.follow(last, look(a0.clone().add(new V(-MM(900), MM(1500), MM(2600))), a0), { lag: 3, drift: 0.02, push: 0, hand: 0.5 });
+  // (the owner: the camera rode after the work too much — it stands: the run seen along from its corner while the stakes
+  // are driven, then close over the corner for the boards — the grain of the wood)
+  d.cut(look(a0.clone().addScaledVector(along, -MM(1500)).add(new V(0, MM(1500), MM(2100))), a0.clone().addScaledVector(along, MM(3600)).setY(g + MM(100))), { drift: 0.02, push: 0.02, hand: 0.4 });
   yield d.until(() => physicsReady());
   F._fitRuns([front], true, save([front]));
   d.speed = 5;
   yield d.until(() => !app.physJob || app.physJob.k >= nStakes * 2);   // (the stakes in)
-  // (the boards: close, low over the corner — the grain of the wood)
   d.speed = 2.2;
-  d.follow(last, look(a0.clone().addScaledVector(along, MM(400)).add(new V(0, MM(520), MM(1150))), a0.clone().addScaledVector(along, MM(900)).setY(g + MM(150))), { lag: 2.2, drift: 0.02, push: 0, hand: 0.5 });
+  d.cut(look(a0.clone().addScaledVector(along, MM(300)).add(new V(0, MM(560), MM(1250))), a0.clone().addScaledVector(along, MM(1200)).setY(g + MM(150))), { drift: 0.02, push: 0.03, hand: 0.4 });
   yield d.until(idle);
   // (further: the three other sides, quickly)
   d.speed = 1.6;
@@ -61,6 +63,9 @@ export function* slabFilm(d, app) {
   d.cut(look(P(-HALF - 1200, 1500, HALF + 1700), P(-HALF + 1500, 100, HALF - 1500)), { drift: 0.03, push: 0.03, hand: 0.5 });
   app.rebarTool.cageIn(O.get(ol.id));
   yield d.until(() => !!app.physJob);
+  // (bar on bar: the job says a bar now and then at this pace — the film lets each be heard)
+  const clink = d.each(() => { if (!app.physJob) return true; app.sfx?.play?.(Math.random() < 0.25 ? 'wire' : 'rebar', { vol: 0.45, gap: 0.16 }); return false; });
+  void clink;
   d.speed = 1.6;
   yield d.sec(2.0);
   d.speed = 5;
@@ -106,17 +111,21 @@ export function* slabFilm(d, app) {
   hud(3, ['*Hose', 'Vibrator', 'Rule'], 'hose');
   const hose = app.concreteTools.hose, want = 4 * H * H * MM(THICK), rows = 8, TP = 44;
   const path = (u) => { const k = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - k, z = H * 0.9 - (2 * H * 0.9) * (k + 0.5) / rows, x = (k % 2 ? 1 - f : f) * 2 * H * 0.93 - H * 0.93; return new V(x, g, z); };
-  const tip = () => (G.pump?.ready ? G.pump.spout().clone().setY(g + MM(150)) : hose.p.clone().setY(g + MM(150)));
-  // (the hose's cut top out of the frame: seen from above its spout, close enough)
-  d.follow(tip, { yaw: -0.5, pitch: 0.66, dist: MM(6200) }, { lag: 2.2, drift: 0.02, push: 0, hand: 0.4 });
+
+  // (the camera stands: low, looking along the rows — the hose comes toward it and goes away, its cut top over the frame's
+  // top edge all the way; three places for the eight rows, from one side and the other)
+  const rowZ = (k) => HALF * 0.9 - (2 * HALF * 0.9) * (k + 0.5) / rows;
+  const stand = (k, side) => d.cut(look(P(side * (HALF + 5200), 2500, rowZ(k)), P(side * (HALF - 6800), 0, rowZ(k))), { drift: 0.015, push: 0.01, hand: 0.35 });
+  stand(1, 1);
   hose.down(path(0));
-  let pt = 0, cut2 = false;
+  let pt = 0, at = 0;
   d.speed = 8;
   yield d.until(() => {
     pt += d.dt * d.speed;
     if (pt < TP) hose.move(path(pt / TP));
     else { const k = Math.min(3, Math.floor((pt - TP) / 1.2)), [x, z] = corners[k]; hose.move(P(x * 0.97, 0, z * 0.97)); }
-    if (!cut2 && pt > TP * 0.52) { cut2 = true; d.follow(tip, { yaw: 2.5, pitch: 0.7, dist: MM(6800) }, { lag: 2.2, drift: 0.02, push: 0, hand: 0.4 }); }
+    const row = Math.min(rows - 1, Math.floor(pt / TP * rows)), want3 = row < 3 ? 0 : row < 6 ? 1 : 2;
+    if (want3 !== at) { at = want3; stand(at === 1 ? 4 : 6.4, at === 1 ? -1 : 1); }
     return T.concVolume() >= want * 1.0 || pt > TP + 6;
   });
   hose.up();
@@ -133,15 +142,17 @@ export function* slabFilm(d, app) {
   const vib = app.concreteTools.vibro, rnd = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
   const spots = []; for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) spots.push([(i - 3) * H * 0.29 + (rnd() - 0.5) * H * 0.1, (j - 3) * H * 0.29 + (rnd() - 0.5) * H * 0.1]);
   for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
-  const poke = () => vib.p.clone().setY(g + MM(200));
   vib.down(new V(spots[0][0], g, spots[0][1]));
-  d.follow(poke, { yaw: 0.7, pitch: 0.72, dist: MM(5200) }, { lag: 3.5, drift: 0.02, push: 0, hand: 0.4 });
+  d.cut(look(P(-HALF - 5200, 2500, 1800), P(-HALF + 6800, 0, 1800)), { drift: 0.015, push: 0.01, hand: 0.35 });   // (the camera stands, as for the hose)
   let vt = 0; const DW = 0.4;
   // (the film shows the poker at a place in a second — the crew's whole round of the slab goes on meanwhile: all of it
   // is kept shaking, so it runs level as a vibrated slab does)
   const round = () => { for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) T.vibrate(i * H * 0.24, j * H * 0.24, MM(1300)); };
   d.speed = 7;
-  yield d.until(() => { vt += d.dt * d.speed; round(); const k = Math.floor(vt / DW); if (k < spots.length) vib.move(new V(spots[k][0], g, spots[k][1])); return k >= spots.length; });
+  let half2 = false;
+  yield d.until(() => { vt += d.dt * d.speed; round(); const k = Math.floor(vt / DW); if (k < spots.length) vib.move(new V(spots[k][0], g, spots[k][1]));
+    if (!half2 && k >= spots.length / 2) { half2 = true; d.cut(look(P(HALF + 5200, 2500, -1800), P(HALF - 6800, 0, -1800)), { drift: 0.015, push: 0.01, hand: 0.35 }); }
+    return k >= spots.length; });
   vib.up();
   yield d.until(idle);
   // (the rule: on the boards' tops, strip by strip — what stands over them goes on ahead of it)
@@ -163,7 +174,7 @@ export function* slabFilm(d, app) {
   // ---- 6 · it sets: a day and a night on the clock (low, the horizon in frame — the slab is low yet) ------------
   d.hud(null);
   d.cut(low(P(0, THICK, 0), 0.5, MM(15500), MM(2300)), { drift: 0.02, push: 0.015, hand: 0.3 });
-  yield* d.lapse(2, 1.9, (u) => { app.clock += 420 * d.dt / 1.9; void u; });
+  yield* d.lapse(2, 1.9, (u) => { app.clock += 420 * d.dt / 1.9; void u; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });   // (the clock's ticking)
   app.sky.setHour(9.5);
   yield d.sec(0.25);
 
@@ -214,6 +225,7 @@ export function* slabFilm(d, app) {
   hud(3, ['*Done'], 'hose');
   d.mark('hook');
   d.reveal(P(0, 1500, 0), MM(15000), 3.4, { yaw0: -0.6, arc: 1.5, y0: MM(1500), y1: MM(4200) });
+  app.sfx?.play?.('cash');
   d.count('CONCRETE, m³', Math.round((T.concVolume() + 4 * MM(300) * MM(300) * cols[0].h) / S ** 3 / 1e9), '', 1.0);
   yield d.sec(3.4);
   d.mark('hookEnd');
@@ -221,3 +233,4 @@ export function* slabFilm(d, app) {
 }
 slabFilm.seconds = 48;
 slabFilm.place = 'lake';
+slabFilm.sounds = ['hammer_nail', 'plank', 'stake', 'rebar', 'wire', 'tap', 'pump', 'concrete', 'concrete_splat', 'vibrator', 'screed', 'cash', 'birds', 'wind', 'crickets'];
