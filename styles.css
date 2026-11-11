@@ -373,6 +373,7 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-row b.on { background: #f2b134; color: #1c1509; border-color: rgba(0, 0, 0, 0); }
 #film .f-fab { position: absolute; right: 6%; bottom: 6.5%; width: clamp(44px, 14vw, 104px); height: clamp(44px, 14vw, 104px); border-radius: 50%; background: rgba(24, 19, 15, 0.55); border: 1px solid rgba(255, 255, 255, 0.22); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
 #film .f-fab img { position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; }
+#film .f-logo { position: absolute; left: 5%; bottom: 7.4%; width: 34%; max-width: 300px; opacity: 0.94; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55)); }
 #film .f-clock { position: absolute; left: 50%; top: 15%; transform: translateX(-50%); text-align: center; padding: 0.3em 1em 0.4em; border-radius: 16px; background: rgba(12, 12, 12, 0.6); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); color: #fff; }
 #film .f-clock b { display: block; font-size: clamp(30px, 12vw, 92px); font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.05; }
 #film .f-clock small { display: block; font-size: clamp(10px, 3.2vw, 22px); font-weight: 800; letter-spacing: 0.16em; color: #f2b134; }

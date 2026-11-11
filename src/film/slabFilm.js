@@ -20,6 +20,7 @@ export function* slabFilm(d, app) {
   Object.assign(app.settings, { dayHour: 10, slab: THICK, pump: 0.625, colStage: 'cage', colType: 'sq', colA: 300, colCourse: 'block', colN: 12, colTilt: 0 });
   app.sky.setHour(10);
   d.lock = true; d.hand = 0.35;
+  d.logo();
   const H = MM(HALF), g = T.heightAt(0, 0), top = g + MM(THICK);
   const P = (x, y, z) => new V(MM(x), g + MM(y), MM(z));
   const idle = () => !app.busy();

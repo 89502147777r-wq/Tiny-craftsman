@@ -481,6 +481,13 @@ export class Director {
     h.innerHTML = rows.map((r) => `<div class="f-row${r.join('').length > 26 ? ' long' : ''}">${r.map((t) => (t[0] === '*' ? `<b class="on">${t.slice(1)}</b>` : `<b>${t}</b>`)).join('')}</div>`).join('') + `<div class="f-fab">${img}</div>`;
     this.el.appendChild(h);
   }
+  // the game's name in the corner all the film long (the owner: «нужно добавить логотип») — small, out of the work's way
+  logo(on = true) {
+    if (this.logoEl) { this.logoEl.remove(); this.logoEl = null; }
+    if (!on) return;
+    const im = (this.logoEl = document.createElement('img')); im.className = 'f-logo'; im.src = 'assets/brand/logo-line-light.png'; im.alt = '';
+    this.el.appendChild(im);
+  }
   // a chip chosen (row, index): it lights up with a short press — the game's hand, without a finger in the frame
   hudPick(row, i) {
     const R = this.hudEl?.children[row]; if (!R || !R.children[i]) return;

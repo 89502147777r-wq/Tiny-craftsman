@@ -44,6 +44,7 @@ export function* plinthFilm(d, app) {
   Object.assign(app.settings, { dayHour: 10.5 }); app.sky.setHour(10.5);
   app.setTool('wall'); app.wallTool.setMode?.('lay');
   d.lock = true; d.hand = 0.35;
+  d.logo();
   // (the game's face: what is chosen — the brick; how it is laid — by hand, then as a course)
   d.hud([['Wall', 'Brick', '*Facing · red'], ['*By hand', 'Course']], 'wall');
   // the strip under the walls: concrete 300 high, 450 wide, cast and set before the film starts
