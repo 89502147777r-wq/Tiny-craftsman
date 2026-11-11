@@ -194,8 +194,10 @@ console.log('—', sec());
     tc.undo(); tc.redo();
     const lH = t.lH.slice();
     tc.undo(); tc.undo(); tc.redo(); tc.redo();
-    let le = 0; for (let i = 0; i < lH.length; i++) le = Math.max(le, Math.abs(lH[i] - t.lH[i]));
+    let le = 0, nle = 0; for (let i = 0; i < lH.length; i++) { const dv = Math.abs(lH[i] - t.lH[i]); if (dv > 1e-9) nle++; le = Math.max(le, dv); }
     mats.undo = le < 1e-9;
+    // (when it fails: by how much, in how many cells, and what was still going on — it has blinked for reasons not yet pinned down)
+    if (!mats.undo) mats.why = { le, cells: nle, of: lH.length, active: !!t.active, cActive: !!t.cActive, crumbs: tc.particles.items.length, busy: tc.busy(), done: tc.journal.done.length, undone: tc.journal.undone?.length };
     mats.drift = (t.totalVolume() - vm0) / (5 / SC ** 3) - 1;
     out.mats = mats;
     // setting-out, formwork, cage, ties
