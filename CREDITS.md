@@ -11,6 +11,7 @@
 | `assets/textures/wood_table_worn/` (1k) | Wood Table Worn | Dimitrios Savva (фото), Rico Cilliers (обработка) | CC0 | https://polyhaven.com/a/wood_table_worn |
 | `assets/textures/plywood/` (1k) — фанера (дно, отвалы) | Plywood | Rob Tuytel | CC0 | https://polyhaven.com/a/plywood |
 | `assets/textures/raw_plank_wall/` (1k) — доски опалубки | Raw Plank Wall | Dimitrios Savva | CC0 | https://polyhaven.com/a/raw_plank_wall |
+| `assets/textures/hinoki_planks/` (1k) — доски опалубки плиты и ленты | Hinoki Planks | Charlotte Baglioni | CC0 | https://polyhaven.com/a/hinoki_planks |
 | `assets/textures/forest_ground_06/` (1k) — пятна тёмного суглинка на участке | Forest Ground 06 | Charlotte Baglioni | CC0 | https://polyhaven.com/a/forest_ground_06 |
 | `assets/textures/dense_sand/` (diff, nor_gl 1k) — песок (материал) | Dense Sand | Dimitrios Savva | CC0 | https://polyhaven.com/a/dense_sand |
 | `assets/textures/gravel_floor_02/` (diff, nor_gl 1k) — щебень 5–20 и 20–40 (одно фото в двух масштабах, затемнено до серого гранита) | Gravel Floor 02 | Dimitrios Savva (фото), Jenelle van Heerden (обработка) | CC0 | https://polyhaven.com/a/gravel_floor_02 |
