@@ -1,4 +1,5 @@
 import { FASCIA_COLOURS } from '../world/railing.js';
+import { digPit } from '../tools/pitJob.js';
 import { BUILD, MODEL_SCALE, MATERIALS, DELIVERY, PUMP, CONCRETE } from '../config.js';
 import { bbox, contains } from '../world/outlines.js';
 import { PANOS } from '../world/backdrop.js';
@@ -496,6 +497,7 @@ export class UI {
       ];
       // («Проект»: its sub-tabs off the menu for now)
       if (m.trench) out.push(C('✓ Готово', true, () => m.finishTrench()));
+      if (m.rec?.kind === 'rect' && !m.trench) out.push(C('⛏ Выкопать', false, () => { digPit(app, m.rec); }));
       if (m.selected && !m.trench) out.push(C('Удалить контур', false, () => m.deleteSelected(), 'warn'));
       return out;
     }
