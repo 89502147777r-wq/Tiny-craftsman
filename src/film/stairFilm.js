@@ -42,6 +42,8 @@ export function* stairFilm(d, app) {
   d.lock = true; d.hand = 0.3;
   d.logo();
   d.hud([['Wall', '*Cinder block', 'Brick'], ['*By hand', 'Course']], 'wall');
+  // (the site's things — the cabin, the mixer, the barrow, the pallets — stand where the stair and its camera go: away for this film)
+  app.settings.propsSeeded = true; for (const r of O.all('siteprop')) O.remove(r.id);
   if (!app.budget.on) O.add({ type: 'budget', money: 60000, start: 60000 });
   d.money(true); d.byStages();
   // the strip under the wall (stage 1 of the house): concrete 300 high, 1.5 m wide, cast and set before this film
@@ -89,10 +91,10 @@ export function* stairFilm(d, app) {
   const last = C[N - 1][0][C[N - 1][0].length - 1];   // (the hook's block: the outer corner of the 34th step, over the sea)
   const group = (from, to) => C.slice(from, to).flat(2).filter((r) => r !== last);
   for (let k = 1, g = 1; k < N;) {
-    const to = Math.min(N, k + g), n = group(k, to).length;
+    const k0 = k, to = Math.min(N, k + g), n = group(k0, to).length;   // (k0: the loop moves k on before the step is played)
     // (halfway up, another angle: from the sea's end, low, down the steps already there — the rest rising toward the camera)
-    const turn = k <= N / 2 && to > N / 2;
-    steps.push({ ...(turn ? { view: back, turn: true, lead: 0.3 } : { lead: 0 }), n, act: () => { const list = group(k, to); pop(list)(); }, hold: k < 4 ? 0.55 : k > N - 7 ? 0.5 : k < 12 ? 0.4 : 0.32 });
+    const turn = k0 <= N / 2 && to > N / 2;
+    steps.push({ ...(turn ? { view: back, turn: true, lead: 0.3 } : { lead: 0 }), n, act: () => pop(group(k0, to))(), hold: k < 4 ? 0.55 : k > N - 7 ? 0.5 : k < 12 ? 0.4 : 0.32 });
     k = to; g = k < 4 ? 1 : k < 12 ? 2 : k < N - 7 ? 3 : 1;
   }
   yield* d.grow([
