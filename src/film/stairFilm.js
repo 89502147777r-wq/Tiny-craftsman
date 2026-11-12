@@ -53,10 +53,12 @@ export function* stairFilm(d, app) {
   for (const [kind, x, z, yaw] of [['pallet', -2600, 3600, 0.1], ['pallet', -2700, 1900, -0.05], ['pallet', -2500, 200, 0.08], ['mixer', -3300, 5600, 0.6]]) O.add({ type: 'siteprop', kind, x: +MM(x).toFixed(5), z: +MM(z).toFixed(5), yaw });
   if (!app.budget.on) O.add({ type: 'budget', money: 60000, start: 60000 });
   d.money(true); d.byStages();
-  // the strip under the wall (stage 1 of the house): concrete 300 high, 1.5 m wide, cast and set before this film
+  // the strip under the wall — stage 1 of the house, a film of its own (the pit, the compacted bed, the formwork, the rebar, the
+  // concrete; the foreman: 1.4–1.5 × 0.6 m, reinforced, for ~70 t of wall): here only its result, cast and set before this film —
+  // 600 deep, its top 20 mm over the sand
   const cells = [];
   for (let i = 0; i < Tn.conc.length; i++) { const x = Math.abs(Tn.toWorldX(i % Tn.nx)), z = Math.abs(Tn.toWorldZ(Math.floor(i / Tn.nx))); if (x < MM(ZW + 155) && z < MM(XB + 150)) cells.push(i); }
-  { let a = 1e9, b = -1, c = 1e9, e = -1; for (const i of cells) { Tn.nat[i] -= MM(280); const add = MM(300) - Tn.conc[i];   /* (the strip in the ground — the realist: on top of the sand the first step was 500 high) */ if (add > 0) Tn._concAdd(i, add, 1); const ix = i % Tn.nx, iz = Math.floor(i / Tn.nx); a = Math.min(a, ix); b = Math.max(b, ix); c = Math.min(c, iz); e = Math.max(e, iz); } if (b >= 0) Tn._concTouch(a, c, b, e); Tn.updateMesh?.(); }
+  { let a = 1e9, b = -1, c = 1e9, e = -1; for (const i of cells) { Tn.nat[i] -= MM(580); const add = MM(600) - Tn.conc[i];   /* (the strip in the ground — the realist: on top of the sand the first step was 500 high) */ if (add > 0) Tn._concAdd(i, add, 1); const ix = i % Tn.nx, iz = Math.floor(i / Tn.nx); a = Math.min(a, ix); b = Math.max(b, ix); c = Math.min(c, iz); e = Math.max(e, iz); } if (b >= 0) Tn._concTouch(a, c, b, e); Tn.updateMesh?.(); }
   app.clock += 600;
   const base = Tn.heightAt(0, MM(-(XA + 200))), C = stairCourses(base), total = C.flat(2).length, top = base + MM(BED + N * (H + J));
   // (blocks a mason lays added at once — a piece of work done between two shots: their records, a few of their knocks)
