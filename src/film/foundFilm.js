@@ -42,7 +42,6 @@ export function* foundFilm(d, app) {
   Object.assign(st, { wallKind: 'pool', poolLayer: 'pit' }); app.setTool('wall'); app.wallTool.setMode('lay');
   hud(0, ['*Pool', 'Strip', 'Slab'], 'wall');
   d.cut(look(P(-9500, 5200, 3500), P(-1000, 0, -4400)), { drift: 0.02, push: 0.02, hand: 0.4 });
-  yield d.until(() => physicsReady());
   { const a = P(B.x0, 0, B.z0), b = P(B.x1, 0, B.z1); pw.down(a, scr(a)); pw.move(b, scr(b)); pw.up(); }
   const R = () => pw.rec, belts = () => pw._belts(R());
   yield d.sec(0.5);
@@ -98,9 +97,9 @@ export function* foundFilm(d, app) {
   const fresh = () => { const now = T.clock || app.clock; for (let i = 0; i < T.conc.length; i++) if (T.conc[i] > 0) T.cTime[i] = now; };
   const hose = app.concreteTools.hose, at = (s, t, y) => { const [x, z] = PW(R(), s, t); return new V(x, y, z); };
   // (the hose led along a path till `full` says so, the game's clock of setting held — a real pour is one go)
-  const pour = function* (path, full, TP, max) {
+  const pour = function* (path, full, TP, max, v = 16) {
     app.setTool('hose'); hud(3, ['*Hose', 'Vibrator', 'Rule'], 'hose');
-    { const p0 = path(0); app.camera.updateMatrixWorld(true); hose.down(p0, scr(p0)); } let pt = 0; d.speed = 16;
+    { const p0 = path(0); app.camera.updateMatrixWorld(true); hose.down(p0, scr(p0)); } let pt = 0; d.speed = v;
     yield d.until(() => { pt += d.dt * d.speed; fresh(); { const q = path((pt / TP) % 1); app.camera.updateMatrixWorld(true); hose.move(q, scr(q)); } return full() || pt > max; });   // (the screen's point with it: what is under the hose — a belt, the ground — is found as under a finger)
     hose.up(); d.speed = 6;
     yield d.until(idle);
@@ -117,7 +116,7 @@ export function* foundFilm(d, app) {
   yield d.until(idle);
   say('floor belt ' + JSON.stringify({ fb: !!belts().fb, cage: R().cage1 }));
   { const r = R(), yF = floorTopY(r);
-    const t1 = yield* pour((u) => at(r.L * (0.04 + 0.92 * u), r.W * (0.5 + 0.46 * Math.sin(u * Math.PI * 12)), yF), () => belts().fb?.fill >= 0.965, 30, 200);
+    const t1 = yield* pour((u) => at(r.L * (0.04 + 0.92 * u), r.W * (0.5 + 0.46 * Math.sin(u * Math.PI * 12)), yF), () => belts().fb?.fill >= 0.965, 30, 200, 48);
     say('floor fill ' + belts().fb?.fill + ' in ' + t1.toFixed(0)); }
   // (two days: the floor hard enough for the walls' forms)
   d.hud(null);
@@ -133,12 +132,13 @@ export function* foundFilm(d, app) {
   say('wall belt ' + !!belts().wb);
   { const r = R(), yW = wallTopY(r), o = -125, w = r.L + 250, h = r.W + 250, per = 2 * (w + h);
     const round = (u) => { const dd = ((u * 3) % 1) * per; const [ss, tt] = dd < w ? [o + dd, o] : dd < w + h ? [r.L - o, o + dd - w] : dd < 2 * w + h ? [r.L - o - (dd - w - h), r.W - o] : [o, r.W - o - (dd - 2 * w - h)]; return at(ss, tt, yW); };
-    const t2 = yield* pour(round, () => !belts().wb || belts().wb.fill >= 0.965, 60, 260);
+    const t2 = yield* pour(round, () => !belts().wb || belts().wb.fill >= 0.965, 60, 260, 60);
     say('wall fill ' + belts().wb?.fill + ' in ' + t2.toFixed(0)); }
   d.stageBill('POOL SHELL');
   yield d.sec(0.6);
 
   // ---- 5 · the strip, the slab, the pad: boards, cages, the concrete in one go ---------------------------
+  yield d.until(() => physicsReady());
   app.setTool('form'); app.formTool.setMode('outline');
   hud(1, ['*Boards 40 × 150', 'Stakes'], 'form');
   const F = app.formTool, keys = ['spine', 'slab', 'pad'], runsOf = {};
@@ -175,17 +175,17 @@ export function* foundFilm(d, app) {
     const path = (u) => { const i = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - i, x = q.x0 + (q.x1 - q.x0) * (i + 0.5) / rows, z = q.z0 + (q.z1 - q.z0) * (0.06 + 0.88 * (i % 2 ? 1 - f : f)); return P(x, 0, z); };
     if (k === 'spine') d.cut(look(P(IBIZA.X0 + 900, 1900, 10200), P(IBIZA.X0, 0, -2500)), { drift: 0.01, push: 0.01, hand: 0.3 });
     if (k === 'slab') d.cut(look(P(-10500, 6500, 9500), P(-500, 0, 500)), { drift: 0.02, push: 0.015, hand: 0.4 });
-    const tp = yield* pour(path, () => T.concVolume() - v0 >= want * (k === 'pad' ? 0.9 : 1.0), want * MODEL_SCALE ** 3 / st.pump * 1.02, want * MODEL_SCALE ** 3 / st.pump * 1.3);
+    const tp = yield* pour(path, () => T.concVolume() - v0 >= want * (k === 'pad' ? 0.9 : k === 'slab' ? 1.04 : 1.0), want * MODEL_SCALE ** 3 / st.pump * 1.02, want * MODEL_SCALE ** 3 / st.pump * 1.3);
     say(k + ' poured ' + ((T.concVolume() - v0) * MODEL_SCALE ** 3).toFixed(1) + ' of ' + (want * MODEL_SCALE ** 3).toFixed(1) + ' in ' + tp.toFixed(0));
   }
   // (the poker round all of it — the crew's round — and the rule over the slab)
   app.setTool('vibro'); hud(3, ['Hose', '*Vibrator', 'Rule'], 'vibro');
   { const vib = app.concreteTools.vibro; let vt = 0; const sp = []; for (const k of keys) { const q = IBIZA[k]; for (let x = q.x0 + 500; x < q.x1; x += 1400) for (let z = q.z0 + 500; z < q.z1; z += 1400) sp.push([x, z]); }
     vib.down(P(sp[0][0], 0, sp[0][1])); d.speed = 12;
-    yield d.until(() => { vt += d.dt * d.speed; fresh(); for (const [x, z] of sp) T.vibrate(MM(x), MM(z), MM(1300)); const i = Math.floor(vt / 0.3); if (i < sp.length) vib.move(P(sp[i][0], 0, sp[i][1])); return i >= sp.length || vt > 40; });
+    yield d.until(() => { vt += d.dt * d.speed; fresh(); for (const [x, z] of sp) T.vibrate(MM(x), MM(z), MM(1300)); const i = Math.floor(vt / 0.14); if (i < sp.length) vib.move(P(sp[i][0], 0, sp[i][1])); return i >= sp.length || vt > 40; });
     vib.up(); yield d.until(idle); }
   app.setTool('screed'); hud(3, ['Hose', 'Vibrator', '*Rule'], 'screed');
-  { const rule = app.concreteTools.screed, q = IBIZA.slab; d.speed = 5;
+  { const rule = app.concreteTools.screed, q = IBIZA.slab; d.speed = 9;
     d.cut(look(P(-9500, 4200, 8200), P(-500, 250, 800)), { drift: 0.02, push: 0.02, hand: 0.4 });
     for (let i = 0, x = q.x0 + 1000; x < q.x1; x += 2000, i++) { fresh(); const z0 = i % 2 ? q.z0 + 150 : q.z1 - 150, z1 = i % 2 ? q.z1 - 400 : q.z0 + 400; rule.down(P(x, 0, z0)); let u = 0;
       yield d.until(() => { u = Math.min(1, u + d.dt * d.speed / 4); rule.move(P(x, 0, z0 + (z1 - z0) * u)); return u >= 1; }); rule.up(); yield d.until(idle); } }
@@ -200,8 +200,8 @@ export function* foundFilm(d, app) {
   yield* d.lapse(7, 2.4, () => { app.clock += 9000 * d.dt / 2.4; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });
   app.sky.setHour(16.5);
   app.setTool('form'); F.setMode('strip');
-  d.speed = 5;
-  for (const k of keys) { const [x, z] = mid(IBIZA[k]), p = P(x, 0, z); F.strip(p, scr(p)); yield d.until(() => !!app.physJob || !O.all('form').some((r) => r.outlineId === pits[k].id)); yield d.until(idle); d.speed = 14; }
+  d.speed = 8;
+  for (const k of keys) { const [x, z] = mid(IBIZA[k]), p = P(x, 0, z); F.strip(p, scr(p)); yield d.until(() => !!app.physJob || !O.all('form').some((r) => r.outlineId === pits[k].id)); yield d.until(idle); d.speed = 20; }
   say('forms left ' + O.all('form').length);
   Object.assign(st, { wallKind: 'pool' }); app.setTool('wall'); app.wallTool.setMode('lay');
   { const { fb, wb } = belts(); pw._strip(R(), fb, wb); }
