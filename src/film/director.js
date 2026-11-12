@@ -508,7 +508,7 @@ export class Director {
   // where it is set to the end — and so, the hook being put first, it is there on both sides of the loop's seam
   next(text = 'TO BE CONTINUED →') {
     if (this.nextEl) this.nextEl.remove();
-    const e = (this.nextEl = document.createElement('div')); e.className = 'f-next'; e.textContent = text; this.el.appendChild(e);
+    const e = (this.nextEl = document.createElement('div')); e.className = 'f-next'; for (const w of text.split(' ')) { if (e.childNodes.length) e.appendChild(document.createTextNode(' ')); if (/^[A-Za-z]/.test(w)) { const i = document.createElement('i'); i.textContent = w[0]; e.appendChild(i); e.appendChild(document.createTextNode(w.slice(1))); } else e.appendChild(document.createTextNode(w)); } this.el.appendChild(e);   // (the brand's way: each word's initial red)
   }
   logo(on = true) {
     if (this.logoEl) { this.logoEl.remove(); this.logoEl = null; }

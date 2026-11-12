@@ -283,6 +283,7 @@ export class PoolWork {
       const path = this._path(r, pts), yP = y0 + MM(POOL.gravel), wide = MM(450);
       steps.push([path.total / 1000 * 0.11, (u) => {
         const q = path.at(u * path.total), [x, z] = PW(r, q.s, q.t);
+        app.sfx?.engine?.('compactor', u < 1 ? 0.7 : 0);   // (the owner: the plate was silent)
         app.concreteGear.plateOn = true; app.concreteGear.set('plate', new THREE.Vector3(x, yP, z), q.yaw, u === 0);
         const ix0 = Math.max(0, Math.floor(t.toCellX(x - wide))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(x + wide))), iz0 = Math.max(0, Math.floor(t.toCellZ(z - wide))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(z + wide)));
         for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) if (Math.hypot(t.toWorldX(ix) - x, t.toWorldZ(iz) - z) < wide && inPit(t.toWorldX(ix), t.toWorldZ(iz))) t.comp[iz * t.nx + ix] = 1;
@@ -399,6 +400,7 @@ export class PoolWork {
         // (the plate round it after, heading the way it goes, turning at the corners; the sand
         // rammed where it has been)
         const q = ring.at(u * ring.total), [x, z] = PW(r, q.s, q.t), wide = MM(380);
+        app.sfx?.engine?.('compactor', u < 1 ? 0.7 : 0);
         app.concreteGear.plateOn = true; app.concreteGear.set('plate', new THREE.Vector3(x, lv, z), q.yaw, u === 0);
         const ix0b = Math.max(0, Math.floor(t.toCellX(x - wide))), ix1b = Math.min(t.rx, Math.ceil(t.toCellX(x + wide))), iz0b = Math.max(0, Math.floor(t.toCellZ(z - wide))), iz1b = Math.min(t.rz, Math.ceil(t.toCellZ(z + wide)));
         for (let iz = iz0b; iz <= iz1b; iz++) for (let ix = ix0b; ix <= ix1b; ix++) if (inBand(t.toWorldX(ix), t.toWorldZ(iz)) && Math.hypot(t.toWorldX(ix) - x, t.toWorldZ(iz) - z) < wide) t.comp[iz * t.nx + ix] = 1;

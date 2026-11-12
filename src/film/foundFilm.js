@@ -26,7 +26,7 @@ export const IBIZA = {
 
 export function* foundFilm(d, app) {
   const V = THREE.Vector3, O = app.objects, T = app.terrain, G = app.concreteGear, st = app.settings, pw = app.wallTool.pool;
-  Object.assign(st, { dayHour: 9.5, pump: 1.25, rebarD: 16, rebarStep: 200 }); app.sky.setHour(9.5);
+  Object.assign(st, { dayHour: 9.5, pump: 1.25, rebarD: 16, rebarStep: 200, cover: 50, poolMeasure: false });   // (cover 50: the sea's salt — and no bar near a face; the pool's tape measure off) app.sky.setHour(9.5);
   d.lock = true; d.hand = 0.3;
   d.logo();
   st.propsSeeded = true; for (const r of O.all('siteprop')) O.remove(r.id);
@@ -66,13 +66,18 @@ export function* foundFilm(d, app) {
   const fresh = () => { const now = T.clock || app.clock; for (let i = 0; i < T.conc.length; i++) if (T.conc[i] > 0) T.cTime[i] = now; };
   const hose = app.concreteTools.hose, at = (s, t, y) => { const [x, z] = PW(R(), s, t); return new V(x, y, z); };
   // (the hose led along a path till `full` says so, the game's clock of setting held — a real pour is one go)
-  const pour = function* (path, full, TP, max, v = 16, wrap = true) {
+  // (the hose led along a path till `full` says so — at a hand's pace on the screen: the film's time is bought with the pump's
+  // delivery, not with the speed of the hand (the owner: the hose went mad); `belt` — what it pours into, named outright: found
+  // by no ray of the screen, a phone's frame is not the test's; the game's clock of setting held — a real pour is one go)
+  const pour = function* (path, full, TP, max, o = {}) {
     app.setTool('hose'); hud(3, ['*Hose', 'Vibrator', 'Rule'], 'hose');
-    { const p0 = path(0); app.camera.updateMatrixWorld(true); hose.down(p0, scr(p0)); } let pt = 0; d.speed = v;
-    yield d.until(() => { pt += d.dt * d.speed; fresh(); { const q = path(wrap ? (pt / TP) % 1 : Math.min(1, pt / TP)); app.camera.updateMatrixWorld(true); hose.move(q, scr(q)); } return full() || pt > max; });   // (the screen's point with it: what is under the hose — a belt, the ground — is found as under a finger)
-    hose.up(); d.speed = 6;
+    const pump0 = st.pump, ev = (q) => (o.belt ? { target: o.belt().id, hit: q } : undefined);
+    st.pump = o.pump ?? 2.5;
+    { const p0 = path(0); hose.down(p0, ev(p0)); } let pt = 0; d.speed = o.v ?? 6;
+    yield d.until(() => { pt += d.dt * d.speed; fresh(); o.each?.(pt); const q = path(o.wrap === false ? Math.min(1, pt / TP) : (pt / TP) % 1); hose.move(q, ev(q)); return full() || pt > max; });
+    hose.up(); d.speed = 4;
     yield d.until(idle);
-    d.speed = 1; G.set(null);
+    d.speed = 1; G.set(null); st.pump = pump0;
     return pt;
   };
   Object.assign(st, { wallKind: 'pool' }); app.setTool('wall'); app.wallTool.setMode('lay');
@@ -85,7 +90,7 @@ export function* foundFilm(d, app) {
   yield d.until(idle);
   say('floor belt ' + JSON.stringify({ fb: !!belts().fb, cage: R().cage1 }));
   { const r = R(), yF = floorTopY(r);
-    const t1 = yield* pour((u) => at(r.L * (0.04 + 0.92 * u), r.W * (0.5 + 0.46 * Math.sin(u * Math.PI * 12)), yF), () => belts().fb?.fill >= 0.965, 30, 200, 48);
+    const t1 = yield* pour((u) => at(r.L * (0.04 + 0.92 * u), r.W * (0.5 + 0.46 * Math.sin(u * Math.PI * 12)), yF), () => belts().fb?.fill >= 0.965, 14, 120, { belt: () => belts().fb, pump: 6 });
     say('floor fill ' + belts().fb?.fill + ' in ' + t1.toFixed(0)); }
   // (two days: the floor hard enough for the walls' forms)
   d.hud(null);
@@ -101,8 +106,8 @@ export function* foundFilm(d, app) {
   yield d.until(idle);
   say('wall belt ' + !!belts().wb);
   { const r = R(), yW = wallTopY(r), o = -125, w = r.L + 250, h = r.W + 250, per = 2 * (w + h);
-    const round = (u) => { const dd = ((u * 3) % 1) * per; const [ss, tt] = dd < w ? [o + dd, o] : dd < w + h ? [r.L - o, o + dd - w] : dd < 2 * w + h ? [r.L - o - (dd - w - h), r.W - o] : [o, r.W - o - (dd - 2 * w - h)]; return at(ss, tt, yW); };
-    const t2 = yield* pour(round, () => !belts().wb || belts().wb.fill >= 0.965, 60, 260, 60);
+    const round = (u) => { const dd = u * per; const [ss, tt] = dd < w ? [o + dd, o] : dd < w + h ? [r.L - o, o + dd - w] : dd < 2 * w + h ? [r.L - o - (dd - w - h), r.W - o] : [o, r.W - o - (dd - 2 * w - h)]; return at(ss, tt, yW); };
+    const t2 = yield* pour(round, () => !belts().wb || belts().wb.fill >= 0.965, 30, 160, { belt: () => belts().wb, pump: 6 });
     say('wall fill ' + belts().wb?.fill + ' in ' + t2.toFixed(0)); }
   d.stageBill('POOL SHELL');
   yield d.sec(0.6);
@@ -192,7 +197,7 @@ export function* foundFilm(d, app) {
     const path = (u) => { const i = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - i, x = q.x0 + (q.x1 - q.x0) * (i + 0.5) / rows, z = q.z0 + (q.z1 - q.z0) * (0.1 + 0.8 * (i % 2 ? 1 - f : f)); return P(x, 0, z); };
     if (k === 'spine') d.cut(look(P(IBIZA.X0 + 900, 1900, 10200), P(IBIZA.X0, 0, -2500)), { drift: 0.01, push: 0.01, hand: 0.3 });
     if (k === 'slab') d.cut(look(P(-10500, 6500, 9500), P(-500, 0, 500)), { drift: 0.02, push: 0.015, hand: 0.4 });
-    const tp = yield* pour(path, () => T.concVolume() - v0 >= want * (k === 'pad' ? 0.86 : 0.965), want * MODEL_SCALE ** 3 / st.pump * 1.0, want * MODEL_SCALE ** 3 / st.pump * 1.3, 16, false);   // (short of brim-full: the poker and the rule bring it to the boards' tops, none over them)
+    const tp = yield* pour(path, () => T.concVolume() - v0 >= want * (k === 'pad' ? 0.86 : 0.965), want * MODEL_SCALE ** 3 / 2.5 * 1.0, want * MODEL_SCALE ** 3 / 2.5 * 1.3, { wrap: false, v: 5 });   // (short of brim-full: the poker and the rule bring it to the boards' tops, none over them)
     say(k + ' poured ' + ((T.concVolume() - v0) * MODEL_SCALE ** 3).toFixed(1) + ' of ' + (want * MODEL_SCALE ** 3).toFixed(1) + ' in ' + tp.toFixed(0));
   }
   // (the poker round all of it — the crew's round — and the rule over the slab)
@@ -219,12 +224,15 @@ export function* foundFilm(d, app) {
   yield* d.lapse(7, 2.4, () => { app.clock += 9000 * d.dt / 2.4; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });
   app.sky.setHour(16.5);
   app.setTool('form'); F.setMode('strip');
-  d.speed = 5;
-  for (const k of keys) { const [x, z] = mid(IBIZA[k]), p = P(x, 0, z); F.strip(p, scr(p)); yield d.until(() => !!app.physJob || !O.all('form').some((r) => r.outlineId === pits[k].id)); yield d.until(idle); d.speed = 30; }
+  // (the owner: the boards must be stacked neatly on the plot — the game's own stripping does it: knocked off, carried one by one
+  // to the stack; it is shown for the strip at a pace the eye follows, the slab's and the pad's are done between two shots)
+  const strip = (k) => { const [x, z] = mid(IBIZA[k]), p = P(x, 0, z); F.strip(p, scr(p)); return () => !O.all('form').some((r) => r.outlineId === pits[k].id) && idle(); };
+  d.speed = 8;
+  yield d.until(strip('spine'));
+  d.speed = 1;
+  for (const k of ['slab', 'pad']) { const f = strip(k); d.jumpTo(f, 900); }
   say('forms left ' + O.all('form').length);
   d.speed = 1;
-  // (the boards taken off the site: the piles gone before the next stage)
-  for (const r of O.all('formpile')) O.remove(r.id);
   yield d.sec(0.4);
   d.next();
   // ---- the hook (put first by the recorder): low along the bare strip to the pool's shell and the sea ----
