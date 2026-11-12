@@ -121,6 +121,7 @@ export function* stairFilm(d, app) {
   app.budget._pay([{ usd: 640 }], new V(0, base, 0));
   d.stageBill('MORTAR · 6 m³');
   yield d.sec(1.9);
+  d.next();   // (the owner: more comes — the tag stays through the hook, so the loop's seam carries it on both sides)
   // ---- the hook (put first by the recorder): the last block of the 34th step at its real pace — the video ends on
   // the frame before it, so it loops on the same shot and the same blow ----
   const Pl = new V(...last.p);
