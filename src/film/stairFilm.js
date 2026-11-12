@@ -67,32 +67,37 @@ export function* stairFilm(d, app) {
   // ---- 2 · the course along the wall, sped up: the trowel spreads the bed for ten blocks, each set down on its piece ----
   const rowA = row0.slice(1); let nA = 0, bed = null, bedFrom = 0;
   const front = () => { const r = rowA[Math.max(0, Math.min(rowA.length - 1, nA))]; return new V(Math.max(P.x, r.p[0] - MM(400)), base + MM(60), P.z); };
-  const course = (to, v) => () => {
+  // (whole: how many get the whole show — mallet, mortar, trowel — before the course goes as courses go; v: the speeds — whole, spreading, laying)
+  const course = (to, whole, v) => () => {
+    if (!app.physJob && nA < whole) { d.speed = v[0]; if (W.layUnit(rowA[nA])) { nA++; laid++; d.jobs++; } return false; }
     if (!app.physJob && nA < to) {
-      d.speed = v[1];
-      if (!bed || nA >= bedFrom + bed.length) { bed = W.spreadBed(rowA.slice(nA, Math.min(to, nA + 10))); bedFrom = nA; if (bed && !d.spreads) d.hudPick(1, 1); d.spreads = (d.spreads || 0) + (bed ? 1 : 0); d.speed = v[0]; return false; }
+      d.speed = v[2];
+      if (!bed || nA >= bedFrom + bed.length) { bed = W.spreadBed(rowA.slice(nA, Math.min(to, nA + 10))); bedFrom = nA; if (bed && !d.spreads) d.hudPick(1, 1); d.spreads = (d.spreads || 0) + (bed ? 1 : 0); d.speed = v[1]; return false; }
       if (W.layUnit(rowA[nA], true, 12, bed?.[nA - bedFrom])) { nA++; laid++; d.jobs++; }
     }
     if (nA >= to && !app.busy()) { d.speed = 1; return true; }
     return false;
   };
-  const nCourse = Math.min(8, rowA.length);
+  const nCourse = Math.min(14, rowA.length);
   // ---- 3 · further: the rest of the first course at once, then the courses — the steps — rising one after another,
   // faster and faster (one, then two, then three a beat), slowing down toward the landing ----
   const rest0 = [...C[0].slice(0, ROWS - 1).flat(), ...rowA.slice(nCourse)];
   const mid = new V(0, base + MM(2200), 0);
   const side = low(new V(0, base + MM(1800), 0), 0.5, MM(19000), MM(1400));   // (rule 3: low, the horizon and the sea behind the steps)
+  const back = low(new V(MM(XA * 0.25), base + MM(2600), 0), 1.15, MM(15000), MM(1700));
   const steps = [];
   const last = C[N - 1][0][C[N - 1][0].length - 1];   // (the hook's block: the outer corner of the 34th step, over the sea)
   const group = (from, to) => C.slice(from, to).flat(2).filter((r) => r !== last);
   for (let k = 1, g = 1; k < N;) {
     const to = Math.min(N, k + g), n = group(k, to).length;
-    steps.push({ n, act: () => { const list = group(k, to); pop(list)(); }, lead: 0, hold: k < 4 ? 0.42 : k > N - 6 ? 0.36 : 0.24 });
-    k = to; g = k < 4 ? 1 : k < 12 ? 2 : k < N - 6 ? 3 : 1;
+    // (halfway up, another angle: from the sea's end, low, down the steps already there — the rest rising toward the camera)
+    const turn = k <= N / 2 && to > N / 2;
+    steps.push({ ...(turn ? { view: back, turn: true, lead: 0.3 } : { lead: 0 }), n, act: () => { const list = group(k, to); pop(list)(); }, hold: k < 4 ? 0.55 : k > N - 7 ? 0.5 : k < 12 ? 0.4 : 0.32 });
+    k = to; g = k < 4 ? 1 : k < 12 ? 2 : k < N - 7 ? 3 : 1;
   }
   yield* d.grow([
     { n: 1, until: one, hold: 0.5, push: 0.05 },
-    { view: look(new V(P.x - MM(1800), base + MM(1300), P.z + MM(2600)), new V(P.x + MM(1400), base + MM(80), P.z)), follow: front, lag: 2.5, n: nCourse, until: course(nCourse, [4, 6]), hold: 0.3 },
+    { view: look(new V(P.x - MM(1800), base + MM(1300), P.z + MM(2600)), new V(P.x + MM(1400), base + MM(80), P.z)), follow: front, lag: 2.5, n: nCourse, until: course(nCourse, 2, [2.5, 3, 4]), hold: 0.3 },
     { view: side, turn: true, n: rest0.length, act: pop(rest0), lead: 0.35, hold: 0.45 },
     ...steps,
   ]);
