@@ -86,8 +86,8 @@ export function* stairFilm(d, app) {
   // faster and faster (one, then two, then three a beat), slowing down toward the landing ----
   const rest0 = [...C[0].slice(0, ROWS - 1).flat(), ...rowA.slice(nCourse)];
   const mid = new V(0, base + MM(2200), 0);
-  const side = low(new V(0, base + MM(2400), 0), 1.35, MM(24000), MM(1400));   // (rule 3: low, the horizon; the steps' profile rising to the left, toward the sea)
-  const back = low(new V(0, base + MM(2800), MM(-1500)), 0.25, MM(17000), MM(1300));   // (from behind the low end: the steps go up away from the camera, into the sea's sky)
+  const side = low(new V(0, base + MM(2400), 0), 1.35, MM(20000), MM(1300));   // (rule 3: low, the horizon; the steps' profile rising to the left, toward the sea)
+  const back = look(new V(MM(300), base + MM(1150), MM(-XA + 5200)), new V(0, base + MM(3600), MM(-1800)));   // (on the stair's axis behind its foot: the risers one over another, up into the sea's sky)
   const steps = [];
   const last = C[N - 1][ROWS - 1][C[N - 1][ROWS - 1].length - 1];   // (the hook's block: the outer corner of the 34th step, over the sea)
   const group = (from, to) => C.slice(from, to).flat(2).filter((r) => r !== last);
@@ -110,7 +110,7 @@ export function* stairFilm(d, app) {
   // ---- the hook (put first by the recorder): the last block of the 34th step at its real pace — the video ends on
   // the frame before it, so it loops on the same shot and the same blow ----
   const Pl = new V(...last.p);
-  d.cut(look(new V(Pl.x + MM(3200), base + MM(2000), Pl.z + MM(8500)), new V(Pl.x - MM(600), Pl.y - MM(800), Pl.z + MM(500))), { drift: 0.02, hand: 0.3 });
+  d.cut(look(new V(MM(350), base + MM(3900), Pl.z + MM(6800)), new V(0, Pl.y - MM(300), Pl.z + MM(300))), { drift: 0.02, hand: 0.3 });
   yield d.sec(0.35);
   d.speed = 1;
   let hookOn = false;
