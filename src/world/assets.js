@@ -8,6 +8,7 @@ const SETS = {
   table: 'wood_table_worn',
   ply: 'plywood',
   plank: 'raw_plank_wall',
+  board: 'hinoki_planks',   // (the slab's formwork: fresh sawn boards, light, with knots — the owner: «доски слишком тёмные»)
 };
 
 export async function loadAssets(renderer, onProgress, quality = 'high') {

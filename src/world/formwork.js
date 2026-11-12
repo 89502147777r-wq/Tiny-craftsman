@@ -16,10 +16,10 @@ export class FormworkView {
     this.terrain = terrain;
     this.group = new THREE.Group();
     this.group.name = 'formwork';
-    const board = makeBoardMaterial(tex);
+    const board = makeBoardMaterial(tex), W = tex.board?.diff ? tex.board : tex.plank;
     const plain = new THREE.MeshStandardMaterial({
-      map: variant(tex.plank.diff, 0.12, 0.6), normalMap: variant(tex.plank.nor, 0.12, 0.6),
-      roughness: 0.85, color: 0xd8c0a0,
+      map: variant(W.diff, 0.12, 0.6), normalMap: variant(W.nor, 0.12, 0.6),
+      roughness: 0.85, color: W === tex.plank ? 0xd8c0a0 : 0xfff4e6,
     });
     this.max = { boards: 3000, stakes: 1200, braces: 600 };
     this.boards = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), board, this.max.boards);
@@ -70,7 +70,7 @@ export class FormworkView {
         s.set(len, h, T);
         this.boards.setMatrixAt(nb, m.compose(p, q, s));
         // which plank of the photo, and how much of it this board shows
-        aB.setXYZ(nb, rnd(), Math.floor(rnd() * 8) / 8, (len * MODEL_SCALE) / 1.87);
+        aB.setXYZ(nb, rnd(), Math.floor(rnd() * BOARD_ROWS) / BOARD_ROWS + BOARD_IN, (len * MODEL_SCALE) / BOARD_TILE);   // (one plank of the photo along the board, its own one)
         this.owner.boards[nb] = r.id;
         nb++;
       }
@@ -224,17 +224,20 @@ export function runsForEdges(edgeList, y0At, y1) {
   return edgeList.map((e) => ({ type: 'form', a: e.a, b: e.b, n: e.n, y0: y0At(e), y1 }));
 }
 
+// the boards' photo (Poly Haven CC0 «Hinoki Planks», 1,89 m: 13 sawn planks ~145 mm, light, with knots): one plank of it per board
+const BOARD_ROWS = 13, BOARD_TILE = 1.89, BOARD_IN = 0.06 / 13, BOARD_H = 0.88 / 13;
 export function makeBoardMaterial(tex) {
+  const W = tex.board?.diff ? tex.board : tex.plank;
   const m = new THREE.MeshStandardMaterial({
-    map: tex.plank.diff, normalMap: tex.plank.nor, roughnessMap: tex.plank.arm,
-    roughness: 1, metalness: 0, color: 0xf0dcc0,
+    map: W.diff, normalMap: W.nor, roughnessMap: W.arm,
+    roughness: 1, metalness: 0, color: W === tex.plank ? 0xf0dcc0 : 0xffffff,
   });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aBoard;\nvarying float vBy;\nvarying float vTint;')
       .replace('#include <uv_vertex>', `#include <uv_vertex>
         // a 150 mm tall strip of the plank photo, length-matched to the board
-        vec2 bu = vec2(uv.x * aBoard.z + aBoard.x, aBoard.y + uv.y * 0.11);
+        vec2 bu = vec2(uv.x * aBoard.z + aBoard.x, aBoard.y + uv.y * ${BOARD_H.toFixed(5)});
         vMapUv = bu; vNormalMapUv = bu; vRoughnessMapUv = bu;
         vBy = uv.y; vTint = fract(sin(aBoard.x * 91.7 + aBoard.y * 13.1) * 437.5);`);
     // every board its own shade (sawn from different logs), the seams between the boards dark
