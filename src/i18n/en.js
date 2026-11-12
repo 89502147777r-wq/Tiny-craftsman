@@ -1616,6 +1616,7 @@ export default {
 "Куча песка": "Sand heap",
 "🎥 Ролик: кладка цоколя (ваш участок не тронется)": "🎥 Film: laying a brick plinth (your site is left alone)",
 "🎥 Ролик: плита 10 × 10 и колонны (ваш участок не тронется)": "🎥 Film: a slab 10 × 10 m and columns (your site is left alone)",
+"🎥 Ролик: «Ибица» — стена-лестница к морю (ваш участок не тронется)": "🎥 Film: «Ibiza» — the staircase wall to the sea (your site is left alone)",
 "🎬 Тихий режим — одна кнопка вместо панелей": "🎬 Quiet mode — one button instead of the panels",
 "💰 Бюджет:": "💰 Budget:",
 "📏 Замер": "📏 Measure",

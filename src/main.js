@@ -406,8 +406,8 @@ function step(dt, time, render = true) {
 // the film mode: the director's frame, then the work `speed` times as fast (in steps of a 30th
 // at most), drawn once
 async function startFilm(name) {
-  const [{ Director }, films] = await Promise.all([import('./film/director.js'), import(name === 'slab' ? './film/slabFilm.js' : './film/plinthFilm.js')]);
-  const script = { plinth: films.plinthFilm, slab: films.slabFilm }[name];
+  const [{ Director }, films] = await Promise.all([import('./film/director.js'), import(name === 'slab' ? './film/slabFilm.js' : name === 'stair' ? './film/stairFilm.js' : './film/plinthFilm.js')]);
+  const script = { plinth: films.plinthFilm, slab: films.slabFilm, stair: films.stairFilm }[name];
   if (!script) { app.ui.toast('Нет такого ролика: ' + name); return; }
   app.rig.shake = false;
   // (a back garden: a meadow round the plot, not the construction yard's blocks of flats)
