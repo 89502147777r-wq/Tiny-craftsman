@@ -376,7 +376,7 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-fab { position: absolute; right: 6%; bottom: 6.5%; width: clamp(44px, 14vw, 104px); height: clamp(44px, 14vw, 104px); border-radius: 50%; background: rgba(24, 19, 15, 0.55); border: 1px solid rgba(255, 255, 255, 0.22); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
 #film .f-fab img { position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; }
 #film .f-logo { position: absolute; left: 5%; top: calc(3.2% + 14px); margin-top: clamp(8px, 3.3vw, 26px); width: 34%; max-width: 300px; opacity: 0.94; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55)); }   /* (the owner: at the top, level with the budget) */
-#film.hud .f-logo { top: 11.9%; margin-top: 0; }
+#film.hud .f-logo { top: 13.2%; margin-top: 0; }
 /* a stage's bill: what it was and what it cost */
 #film .f-stage { position: absolute; left: 50%; top: 66%; text-align: center; white-space: nowrap; padding: 0.4em 1.1em 0.5em; border-radius: 16px; background: rgba(12, 12, 12, 0.66); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); }
 #film .f-stage small { display: block; font-size: clamp(11px, 3.5vw, 26px); font-weight: 800; letter-spacing: 0.12em; color: #f4efe6; }
@@ -401,7 +401,7 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-gate span { font-size: clamp(13px, 3.8vw, 20px); line-height: 1.4; opacity: 0.85; }
 #film .f-money { position: absolute; right: 5%; top: calc(3.2% + 14px); text-align: right; padding: 0.3em 0.7em 0.35em; border-radius: 12px; background: rgba(12,12,12,0.6); backdrop-filter: blur(6px); transform-origin: 100% 0; box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
 #film .f-money[hidden] { display: none; }
-#film.hud .f-money { top: 11.9%; }
+#film.hud .f-money { top: 12.6%; }
 #film.hud .f-clock { top: 18.5%; }   /* (under the top group, not over the budget) */   /* (under the chips' rows, level with the logo) */
 #film .f-money small { display: block; font-size: clamp(8px, 2.3vw, 14px); font-weight: 800; letter-spacing: 0.16em; color: #9fe39a; }
 #film .f-money b { display: block; font-size: clamp(15px, 5vw, 34px); font-weight: 900; color: #9fe39a; font-variant-numeric: tabular-nums; }

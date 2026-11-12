@@ -41,7 +41,7 @@ export function* foundFilm(d, app) {
   const B = IBIZA.pool, scr = (p) => { const q = app.wallTool._screen(p); return { clientX: q.x, clientY: q.y }; };
   Object.assign(st, { wallKind: 'pool', poolLayer: 'pit' }); app.setTool('wall'); app.wallTool.setMode('lay');
   hud(0, ['*Pool', 'Strip', 'Slab'], 'wall');
-  d.cut(look(P(-9500, 5200, 3500), P(-1000, 0, -4400)), { drift: 0.02, push: 0.02, hand: 0.4 });
+  d.cut(look(P(-1000, 5200, 4500), P(-1000, -900, -4400)), { drift: 0.015, push: 0.015, hand: 0.4 });
   { const a = P(B.x0, 0, B.z0), b = P(B.x1, 0, B.z1); pw.down(a, scr(a)); pw.move(b, scr(b)); pw.up(); }
   const R = () => pw.rec, belts = () => pw._belts(R());
   yield d.sec(0.5);
@@ -54,12 +54,12 @@ export function* foundFilm(d, app) {
   app.setTool('mark');
   const pits = {};
   for (const k of ['spine', 'slab', 'pad']) { const q = IBIZA[k]; pits[k] = O.add({ type: 'outline', kind: 'rect', x0: MM(q.x0), z0: MM(q.z0), x1: MM(q.x1), z1: MM(q.z1), depth: +((q.h + q.bed - IBIZA.up) / MODEL_SCALE).toFixed(2) }); }
-  d.cut(look(P(IBIZA.X0 + 3800, 2600, 9800), P(IBIZA.X0 - 600, 0, -1500)), { drift: 0.02, push: 0.02, hand: 0.4 });
+  d.cut(look(P(IBIZA.X0 + 1800, 2400, 10500), P(IBIZA.X0, 0, -1000)), { drift: 0.02, push: 0.02, hand: 0.4 });
   d.speed = 3;
   digPit(app, O.get(pits.spine.id));
   yield d.until(idle);
   d.speed = 10;
-  d.cut(look(P(-11500, 7500, 10500), P(-500, 0, 0)), { drift: 0.02, push: 0.015, hand: 0.4 });
+  d.cut(look(P(-2500, 8500, 13500), P(-500, 0, 0)), { drift: 0.02, push: 0.015, hand: 0.4 });
   digPit(app, O.get(pits.slab.id));
   yield d.until(idle);
   digPit(app, O.get(pits.pad.id));
@@ -72,18 +72,18 @@ export function* foundFilm(d, app) {
 
   // ---- 3 · the beds: the pool's stone and lean concrete; sand and stone under the rest, rammed -------
   d.speed = 8;
-  d.cut(look(P(-8500, 3000, -1200), P(-1000, -1700, -4400)), { drift: 0.02, push: 0.02, hand: 0.4 });
+  d.cut(look(P(-1000, 3800, 1200), P(-1000, -1700, -4400)), { drift: 0.015, push: 0.015, hand: 0.4 });
   pw._bed(R(), null);
   yield d.until(idle);
   d.speed = 1;
   say('bed done');
   const mid = (q) => [(q.x0 + q.x1) / 2, (q.z0 + q.z1) / 2];
-  d.cut(look(P(IBIZA.X0 + 3200, 2000, 8800), P(IBIZA.X0 - 300, -300, 0)), { drift: 0.02, push: 0.02, hand: 0.4 });
+  d.cut(look(P(IBIZA.X0 + 1800, 2400, 10500), P(IBIZA.X0, 0, -1000)), { drift: 0.02, push: 0.02, hand: 0.4 });
   d.speed = 4;
   bedPit(app, O.get(pits.spine.id), IBIZA.spine.bed, 'g20');
   yield d.until(idle);
   d.speed = 12;
-  d.cut(look(P(-11500, 7500, 10500), P(-500, 0, 0)), { drift: 0.02, push: 0.015, hand: 0.4 });
+  d.cut(look(P(-2500, 8500, 13500), P(-500, 0, 0)), { drift: 0.02, push: 0.015, hand: 0.4 });
   bedPit(app, O.get(pits.slab.id), IBIZA.slab.bed, 'sand');
   yield d.until(idle);
   bedPit(app, O.get(pits.pad.id), IBIZA.pad.bed, 'g20');
@@ -124,6 +124,7 @@ export function* foundFilm(d, app) {
   app.sky.setHour(9.5);
   Object.assign(st, { wallKind: 'pool' }); app.setTool('wall'); app.wallTool.setMode('lay');
   hud(1, ['Pool floor', '*Pool walls'], 'wall');
+  d.cut(look(P(-1000, 9000, 2600), P(-1000, -400, -4400)), { drift: 0.01, push: 0.01, hand: 0.3 });
   d.speed = 8;
   pw._cage2(R(), belts().fb);
   yield d.until(idle);
@@ -146,7 +147,7 @@ export function* foundFilm(d, app) {
   const save = (id, list) => () => app.journal.act('formwork', { outlineId: id }, app.clock, () => { for (const r of list) O.add(r); });
   d.cut(look(P(IBIZA.X0 + 2600, 1500, 8600), P(IBIZA.X0 - 200, 0, 3000)), { drift: 0.02, push: 0.02, hand: 0.4 });
   { const rs = runsOf.spine.slice().sort((p, q) => q.n[1] - p.n[1]); d.speed = 5; F._fitRuns([rs[0]], true, save(pits.spine.id, [rs[0]])); yield d.until(idle); d.speed = 10; F._fitRuns(rs.slice(1), false, save(pits.spine.id, rs.slice(1))); yield d.until(idle); }
-  d.cut(look(P(-11500, 7500, 10500), P(-500, 0, 0)), { drift: 0.02, push: 0.015, hand: 0.4 });
+  d.cut(look(P(-2500, 8500, 13500), P(-500, 0, 0)), { drift: 0.02, push: 0.015, hand: 0.4 });
   d.speed = 14;
   for (const k of ['slab', 'pad']) { F._fitRuns(runsOf[k], false, save(pits[k].id, runsOf[k])); yield d.until(idle); }
   d.speed = 1;
@@ -162,7 +163,7 @@ export function* foundFilm(d, app) {
     yield d.until(() => !!app.physJob || O.all('cage').some((c) => c.outlineId === pits[k].id));
     d.speed = k === 'spine' ? 2.5 : 16;
     if (k === 'spine') { yield d.sec(1.2); d.speed = 12; }
-    if (k === 'slab') d.cut(look(P(-11500, 7500, 10500), P(-500, 0, 0)), { drift: 0.02, push: 0.015, hand: 0.4 });
+    if (k === 'slab') d.cut(look(P(-2500, 8500, 13500), P(-500, 0, 0)), { drift: 0.02, push: 0.015, hand: 0.4 });
     yield d.until(idle);
   }
   d.speed = 1;
@@ -175,7 +176,7 @@ export function* foundFilm(d, app) {
     const path = (u) => { const i = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - i, x = q.x0 + (q.x1 - q.x0) * (i + 0.5) / rows, z = q.z0 + (q.z1 - q.z0) * (0.06 + 0.88 * (i % 2 ? 1 - f : f)); return P(x, 0, z); };
     if (k === 'spine') d.cut(look(P(IBIZA.X0 + 900, 1900, 10200), P(IBIZA.X0, 0, -2500)), { drift: 0.01, push: 0.01, hand: 0.3 });
     if (k === 'slab') d.cut(look(P(-10500, 6500, 9500), P(-500, 0, 500)), { drift: 0.02, push: 0.015, hand: 0.4 });
-    const tp = yield* pour(path, () => T.concVolume() - v0 >= want * (k === 'pad' ? 0.9 : k === 'slab' ? 1.04 : 1.0), want * MODEL_SCALE ** 3 / st.pump * 1.02, want * MODEL_SCALE ** 3 / st.pump * 1.3);
+    const tp = yield* pour(path, () => T.concVolume() - v0 >= want * (k === 'pad' ? 0.9 : k === 'slab' ? 1.0 : 1.0), want * MODEL_SCALE ** 3 / st.pump * 1.02, want * MODEL_SCALE ** 3 / st.pump * 1.3);
     say(k + ' poured ' + ((T.concVolume() - v0) * MODEL_SCALE ** 3).toFixed(1) + ' of ' + (want * MODEL_SCALE ** 3).toFixed(1) + ' in ' + tp.toFixed(0));
   }
   // (the poker round all of it — the crew's round — and the rule over the slab)
@@ -196,11 +197,11 @@ export function* foundFilm(d, app) {
 
   // ---- 6 · a week; the boards off; the gap round the pool filled back ----------------------------------
   d.hud(null);
-  d.cut(low(P(0, 300, 0), 0.6, MM(21000), MM(2400)), { drift: 0.015, push: 0.01, hand: 0.3 });
+  d.cut(look(P(-3500, 5200, 13000), P(1000, 0, -1000)), { drift: 0.012, push: 0.01, hand: 0.3 });
   yield* d.lapse(7, 2.4, () => { app.clock += 9000 * d.dt / 2.4; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });
   app.sky.setHour(16.5);
   app.setTool('form'); F.setMode('strip');
-  d.speed = 8;
+  d.speed = 3;
   for (const k of keys) { const [x, z] = mid(IBIZA[k]), p = P(x, 0, z); F.strip(p, scr(p)); yield d.until(() => !!app.physJob || !O.all('form').some((r) => r.outlineId === pits[k].id)); yield d.until(idle); d.speed = 20; }
   say('forms left ' + O.all('form').length);
   Object.assign(st, { wallKind: 'pool' }); app.setTool('wall'); app.wallTool.setMode('lay');
@@ -210,10 +211,12 @@ export function* foundFilm(d, app) {
   yield d.until(idle);
   d.speed = 1;
   say('pool ' + JSON.stringify({ fs: belts().fb?.stripped, ws: belts().wb?.stripped, filled: R().filled }));
+  // (the boards taken off the site: the piles gone before the next stage)
+  for (const r of O.all('formpile')) O.remove(r.id);
   yield d.sec(0.4);
   d.next();
   // ---- the hook (put first by the recorder): low along the bare strip to the pool's shell and the sea ----
-  d.cut(look(P(IBIZA.X0 + 700, 1150, 9800), P(IBIZA.X0 - 1500, 100, -4000)), { drift: 0.015, push: 0.02, hand: 0.3 });
+  d.cut(look(P(IBIZA.X0 + 500, 1250, 9600), P(IBIZA.X0 - 1700, 100, -4000)), { drift: 0.015, push: 0.02, hand: 0.3 });
   yield d.sec(0.3);
   d.found = { tops: keys.map((k) => Math.round((T.heightAt(MM(mid(IBIZA[k])[0]), MM(mid(IBIZA[k])[1])) - g) / S)), forms: O.all('form').length, pool: { fs: !!belts().fb?.stripped, ws: !!belts().wb?.stripped, filled: !!R().filled } };
   d.mark('hook');
