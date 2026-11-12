@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { levels, worked, uLinks, UN } from '../tools/uPour.js';
 import { plan, boardsOf, toWorld, snapS, BELT } from '../tools/belt.js';
 import { SlabFormView, floorUnder } from './slabForm.js';
@@ -1250,12 +1251,16 @@ function loadCinder(mesh) {
     g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(d.nor, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(d.uv, 2));
-    g.setIndex(d.idx); g.computeBoundingSphere();
+    g.setIndex(d.idx);
+    // the scan has one hollow the whole length — a box (the realist): a 390 block has two, the web between them in the
+    // middle, ~30 mm, as high as the shell
+    const web = new THREE.BoxGeometry(0.075, 0.99, 0.76);
+    const geo = mergeGeometries([g, web]) || g; geo.computeBoundingSphere();
     const L = new THREE.TextureLoader(), map = L.load(base + 'col.jpg'), nor = L.load(base + 'nor.jpg');
     map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = nor.anisotropy = 4;
     for (const t of [map, nor]) t.wrapS = t.wrapT = THREE.RepeatWrapping;   // (box-projected uv: the concrete tiles round it)
     mesh.material = withBitumen(new THREE.MeshStandardMaterial({ map, normalMap: nor, normalScale: new THREE.Vector2(1.6, 1.6), color: 0xb4b1ab, roughness: 0.95, side: THREE.DoubleSide }));
-    mesh.geometry = g;
+    mesh.geometry = geo;
   }).catch(() => {});
 }
 

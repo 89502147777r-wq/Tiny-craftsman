@@ -31,7 +31,7 @@ export function stairCourses(base) {
       const x = -ZW + w / 2 + r * (w + J), off = head ? (r % 2) * (along + J) / 2 : ((k / 2 + r) % 2) * (L + J) / 2, list = [];
       for (let b = a1 + off; b > a0; b -= along + J) {
         const hi = Math.min(b, a1), lo = Math.max(b - along, a0); if (hi - lo < 90) continue;   // (a cut block: no shorter than 90)
-        list.push({ type: 'unit', kind: 'cinder', free: true, p: [MM(x), y, MM(-(lo + hi) / 2)], s: (head ? [L, H, hi - lo] : [T, H, hi - lo]).map(MM), q: [0, 0, 0, 1] });
+        list.push({ type: 'unit', kind: 'cinder', free: true, p: [MM(x), y, MM(-(lo + hi) / 2)], s: (head ? [L, H, hi - lo] : [hi - lo, H, T]).map(MM), q: head ? [0, 0, 0, 1] : [0, 0.70711, 0, 0.70711] });   // (a stretcher turned along the wall — its hollows the right way, not squeezed across)
       }
       rows.push(list.reverse());   // (laid from the low end on, as the mason goes)
     }
