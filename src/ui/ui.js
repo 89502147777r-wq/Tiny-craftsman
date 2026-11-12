@@ -1,4 +1,5 @@
 import { FASCIA_COLOURS } from '../world/railing.js';
+import { digPit, bedPit } from '../tools/pitJob.js';
 import { BUILD, MODEL_SCALE, MATERIALS, DELIVERY, PUMP, CONCRETE } from '../config.js';
 import { bbox, contains } from '../world/outlines.js';
 import { PANOS } from '../world/backdrop.js';
@@ -161,6 +162,8 @@ export class UI {
     hb.addEventListener('click', () => showHints(ui.classList.contains('no-hints')));
     $('menu-close').addEventListener('click', () => this.openMenu(false));
     $('act-film').addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=plinth'; });
+    $('act-film-found')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=found'; });
+    $('act-film-stair')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=stair'; });
     $('act-film-slab')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=slab'; });
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     for (const b of document.querySelectorAll('#budget-row button')) b.addEventListener('click', () => { const v = +b.dataset.b; if (v) app.budget.start(v); else app.budget.stop(); this.openMenu(false); this.refresh(); });
@@ -495,6 +498,7 @@ export class UI {
       ];
       // («Проект»: its sub-tabs off the menu for now)
       if (m.trench) out.push(C('✓ Готово', true, () => m.finishTrench()));
+      if (m.rec?.kind === 'rect' && !m.trench) { out.push(C('⛏ Выкопать', false, () => { digPit(app, m.rec); })); out.push(C('Подушка: песок 200', false, () => { bedPit(app, m.rec, 200, 'sand'); })); out.push(C('Подушка: щебень 200', false, () => { bedPit(app, m.rec, 200, 'g20'); })); }
       if (m.selected && !m.trench) out.push(C('Удалить контур', false, () => m.deleteSelected(), 'warn'));
       return out;
     }

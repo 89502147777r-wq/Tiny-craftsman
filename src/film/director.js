@@ -504,6 +504,12 @@ export class Director {
     this.el.appendChild(h);
   }
   // the game's name in the corner all the film long (the owner: «нужно добавить логотип») — small, out of the work's way
+  // «to be continued» (the owner, 2026-11-12: every stage short ends with a hint that more comes): a small tag that stays from
+  // where it is set to the end — and so, the hook being put first, it is there on both sides of the loop's seam
+  next(text = 'TO BE CONTINUED →') {
+    if (this.nextEl) this.nextEl.remove();
+    const e = (this.nextEl = document.createElement('div')); e.className = 'f-next'; e.textContent = text; this.el.appendChild(e);
+  }
   logo(on = true) {
     if (this.logoEl) { this.logoEl.remove(); this.logoEl = null; }
     if (!on) return;

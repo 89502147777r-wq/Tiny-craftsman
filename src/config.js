@@ -1,6 +1,6 @@
 // Global constants. All world units are metres: the diorama is a real-size
 // object on a real-size workshop table, built at model scale 1:10.47 (860 mm = 9 m).
-export const BUILD = 297;
+export const BUILD = 298;
 export const STAGE = 3;
 export const MODEL_SCALE = 9000 / 860;   // 1:10.47 — 860 mm of the model is 9 m
 // how much finer everything is than at the old 1:3.5 (texture sizes of stones, pores …)
@@ -129,6 +129,6 @@ export const DEFAULT_OUTLINES = [{ id: 1, kind: 'rect', x0: -0.43, z0: -0.33, x1
 export const MAT = {
   board: { t: 0.025 / MODEL_SCALE, h: 0.15 / MODEL_SCALE },      // 25 × 150 mm formwork board
   stake: { s: 0.05 / MODEL_SCALE, step: 0.8 / MODEL_SCALE },     // 50 × 50 mm stakes every 0.8 m
-  rebarD: [8, 10, 12, 14],                                       // available bar diameters, mm (real)
+  rebarD: [8, 10, 12, 14, 16],                                   // available bar diameters, mm (real; 16 — strips under heavy walls)
   meshCell: 0.1 / MODEL_SCALE, meshD: 0.004 / MODEL_SCALE,       // welded mesh 100 × 100, Ø4
 };
