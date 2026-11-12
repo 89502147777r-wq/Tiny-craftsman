@@ -363,18 +363,20 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-sub { display: inline-block; margin-top: 0.55em; font-size: clamp(12px, 3.8vw, 28px); font-weight: 700; line-height: 1.25; padding: 0.3em 0.7em; border-radius: 8px; background: rgba(12,12,12,0.55); backdrop-filter: blur(4px); }
 #film .f-kick { position: absolute; left: 50%; top: 45%; width: 92%; text-align: center; line-height: 1.0; font-size: clamp(28px, 11vw, 86px); font-weight: 900; letter-spacing: -0.01em; text-transform: uppercase; color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,0.25), 0 6px 30px rgba(0,0,0,0.7); }
 #film .f-kick.gold { color: #f2b134; }
+#film .f-next { position: absolute; left: 50%; top: 71%; transform: translateX(-50%); white-space: nowrap; padding: 0.35em 0.9em; border-radius: 999px; background: rgba(12, 12, 12, 0.62); color: #f2b134; font-size: clamp(11px, 3.6vw, 27px); font-weight: 800; letter-spacing: 0.1em; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }   /* (above the Shorts' bottom zone) */
+#film .f-kick.top { top: 26%; font-size: clamp(24px, 9vw, 70px); }   /* (the hook's question: in the upper third, clear of the Shorts UI) */
 /* the game's face over a film: the chips' rows at the top, the round tool button at the bottom (as the quiet mode's) */
 #film .f-hud { position: absolute; inset: 0; pointer-events: none; }
 #film .f-row { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 0.5em; white-space: nowrap; font-size: clamp(11px, 3.3vw, 25px); }
 #film .f-row.long { font-size: clamp(9px, 2.55vw, 19px); gap: 0.4em; }   /* (four chips: all of them inside the frame) */
 #film .f-row:nth-child(1) { top: 4.4%; }
-#film .f-row:nth-child(2) { top: 9.6%; }
+#film .f-row:nth-child(2) { top: 8.1%; }   /* (the owner: the top group tighter — rows, logo, budget close together) */
 #film .f-row b { font-weight: 600; padding: 0.5em 0.95em; border-radius: 999px; background: rgba(24, 19, 15, 0.6); border: 1px solid rgba(255, 255, 255, 0.16); color: #f4efe6; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); }
 #film .f-row b.on { background: #f2b134; color: #1c1509; border-color: rgba(0, 0, 0, 0); }
 #film .f-fab { position: absolute; right: 6%; bottom: 6.5%; width: clamp(44px, 14vw, 104px); height: clamp(44px, 14vw, 104px); border-radius: 50%; background: rgba(24, 19, 15, 0.55); border: 1px solid rgba(255, 255, 255, 0.22); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
 #film .f-fab img { position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; }
 #film .f-logo { position: absolute; left: 5%; top: calc(3.2% + 14px); margin-top: clamp(8px, 3.3vw, 26px); width: 34%; max-width: 300px; opacity: 0.94; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55)); }   /* (the owner: at the top, level with the budget) */
-#film.hud .f-logo { top: 15%; }
+#film.hud .f-logo { top: 13.2%; margin-top: 0; }
 /* a stage's bill: what it was and what it cost */
 #film .f-stage { position: absolute; left: 50%; top: 66%; text-align: center; white-space: nowrap; padding: 0.4em 1.1em 0.5em; border-radius: 16px; background: rgba(12, 12, 12, 0.66); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); }
 #film .f-stage small { display: block; font-size: clamp(11px, 3.5vw, 26px); font-weight: 800; letter-spacing: 0.12em; color: #f4efe6; }
@@ -399,7 +401,8 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-gate span { font-size: clamp(13px, 3.8vw, 20px); line-height: 1.4; opacity: 0.85; }
 #film .f-money { position: absolute; right: 5%; top: calc(3.2% + 14px); text-align: right; padding: 0.3em 0.7em 0.35em; border-radius: 12px; background: rgba(12,12,12,0.6); backdrop-filter: blur(6px); transform-origin: 100% 0; box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
 #film .f-money[hidden] { display: none; }
-#film.hud .f-money { top: 15%; }   /* (under the chips' rows) */
+#film.hud .f-money { top: 12.6%; }
+#film.hud .f-clock { top: 18.5%; }   /* (under the top group, not over the budget) */   /* (under the chips' rows, level with the logo) */
 #film .f-money small { display: block; font-size: clamp(8px, 2.3vw, 14px); font-weight: 800; letter-spacing: 0.16em; color: #9fe39a; }
 #film .f-money b { display: block; font-size: clamp(15px, 5vw, 34px); font-weight: 900; color: #9fe39a; font-variant-numeric: tabular-nums; }
 #film .f-money.hit b { color: #ff7a5a; }

@@ -1294,6 +1294,49 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2l⁰. «Ibiza» stage 1, the foundations: every stage the game's own work, in the order of a site — the pits dug (the new
+// «dig a marked pit» job), the beds, the pool's shell poured, the strip / slab / pad formed, caged, poured, a week, the boards off
+{
+  const { browser, page, errors } = await open(pw.chromium, '&film=found&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, f = tc.film;
+    for (let i = 0; i < 6000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
+    return { done: f.done, t: f.t, found: f.found, notes: f.notes, marks: f.marks, bills: (f.stageBillsLog || []).map((q) => q.usd), spent: 150000 - tc.budget.money, units: tc.objects.all('unit').length };
+  });
+  check('film (found): pits, beds, the pool\'s shell stripped and backfilled, the strip / slab / pad cast to +250 (±35), no boards left, no masonry yet',
+    o.done && o.found && o.found.tops.every((v) => Math.abs(v - 250) <= 35) && o.found.forms === 0 && o.found.pool.fs && o.found.pool.ws && o.found.pool.filled && o.units === 0, JSON.stringify({ done: o.done, found: o.found, notes: (o.notes || []).slice(-6) }));
+  check('film (found): six stage bills = spent, the hook marked (the loop), no longer than 55 s',
+    o.bills.length === 6 && o.bills.every((v) => v > 0) && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 5 && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.t < 55, JSON.stringify({ bills: o.bills, spent: o.spent, t: o.t, marks: o.marks }));
+  check('film (found): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2l''''. «34 steps to the sea» (Ibiza, stage 2): the stepped cinder-block wall — the bond across every other course, the
+// sea's end flush, every tread one course, all the blocks laid, the hook (the last block) marked for the loop, two stage bills
+{
+  const { browser, page, errors } = await open(pw.chromium, '&film=stair&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, f = tc.film;
+    const [{ stairCourses }, { MODEL_SCALE }] = await Promise.all([import('/src/film/stairFilm.js'), import('/src/config.js')]);
+    const C = stairCourses(0), S = 1 / 1000 / MODEL_SCALE;
+    for (let i = 0; i < 4000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
+    const ends = C.map((k) => k.flat()), zl = (r) => (r.q[1] ? r.s[0] : r.s[2]) /* (a stretcher is turned along the wall) */, lo = ends.map((l) => Math.max(...l.map((r) => r.p[2] + zl(r) / 2))), hi = ends.map((l) => Math.min(...l.map((r) => r.p[2] - zl(r) / 2)));
+    const run = lo.slice(1).map((v, k) => (lo[k] - v) / S);
+    return { done: f.done, laid: f.laid, n: C.length, rows: C.map((k) => k.length), sea: hi.map((v) => Math.round((v - hi[0]) / S)), run, total: C.flat(2).length,
+      marks: f.marks, bills: (f.stageBillsLog || []).map((q) => q.usd), spent: 60000 - tc.budget.money };
+  });
+  check('film (stair): 34 courses, each a 300 tread, the bond across every other course, the sea end flush, under the cinder limit',
+    o.n === 34 && o.rows.every((r, k) => r === (k % 2 ? 3 : 6)) && o.run.every((v) => Math.abs(v - 300) < 2) && o.sea.every((v) => Math.abs(v) <= 1) && o.total < 4000,
+    JSON.stringify({ rows: o.rows.slice(0, 4), run: o.run.slice(0, 3), sea: o.sea.slice(0, 4), total: o.total }));
+  check('film (stair): every block laid, the hook marked before its end (the loop), blocks and mortar billed = spent',
+    o.done && o.laid?.done === o.total && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.bills.length === 2 && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 3,
+    JSON.stringify({ done: o.done, laid: o.laid, marks: o.marks, bills: o.bills, spent: o.spent }));
+  check('film (stair): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2l'''. The slab film: every stage is the game's own work, started as the finger starts it — the formwork, the slab's
 // cage, the columns' cages carried and tied into it, the hose, the poker, the rule, a day on the clock, the columns' forms
 // and concrete; the slab ends level, the columns full ----
