@@ -51,6 +51,8 @@ export function* foundFilm(d, app) {
   yield d.until(idle);
   d.speed = 1;
   const mid = (q) => [(q.x0 + q.x1) / 2, (q.z0 + q.z1) / 2];
+  // (the top of a piece over the ground, mm: [mean, lowest, highest] over a grid 300 in from its edges)
+  const topsOf = (q) => { const hs = []; for (let x = q.x0 + 300; x <= q.x1 - 300; x += 300) for (let z = q.z0 + 300; z <= q.z1 - 300; z += 300) hs.push((T.heightAt(MM(x), MM(z)) - g) / S); return [Math.round(hs.reduce((a, v) => a + v, 0) / hs.length), Math.round(Math.min(...hs)), Math.round(Math.max(...hs))]; };
   d.stageBill('EXCAVATION · 104 m³');
   yield d.sec(0.6);
   // ---- 3 · the beds: the pool's stone and lean concrete; sand and stone under the rest, rammed -------
@@ -207,7 +209,7 @@ export function* foundFilm(d, app) {
   d.speed = 1; G.set(null);
   d.stageBill('CONCRETE');
   yield d.sec(0.6);
-  say('tops ' + keys.map((k) => Math.round((T.heightAt(MM(mid(IBIZA[k])[0]), MM(mid(IBIZA[k])[1])) - g) / S)).join(' '));
+  say('tops ' + JSON.stringify(keys.map((k) => topsOf(IBIZA[k]))));
 
   // ---- 6 · a week; the boards off; the gap round the pool filled back ----------------------------------
   d.hud(null);
@@ -215,8 +217,8 @@ export function* foundFilm(d, app) {
   yield* d.lapse(7, 2.4, () => { app.clock += 9000 * d.dt / 2.4; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });
   app.sky.setHour(16.5);
   app.setTool('form'); F.setMode('strip');
-  d.speed = 3;
-  for (const k of keys) { const [x, z] = mid(IBIZA[k]), p = P(x, 0, z); F.strip(p, scr(p)); yield d.until(() => !!app.physJob || !O.all('form').some((r) => r.outlineId === pits[k].id)); yield d.until(idle); d.speed = 20; }
+  d.speed = 5;
+  for (const k of keys) { const [x, z] = mid(IBIZA[k]), p = P(x, 0, z); F.strip(p, scr(p)); yield d.until(() => !!app.physJob || !O.all('form').some((r) => r.outlineId === pits[k].id)); yield d.until(idle); d.speed = 30; }
   say('forms left ' + O.all('form').length);
   d.speed = 1;
   // (the boards taken off the site: the piles gone before the next stage)
@@ -226,7 +228,7 @@ export function* foundFilm(d, app) {
   // ---- the hook (put first by the recorder): low along the bare strip to the pool's shell and the sea ----
   d.cut(look(P(IBIZA.X0 + 500, 1250, 9600), P(IBIZA.X0 - 1700, 100, -4000)), { drift: 0.015, push: 0.02, hand: 0.3 });
   yield d.sec(0.3);
-  d.found = { tops: keys.map((k) => Math.round((T.heightAt(MM(mid(IBIZA[k])[0]), MM(mid(IBIZA[k])[1])) - g) / S)), forms: O.all('form').length, pool: { fs: !!belts().fb?.stripped, ws: !!belts().wb?.stripped, filled: !!R().filled } };
+  d.found = { tops: keys.map((k) => topsOf(IBIZA[k])[0]), range: keys.map((k) => topsOf(IBIZA[k])), forms: O.all('form').length, pool: { fs: !!belts().fb?.stripped, ws: !!belts().wb?.stripped, filled: !!R().filled } };
   d.mark('hook');
   d.kick('70 TONNES ON THIS?', 2.2, 'top');
   yield d.sec(2.4);
