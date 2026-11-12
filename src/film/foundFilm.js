@@ -196,16 +196,18 @@ export function* foundFilm(d, app) {
     say(k + ' poured ' + ((T.concVolume() - v0) * MODEL_SCALE ** 3).toFixed(1) + ' of ' + (want * MODEL_SCALE ** 3).toFixed(1) + ' in ' + tp.toFixed(0));
   }
   // (the poker round all of it — the crew's round — and the rule over the slab)
+  let shake = () => {};
   app.setTool('vibro'); hud(3, ['Hose', '*Vibrator', 'Rule'], 'vibro');
-  { const vib = app.concreteTools.vibro; let vt = 0; const sp = []; for (const k of keys) { const q = IBIZA[k]; for (let x = q.x0 + 500; x < q.x1; x += 1400) for (let z = q.z0 + 500; z < q.z1; z += 1400) sp.push([x, z]); }
+  { const vib = app.concreteTools.vibro; let vt = 0; const sp = []; for (const k of keys) { const q = IBIZA[k]; for (let x = q.x0 + 400; x < q.x1; x += 1100) for (let z = q.z0 + 400; z < q.z1; z += 1100) sp.push([x, z]); }
+    shake = (n) => { for (let q = 0; q < n; q++) for (const [x, z] of sp) T.vibrate(MM(x), MM(z), MM(1300)); };   // (the crew's whole round with the poker goes on meanwhile: all of it kept shaking, so it runs level — the film's seconds are few)
     vib.down(P(sp[0][0], 0, sp[0][1])); d.speed = 12;
-    yield d.until(() => { vt += d.dt * d.speed; fresh(); for (const [x, z] of sp) T.vibrate(MM(x), MM(z), MM(1300)); const i = Math.floor(vt / 0.14); if (i < sp.length) vib.move(P(sp[i][0], 0, sp[i][1])); return i >= sp.length || vt > 40; });
+    yield d.until(() => { vt += d.dt * d.speed; fresh(); shake(8); const i = Math.floor(vt / 0.07); if (i < sp.length) vib.move(P(sp[i][0], 0, sp[i][1])); return i >= sp.length || vt > 40; });
     vib.up(); yield d.until(idle); }
   app.setTool('screed'); hud(3, ['Hose', 'Vibrator', '*Rule'], 'screed');
   { const rule = app.concreteTools.screed, q = IBIZA.slab; d.speed = 9;
     d.cut(look(P(-9500, 4200, 8200), P(-500, 250, 800)), { drift: 0.02, push: 0.02, hand: 0.4 });
     for (let i = 0, x = q.x0 + 1000; x < q.x1; x += 2000, i++) { fresh(); const z0 = i % 2 ? q.z0 + 150 : q.z1 - 150, z1 = i % 2 ? q.z1 - 400 : q.z0 + 400; rule.down(P(x, 0, z0)); let u = 0;
-      yield d.until(() => { u = Math.min(1, u + d.dt * d.speed / 4); rule.move(P(x, 0, z0 + (z1 - z0) * u)); return u >= 1; }); rule.up(); yield d.until(idle); } }
+      yield d.until(() => { shake(2); u = Math.min(1, u + d.dt * d.speed / 4); rule.move(P(x, 0, z0 + (z1 - z0) * u)); return u >= 1; }); rule.up(); yield d.until(idle); } }
   d.speed = 1; G.set(null);
   d.stageBill('CONCRETE');
   yield d.sec(0.6);
