@@ -23,13 +23,17 @@ export function stairCourses(base) {
   const out = [];
   for (let k = 0; k < N; k++) {
     const y = base + MM(BED + k * (H + J) + H / 2), a0 = XA + k * RUN, a1 = XB, rows = [];
-    for (let r = 0; r < ROWS; r++) {
-      const z = -ZW + T / 2 + r * (T + J), off = ((k + r) % 2) * (L + J) / 2, list = [];
-      for (let a = a0 - off; a < a1; a += L + J) {
-        const lo = Math.max(a, a0), hi = Math.min(a + L, a1); if (hi - lo < 90) continue;   // (a cut block: no shorter than 90)
-        list.push({ type: 'unit', kind: 'cinder', free: true, p: [MM(z), y, MM(-(lo + hi) / 2)], s: [T, H, hi - lo].map(MM), q: [0, 0, 0, 1] });
+    // (the bond across too — the realist: six walls of 190 side by side would have five joints running the whole height:
+    // every other course the blocks lie across the wall, three of them, 3 × 390 + 2 × 10 = 1190; the rows laid from the
+    // sea's end, so that end is flush, the cut pieces at the treads' fronts)
+    const head = k % 2 === 1, n = head ? 3 : ROWS, w = head ? L : T, along = head ? T : L;
+    for (let r = 0; r < n; r++) {
+      const x = -ZW + w / 2 + r * (w + J), off = head ? (r % 2) * (along + J) / 2 : ((k / 2 + r) % 2) * (L + J) / 2, list = [];
+      for (let b = a1 + off; b > a0; b -= along + J) {
+        const hi = Math.min(b, a1), lo = Math.max(b - along, a0); if (hi - lo < 90) continue;   // (a cut block: no shorter than 90)
+        list.push({ type: 'unit', kind: 'cinder', free: true, p: [MM(x), y, MM(-(lo + hi) / 2)], s: (head ? [L, H, hi - lo] : [T, H, hi - lo]).map(MM), q: [0, 0, 0, 1] });
       }
-      rows.push(list);
+      rows.push(list.reverse());   // (laid from the low end on, as the mason goes)
     }
     out.push(rows);
   }
@@ -45,12 +49,14 @@ export function* stairFilm(d, app) {
   d.hud([['Wall', '*Cinder block', 'Brick'], ['*By hand', 'Course']], 'wall');
   // (the site's things — the cabin, the mixer, the barrow, the pallets — stand where the stair and its camera go: away for this film)
   app.settings.propsSeeded = true; for (const r of O.all('siteprop')) O.remove(r.id);
+  // (but what a mason needs by the wall — the realist: the pallets of blocks, the mixer — on the side the cameras do not look from)
+  for (const [kind, x, z, yaw] of [['pallet', -2600, 3600, 0.1], ['pallet', -2700, 1900, -0.05], ['pallet', -2500, 200, 0.08], ['mixer', -3300, 5600, 0.6]]) O.add({ type: 'siteprop', kind, x: +MM(x).toFixed(5), z: +MM(z).toFixed(5), yaw });
   if (!app.budget.on) O.add({ type: 'budget', money: 60000, start: 60000 });
   d.money(true); d.byStages();
   // the strip under the wall (stage 1 of the house): concrete 300 high, 1.5 m wide, cast and set before this film
   const cells = [];
   for (let i = 0; i < Tn.conc.length; i++) { const x = Math.abs(Tn.toWorldX(i % Tn.nx)), z = Math.abs(Tn.toWorldZ(Math.floor(i / Tn.nx))); if (x < MM(ZW + 155) && z < MM(XB + 150)) cells.push(i); }
-  { let a = 1e9, b = -1, c = 1e9, e = -1; for (const i of cells) { const add = MM(300) - Tn.conc[i]; if (add > 0) Tn._concAdd(i, add, 1); const ix = i % Tn.nx, iz = Math.floor(i / Tn.nx); a = Math.min(a, ix); b = Math.max(b, ix); c = Math.min(c, iz); e = Math.max(e, iz); } if (b >= 0) Tn._concTouch(a, c, b, e); Tn.updateMesh?.(); }
+  { let a = 1e9, b = -1, c = 1e9, e = -1; for (const i of cells) { Tn.nat[i] -= MM(280); const add = MM(300) - Tn.conc[i];   /* (the strip in the ground — the realist: on top of the sand the first step was 500 high) */ if (add > 0) Tn._concAdd(i, add, 1); const ix = i % Tn.nx, iz = Math.floor(i / Tn.nx); a = Math.min(a, ix); b = Math.max(b, ix); c = Math.min(c, iz); e = Math.max(e, iz); } if (b >= 0) Tn._concTouch(a, c, b, e); Tn.updateMesh?.(); }
   app.clock += 600;
   const base = Tn.heightAt(0, MM(-(XA + 200))), C = stairCourses(base), total = C.flat(2).length, top = base + MM(BED + N * (H + J));
   // (blocks a mason lays added at once — a piece of work done between two shots: their records, a few of their knocks)
@@ -75,7 +81,7 @@ export function* stairFilm(d, app) {
     if (!app.physJob && nA < whole) { d.speed = v[0]; if (W.layUnit(rowA[nA])) { nA++; laid++; d.jobs++; } return false; }
     if (!app.physJob && nA < to) {
       d.speed = v[2];
-      if (!bed || nA >= bedFrom + bed.length) { bed = W.spreadBed(rowA.slice(nA, Math.min(to, nA + 10))); bedFrom = nA; if (bed && !d.spreads) d.hudPick(1, 1); d.spreads = (d.spreads || 0) + (bed ? 1 : 0); d.speed = v[1]; return false; }
+      if (!bed || nA >= bedFrom + bed.length) { bed = W.spreadBed(rowA.slice(nA, Math.min(to, nA + 4)))   /* (the realist: under the sun no more than 3–4 blocks ahead) */; bedFrom = nA; if (bed && !d.spreads) d.hudPick(1, 1); d.spreads = (d.spreads || 0) + (bed ? 1 : 0); d.speed = v[1]; return false; }
       if (W.layUnit(rowA[nA], true, 12, bed?.[nA - bedFrom])) { nA++; laid++; d.jobs++; }
     }
     if (nA >= to && !app.busy()) { d.speed = 1; return true; }
@@ -88,24 +94,30 @@ export function* stairFilm(d, app) {
   const mid = new V(0, base + MM(2200), 0);
   const side = low(new V(0, base + MM(2400), 0), 1.35, MM(20000), MM(1300));   // (rule 3: low, the horizon; the steps' profile rising to the left, toward the sea)
   const back = look(new V(MM(300), base + MM(1150), MM(-XA + 5200)), new V(0, base + MM(3600), MM(-1800)));   // (on the stair's axis behind its foot: the risers one over another, up into the sea's sky)
-  const steps = [];
-  const last = C[N - 1][ROWS - 1][C[N - 1][ROWS - 1].length - 1];   // (the hook's block: the outer corner of the 34th step, over the sea)
+  const last = C[N - 1].at(-1).at(-1);   // (the hook's block: the outer corner of the 34th step, over the sea)
   const group = (from, to) => C.slice(from, to).flat(2).filter((r) => r !== last);
-  for (let k = 1, g = 1; k < N;) {
-    const k0 = k, to = Math.min(N, k + g), n = group(k0, to).length;   // (k0: the loop moves k on before the step is played)
-    // (halfway up, another angle: from the sea's end, low, down the steps already there — the rest rising toward the camera)
-    const turn = k0 <= N / 2 && to > N / 2;
-    steps.push({ ...(turn ? { view: back, turn: true, lead: 0.3, drift: 0.004, push: 0.012 } : { lead: 0 })   /* (on the axis: a turn would take it off — barely any) */, n, act: () => pop(group(k0, to))(), hold: k < 4 ? 0.55 : k > N - 7 ? 0.5 : k < 12 ? 0.4 : 0.32 });
-    k = to; g = k < 4 ? 1 : k < 12 ? 2 : k < N - 7 ? 3 : 1;
-  }
   yield* d.grow([
     { n: 1, until: one, hold: 0.5, push: 0.05 },
     { view: look(new V(P.x + MM(2600), base + MM(1300), P.z + MM(1800)), new V(P.x, base + MM(80), P.z - MM(1400))), follow: front, lag: 2.5, n: nCourse, until: course(nCourse, 2, [2.5, 3, 4]), hold: 0.3 },
     { view: side, turn: true, n: rest0.length, act: pop(rest0), lead: 0.35, hold: 0.45 },
-    ...steps,
   ]);
+  // ---- 4 · the steps rising over the days (the realist: thousands of blocks in seconds only with the time shown — a crew of three,
+  // ≈ 300 a day, no more than ~1.4 m of height a day): 12 days, the courses laid in the daytime hours; halfway, the other angle ----
+  let kDone = 1, turned = false;
+  const DAYS = 12, h0 = app.sky.hour ?? 16.5;
+  yield* d.lapse(DAYS, 9.5, (u) => {
+    const h = h0 + u * DAYS * 24, day = Math.floor((h - 7) / 24), hh = ((h % 24) + 24) % 24;
+    const want = Math.min(N, 1 + Math.round((N - 1) * Math.min(1, (day + (hh >= 7 && hh <= 18 ? (hh - 7) / 11 : hh > 18 ? 1 : 0)) / DAYS)));
+    if (want > kDone) { pop(group(kDone, want))(); kDone = want; }
+    if (!turned && u > 0.5) { turned = true; d.cut(back, { drift: 0.004, push: 0.012, hand: 0.35 }); }
+  });
+  if (kDone < N) pop(group(kDone, N))();
   pay(laid + 1);
   d.stageBill(`CINDER BLOCKS × ${(laid + 1).toLocaleString('en-US')}`);
+  yield d.sec(1.9);
+  // (the mortar — the realist: ≈ 6 m³ for this wall, its cement and sand)
+  app.budget._pay([{ usd: 640 }], new V(0, base, 0));
+  d.stageBill('MORTAR · 6 m³');
   yield d.sec(1.9);
   // ---- the hook (put first by the recorder): the last block of the 34th step at its real pace — the video ends on
   // the frame before it, so it loops on the same shot and the same blow ----
