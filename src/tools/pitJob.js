@@ -76,7 +76,7 @@ export function bedPit(app, o, thick = 200, mat = 'g20', done = null) {
   // (spread: a front going along the pit — behind it the layer lies level)
   steps.push([Math.max(0.6, (A1 - A0) / MM(1000) * 0.12), (u) => {
     const f = A0 + (A1 - A0) * u;
-    for (const [i, x, z] of cells) if ((long ? x : z) <= f) { const h = t.loose[i]; if (Math.abs(h - want) > 1e-7) { if (h > want) t._pop(i, h - want); else t._push(i, want - h, M); } }
+    for (const [i, x, z] of cells) if ((long ? x : z) <= f) { const h = t.loose[i], w = Math.max(0, yTop - t.nat[i]); if (Math.abs(h - w) > 1e-7) { if (h > w) t._pop(i, h - w); else t._push(i, w - h, M); } }   // (level at its top: the hollows the digging left under it are filled — the slab over it is as thick everywhere)
     t._touch(ix0, iz0, ix1, iz1);
     if (Math.random() < 0.2) app.sfx?.play?.('rake', { vol: 0.4 });
   }]);
