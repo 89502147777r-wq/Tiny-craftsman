@@ -95,7 +95,7 @@ export function* stairFilm(d, app) {
     const k0 = k, to = Math.min(N, k + g), n = group(k0, to).length;   // (k0: the loop moves k on before the step is played)
     // (halfway up, another angle: from the sea's end, low, down the steps already there — the rest rising toward the camera)
     const turn = k0 <= N / 2 && to > N / 2;
-    steps.push({ ...(turn ? { view: back, turn: true, lead: 0.3 } : { lead: 0 }), n, act: () => pop(group(k0, to))(), hold: k < 4 ? 0.55 : k > N - 7 ? 0.5 : k < 12 ? 0.4 : 0.32 });
+    steps.push({ ...(turn ? { view: back, turn: true, lead: 0.3, drift: 0.004, push: 0.012 } : { lead: 0 })   /* (on the axis: a turn would take it off — barely any) */, n, act: () => pop(group(k0, to))(), hold: k < 4 ? 0.55 : k > N - 7 ? 0.5 : k < 12 ? 0.4 : 0.32 });
     k = to; g = k < 4 ? 1 : k < 12 ? 2 : k < N - 7 ? 3 : 1;
   }
   yield* d.grow([
