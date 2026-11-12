@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODEL_SCALE } from '../config.js';
+import { MODEL_SCALE, M_G20, M_SAND } from '../config.js';
 import { FitJob } from './fitJob.js';
 import { gradeY } from '../world/outlines.js';
 
@@ -43,6 +43,58 @@ export function digPit(app, o, done = null) {
     const out = Math.max(0, before - t.totalVolume()) * MODEL_SCALE ** 3, w = (x1 - x0) * MODEL_SCALE, h = (z1 - z0) * MODEL_SCALE;
     app.ui?.toast(`Котлован ${w.toFixed(1)} × ${h.toFixed(1)} м, глубина ${(deep / 1000).toFixed(2)} м — вынуто ${out.toFixed(1)} м³ (вывезено самосвалом)`);
     done?.(out);
+  } });
+  return true;
+}
+
+// The bed of a dug pit by itself (the pool's way, poolTool._bed, for any marked rectangle): the material tipped in heaps,
+// spread level to `thick` mm, rammed with the plate lane after lane. mat: 'g20' | 'sand'. → true if the job began
+export function bedPit(app, o, thick = 200, mat = 'g20', done = null) {
+  const t = app.terrain;
+  if (!o || o.kind !== 'rect' || app.physJob) return false;
+  const x0 = Math.min(o.x0, o.x1), x1 = Math.max(o.x0, o.x1), z0 = Math.min(o.z0, o.z1), z1 = Math.max(o.z0, o.z1), M = mat === 'sand' ? M_SAND : M_G20;
+  const inPit = (x, z) => x >= x0 && x <= x1 && z >= z0 && z <= z1;
+  const ix0 = Math.max(0, Math.floor(t.toCellX(x0))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(x1))), iz0 = Math.max(0, Math.floor(t.toCellZ(z0))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(z1)));
+  const cells = []; for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (inPit(x, z) && !(t.conc[iz * t.nx + ix] > 1e-6)) cells.push([iz * t.nx + ix, x, z]); }
+  if (!cells.length) return false;
+  const base = cells.map((c) => t.nat[c[0]]).sort((a, b) => a - b)[cells.length >> 1], want = MM(thick), yTop = base + want;
+  const long = x1 - x0 >= z1 - z0, A0 = long ? x0 : z0, A1 = long ? x1 : z1, C0 = long ? z0 : x0, C1 = long ? z1 : x1, W = (p, c) => (long ? [p, c] : [c, p]);
+  const area = (x1 - x0) * (z1 - z0), vol = area * want, nH = Math.max(2, Math.min(8, Math.round((A1 - A0) / MM(2200)))), heaps = [], steps = [];
+  app.journal.begin('pit-bed', { id: o.id }, app.clock);
+  for (let h = 0; h < nH; h++) {
+    const [hx, hz] = W(A0 + (A1 - A0) * (h + 0.5) / nH, (C0 + C1) / 2);
+    steps.push([0.4, (u) => {
+      if (!heaps[h]) heaps[h] = t.heapStart(hx, hz, vol / nH, Math.tan((mat === 'sand' ? 33 : 39) * Math.PI / 180));
+      t.heapTo(heaps[h], vol / nH * u, M);
+      if (Math.random() < 0.7) app.particles?.emit(new THREE.Vector3(hx, yTop + MM(900), hz), new THREE.Vector3((Math.random() - 0.5) * 0.02, -0.15, (Math.random() - 0.5) * 0.02), 0, MM(20 + Math.random() * 25), 0, 0, 3);
+      if (u < 1 && Math.random() < 0.25) app.sfx?.pour?.(0.4, mat === 'sand' ? 'sand_pour' : 'gravel_pour');
+    }]);
+  }
+  // (spread: a front going along the pit — behind it the layer lies level)
+  steps.push([Math.max(0.6, (A1 - A0) / MM(1000) * 0.12), (u) => {
+    const f = A0 + (A1 - A0) * u;
+    for (const [i, x, z] of cells) if ((long ? x : z) <= f) { const h = t.loose[i]; if (Math.abs(h - want) > 1e-7) { if (h > want) t._pop(i, h - want); else t._push(i, want - h, M); } }
+    t._touch(ix0, iz0, ix1, iz1);
+    if (Math.random() < 0.2) app.sfx?.play?.('rake', { vol: 0.4 });
+  }]);
+  // (the plate: lane after lane on a serpentine; rammed where it has passed)
+  { const lanes = Math.max(1, Math.round((C1 - C0) / MM(700))), pts = [], m = MM(250);
+    for (let k = 0; k < lanes; k++) { const c = C0 + (C1 - C0) * (k + 0.5) / lanes; if (k % 2) pts.push(W(A1 - m, c), W(A0 + m, c)); else pts.push(W(A0 + m, c), W(A1 - m, c)); }
+    const seg = []; let total = 0; for (let k = 1; k < pts.length; k++) { const l = Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]); seg.push([total, l]); total += l; }
+    const wide = MM(450), G = app.concreteGear;
+    steps.push([Math.max(0.8, total / MM(1000) * 0.1), (u) => {
+      const s = u * total; let k = seg.findIndex(([a, l]) => s <= a + l); if (k < 0) k = seg.length - 1;
+      const [a, l] = seg[k], f = l > 0 ? Math.min(1, (s - a) / l) : 0, x = pts[k][0] + (pts[k + 1][0] - pts[k][0]) * f, z = pts[k][1] + (pts[k + 1][1] - pts[k][1]) * f;
+      G.plateOn = true; G.set('plate', new THREE.Vector3(x, yTop, z), Math.atan2(pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]), u === 0);
+      for (const [i, cx, cz] of cells) if (Math.hypot(cx - x, cz - z) < wide) t.comp[i] = 1;
+      t._touch(ix0, iz0, ix1, iz1);
+      if (u >= 1) { for (const [i] of cells) t.comp[i] = 1; G.plateOn = false; G.set(null); }
+    }]);
+  }
+  new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); app.concreteGear.set(null); }, commit: () => {
+    app.journal.commit(app.clock);
+    app.ui?.toast(`${mat === 'sand' ? 'Песок' : 'Щебень 20–40'} слоем ${thick} мм утрамбован виброплитой — ${(vol * MODEL_SCALE ** 3).toFixed(1)} м³`);
+    done?.();
   } });
   return true;
 }
