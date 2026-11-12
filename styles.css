@@ -400,7 +400,8 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-gate span { font-size: clamp(13px, 3.8vw, 20px); line-height: 1.4; opacity: 0.85; }
 #film .f-money { position: absolute; right: 5%; top: calc(3.2% + 14px); text-align: right; padding: 0.3em 0.7em 0.35em; border-radius: 12px; background: rgba(12,12,12,0.6); backdrop-filter: blur(6px); transform-origin: 100% 0; box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
 #film .f-money[hidden] { display: none; }
-#film.hud .f-money { top: 11.9%; }   /* (under the chips' rows, level with the logo) */
+#film.hud .f-money { top: 11.9%; }
+#film.hud .f-clock { top: 18.5%; }   /* (under the top group, not over the budget) */   /* (under the chips' rows, level with the logo) */
 #film .f-money small { display: block; font-size: clamp(8px, 2.3vw, 14px); font-weight: 800; letter-spacing: 0.16em; color: #9fe39a; }
 #film .f-money b { display: block; font-size: clamp(15px, 5vw, 34px); font-weight: 900; color: #9fe39a; font-variant-numeric: tabular-nums; }
 #film .f-money.hit b { color: #ff7a5a; }

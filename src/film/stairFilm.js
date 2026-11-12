@@ -122,7 +122,7 @@ export function* stairFilm(d, app) {
   // ---- the hook (put first by the recorder): the last block of the 34th step at its real pace — the video ends on
   // the frame before it, so it loops on the same shot and the same blow ----
   const Pl = new V(...last.p);
-  d.cut(look(new V(MM(350), base + MM(3900), Pl.z + MM(6800)), new V(0, Pl.y - MM(300), Pl.z + MM(300))), { drift: 0.02, hand: 0.3 });
+  d.cut(look(new V(MM(450), base + MM(2300), Pl.z + MM(12500)), new V(0, Pl.y - MM(1100), Pl.z + MM(900))), { drift: 0.02, hand: 0.3 });
   yield d.sec(0.35);
   d.speed = 1;
   let hookOn = false;
