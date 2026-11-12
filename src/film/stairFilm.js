@@ -29,8 +29,12 @@ export function stairCourses(base) {
     const head = k % 2 === 1, n = head ? 3 : ROWS, w = head ? L : T, along = head ? T : L;
     for (let r = 0; r < n; r++) {
       const x = -ZW + w / 2 + r * (w + J), off = head ? (r % 2) * (along + J) / 2 : ((k / 2 + r) % 2) * (L + J) / 2, list = [];
-      for (let b = a1 + off; b > a0; b -= along + J) {
-        const hi = Math.min(b, a1), lo = Math.max(b - along, a0); if (hi - lo < 90) continue;   // (a cut block: no shorter than 90)
+      // (from the sea's end on; at the tread's front no sliver: what is left for the last two — a block and a piece under 90 —
+      // is cut into two equal pieces, so every course starts exactly at its tread)
+      const cuts = []; let b = a1;
+      if (off > 0) { cuts.push([a1 - (along - off), a1]); b = a1 - (along - off) - J; }
+      while (b - a0 > 1) { const rem = b - a0; if (rem <= along) { cuts.push([a0, b]); break; } if (rem < along + J + 90) { const h = (rem - J) / 2; cuts.push([b - h, b], [a0, a0 + h]); break; } cuts.push([b - along, b]); b -= along + J; }
+      for (const [lo, hi] of cuts) {
         list.push({ type: 'unit', kind: 'cinder', free: true, p: [MM(x), y, MM(-(lo + hi) / 2)], s: (head ? [L, H, hi - lo] : [hi - lo, H, T]).map(MM), q: head ? [0, 0, 0, 1] : [0, 0.70711, 0, 0.70711] });   // (a stretcher turned along the wall — its hollows the right way, not squeezed across)
       }
       rows.push(list.reverse());   // (laid from the low end on, as the mason goes)

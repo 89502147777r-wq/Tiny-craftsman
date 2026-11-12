@@ -1322,7 +1322,7 @@ console.log('—', sec());
     const [{ stairCourses }, { MODEL_SCALE }] = await Promise.all([import('/src/film/stairFilm.js'), import('/src/config.js')]);
     const C = stairCourses(0), S = 1 / 1000 / MODEL_SCALE;
     for (let i = 0; i < 4000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
-    const ends = C.map((k) => k.flat()), lo = ends.map((l) => Math.max(...l.map((r) => r.p[2] + r.s[2] / 2))), hi = ends.map((l) => Math.min(...l.map((r) => r.p[2] - r.s[2] / 2)));
+    const ends = C.map((k) => k.flat()), zl = (r) => (r.q[1] ? r.s[0] : r.s[2]) /* (a stretcher is turned along the wall) */, lo = ends.map((l) => Math.max(...l.map((r) => r.p[2] + zl(r) / 2))), hi = ends.map((l) => Math.min(...l.map((r) => r.p[2] - zl(r) / 2)));
     const run = lo.slice(1).map((v, k) => (lo[k] - v) / S);
     return { done: f.done, laid: f.laid, n: C.length, rows: C.map((k) => k.length), sea: hi.map((v) => Math.round((v - hi[0]) / S)), run, total: C.flat(2).length,
       marks: f.marks, bills: (f.stageBillsLog || []).map((q) => q.usd), spent: 60000 - tc.budget.money };
