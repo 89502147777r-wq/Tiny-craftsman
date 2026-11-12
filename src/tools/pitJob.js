@@ -59,12 +59,15 @@ export function bedPit(app, o, thick = 200, mat = 'g20', done = null) {
   if (!cells.length) return false;
   const base = cells.map((c) => t.nat[c[0]]).sort((a, b) => a - b)[cells.length >> 1], want = MM(thick), yTop = base + want;
   const long = x1 - x0 >= z1 - z0, A0 = long ? x0 : z0, A1 = long ? x1 : z1, C0 = long ? z0 : x0, C1 = long ? z1 : x1, W = (p, c) => (long ? [p, c] : [c, p]);
-  const area = (x1 - x0) * (z1 - z0), vol = area * want, nH = Math.max(2, Math.min(8, Math.round((A1 - A0) / MM(2200)))), heaps = [], steps = [];
+  const area = (x1 - x0) * (z1 - z0), vol = area * want, heaps = [], steps = [];
+  // (the heaps: barrowfuls — none wider than the pit, so nothing runs over its edge into a neighbour's; the realist)
+  const tanA = Math.tan((mat === 'sand' ? 33 : 39) * Math.PI / 180), rH = Math.min(MM(900), 0.4 * (C1 - C0)), vH = Math.PI * rH ** 3 * tanA / 3, nH = Math.max(2, Math.min(80, Math.ceil(vol / vH)));
+  const nC = Math.max(1, Math.min(Math.floor((C1 - C0) / (2.2 * rH)), Math.ceil(Math.sqrt(nH * (C1 - C0) / (A1 - A0))))), nA = Math.ceil(nH / nC), tH = Math.max(0.05, Math.min(0.4, 3.2 / nH));
   app.journal.begin('pit-bed', { id: o.id }, app.clock);
   for (let h = 0; h < nH; h++) {
-    const [hx, hz] = W(A0 + (A1 - A0) * (h + 0.5) / nH, (C0 + C1) / 2);
-    steps.push([0.4, (u) => {
-      if (!heaps[h]) heaps[h] = t.heapStart(hx, hz, vol / nH, Math.tan((mat === 'sand' ? 33 : 39) * Math.PI / 180));
+    const [hx, hz] = W(A0 + (A1 - A0) * (Math.floor(h / nC) + 0.5) / nA, C0 + (C1 - C0) * (h % nC + 0.5) / nC);
+    steps.push([tH, (u) => {
+      if (!heaps[h]) heaps[h] = t.heapStart(hx, hz, vol / nH, tanA);
       t.heapTo(heaps[h], vol / nH * u, M);
       if (Math.random() < 0.7) app.particles?.emit(new THREE.Vector3(hx, yTop + MM(900), hz), new THREE.Vector3((Math.random() - 0.5) * 0.02, -0.15, (Math.random() - 0.5) * 0.02), 0, MM(20 + Math.random() * 25), 0, 0, 3);
       if (u < 1 && Math.random() < 0.25) app.sfx?.pour?.(0.4, mat === 'sand' ? 'sand_pour' : 'gravel_pour');
