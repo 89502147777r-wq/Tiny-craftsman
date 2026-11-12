@@ -176,7 +176,7 @@ export function* foundFilm(d, app) {
     const path = (u) => { const i = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - i, x = q.x0 + (q.x1 - q.x0) * (i + 0.5) / rows, z = q.z0 + (q.z1 - q.z0) * (0.06 + 0.88 * (i % 2 ? 1 - f : f)); return P(x, 0, z); };
     if (k === 'spine') d.cut(look(P(IBIZA.X0 + 900, 1900, 10200), P(IBIZA.X0, 0, -2500)), { drift: 0.01, push: 0.01, hand: 0.3 });
     if (k === 'slab') d.cut(look(P(-10500, 6500, 9500), P(-500, 0, 500)), { drift: 0.02, push: 0.015, hand: 0.4 });
-    const tp = yield* pour(path, () => T.concVolume() - v0 >= want * (k === 'pad' ? 0.9 : k === 'slab' ? 1.0 : 1.0), want * MODEL_SCALE ** 3 / st.pump * 1.02, want * MODEL_SCALE ** 3 / st.pump * 1.3);
+    const tp = yield* pour(path, () => T.concVolume() - v0 >= want * (k === 'pad' ? 0.9 : k === 'spine' ? 0.96 : 1.0), want * MODEL_SCALE ** 3 / st.pump * 1.02, want * MODEL_SCALE ** 3 / st.pump * 1.3);
     say(k + ' poured ' + ((T.concVolume() - v0) * MODEL_SCALE ** 3).toFixed(1) + ' of ' + (want * MODEL_SCALE ** 3).toFixed(1) + ' in ' + tp.toFixed(0));
   }
   // (the poker round all of it — the crew's round — and the rule over the slab)
