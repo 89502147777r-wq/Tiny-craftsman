@@ -198,8 +198,24 @@ export class StripJob {
     fv.dirty = true;
   }
 
+  // the stack squared up (the owner: the boards must be stacked neatly on the plot — what the physics leaves is a heap):
+  // the boards flat, four abreast, layer on layer, one end flush, the longest lowest; the braces on them; the stakes in a
+  // bundle beside. The crew's last minute with the stack — not shown piece by piece
+  _tidy(items) {
+    const { x, z, yaw } = this.spot, g = this.ground, H = MAT.board.h, T = MAT.board.t, N = 4, gap = M(0.012);
+    const ax = Math.cos(yaw), az = -Math.sin(yaw), cx = Math.sin(yaw), cz = Math.cos(yaw);
+    const Qy = new THREE.Quaternion().setFromAxisAngle(_up, yaw), flat = Qy.clone().multiply(new THREE.Quaternion().setFromAxisAngle(_a.set(1, 0, 0), Math.PI / 2)), lying = Qy.clone().multiply(new THREE.Quaternion().setFromAxisAngle(_a.set(0, 0, 1), -Math.PI / 2));
+    const put = (it, a, c, y, q) => { it.p = [x + ax * a + cx * c, y, z + az * a + cz * c].map((v) => +v.toFixed(5)); it.q = q.toArray().map((v) => +v.toFixed(5)); };
+    const boards = items.filter((i) => i.k === 'board').sort((p, q) => q.s[0] - p.s[0]), L = boards.length ? boards[0].s[0] : M(2);
+    boards.forEach((it, i) => put(it, (it.s[0] - L) / 2, (i % N - (N - 1) / 2) * (H + gap), g + T / 2 + Math.floor(i / N) * T, flat));
+    let top = g + Math.ceil(boards.length / N) * T;
+    items.filter((i) => i.k === 'brace').forEach((it, i) => put(it, (it.s[0] - L) / 2, (i % 6 - 2.5) * M(0.09), top + it.s[1] / 2 + Math.floor(i / 6) * it.s[1], Qy));
+    const st = items.filter((i) => i.k === 'stake').sort((p, q) => q.s[1] - p.s[1]), w = st.length ? st[0].s[0] : 0, c0 = (N / 2) * (H + gap) + M(0.25);
+    st.forEach((it, i) => put(it, -L / 2, c0 + (i % 6) * (w + M(0.006)), g + w / 2 + Math.floor(i / 6) * w, lying));
+    return items;
+  }
   _commit() {
-    const app = this.app, items = this._items();
+    const app = this.app, items = this._tidy(this._items());
     const boards = this.pieces.filter((p) => p.k === 'board').map((p) => +p.s.x.toFixed(5));
     const stakes = this.pieces.filter((p) => p.k === 'stake').length;
     app.objects.add({ type: 'formpile', x: this.spot.x, z: this.spot.z, yaw: this.spot.yaw, boards, stakes, items });

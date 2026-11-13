@@ -138,6 +138,7 @@ class ConcreteTool {
   // finger is on a U-block the vibrator, the rule and the trowel work it there
   _uAt(e, cols = false) {
     const app = this.app, v = app.wallView;
+    if (e?.target != null) { const r = app.objects.get(e.target); if (r) { this._uHit = e.hit.clone(); return r; } return null; }   // (a film names what is under the hose: its screen is not the phone's)
     if (!e || !v || e.clientX === undefined) return null;
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
     if (cols) { const f = this._postAt(); if (f) return f; }
@@ -305,6 +306,7 @@ export class HoseTool extends ConcreteTool {
       if (!nu && keep) { const sp = this.app.wallTool._screen(keep.h); if (sp.front && Math.hypot(sp.x - e.clientX, sp.y - e.clientY) < 80) { this._uHit = keep.h; } else this.uT = null; } else this.uT = nu;
       this._uLast = this.uT ? this._uHit.clone() : null;
     }
+    else if (e?.target != null) { if (this.uT) this._uHit = e.hit.clone(); }
     else if (this.uT && this._uLast && this.uT.type !== 'column' && this.uT.type !== 'fpost') {
       // (in between: the same thing, the point on its top plane under the finger; a column / a post's
       // hole: the hose stays over its opening)

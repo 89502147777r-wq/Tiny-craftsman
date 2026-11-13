@@ -88,13 +88,14 @@ export function bedPit(app, o, thick = 200, mat = 'g20', done = null) {
     steps.push([Math.max(0.8, total / MM(1000) * 0.1), (u) => {
       const s = u * total; let k = seg.findIndex(([a, l]) => s <= a + l); if (k < 0) k = seg.length - 1;
       const [a, l] = seg[k], f = l > 0 ? Math.min(1, (s - a) / l) : 0, x = pts[k][0] + (pts[k + 1][0] - pts[k][0]) * f, z = pts[k][1] + (pts[k + 1][1] - pts[k][1]) * f;
+      app.sfx?.engine?.('compactor', u < 1 ? 0.7 : 0);
       G.plateOn = true; G.set('plate', new THREE.Vector3(x, yTop, z), Math.atan2(pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]), u === 0);
       for (const [i, cx, cz] of cells) if (Math.hypot(cx - x, cz - z) < wide) t.comp[i] = 1;
       t._touch(ix0, iz0, ix1, iz1);
       if (u >= 1) { for (const [i] of cells) t.comp[i] = 1; G.plateOn = false; G.set(null); }
     }]);
   }
-  new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); app.concreteGear.set(null); }, commit: () => {
+  new FitJob(app, { steps, parts: [], onAbort: () => { app.journal.cancel(); app.concreteGear.set(null); app.sfx?.engine?.('compactor', 0); }, commit: () => {
     app.journal.commit(app.clock);
     app.ui?.toast(`${mat === 'sand' ? 'Песок' : 'Щебень 20–40'} слоем ${thick} мм утрамбован виброплитой — ${(vol * MODEL_SCALE ** 3).toFixed(1)} м³`);
     done?.();
