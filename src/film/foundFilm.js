@@ -189,10 +189,10 @@ export function* foundFilm(d, app) {
   st.weather = 'rain'; const rainFrom = d.t;
   yield* excAt(9300, 4000, Math.PI);   // (beside the trench, not over it: facing it from the east, tipping behind itself)
   const was1 = spoil0();
-  shots([[9, [10400, 1300, 9400], [7200, 300, 3600]]]);
+  shots([[9, [3000, 1500, 8800], [7600, 300, 3400]]]);   // (from across the trench: the machine on its far side, its tail swinging away from the camera)
   excOn = 2.5;
   yield d.sec(3.0);
-  shots([[1.4, [12500, 1600, 1500], [6000, -300, 3200]], [1.3, [9500, 3800, 9500], [-500, 0, 500]]]);   // (not from behind the machine: the camera was in its cab)
+  shots([[1.4, [2600, 1700, -7800], [6600, -200, 0]], [1.3, [-500, 4200, 11500], [6000, 0, 0]]]);   // (never on the machine's side: it swings right round there)   // (not from behind the machine: the camera was in its cab)
   excOn = 8; d.speed = 5;
   digPit(app, O.get(pits.spine.id));
   { const t0 = d.t; d.each(() => { if (!idle()) { mt.exc?.place(T, MM(9300), MM(4000 - Math.min(1, (d.t - t0) / 1.6) * 8000), Math.PI); return false; } return true; }); }
