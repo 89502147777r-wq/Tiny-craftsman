@@ -124,6 +124,7 @@ export class SoilParticles {
     for (const c of this.clodList) {
       const i = t.index(c.x, c.z);
       if (t.loose[i] < 0.0006) continue;
+      if (t.conc[i] > 1e-6 || t.top[i] > 0) continue;   // (under concrete or a cover: buried — they rode up on the strip's top in the owner's film)
       this.clodList[w++] = c;
     }
     this.clodList.length = w;
