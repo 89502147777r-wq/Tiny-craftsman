@@ -136,9 +136,16 @@ export async function recordFilm(app, o = {}) {
     mux.addVideoChunkRaw(c.d, first || c.key ? 'key' : 'delta', Math.round(v * 1e6 / fps), Math.round(1e6 / fps), first ? vmeta : undefined);
     first = false;
   }
-  achunks.forEach((c, j) => mux.addAudioChunkRaw(c.d, c.key ? 'key' : 'delta', c.ts, c.dur, j === 0 ? ameta : undefined));
+    // (AAC: the decoder's config written by us, not taken from the encoder — Safari's AAC encoder gives a wrong one (WebKit bug 302253),
+  // and the video plays silent on the phone (the owner: «видео записал, а звука нет»); its frames with ADTS headers have them cut off)
+  if (ac?.mux === 'aac') {
+    const fi = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000].indexOf(RATE), asc = new Uint8Array([(2 << 3) | (fi >> 1), ((fi & 1) << 7) | (2 << 3)]);
+    ameta = { decoderConfig: { codec: 'mp4a.40.2', sampleRate: RATE, numberOfChannels: 2, description: asc } };
+    for (const c of achunks) if (c.d.length > 7 && c.d[0] === 0xff && (c.d[1] & 0xf6) === 0xf0) c.d = c.d.subarray((c.d[1] & 1) ? 7 : 9);
+  }
+  achunks.forEach((c, j) => mux.addAudioChunkRaw(c.d, c.key || ac?.mux === 'aac' ? 'key' : 'delta', c.ts, c.dur, j === 0 ? ameta : undefined));
   mux.finalize();
-  return { blob: new Blob([target.buffer], { type: 'video/mp4' }), pcm: ch, rate: RATE, w: W, h: H, fps, wav: achunks.length ? null : wav(ch, RATE), seconds: total / fps, frames: total, took: (performance.now() - t0) / 1000 };
+  return { sound: achunks.length ? ac.mux : 'wav', blob: new Blob([target.buffer], { type: 'video/mp4' }), pcm: ch, rate: RATE, w: W, h: H, fps, wav: achunks.length ? null : wav(ch, RATE), seconds: total / fps, frames: total, took: (performance.now() - t0) / 1000 };
 }
 
 // the screens round it: the shooting's progress, then the video — save it, watch it, again, back to the game
