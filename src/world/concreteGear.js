@@ -233,37 +233,35 @@ export class ConcreteGear {
     this.goal = new THREE.Vector3();
     this.yaw = 0; this.yawGoal = 0;
     this.show = null;
-    // where the poker is in (the owner: «бульбашки, как в реальности»): the entrapped air comes up round it — small domes of grey
-    // paste swell on the surface 0,1–0,4 m from it and burst, a few at a time; the surface round it trembles in a ring
+    // where the poker is in (the owner: «бульбашки, как в реальности» — then: «не ровный круг, а отдельные пузырьки разных
+    // размеров без ровных очертаний в радиусе полуметра»): the entrapped air comes up here and there within half a metre of it —
+    // lumpy little domes of paste, 3–25 mm, swelling and bursting at their own times; no ring
     {
-      const N = 48, geo = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-      const mat = new THREE.MeshStandardMaterial({ color: 0x8e8b84, roughness: 0.22, metalness: 0 });
+      const N = 64, geo = new THREE.IcosahedronGeometry(1, 2), pa = geo.attributes.position, v = new THREE.Vector3();
+      for (let i = 0; i < pa.count; i++) { v.fromBufferAttribute(pa, i); const k = 1 + 0.22 * Math.sin(v.x * 7.1 + v.z * 3.3) * Math.cos(v.y * 5.7 - v.x * 2.1); v.multiplyScalar(k); if (v.y < 0) v.y *= 0.15; pa.setXYZ(i, v.x, v.y, v.z); }
+      geo.computeVertexNormals();
+      const mat = new THREE.MeshStandardMaterial({ color: 0x8e8b84, roughness: 0.2, metalness: 0 });
       this.bubbles = new THREE.InstancedMesh(geo, mat, N); this.bubbles.count = 0; this.bubbles.frustumCulled = false;
       this.bubbles.castShadow = false; this.bubbles.receiveShadow = true;
-      this._bub = Array.from({ length: N }, () => ({ t: 1, life: 1, x: 0, z: 0, r: 0 }));
-      const rg = new THREE.RingGeometry(0.6, 1, 40, 1); rg.rotateX(-Math.PI / 2);
-      this.tremble = new THREE.Mesh(rg, new THREE.MeshStandardMaterial({ color: 0x9a978f, roughness: 0.15, metalness: 0, transparent: true, opacity: 0.35, depthWrite: false }));
-      this.tremble.visible = false;
-      this.root.add(this.bubbles, this.tremble);
+      this._bub = Array.from({ length: N }, () => ({ t: 1, life: 1, x: 0, z: 0, r: 0, rot: 0, sq: 1 }));
+      this.root.add(this.bubbles);
     }
   }
   _bubbles(dt, on) {
-    const B = this.bubbles, M = 1 / 1000 / MODEL_SCALE, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
+    const B = this.bubbles, M = 1 / 1000 / MODEL_SCALE, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
     let n = 0;
     for (const b of this._bub) {
       b.t += dt;
       if (b.t >= b.life) {
-        if (!on || Math.random() > dt * 22) { b.t = b.life; continue; }   // (≈ 20 a second while it runs)
-        const a = Math.random() * Math.PI * 2, d = (100 + Math.random() * 300) * M;
-        Object.assign(b, { t: 0, life: 0.25 + Math.random() * 0.6, x: this.pos.x + Math.cos(a) * d, z: this.pos.z + Math.sin(a) * d, r: (4 + Math.random() * 14) * M });
+        if (!on || Math.random() > dt * 14) { b.t = b.life; continue; }   // (some 14 a second, scattered)
+        const a = Math.random() * Math.PI * 2, d = (60 + Math.sqrt(Math.random()) * 440) * M, big = Math.random() < 0.18;
+        Object.assign(b, { t: 0, life: 0.2 + Math.random() * 0.9, x: this.pos.x + Math.cos(a) * d, z: this.pos.z + Math.sin(a) * d, r: (big ? 12 + Math.random() * 13 : 3 + Math.random() * 7) * M, rot: Math.random() * 6.28, sq: 0.7 + Math.random() * 0.6 });
       }
-      const u = b.t / b.life, k = u < 0.85 ? Math.sqrt(u / 0.85) : 1 - (u - 0.85) / 0.15;   // (it swells, then bursts)
-      p.set(b.x, this.pos.y - b.r * 0.35, b.z); sc.set(b.r * k, b.r * k * 0.8, b.r * k);
+      const u = b.t / b.life, k = u < 0.8 ? Math.pow(u / 0.8, 0.6) : Math.max(0, 1 - (u - 0.8) / 0.2) * 1.08;   // (it swells, then bursts)
+      p.set(b.x, this.pos.y - b.r * 0.2, b.z); q.setFromAxisAngle(Y, b.rot); sc.set(b.r * k * b.sq, b.r * k * 0.75, b.r * k / b.sq);
       B.setMatrixAt(n++, m4.compose(p, q, sc));
     }
     B.count = n; B.instanceMatrix.needsUpdate = true;
-    const T = this.tremble; T.visible = on;
-    if (on) { this._tt = (this._tt || 0) + dt; const r = (320 + 30 * Math.sin(this._tt * 90)) * M; T.position.set(this.pos.x, this.pos.y + 2 * M, this.pos.z); T.scale.set(r, 1, r); T.material.opacity = 0.22 + 0.12 * Math.sin(this._tt * 140); }
   }
 
   // which tool is in hand (null = none), where (tip on the surface) and facing
@@ -282,7 +280,7 @@ export class ConcreteGear {
     while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
     this.yaw += dy * (1 - Math.exp(-dt * 12));
     const w = this.show;
-    if (w !== 'vibro' && (this.bubbles.count || this.tremble.visible)) this._bubbles(dt, false);   // (the last ones burst)
+    if (w !== 'vibro' && this.bubbles.count) this._bubbles(dt, false);   // (the last ones burst)
     this.pump.group.visible = w === 'hose';
     this.rule.visible = w === 'screed';
     this.vib.visible = this.cable.visible = w === 'vibro';

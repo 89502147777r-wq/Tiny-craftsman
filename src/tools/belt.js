@@ -328,6 +328,9 @@ export class BeltChannel {
     // (it lands across the whole width of the beam at once: a splat ~550 mm round; on a slab ~600)
     const ks = [...this._near(k, Math.max(2, Math.round(MM(250) / this.b.c)))], w = 1 / ks.length;
     for (const q of ks) this.h[q] += l * w * per;
+    // (in a wall's narrow gap the concrete can not stand over the boards: what comes over them runs off at once — the owner saw a
+    // grey «wall» with flat sides rise from the forms to the hose, the heap drawn as a prism of cells)
+    if (!this.inner) for (const q of ks) if (this.h[q] > this.cap + 40) { this.spilt += this.h[q] - this.cap - 40; this.h[q] = this.cap + 40; }
   }
   _flow(d, yieldMm, kk, only) {
     const h = this.h, nb = this.P.nb;
