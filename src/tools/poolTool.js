@@ -261,7 +261,6 @@ export class PoolWork {
       steps.push([0.45, (u) => {
         if (!heaps[h]) heaps[h] = t.heapStart(hx, hz, vol / nH, Math.tan(39 * Math.PI / 180));
         t.heapTo(heaps[h], vol / nH * u, M_G20);
-        if (Math.random() < 0.7) app.particles?.emit(new THREE.Vector3(hx, y0 + MM(1200), hz), new THREE.Vector3((Math.random() - 0.5) * 0.02, -0.15, (Math.random() - 0.5) * 0.02), 0, MM(20 + Math.random() * 25), 0, 0, 3);
         if (u < 1 && Math.random() < 0.25) app.sfx?.pour?.(0.4, 'gravel_pour');
       }]);
     }
