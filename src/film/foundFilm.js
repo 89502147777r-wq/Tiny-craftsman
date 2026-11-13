@@ -64,6 +64,9 @@ export function* foundFilm(d, app) {
   // (the first piece of a job at its real pace, close; then faster: when `on()` comes, `slow` s of film at `v0`, then `v1`)
   const firstSlow = (on, view, slow, v0, v1) => { let t0 = null; d.each(() => { if (t0 == null) { if (!on()) return false; t0 = d.t; d.speed = v0; if (view) shots(view); } if (d.t - t0 >= slow) { d.speed = v1; return true; } return false; }); };
 
+  // (the excavator's model fetched at once: loading it at its turn cost the film four seconds of a still frame)
+  O.add({ type: 'vehicle', kind: 'excavator', x: MM(-1000), z: MM(-1250), yaw: Math.PI / 2, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
+  mt.ensureExc();   // (not waited for here: the pool is set out meanwhile)
   // ---- 1 · the pool's pit: the deep first -------------------------------------------------------------
   const B = IBIZA.pool, scr = (p) => { const q = app.wallTool._screen(p); return { clientX: q.x, clientY: q.y }; };
   Object.assign(st, { wallKind: 'pool', poolLayer: 'pit' }); app.setTool('wall'); app.wallTool.setMode('lay');
@@ -159,7 +162,7 @@ export function* foundFilm(d, app) {
     const round = (u) => { const dd = u * per; const [ss, tt] = dd < w ? [o + dd, o] : dd < w + h ? [r.L - o, o + dd - w] : dd < 2 * w + h ? [r.L - o - (dd - w - h), r.W - o] : [o, r.W - o - (dd - 2 * w - h)]; return at(ss, tt, yW); };
     // (as on a site: the hose over the gap between the boards, round and round — a layer each lap, not one wave the wall's height;
     // the first stretch at the corner at a hand's real pace)
-    let pt0 = 0; const t2 = yield* pour(round, () => !belts().wb || !!hose.ch?.full, 7, 160, { belt: () => belts().wb, pump: 5, v: 2, each: (pt) => { if (!pt0 && pt > 2.4) { pt0 = pt; d.speed = 9; } } });
+    let pt0 = 0; const t2 = yield* pour(round, () => !belts().wb || !!hose.ch?.full, 14, 240, { belt: () => belts().wb, pump: 6, v: 2, each: (pt) => { if (!pt0 && pt > 2.4) { pt0 = pt; d.speed = 12; } } });
     say('wall fill ' + belts().wb?.fill + ' in ' + t2.toFixed(0)); }
   d.stageBill('POOL SHELL');
   yield d.sec(0.6);
@@ -183,6 +186,8 @@ export function* foundFilm(d, app) {
   app.setTool('mark');
   const pits = {}, keys0 = ['spine', 'slab', 'pad'];
   for (const k of ['spine', 'slab', 'pad']) { const q = IBIZA[k]; pits[k] = O.add({ type: 'outline', kind: 'rect', x0: MM(q.x0), z0: MM(q.z0), x1: MM(q.x1), z1: MM(q.z1), depth: +((q.h + q.bed - IBIZA.up) / MODEL_SCALE).toFixed(2) }); }
+  // (the owner: once in the film, a shower — about ten seconds: over the trenches, the boards and the cages, before the concrete)
+  st.weather = 'rain'; const rainFrom = d.t;
   yield* excAt(6000, 7300, Math.PI / 2);
   const was1 = spoil0();
   shots([[9, [10200, 1200, 5200], [6300, 500, 4600]]]);
@@ -220,8 +225,6 @@ export function* foundFilm(d, app) {
   say('beds ' + ['spine', 'slab', 'pad'].map((k) => Math.round((T.heightAt(MM(mid(IBIZA[k])[0]), MM(mid(IBIZA[k])[1])) - g) / S)).join(' '));
 
   // ---- 5 · the strip, the slab, the pad: boards, cages, the concrete in one go ---------------------------
-  // (the owner: once in the film, a shower — about ten seconds: over the boards and the cages, before the concrete)
-  st.weather = 'rain'; const rainFrom = d.t;
   yield d.until(() => physicsReady());
   app.setTool('form'); app.formTool.setMode('outline');
   hud(1, ['*Boards 40 × 150', 'Stakes'], 'form');
@@ -276,10 +279,10 @@ export function* foundFilm(d, app) {
   app.setTool('vibro'); hud(3, ['Hose', '*Vibrator', 'Rule'], 'vibro');
   { const vib = app.concreteTools.vibro; let vt = 0; const sp = []; for (const k of keys) { const q = IBIZA[k]; for (let x = q.x0 + 400; x < q.x1; x += 1100) for (let z = q.z0 + 400; z < q.z1; z += 1100) sp.push([x, z]); }
     shake = (n) => { for (let q = 0; q < n; q++) for (const [x, z] of sp) T.vibrate(MM(x), MM(z), MM(1300)); };   // (the crew's whole round with the poker goes on meanwhile: all of it kept shaking, so it runs level — the film's seconds are few)
-    const dips = [[-1400, 2400], [-300, 1500], [400, 2300], [-900, 1100]];   // (in the frame: four dips the eye can follow — the director)
+    const dips = [[-1400, 2400], [-300, 1500], [400, 2300]];   // (in the frame: four dips the eye can follow — the director)
     shots([[1.6, [700, 900, 3800], [-600, 250, 1800]]]);
     vib.down(P(dips[0][0], 0, dips[0][1])); d.speed = 3;
-    yield d.until(() => { vt += d.dt * d.speed; fresh(); shake(10); const i = Math.floor(vt / 1.1); if (i < dips.length) vib.move(P(dips[i][0], 0, dips[i][1])); return i >= dips.length; });
+    yield d.until(() => { vt += d.dt * d.speed; fresh(); shake(10); const i = Math.floor(vt / 0.9); if (i < dips.length) vib.move(P(dips[i][0], 0, dips[i][1])); return i >= dips.length; });
     vib.up(); yield d.until(idle); }
   app.setTool('screed'); hud(3, ['Hose', 'Vibrator', '*Rule'], 'screed');
   { const rule = app.concreteTools.screed, q = IBIZA.slab; d.speed = 9;
