@@ -18,7 +18,7 @@ const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const IBIZA = {
   X0: 6000,
   spine: { x0: 5250, x1: 6750, z0: -6050, z1: 6050, h: 600, bed: 200 },
-  slab: { x0: -5000, x1: 5250, z0: -2350, z1: 4200, h: 300, bed: 250 },
+  slab: { x0: -5000, x1: 4700, z0: -2350, z1: 4200, h: 300, bed: 250 },
   pad: { x0: -8900, x1: -6900, z0: 1800, z1: 4700, h: 400, bed: 200 },
   pool: { x0: -6000, x1: 4000, z0: -5700, z1: -3100 },   // (the water's edge: 10 × 2.6 m)
   up: 250,                                                // (the tops of all of them over the ground: the pool's wall top)
@@ -98,7 +98,7 @@ export function* foundFilm(d, app) {
   say('floor belt ' + JSON.stringify({ fb: !!belts().fb, cage: R().cage1 }));
   shots([[1.5, [3700, -1250, -5300], [-2500, -1550, -4200]], [1.0, [-800, 2300, -3500], [-1000, -1550, -4400]], [1.4, ...ANCHOR]]);
   { const r = R(), yF = floorTopY(r);
-    const t1 = yield* pour((u) => at(r.L * (0.04 + 0.92 * u), r.W * (0.5 + 0.46 * Math.sin(u * Math.PI * 12)), yF), () => !!hose.ch?.full, 14, 60, { belt: () => belts().fb, pump: 6 });   // (the record's `fill` is written when the hose is let go: the channel says when it is full)
+    const t1 = yield* pour((u) => at(r.L * (0.04 + 0.92 * u), r.W * (0.5 + 0.46 * Math.sin(u * Math.PI * 12)), yF), () => { const c = hose.ch; if (!c?.h) return false; let a = 0; for (let i = 0; i < c.h.length; i++) a += c.h[i]; return c.full || a / c.h.length >= (c.cap || 1e9) * 0.985; }, 14, 60, { belt: () => belts().fb, pump: 6 });   // (the record's `fill` is written when the hose is let go: the channel says when it is full)
     say('floor fill ' + belts().fb?.fill + ' in ' + t1.toFixed(0)); }
   // (two days: the floor hard enough for the walls' forms)
   d.hud(null);
@@ -175,7 +175,7 @@ export function* foundFilm(d, app) {
   app.setTool('form'); app.formTool.setMode('outline');
   hud(1, ['*Boards 40 × 150', 'Stakes'], 'form');
   const F = app.formTool, keys = ['spine', 'slab', 'pad'], runsOf = {};
-  for (const k of keys) { st.slab = IBIZA[k].h; const o = O.get(pits[k].id), y1 = F.topFor(o); runsOf[k] = edges(o).filter((e) => !(k === 'slab' && Math.abs(e.a[0] - MM(IBIZA.slab.x1)) < MM(5) && Math.abs(e.b[0] - MM(IBIZA.slab.x1)) < MM(5))).map((e) => F.run(e.a, e.b, e.n, y1, { outlineId: o.id })); }   // (the slab is cast against the strip's board: one board between them, no ridge of sand)
+  for (const k of keys) { st.slab = IBIZA[k].h; const o = O.get(pits[k].id), y1 = F.topFor(o); runsOf[k] = edges(o).map((e) => F.run(e.a, e.b, e.n, y1, { outlineId: o.id })); }   // (550 between the slab and the strip: room for both rows of boards and their stakes — the realist's other way; the shared board leaked)
   const save = (id, list) => () => app.journal.act('formwork', { outlineId: id }, app.clock, () => { for (const r of list) O.add(r); });
   shots([[1.2, [7300, 1300, 7400], [6000, 100, 6050]], [1.0, [7400, 2400, -8600], [5800, 0, 500]]]);
   { const rs = runsOf.spine.slice().sort((p, q) => q.n[1] - p.n[1]); d.speed = 5; F._fitRuns([rs[0]], true, save(pits.spine.id, [rs[0]])); yield d.until(idle); d.speed = 10; F._fitRuns(rs.slice(1), false, save(pits.spine.id, rs.slice(1))); yield d.until(idle); }
@@ -243,10 +243,13 @@ export function* foundFilm(d, app) {
   const strip = (k) => { const [x, z] = mid(IBIZA[k]), p = P(x, 0, z); F.strip(p, scr(p)); return () => !O.all('form').some((r) => r.outlineId === pits[k].id) && idle(); };
   d.next();
   shots([[1.3, [8600, 1100, 3000], [6700, 150, 600]], [1.2, [8200, 2600, -7400], [6200, 100, -1500]], [1.1, [7300, 1300, 7400], [6000, 100, 6050]]]);
-  d.speed = 8;
-  yield d.until(strip('spine'));
-  d.speed = 1;
+  // (the braces knocked off, the stakes out, the first boards toppling — at a pace the eye follows; the carrying to the stack
+  // is the crew's next hour: between two shots)
+  d.speed = 2.5;
+  { const f = strip('spine'); yield d.sec(2.6); d.speed = 1; d.jumpTo(f, 900); }
   for (const k of ['slab', 'pad']) { const f = strip(k); d.jumpTo(f, 900); }
+  shots([[1.2, [8900, 2300, 4200], [7200, 0, 1500]], [1.1, [-5900, 3800, 5000], [-4700, 200, 3800]]]);
+  yield d.sec(2.3);
   say('forms left ' + O.all('form').length);
   d.speed = 1;
   yield d.sec(0.2);
