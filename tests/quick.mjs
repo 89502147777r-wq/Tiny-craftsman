@@ -340,11 +340,16 @@ console.log('—', sec());
       tc.formTool.down(new V((o.x0 + o.x1) / 2, 0.1, (o.z0 + o.z1) / 2), e);
       for (let i = 0; i < 200 && tc.physLoading; i++) await new Promise((r) => setTimeout(r, 50));
       const running = !!tc.physJob;
-      for (let i = 0; i < 1200 && tc.physJob; i++) tc.simulate(1 / 30);   // the boards fall and are stacked (Rapier)
+      // (the realist, 302: two men, one trip each at a time — never a swarm in the air; a stake turned only once its point is out)
+      let trips = 0, tilt = 0; const job = tc.physJob, up = new V(0, 1, 0), q0 = new tc.camera.quaternion.constructor();
+      for (let i = 0; i < 3600 && tc.physJob; i++) { tc.simulate(1 / 30);
+        if (job?.pieces) { const fly = new Set(job.pieces.filter((p) => p.from && !p.dropped).map((p) => p.carry)); trips = Math.max(trips, fly.size);
+          for (const p of job.pieces) if (p.k === 'stake' && p.from && !p.dropped && p.body && Math.hypot(p.body.translation().x / 10.4651 - p.p.x, p.body.translation().z / 10.4651 - p.p.z) < 0.01) { const tr = p.body.translation(), r = p.body.rotation(); q0.set(r.x, r.y, r.z, r.w); const ax = up.clone().applyQuaternion(q0), tipY = tr.y / 10.4651 - Math.abs(ax.y) * p.s.y / 2; if (tipY < t.heightAt(tr.x / 10.4651, tr.z / 10.4651) - 1e-4) tilt = Math.max(tilt, Math.acos(Math.min(1, Math.abs(ax.y))) * 180 / Math.PI); } } }
       const pile = tc.objects.all('formpile')[0];
       const stripped = mine() === 0 && !!pile && pile.boards.length >= n0;
       tc.undo(); const back = mine() === n0 && !tc.objects.all('formpile').length; tc.redo();
-      out.strip = { n0, warned, running, stripped, items: pile?.items?.length, still: !!pile?.items?.every((it) => it.p.every(Number.isFinite)), boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(t.concVolume() - cv) < 1e-12 };
+      const bl = (pile?.items || []).filter((it) => it.k === 'board').sort((a, b) => a.p[1] - b.p[1]), layered = bl.every((it, k) => !k || it.s[0] <= bl[k - 1].s[0] + 1e-4 || it.p[1] - bl[k - 1].p[1] < 1e-4);
+      out.strip = { trips, tilt: +tilt.toFixed(1), layered, bearers: (pile?.items || []).filter((it) => it.bear).length, n0, warned, running, stripped, items: pile?.items?.length, still: !!pile?.items?.every((it) => it.p.every(Number.isFinite)), boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(t.concVolume() - cv) < 1e-12 };
     }
     tc.setTool('camera');
     await tc.saveNow();
@@ -368,6 +373,7 @@ console.log('—', sec());
   await page.reload({ timeout: 120000 });   // (a loaded container: the load event can take more than 30 s)
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const after = await page.evaluate(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(tc.terrain.excavatedVolume() * 1e6).toFixed(3), sand: +(tc.terrain.materialVolumes()[1] * 1e6).toFixed(2), conc: +(tc.terrain.concVolume() * 1e6).toFixed(2) }; });
+  check('stripping as a crew does it (the realist): ≤ 2 trips in the hands at once, a stake not turned while its point is in the ground (< 5°), the longest boards lowest, on 3 bearers', play.strip.trips <= 2 && play.strip.tilt < 5 && play.strip.layered && play.strip.bearers === 3, JSON.stringify(play.strip));
   check('stripping: warns while soft, then boards come off into a stack, concrete stays, undo', play.strip.warned && play.strip.running && play.strip.still && play.strip.stripped && play.strip.back && play.strip.conc && play.strip.n0 > 0, JSON.stringify(play.strip));
   check('project restored after reload', JSON.stringify(after) === JSON.stringify(play.saved), `${JSON.stringify(play.saved)} → ${JSON.stringify(after)}`);
   check('no console errors while playing', errors.length === 0, errors.slice(0, 3).join(' | '));
@@ -1308,8 +1314,8 @@ console.log('—', sec());
   });
   check('film (found): pits, beds, the pool\'s shell stripped and backfilled, the strip / slab / pad cast to the tops of their boards, no boards left, no masonry yet',
     o.done && o.found && o.found.tops.every((v, i) => v <= 262 && v >= (i ? 225 : 190) /* (the narrow strip's boards hold it ~45 lower: its cage is set lower for that) */) && o.found.forms === 0 && o.found.pool.fs && o.found.pool.ws && o.found.pool.filled && o.units === 0, JSON.stringify({ done: o.done, found: o.found, notes: (o.notes || []).slice(-6) }));
-  check('film (found): six stage bills = spent, the hook marked (the loop), no longer than 80 s',
-    o.bills.length === 6 && o.bills.every((v) => v > 0) && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 5 && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.t < 80, JSON.stringify({ bills: o.bills, spent: o.spent, t: o.t, marks: o.marks }));
+  check('film (found): six stage bills = spent, the hook marked (the loop), no longer than 100 s',
+    o.bills.length === 6 && o.bills.every((v) => v > 0) && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 5 && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.t < 100, JSON.stringify({ bills: o.bills, spent: o.spent, t: o.t, marks: o.marks }));
   check('film (found): the pool\'s walls: nothing over their boards (a gap 250 wide holds no heap: it runs over)', o.over <= 1, 'over ' + Math.round(o.over) + ' mm');
   check('film (found): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();

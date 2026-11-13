@@ -249,6 +249,7 @@ export class PoolWork {
     // (dug deep enough? the middle of the pit's floor)
     const [cx, cz] = PW(r, r.L / 2, r.W / 2), have = Math.round((r.g - t.nat[t.index(cx, cz)]) / S);   // (dug in the native ground: what crumbled in off the edges is cleared with it)
     if (have < POOL.pitDepth - 150) { this.toast(`Котлован ещё мелкий: ${have} мм из 1850 — «2 · Котлован» (или докопайте лопатой)`); return; }
+    app.particles?.clearIn?.(box[0], box[1], box[2], box[3]);   // (the pit's floor cleaned of clods before its bed)
     const cells = (f) => { const ix0 = Math.max(0, Math.floor(t.toCellX(box[0]))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(box[2]))), iz0 = Math.max(0, Math.floor(t.toCellZ(box[1]))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(box[3]))); for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (inPit(x, z)) f(iz * t.nx + ix, x, z); } t._touch(ix0, iz0, ix1, iz1); };
     app.journal.begin('pool-bed', {}, app.clock);
     const steps = [], n = 10;
@@ -269,7 +270,7 @@ export class PoolWork {
     steps.push([0, () => { rk.root.visible = true; }]);
     for (let k = 0; k < lanes; k++) steps.push([0.55, (u) => {
       const tt = t0 + (t1 - t0) * (k + 0.5) / lanes, ss = s0 + (s1 - s0) * (k % 2 ? 1 - u : u), [x, z] = PW(r, ss, tt);
-      rk.setPose({ pos: new THREE.Vector3(x, y0 + MM(POOL.gravel) + MM(10), z), dir: new THREE.Vector2(-r.u[1], -r.u[0]), lift: 0.55 }, u === 0);
+      rk.setPose({ pos: new THREE.Vector3(x, y0 + MM(POOL.gravel) + MM(10), z), dir: new THREE.Vector2(r.u[0], r.u[1]).multiplyScalar(k % 2 ? -1 : 1), lift: 0.55 }, u === 0);   // (pulled along its lane toward the man — the handle that way; it went sideways: the owner)
       // (what the rake has passed over: the lane level)
       const a = k % 2 ? ss : s0 - 1, b = k % 2 ? s1 + 1 : ss, lo = t0 + (t1 - t0) * k / lanes, hi = t0 + (t1 - t0) * (k + 1) / lanes;
       cells((i, cx, cz) => { const [s2, t2] = PF(r, cx, cz); if (s2 >= a && s2 <= b && t2 >= lo && t2 <= hi) { const want = MM(POOL.gravel); if (Math.abs(t.loose[i] - want) > 1e-7) { if (t.loose[i] > want) t._pop(i, t.loose[i] - want); else t._push(i, want - t.loose[i], M_G20); } } });

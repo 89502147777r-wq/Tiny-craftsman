@@ -124,7 +124,9 @@ export class SoilParticles {
     for (const c of this.clodList) {
       const i = t.index(c.x, c.z);
       if (t.loose[i] < 0.0006) continue;
-      if (t.conc[i] > 1e-6 || t.top[i] > 0) continue;   // (under concrete or a cover: buried — they rode up on the strip's top in the owner's film)
+      if (t.conc[i] > 1e-6 || t.top[i] > 0) continue;
+      // (a layer of something else laid over: buried — the owner saw soil clods left on the trench's gravel bed)
+      { const m = t.topMat(i), cm = c.mat || 0; if (m !== cm && !(cm >= 2 && cm <= 3 && m >= 2 && m <= 3)) continue; }   // (under concrete or a cover: buried — they rode up on the strip's top in the owner's film)
       this.clodList[w++] = c;
     }
     this.clodList.length = w;
@@ -141,6 +143,12 @@ export class SoilParticles {
     this.clods.instanceMatrix.needsUpdate = true;
   }
 
+  // the clods in a box taken away (a pit's bottom cleaned by hand before its bed: the owner — no clods left in a trench)
+  clearIn(x0, z0, x1, z1) {
+    const n = this.clodList.length;
+    this.clodList = this.clodList.filter((c) => !(c.x >= x0 && c.x <= x1 && c.z >= z0 && c.z <= z1));
+    if (this.clodList.length !== n) this._refreshClods();
+  }
   // the rake drags the clods under its head along and breaks them up
   rakeClods(cx, cz, dx, dz, hw, band, ahead, minSize) {
     let w = 0, hit = false;
