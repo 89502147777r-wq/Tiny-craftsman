@@ -300,7 +300,7 @@ export class BeltChannel {
     this.cap = b.H / S;   // mm
     // (a pool's bottom slab: a heap under the hose in the middle of it does not fall over the
     // boards — it runs out; only at the boards does what is over them go over)
-    this.inner = b.kind === 'pool';
+    this.inner = b.kind === 'pool' && b.part !== 'wall';   // (a pool's walls are a narrow gap like any wall: the owner saw a grey prism stand from the forms up to the hose)
     if (this.inner) this.edge = this.P.nb.map((n) => n.some((q) => q < 0));
     this.spilt = 0;
   }
