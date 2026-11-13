@@ -333,7 +333,17 @@ export class BeltChannel {
     for (const q of ks) this.h[q] += l * w * per;
     // (in a wall's narrow gap the concrete can not stand over the boards: what comes over them runs off at once — the owner saw a
     // grey «wall» with flat sides rise from the forms to the hose, the heap drawn as a prism of cells)
-    if (!this.inner) for (const q of ks) if (this.h[q] > this.cap + this.over) { this.spilt += this.h[q] - this.cap - this.over; this.h[q] = this.cap + this.over; }
+    if (!this.inner) {
+      let ex = 0;
+      for (const q of ks) if (this.h[q] > this.cap + this.over) { ex += this.h[q] - this.cap - this.over; this.h[q] = this.cap + this.over; }
+      // (what comes over runs along the gap first — to the lowest places within a metre, as it runs between the boards; only what has
+      // no room there goes over the boards)
+      if (ex > 0) {
+        const far = [...this._near(k, Math.max(3, Math.round(MM(1000) / this.b.c)))].filter((q) => this.h[q] < this.cap).sort((a, c) => this.h[a] - this.h[c]);
+        for (const q of far) { if (ex <= 0) break; const g = Math.min(ex, this.cap - this.h[q]); this.h[q] += g; ex -= g; }
+        this.spilt += ex;
+      }
+    }
   }
   _flow(d, yieldMm, kk, only) {
     const h = this.h, nb = this.P.nb;
