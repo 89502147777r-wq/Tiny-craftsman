@@ -48,7 +48,7 @@ export function* foundFilm(d, app) {
   // the excavator of the game, driven as a driver drives it (the owner: the digging by «нарастание» — the machine digging close at
   // its real pace, the bucket tipped where it is seen, then faster, then in cuts): [game s, left x, left y, right x, right y] — the
   // stick out, the boom down, the bucket curled in, up, swung round, opened, swung back
-  const mt = app.machineTool, CYCLE = [[1.6, 0, -1, 0, 0], [0.6, 0, 0, -1, 0], [1.5, 0, 0, 0, 1], [1.4, 0, 1, -1, 0], [0.8, 0, 0, -1, 0], [1.5, 0, 0, 0, -1], [2.6, 1, 0, 0, 0], [1.1, 0, 0, 1, 0], [2.6, -1, 0, 0, 0]];
+  const mt = app.machineTool, CYCLE = [[1.6, 0, -1, 0, 0], [0.6, 0, 0, -1, 0], [1.5, 0, 0, 0, 1], [1.4, 0, 1, -1, 0], [0.8, 0, 0, -1, 0], [1.5, 0, 0, 0, -1], [4.5, 1, 0, 0, 0], [1.1, 0, 0, 1, 0], [4.5, -1, 0, 0, 0]];   // (swung right round: tipped behind it, off the marked pit — the owner: «кидает грунт на территории разметки»)
   let excOn = null;   // (the speed it digs at; null — parked)
   const excAt = function* (x, z, yaw) {
     if (!mt.recOf('excavator')) O.add({ type: 'vehicle', kind: 'excavator', x: MM(x), z: MM(z), yaw, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
@@ -71,7 +71,7 @@ export function* foundFilm(d, app) {
   { const a = P(B.x0, 0, B.z0), b = P(B.x1, 0, B.z1); pw.down(a, scr(a)); pw.move(b, scr(b)); pw.up(); }
   const R = () => pw.rec, belts = () => pw._belts(R());
   say('pool ' + JSON.stringify([R()?.L, R()?.W]));
-  yield* excAt(-1000, -1250, Math.PI / 2);
+  yield* excAt(-1000, -100, Math.PI / 2);   // (its tracks 1,8 m back from the pit's edge: the owner saw it hang over the pit)
   const was0 = spoil0();
   // (close, low beside the machine, the sea behind: its first bucket at its real pace — in, curled, up, swung, tipped in sight)
   shots([[9, [-3900, 1500, 1500], [-1100, 100, -3900]]]);   // (from behind its left: the boom and the bucket going into the pit, the sea beyond — not its tracks)
@@ -86,11 +86,13 @@ export function* foundFilm(d, app) {
   excOn = 8; d.speed = 6;
   say('exc done');
   pw._dig(R(), null);
+  // (as the pit grows it backs along its edge, bucket by bucket — not standing over the hole it has dug)
+  { const x0 = -1000, t0 = d.t; d.each(() => { if (!idle()) { const u = Math.min(1, (d.t - t0) / 2.2); mt.exc?.place(T, MM(x0 + (u < 0.5 ? -2 * u * 3600 : (2 * u - 2) * 3600 + 4000 * (2 * u - 1))), MM(-100), Math.PI / 2); return false; } return true; }); }
   yield d.until(idle);
   say('pit done');
   d.speed = 1;
   excOff(15000, -9500, Math.PI);
-  haul(was0, (x, z) => x > B.x0 - 900 && x < B.x1 + 900 && z > B.z0 - 900 && z < B.z1 + 900);
+  haul(was0, (x, z) => x > B.x0 - 900 && x < B.x1 + 900 && z > B.z0 - 900 && z < B.z1 + 900);   // (the spoil behind it: the trucks', between two shots)
   const mid = (q) => [(q.x0 + q.x1) / 2, (q.z0 + q.z1) / 2];
   // (the top of a piece over the ground, mm: [mean, lowest, highest] over a grid 300 in from its edges)
   const topsOf = (q) => { const hs = []; for (let x = q.x0 + 300; x <= q.x1 - 300; x += 300) for (let z = q.z0 + 300; z <= q.z1 - 300; z += 300) hs.push((T.heightAt(MM(x), MM(z)) - g) / S); return [Math.round(hs.reduce((a, v) => a + v, 0) / hs.length), Math.round(Math.min(...hs)), Math.round(Math.max(...hs))]; };
@@ -159,7 +161,7 @@ export function* foundFilm(d, app) {
     const round = (u) => { const dd = u * per; const [ss, tt] = dd < w ? [o + dd, o] : dd < w + h ? [r.L - o, o + dd - w] : dd < 2 * w + h ? [r.L - o - (dd - w - h), r.W - o] : [o, r.W - o - (dd - 2 * w - h)]; return at(ss, tt, yW); };
     // (as on a site: the hose over the gap between the boards, round and round — a layer each lap, not one wave the wall's height;
     // the first stretch at the corner at a hand's real pace)
-    let pt0 = 0; const t2 = yield* pour(round, () => !belts().wb || !!hose.ch?.full, 14, 240, { belt: () => belts().wb, pump: 6, v: 2, each: (pt) => { if (!pt0 && pt > 2.4) { pt0 = pt; d.speed = 12; } } });
+    let pt0 = 0; const t2 = yield* pour(round, () => !belts().wb || !!hose.ch?.full, 22, 300, { belt: () => belts().wb, pump: 3.5, v: 2, each: (pt) => { if (!pt0 && pt > 2.4) { pt0 = pt; d.speed = 12; } } });
     say('wall fill ' + belts().wb?.fill + ' in ' + t2.toFixed(0)); }
   d.stageBill('POOL SHELL');
   yield d.sec(0.6);
@@ -185,14 +187,15 @@ export function* foundFilm(d, app) {
   for (const k of ['spine', 'slab', 'pad']) { const q = IBIZA[k]; pits[k] = O.add({ type: 'outline', kind: 'rect', x0: MM(q.x0), z0: MM(q.z0), x1: MM(q.x1), z1: MM(q.z1), depth: +((q.h + q.bed - IBIZA.up) / MODEL_SCALE).toFixed(2) }); }
   // (the owner: once in the film, a shower — about ten seconds: over the trenches, the boards and the cages, before the concrete)
   st.weather = 'rain'; const rainFrom = d.t;
-  yield* excAt(6000, 7300, Math.PI / 2);
+  yield* excAt(9300, 4000, Math.PI);   // (beside the trench, not over it: facing it from the east, tipping behind itself)
   const was1 = spoil0();
-  shots([[9, [10200, 1200, 5200], [6300, 500, 4600]]]);
+  shots([[9, [10400, 1300, 9400], [7200, 300, 3600]]]);
   excOn = 2.5;
   yield d.sec(3.0);
   shots([[1.4, [12500, 1600, 1500], [6000, -300, 3200]], [1.3, [9500, 3800, 9500], [-500, 0, 500]]]);   // (not from behind the machine: the camera was in its cab)
   excOn = 8; d.speed = 5;
   digPit(app, O.get(pits.spine.id));
+  { const t0 = d.t; d.each(() => { if (!idle()) { mt.exc?.place(T, MM(9300), MM(4000 - Math.min(1, (d.t - t0) / 1.6) * 8000), Math.PI); return false; } return true; }); }
   yield d.until(idle);
   d.speed = 10;
   digPit(app, O.get(pits.slab.id));
@@ -257,11 +260,11 @@ export function* foundFilm(d, app) {
   // (the concrete: the strip along, the slab row by row, the pad — one go)
   for (const k of keys) {
     const q = IBIZA[k], v0 = T.concVolume(), want = MM(q.x1 - q.x0) * MM(q.z1 - q.z0) * MM(q.h), rows = Math.max(1, Math.round((q.x1 - q.x0) / 1300));
-    const path = (u) => { const i = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - i, x = q.x0 + (q.x1 - q.x0) * (i + 0.5) / rows, z = q.z0 + (q.z1 - q.z0) * (0.12 + 0.76 * (i % 2 ? 1 - f : f)); return P(x, 0, z); };
+    const path = (u) => { const i = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - i, x = q.x0 + 900 + (q.x1 - q.x0 - 1800) * (i + 0.5) / rows, z = q.z0 + 900 + (q.z1 - q.z0 - 1800) * (i % 2 ? 1 - f : f); return P(x, 0, z); };   // (0,9 m in from the boards: the heap under the stream runs out to them, not over)
     if (k === 'spine') shots([[1.4, [8800, 1100, 7200], [6000, 200, 4500]], [1.5, [6500, 700, -7600], [5900, 150, -1000]]]);   // (the hose starts at the strip's +z end and goes toward the sea: its first load steeply from above, then low along, the front going away to the sea… seen from the sea's end coming at the camera)
     if (k === 'slab') shots([[1.5, [-7800, 4200, 7200], [-200, 150, 900]], [1.2, [700, 900, 5200], [-600, 250, 1800]]]);
     if (k === 'pad') shots([[1.0, [-11400, 1300, 1200], [-7900, 250, 3250]]]);
-        const rate = k === 'slab' ? 1.25 : 0.3125, whole = want * MODEL_SCALE ** 3 / rate;
+        const rate = k === 'slab' ? 0.625 : 0.3125, whole = want * MODEL_SCALE ** 3 / rate;
     // (what lies inside the outline, not what left the hose: some of it goes over the boards — and the poker follows the hose,
     // as a crew's does, so the heap under the stream runs out along the form instead of over its boards)
     const cellsIn = []; for (let i = 0; i < T.conc.length; i++) { const x = T.toWorldX(i % T.nx) / S, z = T.toWorldZ(Math.floor(i / T.nx)) / S; if (x >= q.x0 && x <= q.x1 && z >= q.z0 && z <= q.z1) cellsIn.push(i); }
