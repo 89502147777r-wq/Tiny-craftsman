@@ -1388,6 +1388,11 @@ console.log('—', sec());
     const peak = (a, b) => { let m = 0; for (let i = Math.round(a * r.rate); i < Math.round(b * r.rate); i++) m = Math.max(m, Math.abs(r.pcm[0][i])); return m; };
     o.blow = +peak(0, 0.15).toFixed(3); o.before = +peak(0.5, r.seconds).toFixed(3);
     o.sound = o.blow > 0.02 && o.before < o.blow * 0.2;
+    // (the sound IN the video: an AAC track whose decoder config is ours — 0x11 0x90, AAC-LC 48 kHz stereo; Safari's encoder gives a
+    // wrong one and the video played silent on the owner's phone) — or, with no AAC encoder, the WAV beside it
+    { const at = (t) => { for (let i = 0; i < buf.length - 4; i++) if (buf[i] === t.charCodeAt(0) && buf[i + 1] === t.charCodeAt(1) && buf[i + 2] === t.charCodeAt(2) && buf[i + 3] === t.charCodeAt(3)) return i; return -1; };
+      const e = at('esds'); o.track = r.sound; o.asc = e < 0 ? null : (() => { for (let i = e; i < Math.min(buf.length - 2, e + 60); i++) if (buf[i] === 0x05) return [buf[i + 2], buf[i + 3]]; return null; })();
+      o.inVideo = r.sound === 'wav' ? !!r.wav : (r.sound === 'opus' || (o.asc?.[0] === 0x11 && o.asc?.[1] === 0x90)); }
     const v = document.createElement('video'); v.muted = true; v.src = URL.createObjectURL(r.blob);
     await new Promise((res) => { v.onloadedmetadata = res; v.onerror = res; setTimeout(res, 8000); });
     o.dur = +v.duration.toFixed(2); o.size = [v.videoWidth, v.videoHeight];
@@ -1395,7 +1400,7 @@ console.log('—', sec());
     return o;
   });
   check('film shot frame by frame: an mp4, 180×320, the hook first (0.4 s), the film up to it after (0.5 s)', !o.err && o.ftyp === 'ftyp' && o.frames >= 26 && o.frames <= 30 && Math.abs(o.seconds - 0.93) < 0.07 && Math.abs(o.dur - o.seconds) < 0.1 && o.size[0] === 180 && o.size[1] === 320 && o.box, JSON.stringify(o));
-  check('film shot frame by frame: the title painted into the frame; the sound in it', o.words > 40 && o.sound, JSON.stringify(o));
+  check('film shot frame by frame: the title painted into the frame; the sound in it', o.words > 40 && o.sound && o.inVideo, JSON.stringify(o));
   check('film shot frame by frame: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
