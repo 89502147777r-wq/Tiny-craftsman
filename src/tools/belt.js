@@ -308,6 +308,12 @@ export class BeltChannel {
     this.spilt = 0;
   }
   has(t) { return !!t && t.id === this.b.id; }
+  // is there room for what lands at k: in a wall's gap it runs along it a metre (pour) — room anywhere there; on a slab, at k
+  room(k) {
+    if (this.inner || this.h[k] < this.cap - 2) return this.h[k] < this.cap - 2;
+    for (const q of this._near(k, Math.max(3, Math.round(MM(1000) / this.b.c)))) if (this.h[q] < this.cap - 2) return true;
+    return false;
+  }
   get full() { return this.h.every((v) => v >= this.cap - 3); }
   at(x, z) {
     const b = this.b, [s, t] = toFrame(b, x, z), i0 = Math.floor(s / b.c), j0 = Math.floor(t / b.c);

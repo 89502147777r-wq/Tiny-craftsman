@@ -208,57 +208,57 @@ export class PumpHose {
   // (still: into a narrow thing — a column's formwork, a post's hole: the spout is held over it, the stream goes straight down)
   setStream(on, groundAt = null, time = 0, dt = 1 / 60, still = false) {
     if (!on) { this.stream.visible = false; this.drops.length = 0; this.landing = null; this._sp0 = null; return null; }
-    // (the worker keeps the spout pointing down: the concrete goes out mostly downward, whatever the hose's lean)
-    const sp = this.spout(), fl = this.flow().lerp(_down, 0.7).normalize(), gAt = groundAt || (() => sp.y - 0.5 * M);
+    // (the owner: the stream was a flat ribbon, zigzag, or gone between the pump's strokes. Now it is what a stream of pumped
+    // concrete is: one round rope, ~70 % of the hose's diameter, never broken. Each piece in it left the spout with the
+    // spout's velocity — so, the spout moving steadily, the rope hangs under it (a piece let go earlier from further back
+    // has come as far as the spout since); it lags only by what the air and the hose's sway take: a fifth of the spout's speed)
+    const sp = this.spout(), fl = still ? _down.clone() : this.flow().lerp(_down, 0.7).normalize(), gAt = groundAt || (() => sp.y - 0.5 * M);
     dt = Math.min(dt, 1 / 20);
-    // (the spout's own speed: the pieces keep it)
-    // (the owner's screenshot: over a column the stream ran off sideways as a long ribbon. The spout's speed was its
-    // move since the last call over this step's dt — the hose brought to a new place, or several steps of the work to
-    // one of the hose (a film sped up), made it tens of metres a second: no faster than the hand goes, none after a jump)
     const sv = new THREE.Vector3();
     if (this._sp0 && !still) { sv.copy(sp).sub(this._sp0); if (sv.length() > 0.5 * M) sv.set(0, 0, 0); else { sv.divideScalar(Math.max(1e-4, dt)); if (sv.length() > VMAX) sv.setLength(VMAX); } }
     this._sp0 = sp.clone();
-    const pu = this.pulse();
-    if (pu > 0.2) this.drops.push({ p: sp.clone(), v: sv.clone().multiplyScalar(0.8).addScaledVector(fl, OUT * pu), r: 0.89 * R * (0.9 + 0.2 * Math.min(1.3, pu)) * (0.92 + 0.16 * Math.random()), age: 0 });
+    // (the spout's speed smoothed over a fifth of a second: a stroke's kick does not whip the rope)
+    this._sv = (this._sv || new THREE.Vector3()).lerp(sv, Math.min(1, dt * 5));
+    const pu = this.pulse(), v0 = fl.clone().multiplyScalar(OUT * (0.85 + 0.15 * pu)), lagV = this._sv.clone().multiplyScalar(-0.2);
+    lagV.y = 0;
+    // the rope: positions of the pieces of every age τ, till one meets the surface
+    const pts = [sp.clone()], drops = [];
     let land = null;
-    for (const q of this.drops) {
-      q.age += dt; q.v.y -= GRAV * dt;
-      // (the foot of the column drags in the heap: its sideways speed dies there)
-      const gy = gAt(q.p.x, q.p.z);
-      if (q.p.y - gy < 0.12 * M) { q.v.x *= 0.8; q.v.z *= 0.8; }
-      q.p.addScaledVector(q.v, dt);
-      if (q.p.y <= gy) { q.p.y = gy; q.landed = true; if (!land) land = q.p.clone(); }
+    for (let k = 1, tau = 0; k <= 60 && !land; k++) {
+      tau += 0.02;
+      const q = new THREE.Vector3(sp.x + (v0.x + lagV.x) * tau, sp.y + v0.y * tau - 0.5 * GRAV * tau * tau, sp.z + (v0.z + lagV.z) * tau);
+      const gy = gAt(q.x, q.z);
+      if (q.y <= gy) { q.y = gy; land = q.clone(); }
+      pts.push(q); drops.push({ p: q, age: tau });
     }
-    // (kept: the landed piece nearest the spout stays as the column's foot, the rest go)
-    const alive = this.drops.filter((q) => !q.landed);
-    const foot = this.drops.filter((q) => q.landed).sort((a, b) => b.age - a.age).at(-1);
-    this.drops = alive.slice(-24);
-    const chain = [sp.clone(), ...this.drops.slice().sort((a, b) => a.age - b.age).map((q) => q.p.clone())];
-    if (foot) chain.push(foot.p.clone()); else if (!this.drops.length) chain.push(new THREE.Vector3(sp.x, gAt(sp.x, sp.z), sp.z));
-    if (land || foot) this.landing = (land || foot.p).clone();
-    else if (!this.landing) this.landing = new THREE.Vector3(sp.x, gAt(sp.x, sp.z), sp.z);
-    // the tube along it: as thick as the spout's bore at the top, a little thinner and lumpy below
-    const pts = chain.filter((q, i) => i === 0 || q.distanceToSquared(chain[i - 1]) > 1e-12);
-    if (pts.length >= 2) {
-      const curve = new THREE.CatmullRomCurve3(pts), segs = 16, rad = 10, P = [], I = [];
-      for (let j = 0; j <= segs; j++) {
-        const u = j / segs, c = curve.getPointAt(u), tg = curve.getTangentAt(u), nx = new THREE.Vector3(1, 0, 0);
-        if (Math.abs(tg.x) > 0.9) nx.set(0, 0, 1);
-        const b1 = new THREE.Vector3().crossVectors(tg, nx).normalize(), b2 = new THREE.Vector3().crossVectors(tg, b1).normalize();
-        const r = 0.89 * R * (1 - 0.2 * u) * (pu < 0.2 ? 0.45 : 1);
-        for (let k = 0; k <= rad; k++) {
-          const a = k / rad * Math.PI * 2, lump = 1 + 0.08 * Math.sin(a * 3 + u * 11 - time * 9) + 0.06 * Math.sin(u * 23 + time * 13);
-          P.push(c.x + (b1.x * Math.cos(a) + b2.x * Math.sin(a)) * r * lump, c.y + (b1.y * Math.cos(a) + b2.y * Math.sin(a)) * r * lump, c.z + (b1.z * Math.cos(a) + b2.z * Math.sin(a)) * r * lump);
-        }
+    if (!land) land = pts.at(-1).clone();
+    this.drops = drops; this.landing = land.clone();
+    // (thinner below as it speeds up — as much concrete passes every height: 70 % of the hose's bore at the spout, ~58 % below)
+    const r0 = 0.7 * R * (0.92 + 0.08 * pu), r1 = r0 * 0.82;
+    const P = [], I = [], segs = Math.max(2, Math.min(24, pts.length - 1)), rad = 12;
+    const curve = new THREE.CatmullRomCurve3(pts.length > 2 ? pts : [pts[0], pts[0].clone().lerp(pts[1], 0.5), pts[1]]);
+    // (rings along the rope by parallel transport: the frame turns with the rope, never flips — it was flipping where the
+    // rope passed «mostly along x», and the rings twisted the tube into a flat ribbon)
+    let n = null;
+    for (let j = 0; j <= segs; j++) {
+      const u = j / segs, c = curve.getPointAt(u), tg = curve.getTangentAt(u);
+      if (!n) { n = Math.abs(tg.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0); }
+      n.addScaledVector(tg, -n.dot(tg)).normalize();
+      const b = new THREE.Vector3().crossVectors(tg, n).normalize();
+      const r = r0 + (r1 - r0) * u;
+      for (let k = 0; k <= rad; k++) {
+        const a = k / rad * Math.PI * 2, lump = 1 + 0.05 * Math.sin(a * 3 + u * 11 - time * 9) + 0.04 * Math.sin(u * 23 + time * 13);
+        const ca = Math.cos(a) * r * lump, sa = Math.sin(a) * r * lump;
+        P.push(c.x + n.x * ca + b.x * sa, c.y + n.y * ca + b.y * sa, c.z + n.z * ca + b.z * sa);
       }
-      for (let j = 0; j < segs; j++) for (let k = 0; k < rad; k++) { const a = j * (rad + 1) + k; I.push(a, a + rad + 1, a + 1, a + 1, a + rad + 1, a + rad + 2); }
-      const g = this.stream.geometry;
-      if (!g.attributes.position || g.attributes.position.count !== P.length / 3) { g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setIndex(I); }
-      else { g.attributes.position.array.set(P); g.attributes.position.needsUpdate = true; }
-      g.computeVertexNormals(); g.computeBoundingSphere();
-      this.stream.visible = true;
     }
-    this.stream.userData.bottomR = 0.89 * R * 0.8; this.stream.userData.topR = 0.89 * R;
+    for (let j = 0; j < segs; j++) for (let k = 0; k < rad; k++) { const a = j * (rad + 1) + k; I.push(a, a + rad + 1, a + 1, a + 1, a + rad + 1, a + rad + 2); }
+    const g = this.stream.geometry;
+    if (!g.attributes.position || g.attributes.position.count !== P.length / 3) { g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setIndex(I); }
+    else { g.attributes.position.array.set(P); g.attributes.position.needsUpdate = true; }
+    g.computeVertexNormals(); g.computeBoundingSphere();
+    this.stream.visible = true;
+    this.stream.userData.bottomR = r1; this.stream.userData.topR = r0;
     return this.landing;
   }
 

@@ -175,7 +175,7 @@ export class OutlineView {
     this.mask.minFilter = THREE.LinearFilter;
     this._maskDirty = true;
     this._seen = -1;
-    objects.on((id, rec) => { if (rec?.type === 'outline' || this.items.has(id)) { this._rebuild(id, rec); this._maskDirty = true; } });
+    objects.on((id, rec) => { if (rec?.type === 'outline' || this.items.has(id)) { this._rebuild(id, rec); for (const it of this.items.values()) this._place(it); this._maskDirty = true; } });   // (all: a new marking moves the stakes of the others off it)
   }
 
   outlines() { return this.objects.all('outline'); }
@@ -215,7 +215,10 @@ export class OutlineView {
     const n = it.loop.length, E = it.rec.kind === 'rect' ? BEYOND : 0;   // (a trench's bends: the stakes at its turns, as before)
     for (let i = 0; i < n; i++) {
       const [ax, az] = it.loop[i], [bx, bz] = it.loop[(i + 1) % n], L = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / L, uz = (bz - az) / L;
-      const a = top(ax - ux * E, az - uz * E, 2 * i), b = top(bx + ux * E, bz + uz * E, 2 * i + 1), l = it.lines[i];
+      // (a stake that would stand on another marking — in its area or the metre round it, where its forms and boards go —
+      // is set further out along the line, so the work on that marking does not knock it over: the owner's screenshot)
+      const ea = E && this._clear(it, ax, az, -ux, -uz, E), eb = E && this._clear(it, bx, bz, ux, uz, E);
+      const a = top(ax - ux * ea, az - uz * ea, 2 * i), b = top(bx + ux * eb, bz + uz * eb, 2 * i + 1), l = it.lines[i];
       const d = b.clone().sub(a);
       l.position.copy(a).add(b).multiplyScalar(0.5);
       l.scale.set(1, Math.max(1e-4, d.length()), 1);
@@ -230,6 +233,20 @@ export class OutlineView {
       h.material = sel ? this.handleSelMat : this.handleMat;
       h.scale.setScalar(sel ? 1.25 : 1);
     });
+  }
+
+  // how far past the corner (x, z) along (ux, uz) a stake of `it` stands clear of every other marking (from E on, to 8 m)
+  _clear(it, x, z, ux, uz, E) {
+    const pad = 1.0 / MODEL_SCALE, others = [...this.items.values()].filter((o) => o !== it).map((o) => {
+      const xs = o.loop.map((p) => p[0]), zs = o.loop.map((p) => p[1]);
+      return [Math.min(...xs) - pad, Math.min(...zs) - pad, Math.max(...xs) + pad, Math.max(...zs) + pad];
+    });
+    let e = E;
+    for (; e < 8 / MODEL_SCALE; e += 0.25 / MODEL_SCALE) {
+      const px = x + ux * e, pz = z + uz * e;
+      if (!others.some((b) => px >= b[0] && px <= b[2] && pz >= b[1] && pz <= b[3])) break;
+    }
+    return e;
   }
 
   setHandles(on, selected = this.selected) {

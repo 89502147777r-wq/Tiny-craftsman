@@ -44,19 +44,47 @@ export function* foundFilm(d, app) {
   // again if the work outlasts them
   let shotN = 0;
   const shots = (list) => { const id = ++shotN; let i = -1, t1 = -1; const f = () => { if (id !== shotN) return true; if (d.t >= t1) { i = (i + 1) % list.length; const [sec, e, a] = list[i]; d.cut(look(P(...e), P(...a)), { drift: 0.008, push: 0.01, hand: 0.25 }); t1 = d.t + sec; } return false; }; f(); d.each(f); };
+  // an action by «нарастание» (the owner's rule, 2026-11-13): the first shot opens on the action itself at its real pace, the next from
+  // another angle faster, the next from another fast — and on, cutting every 1–3 s. In a shot the camera stands (a tripod) and
+  // pans after the tool — the bucket's teeth, the spout, the plate, the poker, the rule: the work never goes out of the frame
+  // (the owner: «like watching a race from the stands» — the plate passing a camera that looked at one spot).
+  // list: [seconds, [dx, height over the site, dz] mm from the tool when cut, speed] — after the last, the last two by turns
+  const toolPt = () => {
+    if (excOn != null && mt.exc) { const ph = mt._ad?.ph; if (!toolPt.e || ['reach', 'lower', 'drag', 'curl'].includes(ph)) toolPt.e = mt.exc.teethWorld(new V()); return toolPt.e.clone(); }
+    if (G.show === 'hose' && G.pump?.ready) return G.pump.spout().clone().add(new V(0, -MM(400), 0));
+    if (G.show) return G.pos.clone();
+    if (app.rake?.root.visible) return app.rake.pos.clone();
+    return null;
+  };
+  const act = (list, fallback = null) => {
+    const id = ++shotN; let k = -1, t1 = -1, eye = null, aim = null, sp = 1;
+    const f = () => {
+      if (id !== shotN) return true;
+      const p = toolPt() || (fallback && P(...fallback)); if (!p) return false;
+      if (d.t >= t1 || !eye) {
+        k++; const L = list.length, i = k < L ? k : L - 2 + ((k - L) % 2), [sec, [dx, dy, dz], v] = list[Math.max(0, i)];
+        eye = new V(p.x + MM(dx), g + MM(dy), p.z + MM(dz)); aim = p.clone(); sp = v;
+        d.cut(look(eye, aim), { drift: 0.004, push: 0.006, hand: 0.2 }); t1 = d.t + sec;
+      } else { aim.lerp(p, 1 - Math.exp(-d.dt * 2.5)); const vw = look(eye, aim); if (d.shot) d.shot.goal = d.shot.from = d._full(vw, d.shot.goal); }
+      d.speed = sp; if (excOn != null) excOn = sp;
+      return false;
+    };
+    f(); d.each(f);
+  };
+  const stopAct = () => { ++shotN; };
   const ANCHOR = [[-8300, 2000, -1200], [-500, -1600, -4600]];   // (the bowl's anchor: its west corner, along it to the mountains)
   // the excavator of the game, driven as a driver drives it (the owner: the digging by «нарастание» — the machine digging close at
   // its real pace, the bucket tipped where it is seen, then faster, then in cuts): [game s, left x, left y, right x, right y] — the
   // stick out, the boom down, the bucket curled in, up, swung round, opened, swung back
-  const mt = app.machineTool, CYCLE = [[1.6, 0, -1, 0, 0], [0.6, 0, 0, -1, 0], [1.5, 0, 0, 0, 1], [1.4, 0, 1, -1, 0], [0.8, 0, 0, -1, 0], [1.5, 0, 0, 0, -1], [4.5, 1, 0, 0, 0], [1.1, 0, 0, 1, 0], [4.5, -1, 0, 0, 0]];   // (swung right round: tipped behind it, off the marked pit — the owner: «кидает грунт на территории разметки»)
+  const mt = app.machineTool;   // (driven by the game's driver, mt.excDrive: tipped behind it, off the marked pit)
   let excOn = null;   // (the speed it digs at; null — parked)
   const excAt = function* (x, z, yaw) {
     if (!mt.recOf('excavator')) O.add({ type: 'vehicle', kind: 'excavator', x: MM(x), z: MM(z), yaw, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
     let ok = false; mt.ensureExc().then(() => { ok = true; }); yield d.until(() => ok);
     const E = mt.exc; E.place(T, MM(x), MM(z), yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = 0; E.load = 0; E.update(0); mt.excMode = 'dig';
   };
-  { let mi = 0, mt0 = 0; d.each(() => { if (excOn == null || !mt.exc) return false; let dt = d.dt * excOn; app.sfx?.engine?.('excavator', 0.55); app.sfx?.engine?.('hydraulic', 0.4);
-      while (dt > 1e-6) { const m = CYCLE[mi], left = m[0] - mt0, h = Math.min(dt, left, 1 / 30); mt._excStep(h, m[1], m[2], m[3], m[4]); mt0 += h; dt -= h; if (mt0 >= m[0] - 1e-6) { mt0 = 0; mi = (mi + 1) % CYCLE.length; } }
+  { d.each(() => { if (excOn == null || !mt.exc) return false; let dt = d.dt * excOn; app.sfx?.engine?.('excavator', 0.55); app.sfx?.engine?.('hydraulic', 0.4);
+      while (dt > 1e-6) { const h = Math.min(dt, 1 / 30); mt.excDrive(h); dt -= h; }   // (the game's driver: teeth first — the owner saw the bucket's heel press and the machine rise)
       return false; }); }
   const excOff = (x, z, yaw) => { excOn = null; app.sfx?.engine?.('excavator', 0); app.sfx?.engine?.('hydraulic', 0); if (mt.exc) { mt.exc.place(T, MM(x), MM(z), yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) mt.exc[k] = mt.exc[k + 'Goal'] = 0; mt.exc.update(0); } };
   // (the soil it tipped beside the pit: taken away by the trucks — between two shots; what lies outside `keep` as it was before)
@@ -73,24 +101,18 @@ export function* foundFilm(d, app) {
   say('pool ' + JSON.stringify([R()?.L, R()?.W]));
   yield* excAt(-1000, -100, Math.PI / 2);   // (its tracks 1,8 m back from the pit's edge: the owner saw it hang over the pit)
   const was0 = spoil0();
-  // (close, low beside the machine, the sea behind: its first bucket at its real pace — in, curled, up, swung, tipped in sight)
-  shots([[9, [-3900, 1500, 1500], [-1100, 100, -3900]]]);   // (from behind its left: the boom and the bucket going into the pit, the sea beyond — not its tracks)
-  excOn = 1.6;
-  yield d.sec(4.6);
-  // (a little further, from its other side: the next bucket faster)
-  shots([[9, [4800, 1300, -3700], [-1500, -300, -3800]]]);   // (from the side along the pit: the bucket coming up full)
-  excOn = 4;
-  yield d.sec(2.2);
-  // (wide along the pit: the rest of it at once — the pit's own job)
-  shots([[1.4, [6400, 1700, -1100], [-2500, -1300, -4600]], [1.3, ...ANCHOR]]);
-  excOn = 8; d.speed = 6;
+  // (by «нарастание»: close beside the boom at its real pace — the teeth going in, the bucket filling; from the pit's far side
+  // faster; wide along the pit fast — the camera panning after the bucket, never off it)
+  excOn = 1;
+  act([[2.6, [2600, 1200, 2300], 1], [2.4, [-2600, 700, -2600], 3], [2.2, [-6200, 2400, 1800], 6], [2.0, [4800, 1300, -1500], 6]]);
+  yield d.sec(5.0);
   say('exc done');
   pw._dig(R(), null);
   // (as the pit grows it backs along its edge, bucket by bucket — not standing over the hole it has dug)
   { const x0 = -1000, t0 = d.t; d.each(() => { if (!idle()) { const u = Math.min(1, (d.t - t0) / 2.2); mt.exc?.place(T, MM(x0 + (u < 0.5 ? -2 * u * 3600 : (2 * u - 2) * 3600 + 4000 * (2 * u - 1))), MM(-100), Math.PI / 2); return false; } return true; }); }
   yield d.until(idle);
   say('pit done');
-  d.speed = 1;
+  stopAct(); d.speed = 1;
   excOff(15000, -9500, Math.PI);
   haul(was0, (x, z) => x > B.x0 - 900 && x < B.x1 + 900 && z > B.z0 - 900 && z < B.z1 + 900);   // (the spoil behind it: the trucks', between two shots)
   const mid = (q) => [(q.x0 + q.x1) / 2, (q.z0 + q.z1) / 2];
@@ -99,12 +121,11 @@ export function* foundFilm(d, app) {
   d.stageBill('EXCAVATION · 104 m³');
   yield d.sec(0.6);
   // ---- 3 · the beds: the pool's stone and lean concrete; sand and stone under the rest, rammed -------
-  d.speed = 8;
-  shots([[1.4, [-8000, 900, -1600], [-1500, -1600, -4600]], [1.3, ...ANCHOR]]);
-  firstSlow(() => G.show === 'plate', [[9, [-4200, 900, -1700], [-5000, -1500, -4600]]], 1.8, 1.2, 8);
+  // (the stone tipped, raked, the plate over it — by «нарастание», the camera after the rake and the plate)
+  act([[2.0, [-2200, 700, 1800], 1], [2.0, [2600, 900, 1500], 3], [1.8, [-5200, 1800, 2600], 6], [1.8, [3800, 1200, -900], 6]], [-1000, -1500, -4400]);
   pw._bed(R(), null);
   yield d.until(idle);
-  d.speed = 1;
+  stopAct(); d.speed = 1;
   say('bed done');
   // ---- 4 · the pool's shell: the floor's boards and bars, its concrete; the walls' bars and forms, their concrete ----
   const fresh = () => { const now = T.clock || app.clock; for (let i = 0; i < T.conc.length; i++) if (T.conc[i] > 0) T.cTime[i] = now; };
@@ -138,10 +159,10 @@ export function* foundFilm(d, app) {
   pw._cage1(R(), belts().fb);
   yield d.until(idle);
   say('floor belt ' + JSON.stringify({ fb: !!belts().fb, cage: R().cage1 }));
-  shots([[1.6, [5200, 900, -2000], [500, -1500, -4400]], [1.3, [-1200, 1200, -1800], [-1500, -1600, -4700]], [1.4, ...ANCHOR]]);
+  act([[2.2, [2200, 1000, 1900], 1], [2.0, [-2600, 800, -1900], 3], [1.8, [-6000, 2300, 2300], 6], [1.8, [4300, 1300, -1300], 6]]);
   { const r = R(), yF = floorTopY(r);
     const t1 = yield* pour((u) => at(r.L * (0.04 + 0.92 * u), r.W * (0.5 + 0.46 * Math.sin(u * Math.PI * 12)), yF), () => { const c = hose.ch; if (!c?.h) return false; let a = 0; for (let i = 0; i < c.h.length; i++) a += c.h[i]; const cap = c.cap || 1e9; a = 0; for (let i = 0; i < c.h.length; i++) a += Math.min(cap, c.h[i]); return c.full || a / c.h.length >= cap * 0.975; }   /* (what is heaped over the boards' tops does not count: the record's `fill` clamps it too) */, 14, 60, { belt: () => belts().fb, pump: 6 });   // (the record's `fill` is written when the hose is let go: the channel says when it is full)
-    say('floor fill ' + belts().fb?.fill + ' in ' + t1.toFixed(0)); }
+    stopAct(); say('floor fill ' + belts().fb?.fill + ' in ' + t1.toFixed(0)); }
   // (two days: the floor hard enough for the walls' forms)
   d.hud(null);
   shots([[9, ...ANCHOR]]);
@@ -156,13 +177,13 @@ export function* foundFilm(d, app) {
   pw._form2(R(), belts().fb, null);
   yield d.until(idle);
   say('wall belt ' + !!belts().wb);
-  shots([[1.8, [-8400, 900, -7000], [-4500, 200, -5900]], [1.5, [8500, 2600, 1800], [-1500, -300, -4500]], [1.3, [-7600, 1300, -1500], [-2000, 0, -4500]]]);
+  act([[2.2, [1900, 900, 1700], 1], [2.0, [-2300, 700, -2000], 3], [1.8, [3600, 1800, 3000], 6], [1.8, [-4000, 1200, 1500], 6]]);
   { const r = R(), yW = wallTopY(r), o = -125, w = r.L + 250, h = r.W + 250, per = 2 * (w + h);
     const round = (u) => { const dd = u * per; const [ss, tt] = dd < w ? [o + dd, o] : dd < w + h ? [r.L - o, o + dd - w] : dd < 2 * w + h ? [r.L - o - (dd - w - h), r.W - o] : [o, r.W - o - (dd - 2 * w - h)]; return at(ss, tt, yW); };
     // (as on a site: the hose over the gap between the boards, round and round — a layer each lap, not one wave the wall's height;
     // the first stretch at the corner at a hand's real pace)
-    let pt0 = 0; const t2 = yield* pour(round, () => !belts().wb || !!hose.ch?.full, 22, 300, { belt: () => belts().wb, pump: 3.5, v: 2, each: (pt) => { if (!pt0 && pt > 2.4) { pt0 = pt; d.speed = 12; } } });
-    say('wall fill ' + belts().wb?.fill + ' in ' + t2.toFixed(0)); }
+    const t2 = yield* pour(round, () => !belts().wb || !!hose.ch?.full, 22, 300, { belt: () => belts().wb, pump: 3.5, v: 2, });
+    stopAct(); say('wall fill ' + belts().wb?.fill + ' in ' + t2.toFixed(0)); }
   d.stageBill('POOL SHELL');
   yield d.sec(0.6);
 
@@ -189,37 +210,36 @@ export function* foundFilm(d, app) {
   st.weather = 'rain'; const rainFrom = d.t;
   yield* excAt(9300, 4000, Math.PI);   // (beside the trench, not over it: facing it from the east, tipping behind itself)
   const was1 = spoil0();
-  shots([[9, [3000, 1500, 8800], [7600, 300, 3400]]]);   // (from across the trench: the machine on its far side, its tail swinging away from the camera)
-  excOn = 2.5;
-  yield d.sec(3.0);
-  shots([[1.4, [2600, 1700, -7800], [6600, -200, 0]], [1.3, [-500, 4200, 11500], [6000, 0, 0]]]);   // (never on the machine's side: it swings right round there)   // (not from behind the machine: the camera was in its cab)
-  excOn = 8; d.speed = 5;
+  // (by «нарастание», the camera across the trench from the machine panning after the bucket: close ×1, then faster, then fast)
+  excOn = 1;
+  act([[2.6, [-1700, 1100, 2600], 1], [2.4, [-2900, 600, -2500], 3], [2.2, [-5600, 2300, -3200], 6], [2.0, [-3200, 1400, 3600], 6]]);
+  yield d.sec(5.0);
   digPit(app, O.get(pits.spine.id));
   { const t0 = d.t; d.each(() => { if (!idle()) { mt.exc?.place(T, MM(9300), MM(4000 - Math.min(1, (d.t - t0) / 1.6) * 8000), Math.PI); return false; } return true; }); }
   yield d.until(idle);
-  d.speed = 10;
-  digPit(app, O.get(pits.slab.id));
-  yield d.until(idle);
-  digPit(app, O.get(pits.pad.id));
-  yield d.until(idle);
-  d.speed = 1;
+  // (the slab's and the pad's pits: the machine moved round to them, digging along their edge as at the trench)
+  for (const [k, z, x0, x1] of [['slab', 7300, 4000, -4000], ['pad', 7800, -7900, -7900]]) {
+    mt.exc?.place(T, MM(x0), MM(z), Math.PI / 2); mt._ad = null;
+    digPit(app, O.get(pits[k].id));
+    { const t0 = d.t; d.each(() => { if (!idle()) { mt.exc?.place(T, MM(x0 + (x1 - x0) * Math.min(1, (d.t - t0) / 1.6)), MM(z), Math.PI / 2); return false; } return true; }); }
+    yield d.until(idle);
+  }
+  stopAct(); d.speed = 1;
   excOff(15000, -9500, Math.PI);
   haul(was1, (x, z) => keys0.some((k) => { const q = IBIZA[k]; return x >= q.x0 - 300 && x <= q.x1 + 300 && z >= q.z0 - 300 && z <= q.z1 + 300; }));
   app.budget._pay([{ usd: 650 }], P(0, 0, 0));   // (the shallow pits: ~28 m³ taken away)
   say('dug ' + ['spine', 'slab', 'pad'].map((k) => Math.round((T.heightAt(MM((IBIZA[k].x0 + IBIZA[k].x1) / 2), MM((IBIZA[k].z0 + IBIZA[k].z1) / 2)) - g) / S)).join(' '));
 
-  shots([[1.3, [9200, 1300, 2400], [6000, -350, -1000]]]);
-  firstSlow(() => G.show === 'plate', [[9, [8100, 900, 6400], [6000, -300, 4200]]], 1.8, 1.2, 8);
-  d.speed = 4;
+  // (the beds: the stone tipped and spread, the plate over it — the camera after the plate; the heaps' tipping seen from the trench's end)
+  act([[2.0, [2200, 700, 1800], 1], [2.0, [-2400, 600, -2000], 3], [1.8, [3200, 1800, -3600], 6], [1.8, [-3000, 1200, 2600], 6]], [6000, -300, 3000]);
   bedPit(app, O.get(pits.spine.id), IBIZA.spine.bed, 'g20');
   yield d.until(idle);
-  d.speed = 12;
-  shots([[1.2, [-6800, 1500, 6200], [1500, -300, 300]], [1.1, [-11200, 1300, 6400], [-7900, -150, 3250]]]);
+  act([[1.8, [2600, 1300, 2400], 6], [1.8, [-3000, 1400, 2200], 6]], [0, -200, 900]);
   bedPit(app, O.get(pits.slab.id), IBIZA.slab.bed, 'sand');
   yield d.until(idle);
   bedPit(app, O.get(pits.pad.id), IBIZA.pad.bed, 'g20');
   yield d.until(idle);
-  d.speed = 1;
+  stopAct(); d.speed = 1;
   d.stageBill('TRENCHES & BEDS');
   yield d.sec(0.6);
   say('beds ' + ['spine', 'slab', 'pad'].map((k) => Math.round((T.heightAt(MM(mid(IBIZA[k])[0]), MM(mid(IBIZA[k])[1])) - g) / S)).join(' '));
@@ -232,9 +252,9 @@ export function* foundFilm(d, app) {
   for (const k of keys) { st.slab = IBIZA[k].h; const o = O.get(pits[k].id), y1 = F.topFor(o); runsOf[k] = edges(o).map((e) => F.run(e.a, e.b, e.n, y1, { outlineId: o.id })); }   // (550 between the slab and the strip: room for both rows of boards and their stakes — the realist's other way; the shared board leaked)
   const save = (id, list) => () => app.journal.act('formwork', { outlineId: id }, app.clock, () => { for (const r of list) O.add(r); });
   shots([[1.2, [7300, 1300, 7400], [6000, 100, 6050]], [1.0, [7400, 2400, -8600], [5800, 0, 500]]]);
-  { const rs = runsOf.spine.slice().sort((p, q) => q.n[1] - p.n[1]); d.speed = 5; F._fitRuns([rs[0]], true, save(pits.spine.id, [rs[0]])); yield d.until(idle); d.speed = 10; F._fitRuns(rs.slice(1), false, save(pits.spine.id, rs.slice(1))); yield d.until(idle); }
+  { const rs = runsOf.spine.slice().sort((p, q) => q.n[1] - p.n[1]); d.speed = 2; F._fitRuns([rs[0]], true, save(pits.spine.id, [rs[0]])); yield d.until(idle); d.speed = 5; F._fitRuns(rs.slice(1), false, save(pits.spine.id, rs.slice(1))); yield d.until(idle); }
   shots([[1.2, [-8200, 1400, 6600], [-3500, 0, 3600]]]);
-  d.speed = 14;
+  d.speed = 7;
   for (const k of ['slab', 'pad']) { F._fitRuns(runsOf[k], false, save(pits[k].id, runsOf[k])); yield d.until(idle); }
   d.speed = 1;
   st.weather = 'clear'; say('rain for ' + (d.t - rainFrom).toFixed(1) + ' s');
@@ -248,8 +268,8 @@ export function* foundFilm(d, app) {
     st.slab = IBIZA[k].h; st.rebarD = k === 'spine' ? 16 : 12; st.cover = 110;   // (the boards stand inside the outline and the strip's concrete a little under their tops: with the cover of 50 the cage's chairs stood in its side faces — the owner: «торчит арматура»; 110 keeps every bar well inside)
     app.rebarTool.cageIn(O.get(pits[k].id));
     yield d.until(() => !!app.physJob || O.all('cage').some((c) => c.outlineId === pits[k].id));
-    d.speed = k === 'spine' ? 2.5 : 16;
-    if (k === 'spine') { yield d.sec(1.2); d.speed = 12; }
+    d.speed = k === 'spine' ? 1 : 8;
+    if (k === 'spine') { yield d.sec(1.6); d.speed = 3; yield d.sec(1.4); d.speed = 7; }
     if (k === 'slab') shots([[1.2, [8200, 3000, 7400], [-500, 0, 800]], [1.0, [-7400, 900, 7300], [-7900, 100, 3200]]]);
     yield d.until(idle);
   }
@@ -261,9 +281,10 @@ export function* foundFilm(d, app) {
   for (const k of keys) {
     const q = IBIZA[k], v0 = T.concVolume(), want = MM(q.x1 - q.x0) * MM(q.z1 - q.z0) * MM(q.h), rows = Math.max(1, Math.round((q.x1 - q.x0) / 1300));
     const path = (u) => { const i = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - i, x = q.x0 + 900 + (q.x1 - q.x0 - 1800) * (i + 0.5) / rows, z = q.z0 + 900 + (q.z1 - q.z0 - 1800) * (i % 2 ? 1 - f : f); return P(x, 0, z); };   // (0,9 m in from the boards: the heap under the stream runs out to them, not over)
-    if (k === 'spine') shots([[1.4, [8800, 1100, 7200], [6000, 200, 4500]], [1.5, [6500, 700, -7600], [5900, 150, -1000]]]);   // (the hose starts at the strip's +z end and goes toward the sea: its first load steeply from above, then low along, the front going away to the sea… seen from the sea's end coming at the camera)
-    if (k === 'slab') shots([[1.5, [-7800, 4200, 7200], [-200, 150, 900]], [1.2, [700, 900, 5200], [-600, 250, 1800]]]);
-    if (k === 'pad') shots([[1.0, [-11400, 1300, 1200], [-7900, 250, 3250]]]);
+    // (the hose by «нарастание»: close on the stream ×1, another side ×3, then fast — the camera after the spout)
+    if (k === 'spine') act([[2.2, [2000, 900, 1800], 1], [2.0, [-2200, 700, -2400], 3], [1.8, [2600, 1600, -3800], 6], [1.8, [-2800, 1100, 2600], 6]]);
+    if (k === 'slab') act([[1.8, [2400, 1200, 2200], 6], [1.8, [-3000, 1500, -2200], 6]]);
+    if (k === 'pad') act([[1.6, [-2600, 1100, -2000], 6]]);
         const rate = k === 'slab' ? 0.625 : 0.3125, whole = want * MODEL_SCALE ** 3 / rate;
     // (what lies inside the outline, not what left the hose: some of it goes over the boards — and the poker follows the hose,
     // as a crew's does, so the heap under the stream runs out along the form instead of over its boards)
@@ -271,7 +292,7 @@ export function* foundFilm(d, app) {
     const inside = () => { let v = 0; for (const i of cellsIn) v += T.conc[i]; return v * T.cell * T.cell; };
     const tp = yield* pour(path, () => inside() >= want * (k === 'pad' ? 0.93 : k === 'spine' ? 0.9 : 0.975),   /* (the strip: what its boards hold is ~0.92 of the outline's — more only goes over them) */ k === 'slab' ? whole / 2 : whole, whole * 1.3, { v: k === 'slab' ? 8 : 10, pump: rate, wrap: k === 'slab', poke: 5 });   // (the narrow ones at the game's own delivery: at twice that the heap under the stream stood 400 over a strip 1.5 m wide and went over its boards)   // (the narrow ones in one slow pass: the spout lags the hand by up to a metre when it is swept — on a strip 1.5 m wide it poured past the boards)
     { const inV = (m) => { let v = 0; for (let i = 0; i < T.conc.length; i++) { if (!(T.conc[i] > 0)) continue; const x = T.toWorldX(i % T.nx) / S, z = T.toWorldZ(Math.floor(i / T.nx)) / S; if (x >= q.x0 - m && x <= q.x1 + m && z >= q.z0 - m && z <= q.z1 + m) v += T.conc[i]; } return +(v * T.cell * T.cell * MODEL_SCALE ** 3).toFixed(1); }; say(k + ' inside ' + inV(0) + ' +200: ' + inV(200) + ' +1000: ' + inV(1000) + ' base ' + Math.round((T.nat[T.index(MM(mid(q)[0]), MM(mid(q)[1]))] + T.loose[T.index(MM(mid(q)[0]), MM(mid(q)[1]))] - g) / S)); }
-    say(k + ' tops after pour ' + JSON.stringify(topsOf(q)));
+    stopAct(); say(k + ' tops after pour ' + JSON.stringify(topsOf(q)));
     say(k + ' poured ' + ((T.concVolume() - v0) * MODEL_SCALE ** 3).toFixed(1) + ' of ' + (want * MODEL_SCALE ** 3).toFixed(1) + ' in ' + tp.toFixed(0));
   }
   // (the poker round all of it — the crew's round — and the rule over the slab)
@@ -280,16 +301,16 @@ export function* foundFilm(d, app) {
   { const vib = app.concreteTools.vibro; let vt = 0; const sp = []; for (const k of keys) { const q = IBIZA[k]; for (let x = q.x0 + 400; x < q.x1; x += 1100) for (let z = q.z0 + 400; z < q.z1; z += 1100) sp.push([x, z]); }
     shake = (n) => { for (let q = 0; q < n; q++) for (const [x, z] of sp) T.vibrate(MM(x), MM(z), MM(1300)); };   // (the crew's whole round with the poker goes on meanwhile: all of it kept shaking, so it runs level — the film's seconds are few)
     const dips = [[-1400, 2400], [-300, 1500], [400, 2300]];   // (in the frame: four dips the eye can follow — the director)
-    shots([[1.6, [700, 900, 3800], [-600, 250, 1800]]]);
-    vib.down(P(dips[0][0], 0, dips[0][1])); d.speed = 3;
+    act([[1.8, [1400, 800, 1600], 1], [1.6, [-1800, 600, -1500], 3]]);
+    vib.down(P(dips[0][0], 0, dips[0][1]));
     yield d.until(() => { vt += d.dt * d.speed; fresh(); shake(10); const i = Math.floor(vt / 0.9); if (i < dips.length) vib.move(P(dips[i][0], 0, dips[i][1])); return i >= dips.length; });
-    vib.up(); yield d.until(idle); }
+    vib.up(); stopAct(); yield d.until(idle); }
   app.setTool('screed'); hud(3, ['Hose', 'Vibrator', '*Rule'], 'screed');
-  { const rule = app.concreteTools.screed, q = IBIZA.slab; d.speed = 9;
-    shots([[1.3, [700, 1200, 5600], [-2000, 250, 1500]], [1.3, [4600, 1200, -600], [2000, 250, 1300]], [1.3, [-1400, 1200, 5400], [-4000, 250, 1300]]]);   // (beside the rule's pass, close: the bar going over the concrete seen)
+  { const rule = app.concreteTools.screed, q = IBIZA.slab;
+    act([[2.0, [1600, 800, 1500], 1], [1.8, [-2000, 700, -1600], 3], [1.6, [2600, 1400, -2400], 6], [1.6, [-2600, 1000, 1800], 6]]);   // (beside the rule's pass, close: the bar going over the concrete seen)
     for (let i = 0, x = -4000; x < q.x1; x += 2000, i++) { fresh(); const z0 = i % 2 ? q.z0 + 150 : q.z1 - 150, z1 = i % 2 ? q.z1 - 400 : q.z0 + 400; rule.down(P(x, 0, z0)); let u = 0;
       yield d.until(() => { shake(2); u = Math.min(1, u + d.dt * d.speed / 4); rule.move(P(x, 0, z0 + (z1 - z0) * u)); return u >= 1; }); rule.up(); yield d.until(idle); } }
-  d.speed = 1; G.set(null);
+  stopAct(); d.speed = 1; G.set(null);
   d.stageBill('CONCRETE');
   yield d.sec(0.6);
   say('tops ' + JSON.stringify(keys.map((k) => topsOf(IBIZA[k]))));
@@ -311,7 +332,7 @@ export function* foundFilm(d, app) {
   // the first of them close at their real pace, the rest between two shots)
   shots([[9, [9400, 1100, 4300], [6800, 150, 1500]]]);
   d.speed = 1;
-  { const f = strip('spine'); yield d.sec(3.2); d.jumpTo(f, 900); }
+  { const f = strip('spine'); yield d.sec(2.4); shots([[9, [3400, 900, 6800], [6000, 150, 3000]]]); d.speed = 3; yield d.sec(1.6); d.speed = 1; d.jumpTo(f, 900); }
   for (const k of ['slab', 'pad']) { const f = strip(k); d.jumpTo(f, 900); }
   shots([[1.2, [8900, 2300, 4200], [7200, 0, 1500]], [1.1, [-8400, 1400, 6800], [-4200, 200, 3800]]]);
   d.next();

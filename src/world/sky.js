@@ -199,7 +199,7 @@ export class Sky {
   }
   _rainUpdate(dt) {
     const app = this.app, cam = app.camera, r = this.rain, on = r > 0.01;
-    this.rainLines.visible = this.splash.visible = on;
+    this.rainLines.visible = on; this.splash.visible = false;   // (no rings on the ground: the owner — «remove these white circles»; dry sand only darkens)
     if (!on) return;
     const rig = app.rig, dist = rig?.dist ?? 0.5, size = Math.min(1.4, Math.max(0.18, dist * 1.1));
     const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();

@@ -1031,6 +1031,34 @@ export class MachineTool {
   // «Ход»: the left stick drives on the tracks (forward / back, turning on the spot), the right one
   // still the boom and the bucket. The teeth under the ground cut what is over them into the bucket
   // (up to its 0,4 m³); opened, the bucket lets it go — into the truck's body under it, else in a heap.
+  // the excavator driven as a driver digs (the films; one day a button): the bucket opened — its teeth down — the stick out,
+  // the boom lowered till the teeth are in (never pressed down on the bucket's back: the owner saw the heel hit the ground and
+  // the machine rise), the stick drawn in with the boom holding the teeth 150–350 mm deep, the bucket curled, lifted, swung
+  // round (`swing` rad: π — tipped behind it), opened, swung back. Returns the phase.
+  excDrive(dt, swing = Math.PI) {
+    const E = this.exc, t = this.app.terrain; if (!E) return null;
+    const A = (this._ad ||= { ph: 'reach', t: 0, sw: 0 }), L = E.lim || E.constructor.LIM, mm = (v) => v / 1000 / MODEL_SCALE;
+    const teeth = E.teethWorld(new THREE.Vector3()), depth = t.inside(teeth.x, teeth.z) ? (t.heightAt(teeth.x, teeth.z) - teeth.y) : -1;
+    const g = this.digG, cap = (1 / MODEL_SCALE) ** 3 * 0.4 / t.cellArea, full = g && g.load >= cap * 0.9;   // (not by holdShare: open, the bucket «holds» nothing yet)
+    let lx = 0, ly = 0, rx = 0, ry = 0;
+    const go = (ph) => { A.ph = ph; A.t = 0; };
+    A.t += dt;
+    switch (A.ph) {
+      case 'reach': ly = E.stick > L.stick[0] + 0.08 ? -1 : 0; rx = E.curl > (this.adCurl ?? 0.2) + 0.04 ? 1 : E.curl < (this.adCurl ?? 0.2) - 0.04 ? -1 : 0; ry = depth < -mm(600) ? 0.4 : 0; if ((!ly && !rx) || A.t > 2.2) go('lower'); break;
+      case 'lower': ry = depth > -mm(250) ? 0.3 : 1; ly = depth > -mm(250) ? 0.5 : 0;   // (slowly the last bit: the teeth set in, the heel never pressed)
+         if (depth > mm(120) || E.heave > 0 || E.boom <= L.boom[0] + 0.02 || A.t > 2.5) go('drag'); break;
+      case 'drag': ly = 0.45; rx = -0.25; ry = depth < mm(100) ? 0.4 : depth > mm(250) ? -0.5 : 0; if (E.heave > 0) ry = -1;   // (a 2 m stroke, 100–250 deep: ~1,5 s to fill)
+        if (full || E.stick >= L.stick[1] - 0.08 || A.t > 3) go('curl'); break;
+      case 'curl': rx = -1; ry = -0.3; if (E.curl >= L.curl[1] - 0.1 || A.t > 1.2) go('lift'); break;
+      case 'lift': ry = -1; if (E.boom >= L.boom[1] - 0.05 || A.t > 1.6) { A.sw = 0; go('swing'); } break;
+      case 'swing': lx = 1; A.sw += 0.7 * dt; if (A.sw >= swing) go('dump'); break;
+      case 'dump': rx = 1; ly = -0.4; if ((E.curl <= L.curl[0] + 0.25 && A.t > 0.6) || A.t > 2.5) { A.sw = 0; go('back'); } break;
+      case 'back': lx = -1; A.sw += 0.7 * dt; if (A.sw >= swing) go('reach'); break;
+    }
+    this._excStep(dt, lx, ly, rx, ry);
+    return A.ph;
+  }
+
   _excStep(dt, lx, ly, rx, ry) {
     const app = this.app, t = app.terrain, E = this.exc;
     const g = (this.digG ||= new Grader(app));

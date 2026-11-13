@@ -57,6 +57,7 @@ export function bedPit(app, o, thick = 200, mat = 'g20', done = null) {
   const ix0 = Math.max(0, Math.floor(t.toCellX(x0))), ix1 = Math.min(t.rx, Math.ceil(t.toCellX(x1))), iz0 = Math.max(0, Math.floor(t.toCellZ(z0))), iz1 = Math.min(t.rz, Math.ceil(t.toCellZ(z1)));
   const cells = []; for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (inPit(x, z) && !(t.conc[iz * t.nx + ix] > 1e-6)) cells.push([iz * t.nx + ix, x, z]); }
   if (!cells.length) return false;
+  { const m = MM(400); app.particles?.clearIn?.(x0 - m, z0 - m, x1 + m, z1 + m); }   // (the bottom and its edge cleaned before the bed)
   const base = cells.map((c) => t.nat[c[0]]).sort((a, b) => a - b)[cells.length >> 1], want = MM(thick), yTop = base + want;
   const long = x1 - x0 >= z1 - z0, A0 = long ? x0 : z0, A1 = long ? x1 : z1, C0 = long ? z0 : x0, C1 = long ? z1 : x1, W = (p, c) => (long ? [p, c] : [c, p]);
   const area = (x1 - x0) * (z1 - z0), vol = area * want, heaps = [], steps = [];
