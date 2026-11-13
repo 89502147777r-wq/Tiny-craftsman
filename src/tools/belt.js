@@ -309,9 +309,17 @@ export class BeltChannel {
   }
   has(t) { return !!t && t.id === this.b.id; }
   // is there room for what lands at k: in a wall's gap it runs along it a metre (pour) — room anywhere there; on a slab, at k
+  // a tongue of what came over at k: into the cells by their distance from k, each up to cap − ¼ of its distance, to 1,2 m
+  _tongue(k, ex) {
+    const [i0, j0] = this.P.cells[k], c = this.b.c / S, R = Math.round(1200 / c);
+    const near = [...this._near(k, R)].map((q) => { const [i, j] = this.P.cells[q]; return [q, Math.hypot(i - i0, j - j0) * c]; }).sort((a, b) => a[1] - b[1]);
+    for (const [q, dmm] of near) { if (ex <= 0) break; const lim = this.cap - 0.25 * dmm; if (this.h[q] < lim) { const g = Math.min(ex, lim - this.h[q]); this.h[q] += g; ex -= g; } }
+    return ex;
+  }
   room(k) {
     if (this.inner || this.h[k] < this.cap - 2) return this.h[k] < this.cap - 2;
-    for (const q of this._near(k, Math.max(3, Math.round(MM(1000) / this.b.c)))) if (this.h[q] < this.cap - 2) return true;
+    const [i0, j0] = this.P.cells[k], c = this.b.c / S;
+    for (const q of this._near(k, Math.round(1200 / c))) { const [i, j] = this.P.cells[q]; if (this.h[q] < this.cap - 0.25 * Math.hypot(i - i0, j - j0) * c - 2) return true; }
     return false;
   }
   get full() { return this.h.every((v) => v >= this.cap - 3); }
@@ -342,13 +350,9 @@ export class BeltChannel {
     if (!this.inner) {
       let ex = 0;
       for (const q of ks) if (this.h[q] > this.cap + this.over) { ex += this.h[q] - this.cap - this.over; this.h[q] = this.cap + this.over; }
-      // (what comes over runs along the gap first — to the lowest places within a metre, as it runs between the boards; only what has
-      // no room there goes over the boards)
-      if (ex > 0) {
-        const far = [...this._near(k, Math.max(3, Math.round(MM(1000) / this.b.c)))].filter((q) => this.h[q] < this.cap).sort((a, c) => this.h[a] - this.h[c]);
-        for (const q of far) { if (ex <= 0) break; const g = Math.min(ex, this.cap - this.h[q]); this.h[q] += g; ex -= g; }
-        this.spilt += ex;
-      }
+      // (what comes over runs along the gap as a tongue from the stream — the realist: higher by the stream, lower toward its tip,
+      // a slope of ~1:4, 0,6–1,2 m long, the near places filled first — and not at once: over ~0,6 s (step))
+      if (ex > 0) (this.pend ||= []).push({ k, ex });
     }
   }
   _flow(d, yieldMm, kk, only) {
@@ -368,6 +372,8 @@ export class BeltChannel {
   }
   step(dt) {
     let moved = 0;
+    // (the tongues run out over ~0,6 s; what finds no room in theirs goes over the boards)
+    if (this.pend?.length) { const f = Math.min(1, dt / 0.6); this.pend = this.pend.filter((p) => { const take = Math.max(p.ex * f, Math.min(p.ex, 1)); const left = this._tongue(p.k, take); this.spilt += left; p.ex -= take; moved += take - left; return p.ex > 1e-6; }); }
     const subs = Math.max(1, Math.ceil(dt * K / 0.2)), d = dt / subs;
     for (let s = 0; s < subs; s++) {
       moved += this._flow(d, YIELD, K);

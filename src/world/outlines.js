@@ -175,7 +175,7 @@ export class OutlineView {
     this.mask.minFilter = THREE.LinearFilter;
     this._maskDirty = true;
     this._seen = -1;
-    objects.on((id, rec) => { if (rec?.type === 'outline' || this.items.has(id)) { this._rebuild(id, rec); for (const it of this.items.values()) this._place(it); this._maskDirty = true; } });   // (all: a new marking moves the stakes of the others off it)
+    objects.on((id, rec) => { if (rec?.type === 'form' || rec?.type === 'formpile' || (!rec && !this.items.has(id))) { for (const it of this.items.values()) this._place(it); return; } if (rec?.type === 'outline' || this.items.has(id)) { this._rebuild(id, rec); for (const it of this.items.values()) this._place(it); this._maskDirty = true; } });   // (all: a new marking moves the stakes of the others off it)
   }
 
   outlines() { return this.objects.all('outline'); }
@@ -210,6 +210,10 @@ export class OutlineView {
 
   _place(it) {
     const t = this.terrain;
+    // (the owner: the marking goes once the formwork stands there — its strings come down; after the stripping the concrete is
+    // the line)
+    { const id = it.rec.id, xs = it.loop.map((p) => p[0]), zs = it.loop.map((p) => p[1]), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cz = (Math.min(...zs) + Math.max(...zs)) / 2;
+      it.group.visible = !this.objects.all('form').some((f) => f.outlineId === id) && !(t.inside(cx, cz) && t.conc[t.index(cx, cz)] > 1e-6); }
     // (each side's string between its own two stakes, BEYOND past both of its corners: the corners are the crossings)
     const top = (x, z, k) => { const y = (t.inside(x, z) ? t.heightAt(x, z) : TRAY.soil) - 0.002 * K; it.stakes[k].position.set(x, y, z); return new THREE.Vector3(x, y + 0.0085 * K, z); };
     const n = it.loop.length, E = it.rec.kind === 'rect' ? BEYOND : 0;   // (a trench's bends: the stakes at its turns, as before)

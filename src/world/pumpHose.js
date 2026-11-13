@@ -234,7 +234,7 @@ export class PumpHose {
     if (!land) land = pts.at(-1).clone();
     this.drops = drops; this.landing = land.clone();
     // (thinner below as it speeds up — as much concrete passes every height: 70 % of the hose's bore at the spout, ~58 % below)
-    const r0 = 0.7 * R * (0.92 + 0.08 * pu), r1 = r0 * 0.82;
+    const r0 = 0.8 * R * (0.94 + 0.06 * pu), r1 = r0 * 0.8;   // (80 % of the hose: between the owner's 70 and the realist's plug of 90–100; a pumped mix hardly thins)
     const P = [], I = [], segs = Math.max(2, Math.min(24, pts.length - 1)), rad = 12;
     const curve = new THREE.CatmullRomCurve3(pts.length > 2 ? pts : [pts[0], pts[0].clone().lerp(pts[1], 0.5), pts[1]]);
     // (rings along the rope by parallel transport: the frame turns with the rope, never flips — it was flipping where the
@@ -247,7 +247,7 @@ export class PumpHose {
       const b = new THREE.Vector3().crossVectors(tg, n).normalize();
       const r = r0 + (r1 - r0) * u;
       for (let k = 0; k <= rad; k++) {
-        const a = k / rad * Math.PI * 2, lump = 1 + 0.05 * Math.sin(a * 3 + u * 11 - time * 9) + 0.04 * Math.sin(u * 23 + time * 13);
+        const a = k / rad * Math.PI * 2, am = 0.05 + 0.07 * u, run = time * 9 * Math.sqrt(1 + 6 * u), lump = 1 + am * Math.sin(a * 3 + u * 11 - run) + am * 0.8 * Math.sin(u * 23 + a * 2 - run * 1.4);   // (lumps and folds, more of them below, running down faster as it falls)
         const ca = Math.cos(a) * r * lump, sa = Math.sin(a) * r * lump;
         P.push(c.x + n.x * ca + b.x * sa, c.y + n.y * ca + b.y * sa, c.z + n.z * ca + b.z * sa);
       }

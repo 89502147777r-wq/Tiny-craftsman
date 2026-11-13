@@ -1044,16 +1044,19 @@ export class MachineTool {
     const go = (ph) => { A.ph = ph; A.t = 0; };
     A.t += dt;
     switch (A.ph) {
-      case 'reach': ly = E.stick > L.stick[0] + 0.08 ? -1 : 0; rx = E.curl > (this.adCurl ?? 0.2) + 0.04 ? 1 : E.curl < (this.adCurl ?? 0.2) - 0.04 ? -1 : 0; ry = depth < -mm(600) ? 0.4 : 0; if ((!ly && !rx) || A.t > 2.2) go('lower'); break;
+      case 'reach': ly = E.stick > L.stick[0] + 0.08 ? -1 : 0; rx = E.curl > (this.adCurl ?? 0.2) + 0.04 ? 1 : E.curl < (this.adCurl ?? 0.2) - 0.04 ? -1 : 0; ry = depth > -mm(450) ? -1 : depth < -mm(900) ? 0.4 : 0; if ((!ly && !rx) || A.t > 2.6) go('lower'); break;   /* (the bucket kept clear of the ground while it reaches: near it, the stick going out was held by it) */
       case 'lower': ry = depth > -mm(250) ? 0.3 : 1; ly = depth > -mm(250) ? 0.5 : 0;   // (slowly the last bit: the teeth set in, the heel never pressed)
          if (depth > mm(120) || E.heave > 0 || E.boom <= L.boom[0] + 0.02 || A.t > 2.5) go('drag'); break;
       case 'drag': ly = 0.45; rx = -0.25; ry = depth < mm(100) ? 0.4 : depth > mm(250) ? -0.5 : 0; if (E.heave > 0) ry = -1;   // (a 2 m stroke, 100–250 deep: ~1,5 s to fill)
-        if (full || E.stick >= L.stick[1] - 0.08 || A.t > 3) go('curl'); break;
-      case 'curl': rx = -1; ry = -0.3; if (E.curl >= L.curl[1] - 0.1 || A.t > 1.2) go('lift'); break;
-      case 'lift': ry = -1; if (E.boom >= L.boom[1] - 0.05 || A.t > 1.6) { A.sw = 0; go('swing'); } break;
-      case 'swing': lx = 1; A.sw += 0.7 * dt; if (A.sw >= swing) go('dump'); break;
-      case 'dump': rx = 1; ly = -0.4; if ((E.curl <= L.curl[0] + 0.25 && A.t > 0.6) || A.t > 2.5) { A.sw = 0; go('back'); } break;
-      case 'back': lx = -1; A.sw += 0.7 * dt; if (A.sw >= swing) go('reach'); break;
+        // (the cut ends ~1 m before the tracks' front idler — under the machine the edge would fall in: the realist)
+        if (full || E.stick >= L.stick[1] - 0.08 || Math.hypot(teeth.x - E.x, teeth.z - E.z) < mm(1850 + 1000) || A.t > 3) go('curl'); break;
+      // (curled, lifted and swung together — a driver's one movement: the swing starts once the teeth are 0,3 m out of the ground,
+      // the boom up only as far as clears the edge and the heap, ~1 m)
+      case 'curl': rx = E.curl < L.curl[1] - 0.1 ? -1 : 0; ry = -1; ly = E.holdShare() < 0.97 && E.stick < L.stick[1] - 0.05 ? 1 : 0;   /* (the stick drawn in till the bucket holds it all: nothing spilt on the way) */ if (depth < -mm(300)) { A.sw = 0; go('swing'); } else if (A.t > 2) { A.sw = 0; go('swing'); } break;
+      case 'swing': lx = 1; rx = E.curl < L.curl[1] - 0.1 ? -1 : 0; ly = E.holdShare() < 0.97 && E.stick < L.stick[1] - 0.05 ? 1 : 0; ry = depth > -mm(1100) && E.boom < L.boom[1] - 0.05 ? -1 : 0; A.sw += 1.0 * dt; if (A.sw >= swing) go('dump'); break;
+      case 'dump': ly = E.stick > -0.1 ? -1 : 0; ry = depth > -mm(1500) && E.boom < L.boom[1] - 0.05 ? -1 : 0; rx = depth < -mm(900) && E.stick < 0.15 ? 1 : 0;   /* (the stick out and the bucket high first: opened close in, its teeth swung into the ground) */   /* (held over the heap it grows: the bucket tips right out) */ if (((E.curl <= L.curl[0] + 0.25 || (this.digG?.load ?? 0) < cap * 0.03) && A.t > 0.6) || A.t > 4) { A.sw = 0; go('back'); } break;
+      // (swung back with the boom coming down and the stick going out on the way)
+      case 'back': lx = -1; A.sw += 1.0 * dt; ry = depth < -mm(700) ? 0.5 : 0; ly = E.stick > L.stick[0] + 0.08 ? -1 : 0; rx = E.curl > (this.adCurl ?? 0.2) + 0.04 ? 1 : 0; if (A.sw >= swing) go('reach'); break;
     }
     this._excStep(dt, lx, ly, rx, ry);
     return A.ph;
@@ -1073,7 +1076,7 @@ export class MachineTool {
         if (this._tooSteep('excavator', E, keep)) { E.place(t, ...keep); this.v = 0; }
       } else this.v = 0;
     } else {
-      E.swingGoal -= lx * 0.7 * dt;
+      E.swingGoal -= lx * 1.0 * dt;   // (1 rad/s: a 13–20 t machine's slew — the realist)
       E.stickGoal += ly * 0.7 * dt;
     }
     E.boomGoal -= ry * 0.55 * dt;
