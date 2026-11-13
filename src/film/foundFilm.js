@@ -218,6 +218,8 @@ export function* foundFilm(d, app) {
   say('beds ' + ['spine', 'slab', 'pad'].map((k) => Math.round((T.heightAt(MM(mid(IBIZA[k])[0]), MM(mid(IBIZA[k])[1])) - g) / S)).join(' '));
 
   // ---- 5 · the strip, the slab, the pad: boards, cages, the concrete in one go ---------------------------
+  // (the owner: once in the film, a shower — about ten seconds: over the boards and the cages, before the concrete)
+  st.weather = 'rain'; const rainFrom = d.t;
   yield d.until(() => physicsReady());
   app.setTool('form'); app.formTool.setMode('outline');
   hud(1, ['*Boards 40 × 150', 'Stakes'], 'form');
@@ -246,6 +248,7 @@ export function* foundFilm(d, app) {
     yield d.until(idle);
   }
   d.speed = 1;
+  st.weather = 'clear'; say('rain for ' + (d.t - rainFrom).toFixed(1) + ' s');
   d.stageBill('REBAR');
   yield d.sec(0.6);
   say('cages ' + O.all('cage').length);
