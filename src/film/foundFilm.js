@@ -84,8 +84,10 @@ export function* foundFilm(d, app) {
   // (wide along the pit: the rest of it at once — the pit's own job)
   shots([[1.4, [6400, 1700, -1100], [-2500, -1300, -4600]], [1.3, ...ANCHOR]]);
   excOn = 8; d.speed = 6;
+  say('exc done');
   pw._dig(R(), null);
   yield d.until(idle);
+  say('pit done');
   d.speed = 1;
   excOff(15000, -9500, Math.PI);
   haul(was0, (x, z) => x > B.x0 - 900 && x < B.x1 + 900 && z > B.z0 - 900 && z < B.z1 + 900);
@@ -157,7 +159,7 @@ export function* foundFilm(d, app) {
     const round = (u) => { const dd = u * per; const [ss, tt] = dd < w ? [o + dd, o] : dd < w + h ? [r.L - o, o + dd - w] : dd < 2 * w + h ? [r.L - o - (dd - w - h), r.W - o] : [o, r.W - o - (dd - 2 * w - h)]; return at(ss, tt, yW); };
     // (as on a site: the hose over the gap between the boards, round and round — a layer each lap, not one wave the wall's height;
     // the first stretch at the corner at a hand's real pace)
-    let pt0 = 0; const t2 = yield* pour(round, () => !belts().wb || !!hose.ch?.full, 9, 160, { belt: () => belts().wb, pump: 2.2, v: 2, each: (pt) => { if (!pt0 && pt > 2.5) { pt0 = pt; d.speed = 7; } } });
+    let pt0 = 0; const t2 = yield* pour(round, () => !belts().wb || !!hose.ch?.full, 7, 160, { belt: () => belts().wb, pump: 5, v: 2, each: (pt) => { if (!pt0 && pt > 2.4) { pt0 = pt; d.speed = 9; } } });
     say('wall fill ' + belts().wb?.fill + ' in ' + t2.toFixed(0)); }
   d.stageBill('POOL SHELL');
   yield d.sec(0.6);
