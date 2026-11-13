@@ -60,11 +60,13 @@ export function* foundFilm(d, app) {
     const f = () => {
       if (id !== shotN) return true;
       const p = toolPt() || (fallback && P(...fallback)); if (!p) return false;
+      // (the machine, going along its pit, come up to the camera: the next angle)
+      if (eye && mt.exc && Math.hypot(eye.x - mt.exc.x, eye.z - mt.exc.z) < MM(5500)) t1 = d.t;
       if (d.t >= t1 || !eye) {
         k++; const L = list.length, i = k < L ? k : L - 2 + ((k - L) % 2), [sec, [dx, dy, dz], v] = list[Math.max(0, i)];
         eye = new V(p.x + MM(dx), g + MM(dy), p.z + MM(dz)); aim = p.clone(); sp = v;
         // (never in a thing's face: drawn in toward the tool till 2,5 m clear of the site's things and 4 m of the machine's body)
-        const clear = () => [...O.all('siteprop').map((r) => [r.x, r.z, MM(2500)]), ...(mt.exc ? [[mt.exc.x, mt.exc.z, MM(4000)]] : [])].every(([x, z, r]) => Math.hypot(eye.x - x, eye.z - z) > r);
+        const clear = () => [...O.all('siteprop').map((r) => [r.x, r.z, MM(2500)]), ...(mt.exc ? [[mt.exc.x, mt.exc.z, MM(6000)]] : [])].every(([x, z, r]) => Math.hypot(eye.x - x, eye.z - z) > r);
         for (let n = 0; n < 12 && !clear(); n++) { eye.x = p.x + (eye.x - p.x) * 0.85; eye.z = p.z + (eye.z - p.z) * 0.85; }
         d.cut(look(eye, aim), { drift: 0.004, push: 0.006, hand: 0.2 }); t1 = d.t + sec;
       } else { aim.lerp(p, 1 - Math.exp(-d.dt * 2.5)); const vw = look(eye, aim); if (d.shot) d.shot.goal = d.shot.from = d._full(vw, d.shot.goal); }
