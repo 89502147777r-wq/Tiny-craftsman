@@ -195,7 +195,7 @@ export function* foundFilm(d, app) {
   hud(2, ['*Cage Ø16 / 200', 'Bar', 'Mesh'], 'rebar');
   shots([[1.4, [3600, 1300, 7600], [6000, 0, 4300]], [1.0, [6800, 3200, -600], [6000, 0, -1500]]]);
   for (const k of keys) {
-    st.slab = IBIZA[k].h - (k === 'spine' ? 70 : 0); st.rebarD = k === 'spine' ? 16 : 12;   // (the strip's cage 70 lower: its concrete stands a little under the boards' tops — no bar near its top)
+    st.slab = IBIZA[k].h; st.rebarD = k === 'spine' ? 16 : 12; st.cover = 110;   // (the boards stand inside the outline and the strip's concrete a little under their tops: with the cover of 50 the cage's chairs stood in its side faces — the owner: «торчит арматура»; 110 keeps every bar well inside)
     app.rebarTool.cageIn(O.get(pits[k].id));
     yield d.until(() => !!app.physJob || O.all('cage').some((c) => c.outlineId === pits[k].id));
     d.speed = k === 'spine' ? 2.5 : 16;
