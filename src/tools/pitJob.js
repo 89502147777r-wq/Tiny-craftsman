@@ -69,7 +69,6 @@ export function bedPit(app, o, thick = 200, mat = 'g20', done = null) {
     steps.push([tH, (u) => {
       if (!heaps[h]) heaps[h] = t.heapStart(hx, hz, vol / nH, tanA);
       t.heapTo(heaps[h], vol / nH * u, M);
-      if (Math.random() < 0.7) app.particles?.emit(new THREE.Vector3(hx, yTop + MM(900), hz), new THREE.Vector3((Math.random() - 0.5) * 0.02, -0.15, (Math.random() - 0.5) * 0.02), 0, MM(20 + Math.random() * 25), 0, 0, 3);
       if (u < 1 && Math.random() < 0.25) app.sfx?.pour?.(0.4, mat === 'sand' ? 'sand_pour' : 'gravel_pour');
     }]);
   }

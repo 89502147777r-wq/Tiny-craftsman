@@ -403,7 +403,10 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-money { position: absolute; right: 5%; top: calc(3.2% + 14px); text-align: right; padding: 0.3em 0.7em 0.35em; border-radius: 12px; background: rgba(12,12,12,0.6); backdrop-filter: blur(6px); transform-origin: 100% 0; box-shadow: 0 4px 16px rgba(0,0,0,0.35); }
 #film .f-money[hidden] { display: none; }
 #film.hud .f-money { top: 12.6%; }
-#film.hud .f-clock { top: 18.5%; }   /* (under the top group, not over the budget) */   /* (under the chips' rows, level with the logo) */
+#film.hud .f-clock { top: 18.5%; }
+#film .f-clock.analog { padding: 0; background: none; box-shadow: none; top: 17%; }
+#film .f-clock.analog canvas { display: block; width: clamp(110px, 34vw, 260px); height: auto; margin: 0 auto; opacity: 0.92; filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.45)); }
+#film .f-clock.analog small { margin-top: 0.3em; font-size: clamp(11px, 3.6vw, 26px); text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7); }   /* (under the top group, not over the budget) */   /* (under the chips' rows, level with the logo) */
 #film .f-money small { display: block; font-size: clamp(8px, 2.3vw, 14px); font-weight: 800; letter-spacing: 0.16em; color: #9fe39a; }
 #film .f-money b { display: block; font-size: clamp(15px, 5vw, 34px); font-weight: 900; color: #9fe39a; font-variant-numeric: tabular-nums; }
 #film .f-money.hit b { color: #ff7a5a; }

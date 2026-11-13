@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { TRAY, K, KT } from '../config.js';
+import { TRAY, K, KT, MODEL_SCALE } from '../config.js';
+// (the owner: on a site the corner is where two strings cross — the stakes stand on the lines' extensions, a metre or two
+// beyond the corners, so digging does not take them and the string down with it)
+const BEYOND = 1.5 / MODEL_SCALE;
 
 // ---- geometry ------------------------------------------------------------------------
 // Outline records (type 'outline'):
@@ -183,7 +186,7 @@ export class OutlineView {
     if (!rec || rec.type !== 'outline') return;
     const g = new THREE.Group();
     const loop = polygon(rec, this.offset);
-    const stakes = loop.map(() => {
+    const stakes = loop.flatMap(() => [0, 1]).map(() => {
       const s = new THREE.Group();
       const body = new THREE.Mesh(this.stakeGeo, this.wood);
       const cap = new THREE.Mesh(this.capGeo, this.paint);
@@ -207,13 +210,12 @@ export class OutlineView {
 
   _place(it) {
     const t = this.terrain;
-    const tops = it.loop.map(([x, z], i) => {
-      const y = (t.inside(x, z) ? t.heightAt(x, z) : TRAY.soil) - 0.002 * K;
-      it.stakes[i].position.set(x, y, z);
-      return new THREE.Vector3(x, y + 0.0085 * K, z);
-    });
-    for (let i = 0; i < tops.length; i++) {
-      const a = tops[i], b = tops[(i + 1) % tops.length], l = it.lines[i];
+    // (each side's string between its own two stakes, BEYOND past both of its corners: the corners are the crossings)
+    const top = (x, z, k) => { const y = (t.inside(x, z) ? t.heightAt(x, z) : TRAY.soil) - 0.002 * K; it.stakes[k].position.set(x, y, z); return new THREE.Vector3(x, y + 0.0085 * K, z); };
+    const n = it.loop.length, E = it.rec.kind === 'rect' ? BEYOND : 0;   // (a trench's bends: the stakes at its turns, as before)
+    for (let i = 0; i < n; i++) {
+      const [ax, az] = it.loop[i], [bx, bz] = it.loop[(i + 1) % n], L = Math.hypot(bx - ax, bz - az) || 1, ux = (bx - ax) / L, uz = (bz - az) / L;
+      const a = top(ax - ux * E, az - uz * E, 2 * i), b = top(bx + ux * E, bz + uz * E, 2 * i + 1), l = it.lines[i];
       const d = b.clone().sub(a);
       l.position.copy(a).add(b).multiplyScalar(0.5);
       l.scale.set(1, Math.max(1e-4, d.length()), 1);

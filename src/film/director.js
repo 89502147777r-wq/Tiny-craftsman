@@ -527,12 +527,30 @@ export class Director {
   // time going by on the clock (the concrete sets, the paint dries): `days` days and nights in `dur` s of film — the sun
   // round, the hours spinning, the day counted; each(u, dt) — what goes on meanwhile
   *lapse(days, dur, each) {
-    const el = document.createElement('div'); el.className = 'f-clock'; el.innerHTML = '<b>10:00</b><small>DAY 1</small>'; this.el.appendChild(el);
+    // (the owner: a clock with hands shows the day going round better than digits; the logo on its face, a little see-through)
+    const el = document.createElement('div'); el.className = 'f-clock analog';
+    const cv = document.createElement('canvas'); cv.width = cv.height = 360; el.appendChild(cv);
+    const day = document.createElement('small'); el.appendChild(day); this.el.appendChild(el);
+    const logo = new Image(); logo.src = 'assets/brand/logo-line-light.png';
+    const g = cv.getContext('2d'), R = 170, C = 180;
+    const draw = (h) => {
+      g.clearRect(0, 0, 360, 360);
+      g.save(); g.translate(C, C);
+      g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fillStyle = 'rgba(14,14,14,0.62)'; g.fill();
+      g.lineWidth = 7; g.strokeStyle = 'rgba(244,241,234,0.92)'; g.stroke();
+      for (let i = 0; i < 60; i++) { const a = i / 60 * Math.PI * 2, big = i % 5 === 0, r0 = big ? R - 30 : R - 16; g.beginPath(); g.moveTo(Math.sin(a) * r0, -Math.cos(a) * r0); g.lineTo(Math.sin(a) * (R - 8), -Math.cos(a) * (R - 8)); g.lineWidth = big ? 7 : 2.5; g.strokeStyle = i === 0 ? '#e0392b' : 'rgba(244,241,234,0.9)'; g.stroke(); }
+      if (logo.complete && logo.naturalWidth) { const w = 190, hh = w * logo.naturalHeight / logo.naturalWidth; g.globalAlpha = 0.9; g.drawImage(logo, -w / 2, -R * 0.45 - hh / 2, w, hh); g.globalAlpha = 1; }
+      const hand = (a, len, wd, col) => { g.save(); g.rotate(a); g.beginPath(); g.moveTo(0, 18); g.lineTo(0, -len); g.lineWidth = wd; g.lineCap = 'round'; g.strokeStyle = col; g.stroke(); g.restore(); };
+      hand(((h % 12) / 12) * Math.PI * 2, R * 0.5, 13, '#f4f1ea');
+      hand(((h % 1)) * Math.PI * 2, R * 0.78, 7, '#f4f1ea');
+      g.beginPath(); g.arc(0, 0, 12, 0, Math.PI * 2); g.fillStyle = '#e0392b'; g.fill();
+      g.restore();
+    };
     const sky = this.app.sky, h0 = sky.hour ?? 10, t0 = this.t;
     yield this.until(() => {
-      const u = clamp01((this.t - t0) / dur), h = h0 + u * days * 24, hh = Math.floor(h % 24), mm = Math.floor((h % 1) * 6) * 10;
+      const u = clamp01((this.t - t0) / dur), h = h0 + u * days * 24;
       sky.setHour(h); each?.(u);
-      el.firstChild.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`; el.lastChild.textContent = `DAY ${1 + Math.floor((h - 0.001) / 24)}`;
+      draw(h); day.textContent = `DAY ${1 + Math.floor((h - 0.001) / 24)}`;
       el.style.opacity = Math.min(1, u * 8, (1 - u) * 8 + 0.001).toFixed(3);
       return u >= 1;
     });

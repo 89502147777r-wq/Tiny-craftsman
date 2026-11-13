@@ -180,8 +180,8 @@ export function paintDom(ctx, el, o, k, op = 1, s0 = 1, depth = 0, flat = false)
   const r = el.getBoundingClientRect();
   const s = el.offsetWidth > 0 ? r.width / el.offsetWidth : s0;   // (its scale: a transform's)
   if (cs.visibility !== 'hidden') {
-    if (el.tagName === 'IMG') {
-      if (el.complete && el.naturalWidth && r.width > 0) {
+    if (el.tagName === 'IMG' || el.tagName === 'CANVAS') {
+      if ((el.tagName === 'CANVAS' || (el.complete && el.naturalWidth)) && r.width > 0) {
         const sh = (cs.filter.match(/drop-shadow\((.+)\)/) || [])[1];
         ctx.save(); ctx.globalAlpha = op;
         if (sh) { const d = shadows(sh)[0]; if (d) { ctx.shadowColor = d.c; ctx.shadowBlur = d.b * k; ctx.shadowOffsetX = d.x * k; ctx.shadowOffsetY = d.y * k; } }

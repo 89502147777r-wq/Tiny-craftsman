@@ -300,7 +300,10 @@ export class BeltChannel {
     this.cap = b.H / S;   // mm
     // (a pool's bottom slab: a heap under the hose in the middle of it does not fall over the
     // boards — it runs out; only at the boards does what is over them go over)
-    this.inner = b.kind === 'pool';
+    this.inner = b.kind === 'pool' && b.part !== 'wall';   // (a pool's walls are a narrow gap like any wall: the owner saw a grey prism stand from the forms up to the hose)
+    // (what may stand over the boards: a slab's rule pushes a heap on along them — 40; a pool's wall is a gap 250 wide: what comes over
+    // its boards runs over them at once (the owner: «why do these 40 mm not run out?»))
+    this.over = b.part === 'wall' ? 0 : 40;
     if (this.inner) this.edge = this.P.nb.map((n) => n.some((q) => q < 0));
     this.spilt = 0;
   }
@@ -328,6 +331,19 @@ export class BeltChannel {
     // (it lands across the whole width of the beam at once: a splat ~550 mm round; on a slab ~600)
     const ks = [...this._near(k, Math.max(2, Math.round(MM(250) / this.b.c)))], w = 1 / ks.length;
     for (const q of ks) this.h[q] += l * w * per;
+    // (in a wall's narrow gap the concrete can not stand over the boards: what comes over them runs off at once — the owner saw a
+    // grey «wall» with flat sides rise from the forms to the hose, the heap drawn as a prism of cells)
+    if (!this.inner) {
+      let ex = 0;
+      for (const q of ks) if (this.h[q] > this.cap + this.over) { ex += this.h[q] - this.cap - this.over; this.h[q] = this.cap + this.over; }
+      // (what comes over runs along the gap first — to the lowest places within a metre, as it runs between the boards; only what has
+      // no room there goes over the boards)
+      if (ex > 0) {
+        const far = [...this._near(k, Math.max(3, Math.round(MM(1000) / this.b.c)))].filter((q) => this.h[q] < this.cap).sort((a, c) => this.h[a] - this.h[c]);
+        for (const q of far) { if (ex <= 0) break; const g = Math.min(ex, this.cap - this.h[q]); this.h[q] += g; ex -= g; }
+        this.spilt += ex;
+      }
+    }
   }
   _flow(d, yieldMm, kk, only) {
     const h = this.h, nb = this.P.nb;
@@ -349,7 +365,7 @@ export class BeltChannel {
     const subs = Math.max(1, Math.ceil(dt * K / 0.2)), d = dt / subs;
     for (let s = 0; s < subs; s++) {
       moved += this._flow(d, YIELD, K);
-      for (let k = 0; k < this.h.length; k++) if (this.h[k] > this.cap + 40 && (!this.inner || this.edge[k])) { const o = (this.h[k] - this.cap - 40) * Math.min(1, 8 * d); this.h[k] -= o; this.spilt += o; }   // (a heap up to 40 mm over the boards stands; more falls over)
+      for (let k = 0; k < this.h.length; k++) if (this.h[k] > this.cap + this.over && (!this.inner || this.edge[k])) { const o = (this.h[k] - this.cap - this.over) * Math.min(1, 8 * d); this.h[k] -= o; this.spilt += o; }   // (a heap up to 40 mm over the boards stands; more falls over)
     }
     return moved;
   }
