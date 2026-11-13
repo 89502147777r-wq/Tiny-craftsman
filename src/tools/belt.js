@@ -301,6 +301,9 @@ export class BeltChannel {
     // (a pool's bottom slab: a heap under the hose in the middle of it does not fall over the
     // boards — it runs out; only at the boards does what is over them go over)
     this.inner = b.kind === 'pool' && b.part !== 'wall';   // (a pool's walls are a narrow gap like any wall: the owner saw a grey prism stand from the forms up to the hose)
+    // (what may stand over the boards: a slab's rule pushes a heap on along them — 40; a pool's wall is a gap 250 wide: what comes over
+    // its boards runs over them at once (the owner: «why do these 40 mm not run out?»))
+    this.over = b.part === 'wall' ? 0 : 40;
     if (this.inner) this.edge = this.P.nb.map((n) => n.some((q) => q < 0));
     this.spilt = 0;
   }
@@ -330,7 +333,7 @@ export class BeltChannel {
     for (const q of ks) this.h[q] += l * w * per;
     // (in a wall's narrow gap the concrete can not stand over the boards: what comes over them runs off at once — the owner saw a
     // grey «wall» with flat sides rise from the forms to the hose, the heap drawn as a prism of cells)
-    if (!this.inner) for (const q of ks) if (this.h[q] > this.cap + 40) { this.spilt += this.h[q] - this.cap - 40; this.h[q] = this.cap + 40; }
+    if (!this.inner) for (const q of ks) if (this.h[q] > this.cap + this.over) { this.spilt += this.h[q] - this.cap - this.over; this.h[q] = this.cap + this.over; }
   }
   _flow(d, yieldMm, kk, only) {
     const h = this.h, nb = this.P.nb;
@@ -352,7 +355,7 @@ export class BeltChannel {
     const subs = Math.max(1, Math.ceil(dt * K / 0.2)), d = dt / subs;
     for (let s = 0; s < subs; s++) {
       moved += this._flow(d, YIELD, K);
-      for (let k = 0; k < this.h.length; k++) if (this.h[k] > this.cap + 40 && (!this.inner || this.edge[k])) { const o = (this.h[k] - this.cap - 40) * Math.min(1, 8 * d); this.h[k] -= o; this.spilt += o; }   // (a heap up to 40 mm over the boards stands; more falls over)
+      for (let k = 0; k < this.h.length; k++) if (this.h[k] > this.cap + this.over && (!this.inner || this.edge[k])) { const o = (this.h[k] - this.cap - this.over) * Math.min(1, 8 * d); this.h[k] -= o; this.spilt += o; }   // (a heap up to 40 mm over the boards stands; more falls over)
     }
     return moved;
   }
