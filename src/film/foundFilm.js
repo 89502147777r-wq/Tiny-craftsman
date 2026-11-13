@@ -259,10 +259,12 @@ export function* foundFilm(d, app) {
   const strip = (k) => { const [x, z] = mid(IBIZA[k]), p = P(x, 0, z); F.strip(p, scr(p)); return () => !O.all('form').some((r) => r.outlineId === pits[k].id) && idle(); };
   d.next();
   shots([[1.3, [8600, 1100, 3000], [6700, 150, 600]], [1.2, [8200, 2600, -7400], [6200, 100, -1500]], [1.1, [7300, 1300, 7400], [6000, 100, 6050]]]);
-  // (the braces knocked off, the stakes out, the first boards toppling — at a pace the eye follows; the carrying to the stack
-  // is the crew's next hour: between two shots)
-  d.speed = 2.5;
-  { const f = strip('spine'); yield d.sec(2.6); d.speed = 1; d.jumpTo(f, 900); }
+  // (the stripping itself is not shown piece by piece — the owner: «доски вообще непонятно как себя ведут»: the game's
+  // physics throws and carries them at a pace no eye follows when sped up; the boards are seen on, the crowbar is heard, and
+  // the next shot is the bare concrete with the stack squared up beside it)
+  yield d.sec(0.9);
+  app.sfx?.seq?.(['crowbar', 'plank', 'plank', 'crowbar', 'plank']);
+  { const f = strip('spine'); d.jumpTo(f, 900); }
   for (const k of ['slab', 'pad']) { const f = strip(k); d.jumpTo(f, 900); }
   shots([[1.2, [8900, 2300, 4200], [7200, 0, 1500]], [1.1, [-5900, 3800, 5000], [-4700, 200, 3800]]]);
   yield d.sec(2.3);
