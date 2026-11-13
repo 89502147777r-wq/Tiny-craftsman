@@ -235,7 +235,7 @@ export class PumpHose {
     this.drops = drops; this.landing = land.clone();
     // (thinner below as it speeds up — as much concrete passes every height: 70 % of the hose's bore at the spout, ~58 % below)
     const r0 = 0.8 * R * (0.94 + 0.06 * pu), r1 = r0 * 0.8;   // (80 % of the hose: between the owner's 70 and the realist's plug of 90–100; a pumped mix hardly thins)
-    const P = [], I = [], segs = Math.max(2, Math.min(24, pts.length - 1)), rad = 12;
+    const P = [], I = [], segs = Math.max(2, Math.min(24, pts.length - 1)), rad = 10;
     const curve = new THREE.CatmullRomCurve3(pts.length > 2 ? pts : [pts[0], pts[0].clone().lerp(pts[1], 0.5), pts[1]]);
     // (rings along the rope by parallel transport: the frame turns with the rope, never flips — it was flipping where the
     // rope passed «mostly along x», and the rings twisted the tube into a flat ribbon)

@@ -118,7 +118,8 @@ export class StripJob {
       if (!pc.from) { ep.kinematic(b); pc.from = new THREE.Vector3(); pc.fromQ = new THREE.Quaternion(); ep.pose(b, pc.from, pc.fromQ); pc.safe = Math.max(pc.from.y, pc.target.y) + M(0.45); }
       // 1 · out: a stake straight up its own length's buried part (turned only once its point is out); a board eased 40 mm off
       // the concrete (one against the pit's wall straight up); a brace knocked loose
-      const up = pc.k === 'stake' ? pc.s.y * 0.75 : 0, e = pc.ease ? M(0.04) : 0;
+      if (pc.up == null) { const t = this.app.terrain; pc.up = pc.k === 'stake' ? Math.max(pc.s.y * 0.75, (t.inside(pc.p.x, pc.p.z) ? t.heightAt(pc.p.x, pc.p.z) : pc.p.y) - pc.p.y + M(0.05)) : 0; }   // (till its point is 50 mm out of the ground there)
+      const up = pc.up, e = pc.ease ? M(0.04) : 0;
       const u1 = sm(a / pc.tPull), ox = pc.from.x + pc.n[0] * e * u1, oz = pc.from.z + pc.n[1] * e * u1, oy = pc.from.y + up * u1;
       if (a < pc.tPull) { ep.moveTo(b, _p.set(ox, oy, oz), pc.fromQ); continue; }
       // 2 · lifted clear, turned to how it will lie; 3 · walked over; 4 · lowered into its place
