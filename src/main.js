@@ -509,7 +509,7 @@ function setTool(t) {
   // stall of its own at the start)
   if (t === 'disaster') import('./world/physics.js').then((m) => m.loadPhysics()).catch(() => {});
   app.tool = t;
-  app.outlineView.setHandles(t === 'mark', app.markTool.selected);
+  app.outlineView.setHandles(t === 'mark' && !app.film, app.markTool.selected);   // (a film shows no handles: the owner circled the white ring at a corner)
   if (t !== 'shovel' && app.shovelTool.state === 'idle') {
     // lean the shovel against the tray corner when it is not in use (no tray round a 360°
     // place: put away)

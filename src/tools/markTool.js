@@ -27,7 +27,7 @@ export class MarkTool {
 
   select(id) {
     this.selected = id;
-    this.app.outlineView.setHandles(this.app.tool === 'mark', id);
+    this.app.outlineView.setHandles(this.app.tool === 'mark' && !this.app.film, id);
     this.app.ui.refresh();
   }
 

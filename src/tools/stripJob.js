@@ -47,15 +47,16 @@ export class StripJob {
     this.pieces = pieces;
     // order of work: braces off, stakes out, boards pushed over
     let at = 0.1;
-    for (const pc of pieces.filter((p) => p.k === 'brace')) { pc.release = at; at += 0.06; }
+    // (the owner: nothing thrown down to lie anywhere — every piece, taken off, goes straight to the stack in the worker's hands)
+    for (const pc of pieces.filter((p) => p.k === 'brace')) { pc.release = Infinity; pc.carry = at; at += 0.06; }
     at += 0.15;
     // (a stake pulled out is not thrown down: the owner — «they fall anywhere»; the worker takes it straight to its bundle by the stack)
     for (const pc of pieces.filter((p) => p.k === 'stake')) { pc.pull = at; pc.release = Infinity; pc.carry = at + 0.3; at += 0.07; }
     at += 0.35;
-    for (const pc of pieces.filter((p) => p.k === 'board')) { pc.release = at; at += 0.12; }
-    this.carryAt = at + 1.3;
+    for (const pc of pieces.filter((p) => p.k === 'board')) { pc.release = Infinity; pc.carry = at; pc.ease = true; at += 0.12; }
+    this.carryAt = at;
     // then to the stack: long boards first, braces, stakes on top
-    const order = [...pieces.filter((p) => p.k === 'board').sort((a, b) => b.s.x - a.s.x), ...pieces.filter((p) => p.k === 'brace')], stakes = pieces.filter((p) => p.k === 'stake');
+    const order = pieces.filter((p) => p.k === 'board'), braces = pieces.filter((p) => p.k === 'brace'), stakes = pieces.filter((p) => p.k === 'stake');
     this.ground = this._groundUnder(spot, maxLen);
     const cy = Math.cos(spot.yaw), sy = Math.sin(spot.yaw);
     const u = new THREE.Vector3(cy, 0, -sy), v = new THREE.Vector3(sy, 0, cy);
@@ -63,7 +64,6 @@ export class StripJob {
     const T = MAT.board.t, H = MAT.board.h;
     let level = this.ground, k = 0, sk = 0;
     order.forEach((pc, i) => {
-      pc.carry = this.carryAt + i * 0.22;
       const j = (Math.random() - 0.5);
       let off, along = (Math.random() - 0.5) * M(0.05);
       if (pc.k === 'stake') { off = 0; along = (sk - (pieces.filter((p) => p.k === 'stake').length - 1) / 2) * MAT.stake.s * 1.25; sk++; }
@@ -73,13 +73,19 @@ export class StripJob {
       pc.targetQ = flat.clone().multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), j * 0.06));
     });
     // the stakes' bundle: on the ground beside the boards, side by side, in layers of 8
+    // the braces' bundle: on the ground on the stack's other side, flat, side by side
+    braces.forEach((pc, i) => {
+      const row = i % 6, lay = Math.floor(i / 6);
+      pc.target = new THREE.Vector3(spot.x, this.ground + pc.s.z * (0.6 + lay * 1.05) + M(0.12), spot.z).addScaledVector(v, -(2.6 * H + row * pc.s.y * 1.3));   // (flat turns its y across, its z up)
+      pc.targetQ = flat.clone(); pc.bundle = true;
+    });
     stakes.forEach((pc, i) => {
       const row = i % 8, lay = Math.floor(i / 8);
       pc.target = new THREE.Vector3(spot.x, this.ground + MAT.stake.s * (0.6 + lay * 1.02) + M(0.12), spot.z).addScaledVector(v, 2.4 * H + pc.s.y / 2).addScaledVector(u, (row - 3.5) * MAT.stake.s * 1.25);   // (laid along v: flat turns their length so)
       pc.targetQ = flat.clone();
       pc.bundle = true;
     });
-    this.end = Math.max(order.length ? order.at(-1).carry + CARRY : this.carryAt, ...stakes.map((pc) => pc.carry + CARRY));
+    this.end = Math.max(this.carryAt, ...pieces.map((pc) => pc.carry + CARRY));
     this.t = 0;
     this.done = false;
     app.sfx?.play?.('crowbar');
@@ -155,8 +161,8 @@ export class StripJob {
         }
         const f = Math.min(1, (time - pc.carry) / CARRY);
         const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
-        if (f < 0.3) _p.set(pc.from.x, pc.from.y + (pc.safe - pc.from.y) * sm(f / 0.3), pc.from.z);
-        else if (f < 0.75) { const g = sm((f - 0.3) / 0.45); _p.set(pc.from.x + (pc.drop.x - pc.from.x) * g, pc.safe, pc.from.z + (pc.drop.z - pc.from.z) * g); }
+        if (f < 0.3) { const e = pc.ease ? M(0.15) * sm(f / 0.15) * (pc.inside ? -1 : 1) : 0; _p.set(pc.from.x + pc.n[0] * e, pc.from.y + (pc.safe - pc.from.y) * sm(f / 0.3), pc.from.z + pc.n[1] * e); }   // (a board eased off the face first, then lifted)
+        else if (f < 0.75) { const g = sm((f - 0.3) / 0.45), e = pc.ease ? M(0.15) * (pc.inside ? -1 : 1) : 0, fx = pc.from.x + pc.n[0] * e, fz = pc.from.z + pc.n[1] * e; _p.set(fx + (pc.drop.x - fx) * g, pc.safe, fz + (pc.drop.z - fz) * g); }
         else {
           // lowering: to just above the stack as it is now (others landed meanwhile)
           if (!pc.lowering && !pc.bundle) { pc.lowering = true; pc.drop.y = Math.max(pc.drop.y, this._pileTop() + (pc.k === 'stake' ? MAT.stake.s : MAT.board.t) + M(0.04)); pc.safe = Math.max(pc.safe, pc.drop.y + M(0.05)); }
