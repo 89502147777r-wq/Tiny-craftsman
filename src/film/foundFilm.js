@@ -78,10 +78,15 @@ export function* foundFilm(d, app) {
   // by no ray of the screen, a phone's frame is not the test's; the game's clock of setting held — a real pour is one go)
   const pour = function* (path, full, TP, max, o = {}) {
     app.setTool('hose'); hud(3, ['*Hose', 'Vibrator', 'Rule'], 'hose');
-    const pump0 = st.pump, ev = (q) => (o.belt ? { target: o.belt().id, hit: q } : undefined);
+    const pump0 = st.pump, ev = (q) => (o.belt && o.belt() ? { target: o.belt().id, hit: q } : undefined);
+    // (the pump starts when the spout has come over the place: it travels there from where it hung — pouring on the way, it
+    // left a cubic metre across the site, outside the boards)
+    st.pump = 1e-5;
+    { const p0 = path(0); hose.down(p0, ev(p0)); let w = 0; d.speed = 4;
+      yield d.until(() => { w += d.dt * d.speed; hose.move(p0, ev(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
     st.pump = o.pump ?? 2.5;
-    { const p0 = path(0); hose.down(p0, ev(p0)); } let pt = 0; d.speed = o.v ?? 6;
-    yield d.until(() => { pt += d.dt * d.speed; fresh(); o.each?.(pt); const q = path(o.wrap === false ? Math.min(1, pt / TP) : (pt / TP) % 1); hose.move(q, ev(q)); return full() || pt > max; });
+    let pt = 0; d.speed = o.v ?? 6;
+    yield d.until(() => { pt += d.dt * d.speed; fresh(); o.each?.(pt); const q = path(o.wrap === false ? Math.min(1, pt / TP) : (pt / TP) % 1); hose.move(q, ev(q)); for (let n = 0; n < (o.poke || 0); n++) T.vibrate(q.x, q.z, MM(1700)); return full() || pt > max; });
     hose.up(); d.speed = 4;
     yield d.until(idle);
     d.speed = 1; G.set(null); st.pump = pump0;
@@ -98,7 +103,7 @@ export function* foundFilm(d, app) {
   say('floor belt ' + JSON.stringify({ fb: !!belts().fb, cage: R().cage1 }));
   shots([[1.5, [3700, -1250, -5300], [-2500, -1550, -4200]], [1.0, [-800, 2300, -3500], [-1000, -1550, -4400]], [1.4, ...ANCHOR]]);
   { const r = R(), yF = floorTopY(r);
-    const t1 = yield* pour((u) => at(r.L * (0.04 + 0.92 * u), r.W * (0.5 + 0.46 * Math.sin(u * Math.PI * 12)), yF), () => { const c = hose.ch; if (!c?.h) return false; let a = 0; for (let i = 0; i < c.h.length; i++) a += c.h[i]; return c.full || a / c.h.length >= (c.cap || 1e9) * 0.985; }, 14, 60, { belt: () => belts().fb, pump: 6 });   // (the record's `fill` is written when the hose is let go: the channel says when it is full)
+    const t1 = yield* pour((u) => at(r.L * (0.04 + 0.92 * u), r.W * (0.5 + 0.46 * Math.sin(u * Math.PI * 12)), yF), () => { const c = hose.ch; if (!c?.h) return false; let a = 0; for (let i = 0; i < c.h.length; i++) a += c.h[i]; const cap = c.cap || 1e9; a = 0; for (let i = 0; i < c.h.length; i++) a += Math.min(cap, c.h[i]); return c.full || a / c.h.length >= cap * 0.975; }   /* (what is heaped over the boards' tops does not count: the record's `fill` clamps it too) */, 14, 60, { belt: () => belts().fb, pump: 6 });   // (the record's `fill` is written when the hose is let go: the channel says when it is full)
     say('floor fill ' + belts().fb?.fill + ' in ' + t1.toFixed(0)); }
   // (two days: the floor hard enough for the walls' forms)
   d.hud(null);
@@ -190,7 +195,7 @@ export function* foundFilm(d, app) {
   hud(2, ['*Cage Ø16 / 200', 'Bar', 'Mesh'], 'rebar');
   shots([[1.4, [3600, 1300, 7600], [6000, 0, 4300]], [1.0, [6800, 3200, -600], [6000, 0, -1500]]]);
   for (const k of keys) {
-    st.slab = IBIZA[k].h; st.rebarD = k === 'spine' ? 16 : 12;
+    st.slab = IBIZA[k].h - (k === 'spine' ? 70 : 0); st.rebarD = k === 'spine' ? 16 : 12;   // (the strip's cage 70 lower: its concrete stands a little under the boards' tops — no bar near its top)
     app.rebarTool.cageIn(O.get(pits[k].id));
     yield d.until(() => !!app.physJob || O.all('cage').some((c) => c.outlineId === pits[k].id));
     d.speed = k === 'spine' ? 2.5 : 16;
@@ -205,11 +210,18 @@ export function* foundFilm(d, app) {
   // (the concrete: the strip along, the slab row by row, the pad — one go)
   for (const k of keys) {
     const q = IBIZA[k], v0 = T.concVolume(), want = MM(q.x1 - q.x0) * MM(q.z1 - q.z0) * MM(q.h), rows = Math.max(1, Math.round((q.x1 - q.x0) / 1300));
-    const path = (u) => { const i = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - i, x = q.x0 + (q.x1 - q.x0) * (i + 0.5) / rows, z = q.z0 + (q.z1 - q.z0) * (0.1 + 0.8 * (i % 2 ? 1 - f : f)); return P(x, 0, z); };
+    const path = (u) => { const i = Math.min(rows - 1, Math.floor(u * rows)), f = u * rows - i, x = q.x0 + (q.x1 - q.x0) * (i + 0.5) / rows, z = q.z0 + (q.z1 - q.z0) * (0.12 + 0.76 * (i % 2 ? 1 - f : f)); return P(x, 0, z); };
     if (k === 'spine') shots([[1.0, [6900, 2800, 5300], [6000, 200, 4500]], [1.5, [6500, 700, -7600], [5900, 150, -1000]]]);   // (the hose starts at the strip's +z end and goes toward the sea: its first load steeply from above, then low along, the front going away to the sea… seen from the sea's end coming at the camera)
     if (k === 'slab') shots([[1.5, [-7800, 4200, 7200], [-200, 150, 900]], [1.2, [700, 900, 5200], [-600, 250, 1800]]]);
     if (k === 'pad') shots([[1.0, [-8500, 3200, 2400], [-7900, 250, 3250]]]);
-    const tp = yield* pour(path, () => T.concVolume() - v0 >= want * (k === 'pad' ? 0.9 : 0.965), want * MODEL_SCALE ** 3 / (k === 'slab' ? 2.5 : 1.25), want * MODEL_SCALE ** 3 / (k === 'slab' ? 2.5 : 1.25) * 1.3, { wrap: false, v: 5, pump: k === 'slab' ? 2.5 : 1.25 });   // (the narrow ones at half the delivery: at the slab's it heaped and went over their boards)   // (short of brim-full: the poker and the rule bring it to the boards' tops, none over them)
+        const rate = k === 'slab' ? 1.25 : 0.3125, whole = want * MODEL_SCALE ** 3 / rate;
+    // (what lies inside the outline, not what left the hose: some of it goes over the boards — and the poker follows the hose,
+    // as a crew's does, so the heap under the stream runs out along the form instead of over its boards)
+    const cellsIn = []; for (let i = 0; i < T.conc.length; i++) { const x = T.toWorldX(i % T.nx) / S, z = T.toWorldZ(Math.floor(i / T.nx)) / S; if (x >= q.x0 && x <= q.x1 && z >= q.z0 && z <= q.z1) cellsIn.push(i); }
+    const inside = () => { let v = 0; for (const i of cellsIn) v += T.conc[i]; return v * T.cell * T.cell; };
+    const tp = yield* pour(path, () => inside() >= want * (k === 'pad' ? 0.93 : k === 'spine' ? 0.9 : 0.975),   /* (the strip: what its boards hold is ~0.92 of the outline's — more only goes over them) */ k === 'slab' ? whole / 2 : whole, whole * 1.3, { v: k === 'slab' ? 8 : 10, pump: rate, wrap: k === 'slab', poke: 5 });   // (the narrow ones at the game's own delivery: at twice that the heap under the stream stood 400 over a strip 1.5 m wide and went over its boards)   // (the narrow ones in one slow pass: the spout lags the hand by up to a metre when it is swept — on a strip 1.5 m wide it poured past the boards)
+    { const inV = (m) => { let v = 0; for (let i = 0; i < T.conc.length; i++) { if (!(T.conc[i] > 0)) continue; const x = T.toWorldX(i % T.nx) / S, z = T.toWorldZ(Math.floor(i / T.nx)) / S; if (x >= q.x0 - m && x <= q.x1 + m && z >= q.z0 - m && z <= q.z1 + m) v += T.conc[i]; } return +(v * T.cell * T.cell * MODEL_SCALE ** 3).toFixed(1); }; say(k + ' inside ' + inV(0) + ' +200: ' + inV(200) + ' +1000: ' + inV(1000) + ' base ' + Math.round((T.nat[T.index(MM(mid(q)[0]), MM(mid(q)[1]))] + T.loose[T.index(MM(mid(q)[0]), MM(mid(q)[1]))] - g) / S)); }
+    say(k + ' tops after pour ' + JSON.stringify(topsOf(q)));
     say(k + ' poured ' + ((T.concVolume() - v0) * MODEL_SCALE ** 3).toFixed(1) + ' of ' + (want * MODEL_SCALE ** 3).toFixed(1) + ' in ' + tp.toFixed(0));
   }
   // (the poker round all of it — the crew's round — and the rule over the slab)
@@ -232,6 +244,10 @@ export function* foundFilm(d, app) {
   yield d.sec(0.6);
   say('tops ' + JSON.stringify(keys.map((k) => topsOf(IBIZA[k]))));
 
+  // (what went over the boards shovelled away while it is soft — the crew's five minutes, between two shots)
+  { const keep = (x, z) => keys.some((k) => { const q = IBIZA[k]; return x >= q.x0 - 60 && x <= q.x1 + 60 && z >= q.z0 - 60 && z <= q.z1 + 60; }) || (x > B.x0 - 1200 && x < B.x1 + 1200 && z > B.z0 - 1200 && z < B.z1 + 1200);
+    let n = 0; for (let i = 0; i < T.conc.length; i++) if (T.conc[i] > 0) { const x = T.toWorldX(i % T.nx) / S, z = T.toWorldZ(Math.floor(i / T.nx)) / S; if (!keep(x, z)) { T.conc[i] = 0; n++; } }
+    if (n) { T._concTouch(0, 0, T.rx, T.rz); T._touch(0, 0, T.rx, T.rz); T.updateMesh?.(); } say('spill cells cleared ' + n); }
   // ---- 6 · a week; the boards off; the gap round the pool filled back ----------------------------------
   d.hud(null);
   shots([[9, [-9000, 6000, 11000], [500, 0, -800]]]);

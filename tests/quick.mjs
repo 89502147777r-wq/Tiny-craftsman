@@ -1304,10 +1304,10 @@ console.log('—', sec());
     for (let i = 0; i < 6000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
     return { done: f.done, t: f.t, found: f.found, notes: f.notes, marks: f.marks, bills: (f.stageBillsLog || []).map((q) => q.usd), spent: 150000 - tc.budget.money, units: tc.objects.all('unit').length };
   });
-  check('film (found): pits, beds, the pool\'s shell stripped and backfilled, the strip / slab / pad cast to +250 (±35), no boards left, no masonry yet',
-    o.done && o.found && o.found.tops.every((v) => Math.abs(v - 250) <= 35) && o.found.forms === 0 && o.found.pool.fs && o.found.pool.ws && o.found.pool.filled && o.units === 0, JSON.stringify({ done: o.done, found: o.found, notes: (o.notes || []).slice(-6) }));
-  check('film (found): six stage bills = spent, the hook marked (the loop), no longer than 55 s',
-    o.bills.length === 6 && o.bills.every((v) => v > 0) && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 5 && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.t < 55, JSON.stringify({ bills: o.bills, spent: o.spent, t: o.t, marks: o.marks }));
+  check('film (found): pits, beds, the pool\'s shell stripped and backfilled, the strip / slab / pad cast to their boards' tops, no boards left, no masonry yet',
+    o.done && o.found && o.found.tops.every((v, i) => v <= 262 && v >= (i ? 225 : 190) /* (the narrow strip's boards hold it ~45 lower: its cage is set lower for that) */) && o.found.forms === 0 && o.found.pool.fs && o.found.pool.ws && o.found.pool.filled && o.units === 0, JSON.stringify({ done: o.done, found: o.found, notes: (o.notes || []).slice(-6) }));
+  check('film (found): six stage bills = spent, the hook marked (the loop), no longer than 66 s',
+    o.bills.length === 6 && o.bills.every((v) => v > 0) && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 5 && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.t < 66, JSON.stringify({ bills: o.bills, spent: o.spent, t: o.t, marks: o.marks }));
   check('film (found): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
