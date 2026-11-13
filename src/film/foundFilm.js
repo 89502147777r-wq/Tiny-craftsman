@@ -233,6 +233,7 @@ export function* foundFilm(d, app) {
   excOff(15000, -9500, Math.PI);
   haul(was1, (x, z) => keys0.some((k) => { const q = IBIZA[k]; return x >= q.x0 - 300 && x <= q.x1 + 300 && z >= q.z0 - 300 && z <= q.z1 + 300; }));
   app.budget._pay([{ usd: 650 }], P(0, 0, 0));   // (the shallow pits: ~28 m³ taken away)
+  st.weather = 'clear'; say('rain for ' + (d.t - rainFrom).toFixed(1) + ' s');   // (once, ~10 s: over the trenches being dug — the owner)
   say('dug ' + ['spine', 'slab', 'pad'].map((k) => Math.round((T.heightAt(MM((IBIZA[k].x0 + IBIZA[k].x1) / 2), MM((IBIZA[k].z0 + IBIZA[k].z1) / 2)) - g) / S)).join(' '));
 
   // (the beds: the stone tipped and spread, the plate over it — the camera after the plate; the heaps' tipping seen from the trench's end)
@@ -262,7 +263,6 @@ export function* foundFilm(d, app) {
   d.speed = 7;
   for (const k of ['slab', 'pad']) { F._fitRuns(runsOf[k], false, save(pits[k].id, runsOf[k])); yield d.until(idle); }
   d.speed = 1;
-  st.weather = 'clear'; say('rain for ' + (d.t - rainFrom).toFixed(1) + ' s');
   d.stageBill('BOARDS & STAKES');
   yield d.sec(0.6);
   say('forms ' + O.all('form').length);
