@@ -308,7 +308,7 @@ export function* foundFilm(d, app) {
   app.setTool('screed'); hud(3, ['Hose', 'Vibrator', '*Rule'], 'screed');
   { const rule = app.concreteTools.screed, q = IBIZA.slab;
     act([[2.0, [1600, 800, 1500], 1], [1.8, [-2000, 700, -1600], 3], [1.6, [2600, 1400, -2400], 6], [1.6, [-2600, 1000, 1800], 6]]);   // (beside the rule's pass, close: the bar going over the concrete seen)
-    for (let i = 0, x = -4000; x < q.x1; x += 2000, i++) { fresh(); const z0 = i % 2 ? q.z0 + 150 : q.z1 - 150, z1 = i % 2 ? q.z1 - 400 : q.z0 + 400; rule.down(P(x, 0, z0)); let u = 0;
+    for (let i = 0, x = -3400; x < q.x1; x += 3200, i++) { fresh(); const z0 = i % 2 ? q.z0 + 150 : q.z1 - 150, z1 = i % 2 ? q.z1 - 400 : q.z0 + 400; rule.down(P(x, 0, z0)); let u = 0;
       yield d.until(() => { shake(2); u = Math.min(1, u + d.dt * d.speed / 4); rule.move(P(x, 0, z0 + (z1 - z0) * u)); return u >= 1; }); rule.up(); yield d.until(idle); } }
   stopAct(); d.speed = 1; G.set(null);
   d.stageBill('CONCRETE');
