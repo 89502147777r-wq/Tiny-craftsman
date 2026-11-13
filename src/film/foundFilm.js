@@ -53,7 +53,6 @@ export function* foundFilm(d, app) {
     if (excOn != null && mt.exc) { const ph = mt._ad?.ph; if (!toolPt.e || ['reach', 'lower', 'drag', 'curl'].includes(ph)) toolPt.e = mt.exc.teethWorld(new V()); return toolPt.e.clone(); }
     if (G.show === 'hose' && G.pump?.ready) return G.pump.spout().clone().add(new V(0, -MM(400), 0));
     if (G.show) return G.pos.clone();
-    if (app.rake?.root.visible) return app.rake.pos.clone();
     return null;
   };
   const act = (list, fallback = null) => {
@@ -64,6 +63,9 @@ export function* foundFilm(d, app) {
       if (d.t >= t1 || !eye) {
         k++; const L = list.length, i = k < L ? k : L - 2 + ((k - L) % 2), [sec, [dx, dy, dz], v] = list[Math.max(0, i)];
         eye = new V(p.x + MM(dx), g + MM(dy), p.z + MM(dz)); aim = p.clone(); sp = v;
+        // (never in a thing's face: drawn in toward the tool till 2,5 m clear of the site's things and 4 m of the machine's body)
+        const clear = () => [...O.all('siteprop').map((r) => [r.x, r.z, MM(2500)]), ...(mt.exc ? [[mt.exc.x, mt.exc.z, MM(4000)]] : [])].every(([x, z, r]) => Math.hypot(eye.x - x, eye.z - z) > r);
+        for (let n = 0; n < 12 && !clear(); n++) { eye.x = p.x + (eye.x - p.x) * 0.85; eye.z = p.z + (eye.z - p.z) * 0.85; }
         d.cut(look(eye, aim), { drift: 0.004, push: 0.006, hand: 0.2 }); t1 = d.t + sec;
       } else { aim.lerp(p, 1 - Math.exp(-d.dt * 2.5)); const vw = look(eye, aim); if (d.shot) d.shot.goal = d.shot.from = d._full(vw, d.shot.goal); }
       d.speed = sp; if (excOn != null) excOn = sp;
@@ -220,6 +222,7 @@ export function* foundFilm(d, app) {
   // (the slab's and the pad's pits: the machine moved round to them, digging along their edge as at the trench)
   for (const [k, z, x0, x1] of [['slab', 7300, 4000, -4000], ['pad', 7800, -7900, -7900]]) {
     mt.exc?.place(T, MM(x0), MM(z), Math.PI / 2); mt._ad = null;
+    act([[2.0, [2400, 1300, -3200], 6], [2.0, [-2800, 1500, -2600], 6]]);   // (from the pit's far side: the machine faces the camera across it)
     digPit(app, O.get(pits[k].id));
     { const t0 = d.t; d.each(() => { if (!idle()) { mt.exc?.place(T, MM(x0 + (x1 - x0) * Math.min(1, (d.t - t0) / 1.6)), MM(z), Math.PI / 2); return false; } return true; }); }
     yield d.until(idle);
