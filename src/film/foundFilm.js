@@ -74,11 +74,11 @@ export function* foundFilm(d, app) {
   yield* excAt(-1000, -1250, Math.PI / 2);
   const was0 = spoil0();
   // (close, low beside the machine, the sea behind: its first bucket at its real pace — in, curled, up, swung, tipped in sight)
-  shots([[9, [-5600, 1200, -400], [-1300, 700, -2700]]]);
+  shots([[9, [-3900, 1500, 1500], [-1100, 100, -3900]]]);   // (from behind its left: the boom and the bucket going into the pit, the sea beyond — not its tracks)
   excOn = 1.6;
   yield d.sec(4.6);
   // (a little further, from its other side: the next bucket faster)
-  shots([[9, [3800, 1500, 1900], [-1000, 300, -2800]]]);
+  shots([[9, [4800, 1300, -3700], [-1500, -300, -3800]]]);   // (from the side along the pit: the bucket coming up full)
   excOn = 4;
   yield d.sec(2.2);
   // (wide along the pit: the rest of it at once — the pit's own job)
@@ -190,7 +190,7 @@ export function* foundFilm(d, app) {
   shots([[9, [10200, 1200, 5200], [6300, 500, 4600]]]);
   excOn = 2.5;
   yield d.sec(3.0);
-  shots([[1.4, [6900, 1900, 9800], [6000, -300, 3500]], [1.3, [9500, 3800, 9500], [-500, 0, 500]]]);
+  shots([[1.4, [12500, 1600, 1500], [6000, -300, 3200]], [1.3, [9500, 3800, 9500], [-500, 0, 500]]]);   // (not from behind the machine: the camera was in its cab)
   excOn = 8; d.speed = 5;
   digPit(app, O.get(pits.spine.id));
   yield d.until(idle);
@@ -283,7 +283,7 @@ export function* foundFilm(d, app) {
     vib.up(); yield d.until(idle); }
   app.setTool('screed'); hud(3, ['Hose', 'Vibrator', '*Rule'], 'screed');
   { const rule = app.concreteTools.screed, q = IBIZA.slab; d.speed = 9;
-    shots([[1.3, [-2000, 1000, 6600], [-2000, 250, 1000]], [1.5, [2000, 950, 6300], [2600, 250, 500]]]);
+    shots([[1.3, [700, 1200, 5600], [-2000, 250, 1500]], [1.3, [4600, 1200, -600], [2000, 250, 1300]], [1.3, [-1400, 1200, 5400], [-4000, 250, 1300]]]);   // (beside the rule's pass, close: the bar going over the concrete seen)
     for (let i = 0, x = -4000; x < q.x1; x += 2000, i++) { fresh(); const z0 = i % 2 ? q.z0 + 150 : q.z1 - 150, z1 = i % 2 ? q.z1 - 400 : q.z0 + 400; rule.down(P(x, 0, z0)); let u = 0;
       yield d.until(() => { shake(2); u = Math.min(1, u + d.dt * d.speed / 4); rule.move(P(x, 0, z0 + (z1 - z0) * u)); return u >= 1; }); rule.up(); yield d.until(idle); } }
   d.speed = 1; G.set(null);
