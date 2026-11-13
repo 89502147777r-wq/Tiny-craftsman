@@ -415,6 +415,8 @@ async function startFilm(name) {
   app.settings.backdrop = place;
   try { await app.backdrop.set(place); } catch (e) { console.warn(e); }
   app.sfx.unlock?.();
+  // (what a film needs fetched before its first frame — a machine's model: loading it while the film runs is a still frame)
+  if (script.prepare) { try { await script.prepare(app); } catch (e) { console.warn(e); } }
   app.film = new Director(app, script, app.filmOffline);
 }
 app.resize = () => resize();

@@ -64,9 +64,6 @@ export function* foundFilm(d, app) {
   // (the first piece of a job at its real pace, close; then faster: when `on()` comes, `slow` s of film at `v0`, then `v1`)
   const firstSlow = (on, view, slow, v0, v1) => { let t0 = null; d.each(() => { if (t0 == null) { if (!on()) return false; t0 = d.t; d.speed = v0; if (view) shots(view); } if (d.t - t0 >= slow) { d.speed = v1; return true; } return false; }); };
 
-  // (the excavator's model fetched at once: loading it at its turn cost the film four seconds of a still frame)
-  O.add({ type: 'vehicle', kind: 'excavator', x: MM(-1000), z: MM(-1250), yaw: Math.PI / 2, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
-  mt.ensureExc();   // (not waited for here: the pool is set out meanwhile)
   // ---- 1 · the pool's pit: the deep first -------------------------------------------------------------
   const B = IBIZA.pool, scr = (p) => { const q = app.wallTool._screen(p); return { clientX: q.x, clientY: q.y }; };
   Object.assign(st, { wallKind: 'pool', poolLayer: 'pit' }); app.setTool('wall'); app.wallTool.setMode('lay');
@@ -237,6 +234,7 @@ export function* foundFilm(d, app) {
   d.speed = 14;
   for (const k of ['slab', 'pad']) { F._fitRuns(runsOf[k], false, save(pits[k].id, runsOf[k])); yield d.until(idle); }
   d.speed = 1;
+  st.weather = 'clear'; say('rain for ' + (d.t - rainFrom).toFixed(1) + ' s');
   d.stageBill('BOARDS & STAKES');
   yield d.sec(0.6);
   say('forms ' + O.all('form').length);
@@ -253,7 +251,6 @@ export function* foundFilm(d, app) {
     yield d.until(idle);
   }
   d.speed = 1;
-  st.weather = 'clear'; say('rain for ' + (d.t - rainFrom).toFixed(1) + ' s');
   d.stageBill('REBAR');
   yield d.sec(0.6);
   say('cages ' + O.all('cage').length);
@@ -330,6 +327,11 @@ export function* foundFilm(d, app) {
   d.mark('hookEnd');
   yield d.sec(0.1);
 }
-foundFilm.seconds = 34;
+// (the excavator's model fetched before the film's first frame — loaded at its turn it was a still frame of seconds)
+foundFilm.prepare = async (app) => {
+  if (!app.machineTool.recOf('excavator')) app.objects.add({ type: 'vehicle', kind: 'excavator', x: MM(-1000), z: MM(-1250), yaw: Math.PI / 2, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
+  await app.machineTool.ensureExc();
+};
+foundFilm.seconds = 70;
 foundFilm.place = 'beach';
 foundFilm.sounds = ['excavator', 'hydraulic', 'crowbar', 'shovel_dig', 'soil_dump', 'gravel_pour', 'compactor', 'hammer_nail', 'plank', 'stake', 'rebar', 'wire', 'pump', 'concrete', 'concrete_splat', 'vibrator', 'screed', 'till', 'tap', 'waves', 'wind'];
