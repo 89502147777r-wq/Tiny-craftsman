@@ -127,8 +127,9 @@ export function* stairFilm(d, app) {
   const dpc = W.dpc, lay = (a, b, w) => { st.dpcW = w; const y = T.heightAt(MM(a[0]), MM(a[1])); dpc.down({ x: MM(a[0]), y, z: MM(a[1]) }); dpc.move({ x: MM(b[0]), y, z: MM(b[1]) }); dpc.up(); };
   lay([X0, ZB + 150], [X0, ZS - 150], 1300);
   tool = () => { const Tt = app.dpcView?.work?.T; return Tt?.visible !== false && Tt ? Tt.position.clone() : null; };
-  act([[2.0, [1400, 600, 1600], 1], [1.8, [-1700, 1000, -2200], 3], [1.4, [3200, 2200, 3000], 6]]);
-  yield d.sec(5.2);
+  // (the content analyst: the brightest detail first — the flame close at its pace, then the whole strip at once)
+  act([[1.2, [900, 350, 1100], 1], [1.0, [3200, 2200, 3000], 8]]);
+  yield d.sec(2.2);
   still();
   d.jumpTo(() => !dpc.jobs.length, 2000);
   // the pavilion's strips: one after another, seen from far and high — the whole footprint (the owner: from above, far, for the scale)
@@ -136,11 +137,11 @@ export function* stairFilm(d, app) {
   // (the ends 60 in from the slab's edge: a line ending on its very edge is «off the concrete»)
   const z0 = SL.z0 + 150, z1 = SL.z1 - 150, xa = SL.x0 + 150, xb = SL.x1 - 150, e0 = SL.x0 + 60, e1 = SL.x1 - 60;
   for (const [a, b] of [[[e0, z0], [e1, z0]], [[e0, z1], [e1, z1]], [[xa, SL.z0 + 60], [xa, SL.z1 - 60]], [[xb, SL.z0 + 60], [xb, SL.z1 - 60]], [[IN, SL.z0 + 380], [IN, SL.z1 - 300]]]) {
-    lay(a, b, 400); d.jumpTo(() => !dpc.jobs.length, 600); app.sfx?.play?.('fabric', { vol: 0.5 }); yield d.sec(0.32);
+    lay(a, b, 400); d.jumpTo(() => !dpc.jobs.length, 600); app.sfx?.play?.('fabric', { vol: 0.5 }); yield d.sec(0.2);
   }
   app.budget._pay?.([{ usd: 6 * 0.4 * 47 + 1.3 * 11.8 * 9 }], P(0, 0, 0));
   d.stageBill('DPC MEMBRANE');
-  yield d.sec(1.0);
+  yield d.sec(0.3);
 
   // ---- 2 · the masonry: the first cinder block close (the game's job), the course along the spine; the first aerated block, its
   // course; a brick pier; then all of it rising together — to one level ----
@@ -153,11 +154,11 @@ export function* stairFilm(d, app) {
   let laidN = 0;
   const job = (rec, fast) => { if (app.physJob) return false; if (W.layUnit(rec, fast)) { laidN++; tool = () => new V().fromArray(rec.p); return true; } return false; };
   tool = () => new V().fromArray(first.p);
-  act([[3.0, [1200, 500, 1400], 1]]);
+  act([[2.4, [1200, 500, 1400], 1]]);
   yield d.until(() => job(first, false));
   yield d.until(idle);
   // (the course on along the outer face toward the sea: ×3)
-  const row = spineLow[0].filter((r) => Math.abs(r.p[0] - first.p[0]) < MM(5) && r !== first).sort((p, q) => q.p[2] - p.p[2]).slice(0, 8);
+  const row = spineLow[0].filter((r) => Math.abs(r.p[0] - first.p[0]) < MM(5) && r !== first).sort((p, q) => q.p[2] - p.p[2]).slice(0, 5);
   act([[2.2, [2400, 900, -600], 3]]);
   for (const r of row) { yield d.until(() => job(r, true)); }
   yield d.until(idle);
@@ -168,27 +169,27 @@ export function* stairFilm(d, app) {
   tool = () => new V().fromArray(fb[0].p);
   act([[1.6, [-1300, 700, 1200], 1], [1.4, [600, 1000, -2600], 3]]);
   yield d.until(() => job(fb[0], false)); yield d.until(idle);
-  for (const r of fb.slice(1, 6)) { yield d.until(() => job(r, true)); }
+  for (const r of fb.slice(1, 4)) { yield d.until(() => job(r, true)); }
   yield d.until(idle);
   // a brick pier
   hud(['DPC', 'Cinder', 'Gas block', 'Brick'], 3, ['*By hand', 'Course'], 'wall');
   const pier = pav.filter((r) => r.kind === 'brick' && r.p[0] < MM(-1000));   // (the pier the inner wall stands against)
   tool = () => new V().fromArray(pier[0].p);
   act([[1.4, [-900, 900, -1100], 1], [1.2, [1500, 1300, -1800], 4]]);
-  for (const r of pier.slice(0, 6)) { yield d.until(() => job(r, r !== pier[0])); }
+  for (const r of pier.slice(0, 4)) { yield d.until(() => job(r, r !== pier[0])); }
   yield d.until(idle);
   still();
   // all of it rising together, by the share of the height (the director: else the bricks — 41 courses — look faster than the blocks)
-  const done = new Set([first, ...row, ...fb.slice(0, 6), ...pier.slice(0, 6)]);
+  const done = new Set([first, ...row, ...fb.slice(0, 4), ...pier.slice(0, 4)]);
   const all = [...spineLow.flat(), ...pav].filter((r) => !done.has(r));
   const lvl = (r) => (r.p[1] - (r.kind === 'cinder' ? sTop : pTop)) / MM(3170);
   all.sort((p, q) => lvl(p) - lvl(q));
-  shots([[3.2, [-9000, 3000, -8500], [1500, 1200, 1500]], [1.6, [16000, 15000, 12000], [1000, 1500, 0]]]);
-  { let i = 0; const n = all.length, dur = 4.6, t0 = d.t;
+  shots([[2.0, [-9000, 3000, -8500], [1500, 1200, 1500]], [1.6, [16000, 15000, 12000], [1000, 1500, 0]]]);
+  { let i = 0; const n = all.length, dur = 3.4, t0 = d.t;
     yield d.until(() => { const want = Math.min(n, Math.ceil(n * Math.min(1, (d.t - t0) / dur))); if (want > i) { for (; i < want; i++) O.add(all[i]); tick(1); } return i >= n; }); }
   app.budget._pay?.([{ usd: (O.all('unit').filter((u) => u.kind === 'cinder').length * 2.2 + pav.length * 3.1) }], P(0, 0, 0));
   d.stageBill('BLOCKS & BRICKS');
-  yield d.sec(1.2);
+  yield d.sec(0.4);
   say('masonry ' + O.all('unit').length);
 
   // ---- 3 · the ring beam over both, at one level (a joint between them — they stand on two foundations): its boards, its cage,
@@ -203,12 +204,12 @@ export function* stairFilm(d, app) {
     shots([[1.4, [7600, 3900, -2400], [6000, 3300, -5000]], [1.2, [-12000, 14000, 12000], [1000, 3000, 0]]]);
     app.sfx?.seq?.(['plank', 'plank', 'hammer_nail', 'plank', 'hammer_nail']);
     app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; });
-    yield d.sec(2.6);
+    yield d.sec(1.6);
     hud(['Formwork', 'Rebar', 'Concrete'], 1, null, 'wall');
     shots([[1.2, [7200, 4200, -4000], [6000, 3300, -5200]]]);
     app.sfx?.seq?.(['rebar', 'wire', 'wire']);
     app.journal.act('belt-cage', {}, app.clock, () => O.add(beltCage(O.get(beltId))));
-    yield d.sec(1.2);
+    yield d.sec(0.9);
     // the concrete: the hose along the spine's beam, then round the pavilion's (the poker after it)
     hud(['Formwork', 'Rebar', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
     const hose = app.concreteTools.hose, yb = topS + MM(200);
@@ -220,9 +221,9 @@ export function* stairFilm(d, app) {
     st.pump = 1e-5; { const p0 = path(0); hose.down(p0, ev(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, ev(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
     st.pump = 3;
     tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-    act([[1.6, [1800, 600, 1600], 1], [1.4, [-2000, 1100, -1800], 3], [1.2, [3000, 2000, -3500], 6]]);
+    act([[1.1, [1800, 600, 1600], 1], [1.0, [3000, 2000, -3500], 8]]);
     let pt = 0; const TP = 60, t0 = d.t;
-    yield d.until(() => { pt += d.dt * d.speed; const q = path(Math.min(1, pt / TP)); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1500)); return !!hose.ch?.full || d.t - t0 > 4.6; });
+    yield d.until(() => { pt += d.dt * d.speed; const q = path(Math.min(1, pt / TP)); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1500)); return !!hose.ch?.full || d.t - t0 > 2.1; });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
     // (the rest of the pour between two shots — the crew's hour: the beam full, worked level)
@@ -230,10 +231,11 @@ export function* stairFilm(d, app) {
     say('belt fill ' + O.get(beltId)?.fill);
   }
   d.stageBill('RING BEAM 3.4');
+  yield d.sec(1.9);   // (the bill read over the beam, not over the clock — the analyst: two words at once)
   // ---- a week: the beam sets, its boards off ----
   d.hud(null);
   shots([[9, [-16000, 18000, 14000], [1500, 2000, 0]]]);
-  yield* d.lapse(7, 1.6, () => { app.clock += 9000 * d.dt / 1.6; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });
+  yield* d.lapse(7, 1.3, () => { app.clock += 9000 * d.dt / 1.3; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });
   app.sky.setHour(9.5);
   if (beltId != null) app.journal.act('belt-strip', {}, app.clock, () => O.update(beltId, { stripped: true }));
   d.kick('+7 DAYS', 1.2, 'top');
@@ -251,8 +253,9 @@ export function* stairFilm(d, app) {
   yield d.until(idle);
   still();
   const rest = spineUp.flat().filter((r) => r !== u0 && !spineUp[0].slice(1, 6).includes(r));
-  shots([[9, [15500, 4300, 500], [6000, 4300, -500]]]);
-  { let i = 0; const n = rest.length, dur = 2.6, t0 = d.t;
+  // (the analyst: the stair is the stage's «wow» — the most time: in profile against the sky, then on its axis from below)
+  shots([[2.4, [15500, 4300, 500], [6000, 4300, -500]], [1.8, [7400, 1400, 9000], [6000, 4500, -2000]], [9, [15500, 4300, 500], [6000, 4300, -500]]]);
+  { let i = 0; const n = rest.length, dur = 5.0, t0 = d.t;
     yield d.until(() => { const want = Math.min(n, Math.ceil(n * Math.min(1, (d.t - t0) / dur))); if (want > i) { for (; i < want; i++) O.add(rest[i]); tick(1); } return i >= n; }); }
   // ---- 5 · the landing's beam on the 34th step: boards and cage at once, the concrete ----
   const topU = Math.max(...O.all('unit').filter((u) => u.kind === 'cinder').map((u) => u.p[1] + u.s[1] / 2));
@@ -263,14 +266,14 @@ export function* stairFilm(d, app) {
     shots([[1.2, [18000, 16000, 6000], [5000, 3500, -1000]]]);
     app.sfx?.seq?.(['plank', 'hammer_nail', 'rebar']);
     app.journal.act('belt', {}, app.clock, () => { landId = O.add(B2.rec).id; O.add(beltCage(O.get(landId))); });
-    yield d.sec(0.7);
+    yield d.sec(0.4);
     const hose = app.concreteTools.hose, yb = topU + MM(200), ev = (q) => ({ target: landId, hit: q });
     app.setTool('hose'); hud(['Cinder', 'Formwork', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
     const a = new V(MM(X0), yb, MM(-4300)), b = new V(MM(X0), yb, MM(-5600));
     st.pump = 1e-5; hose.down(a, ev(a)); { let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(a, ev(a)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - a.x, sp.z - a.z) < MM(250)); }); }
     st.pump = 2; tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-    act([[1.0, [1800, 700, 1800], 3], [0.9, [-2200, 1400, -1600], 6]]);
-    let pt = 0; const t0 = d.t; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1200)); return !!hose.ch?.full || d.t - t0 > 1.9; });
+    act([[1.0, [-2200, 1400, -1600], 6]]);
+    let pt = 0; const t0 = d.t; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1200)); return !!hose.ch?.full || d.t - t0 > 1.0; });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
@@ -278,14 +281,15 @@ export function* stairFilm(d, app) {
   shots([[9, [15500, 5600, -9500], [6000, 4300, -1500]]]);
   app.budget._pay?.([{ usd: rest.length * 2.2 + 900 }], P(0, 0, 0));
   d.stageBill('STEPS & LANDING');
-  yield d.sec(1.0);
+  yield d.sec(2.1);   // (the bill's card gone before the seam of the loop — the analyst)
   d.next();
-  // ---- the hook (put first by the recorder): the rule over the fresh landing at 6,8, low on the stair's axis, the sea beyond ----
+  // ---- the hook (put first by the recorder): the stair in profile against the sky and the mountains — its steps up to the fresh
+  // landing, a slow push in (the content analyst: the question must be seen — the steps in the frame; the best frame of the stage) ----
   shotN++;
-  d.cut(look(P(6700, 7600, -1200), P(6000, 6900, -5000)), { drift: 0.01, push: 0.012, hand: 0.3 });
+  d.cut(look(P(16500, 3800, 1500), P(6000, 4600, -1800)), { drift: 0.012, push: 0.03, hand: 0.25 });
   yield d.sec(0.4);
   d.mark('hook');
-  d.kick('STAIRS TO NOWHERE?', 2.2, 'top');
+  d.kick('WHERE DO THEY LEAD?', 2.2, 'top');
   { const r = landId != null && O.get(landId); if (r) { const t0 = d.t; yield d.until(() => { const u = (d.t - t0) / 2.2; app.sfx?.play?.('screed', { vol: 0.5, gap: 0.5 }); return u >= 1; }); } else yield d.sec(2.2); }
   d.mark('hookEnd');
   d.stair = { units: O.all('unit').length, cinder: O.all('unit').filter((u) => u.kind === 'cinder').length, belts: O.all('belt').length, dpc: O.all('dpc').length, beltId, landId, laidN };
