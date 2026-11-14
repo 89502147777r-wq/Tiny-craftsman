@@ -169,7 +169,7 @@ function jetMat(core) {
         float n = fbm(vec3(vP.yz * 400.0, vA * 6.0 + uTime * ${core ? '9.0' : '14.0'}));
         float a = ${core ? 'smoothstep(0.0, 0.35, vA) * (0.75 + 0.25 * n)' : 'pow(vA, 1.4) * (0.35 + 0.65 * n)'} * edge;
         vec3 c = ${core ? 'mix(vec3(0.25, 0.45, 1.0), vec3(0.75, 0.85, 1.0), smoothstep(0.6, 1.0, vA))' : 'mix(vec3(0.35, 0.3, 0.9), vec3(0.45, 0.65, 1.0), vA)'};
-        gl_FragColor = vec4(c * a * ${core ? '1.4' : '0.5'}, 1.0);
+        gl_FragColor = vec4(c * a * ${core ? '1.4' : '0.62'}, 1.0);
       }`,
   });
 }
@@ -184,13 +184,13 @@ function tongueMat() {
         float x = vU.x, y = vU.y;
         float side = smoothstep(0.0, 0.15, x) * smoothstep(1.0, 0.85, x);
         // (separate tongues across: a ragged comb, each its own height, licking up and torn off)
-        float comb = smoothstep(0.35, 0.7, n3(vec3(x * 16.0 + uSeed, uTime * 9.0, 0.0)));
+        float comb = smoothstep(0.22, 0.6, n3(vec3(x * 16.0 + uSeed, uTime * 9.0, 0.0)));
         float hgt = 0.2 + 0.8 * fbm(vec3(x * 10.0 + uSeed, uTime * 12.0, 1.0)) * comb;
         float n = fbm(vec3(x * 14.0 + uSeed, y * 4.0 - uTime * 7.0, uTime * 2.3 + uSeed));
         float body = smoothstep(hgt, hgt * 0.3, y) * side * smoothstep(0.25, 0.6, n + 0.25 * (1.0 - y));
         float a = body;
         vec3 c = mix(vec3(0.95, 0.32, 0.05), vec3(1.0, 0.62, 0.18), smoothstep(0.45, 0.0, y)) * mix(1.0, 0.3, smoothstep(0.3, 0.9, y / max(hgt, 0.01)));
-        gl_FragColor = vec4(c * a * 0.6, 1.0);
+        gl_FragColor = vec4(c * a * 1.05, 1.0);
       }`,
   });
 }
@@ -424,12 +424,13 @@ export class DpcView {
     } else {
       const [tx, tz] = P(L + 250, st.w / 2 + 450); T0.position.set(tx, ground(tx, tz) + MM(46), tz); T0.rotation.set(0, yaw + 0.5, -0.035); T0.userData.flame.visible = false;
     }
-    // the burning at the nip: three tongues across, 70–120 mm high, over 0,6–0,8 of the width
+    // the burning at the nip: three tongues across, 65–130 mm high, over 0,65–0,8 of the width — in the wedge in front of the roll
+    // (at the touch itself they are inside the roll: hidden)
     Wk.tongues.forEach((m, i) => {
       m.visible = working; if (!working) return;
-      const [x, z] = P(s + 4 + i * 6, (i - 1) * st.w * 0.07), y = this._under(R0.id, live.k, x, z);
-      const hgt = MM(45 + 45 * Math.abs(Math.sin(this._t * (8 + i * 3.3) + i)));
-      m.position.set(x, y + hgt / 2 + MM(3), z); m.rotation.set(0, yaw + Math.PI / 2 + (i - 1) * 0.12, 0); m.scale.set(MM(st.w * (0.55 + 0.08 * i)), hgt, 1);
+      const [x, z] = P(s + Rm * 0.8 + 10 + i * 8, (i - 1) * st.w * 0.07), y = this._under(R0.id, live.k, x, z);
+      const hgt = MM(65 + 65 * Math.abs(Math.sin(this._t * (8 + i * 3.3) + i)));
+      m.position.set(x, y + hgt / 2 + MM(3), z); m.rotation.set(0, yaw + Math.PI / 2 + (i - 1) * 0.12, 0); m.scale.set(MM(st.w * (0.66 + 0.08 * i)), hgt, 1);
     });
     // the bottle and its hose
     const [bx, by, bz] = this._bottleAt(stripFrame(R0, sts[0]));
