@@ -67,6 +67,8 @@ export class Excavator {
     this.body = holder; this.root.add(holder);
     this.root.updateMatrixWorld(true);
     this.under = findNode(scene, 'under'); this.house = findNode(scene, 'house'); this.boomP = findNode(scene, 'boom'); this.stickP = findNode(scene, 'stick'); this.bucketP = findNode(scene, 'bucket');
+    this._logo(scene);
+    this._logoBack();
     this.cyl = CYLS.map((n) => ({ b: findNode(scene, `cyl_${n}_b`), r: findNode(scene, `cyl_${n}_r`) })).filter((c) => c.b && c.r);
     // (a part's own meshes: not those of the parts hung on it)
     const parts = new Set([this.under, this.house, this.boomP, this.stickP, this.bucketP]);
@@ -301,6 +303,84 @@ export class Excavator {
   // the bucket's opening faces down (the soil falls out) — its curl opened past the stick's line
   get open() { return this.curl < -0.6; }
   // the joints as they are now / set back (a move the ground did not let happen)
+  // our logo on both sides of the boom, where the maker's was (the owner: «put ours in place of CAT»): a decal on the side plate,
+  // found from the boom's own vertices — its thin axis is the sides' normal, the flat plate's points the place, along its length
+  _logo() {
+    const B = this.boomP, stop = new Set([this.stickP, this.bucketP]), pts = [], v = new THREE.Vector3(), inv = new THREE.Matrix4();
+    B.updateMatrixWorld(true); inv.copy(B.matrixWorld).invert();
+    const walk = (o) => { if (stop.has(o) || o.name.startsWith('cyl_')) return; if (o.isMesh) { const p = o.geometry.attributes.position, m = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld); for (let i = 0; i < p.count; i += 3) pts.push(v.fromBufferAttribute(p, i).applyMatrix4(m).clone()); } for (const c of o.children) walk(c); };
+    for (const c of B.children) walk(c);
+    if (pts.length < 50) return;
+    const box = new THREE.Box3().setFromPoints(pts), size = box.getSize(new THREE.Vector3()), ax = ['x', 'y', 'z'];
+    const thin = ax.reduce((a, k) => (size[k] < size[a] ? k : a), 'x'), long = ax.filter((k) => k !== thin).reduce((a, k) => (size[k] > size[a] ? k : a));
+    const other = ax.find((k) => k !== thin && k !== long);
+    // (the owner's logo for it: two lines, the red initials) — painted on, not a sticker over it (the owner: «not like a word put on
+    // in Word»): the colours of paint, not pure; worn — chipped at its edges, rubbed thin here and there; grime run down over it; lit and
+    // shadowed as the boom's own paint, opaque (cut out, depth written)
+    const mat = new THREE.MeshStandardMaterial({ transparent: false, alphaTest: 0.5, roughness: 0.62, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const img = new Image(); img.onload = () => { mat.map = paintedLogo(img); mat.needsUpdate = true; }; img.src = 'assets/brand/logo-stack-boom.png';
+    for (const side of [1, -1]) {
+      // (on the upper straight stretch, toward the nose — where the stick hangs: clear of the boom's cylinder by the knee); the side
+      // plate there: its own face (the boom is narrower toward the nose than at its foot)
+      const nose = this.stickP.position[long] > box.min[long] + size[long] / 2 ? 1 : -1, fc = nose > 0 ? 0.68 : 0.32, at = box.min[long] + size[long] * fc;
+      const win = pts.filter((q) => Math.abs(q[long] - at) < size[long] * 0.14); if (win.length < 12) continue;
+      const face = side > 0 ? Math.max(...win.map((q) => q[thin])) : Math.min(...win.map((q) => q[thin]));
+      const near = pts.filter((q) => Math.abs(q[thin] - face) < size[thin] * 0.06);
+      // (the straightest stretch of the plate: the window whose points lie best on a line — a decal on the knee stood off it)
+      const fit = (ps) => { let sx = 0, sy = 0, sxx = 0, sxy = 0; for (const q of ps) { sx += q[long]; sy += q[other]; sxx += q[long] * q[long]; sxy += q[long] * q[other]; } const n0 = ps.length, k0 = (n0 * sxy - sx * sy) / Math.max(1e-12, n0 * sxx - sx * sx), b0 = (sy - k0 * sx) / n0; let e = 0; for (const q of ps) e = Math.max(e, Math.abs(q[other] - (k0 * q[long] + b0))); return e; };
+      const mid = near.filter((q) => Math.abs(q[long] - at) < size[long] * 0.12);
+      if (mid.length < 8) continue;
+      const c = new THREE.Vector3(); for (const q of mid) c.add(q); c.divideScalar(mid.length); c[thin] = face + side * size[thin] * 0.004;
+      // the plate's way along the boom: the main axis of its points there (the stretch may be steep — no line of `other` on `long`)
+      // (from the middle of the plate a little before to a little after: two slices' centres)
+      const cen = (f0, f1) => { const ps = near.filter((q) => q[long] > at + size[long] * f0 && q[long] < at + size[long] * f1); const o = new THREE.Vector3(); for (const q of ps) o.add(q); return ps.length ? o.divideScalar(ps.length) : null; };
+      const c1 = cen(-0.2, -0.08), c2 = cen(0.08, 0.2), dir = new THREE.Vector3(); dir[long] = 1;
+      if (c1 && c2) { dir.subVectors(c2, c1); dir[thin] = 0; dir.normalize(); }
+      const n = new THREE.Vector3(); n[thin] = side;
+      const up = new THREE.Vector3().crossVectors(n, dir).normalize();
+      if (up.clone().transformDirection(B.matrixWorld).y < 0) up.negate();   // (up as the world's up at the boom's rest pose)
+      const right = new THREE.Vector3().crossVectors(up, n).normalize();   // (reads left to right from that side)
+      // (turned 9° counterclockwise as seen from outside: both lines parallel to the boom's bottom edge, which tapers up to the nose — the owner)
+      { const tilt = 9 * Math.PI / 180; right.applyAxisAngle(n, tilt); up.applyAxisAngle(n, tilt); }
+      // the plate's height across the boom there, the decal centred in it and 70 % of it
+      const slice = near.filter((q) => Math.abs(q.clone().sub(c).dot(dir)) < size[long] * 0.05), ups = slice.map((q) => q.clone().sub(c).dot(up));
+      const uLo = Math.min(...ups), uHi = Math.max(...ups), hp = Number.isFinite(uLo) && uHi > uLo ? uHi - uLo : size[other] * 0.3;
+      if (Number.isFinite(uLo) && uHi > uLo) c.addScaledVector(up, (uLo + uHi) / 2);
+      const H = Math.min(hp * 0.7, size[long] * 0.28 * 317 / 838), L = H * 838 / 317;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(L, H), mat);
+      m.matrix.makeBasis(right, up, n).setPosition(c); m.matrixAutoUpdate = false; m.name = 'logo'; m.castShadow = false; m.receiveShadow = true;
+      B.add(m);
+    }
+  }
+  // and on the counterweight, at the house's back — where a machine carries its name, the side most seen (the owner): a decal on the
+  // rear face (the house's own points farthest back: its face, its width and height there), across it, upright
+  _logoBack() {
+    const Hs = this.house, stop = new Set([this.boomP]), pts = [], v = new THREE.Vector3(), inv = new THREE.Matrix4();
+    Hs.updateMatrixWorld(true); inv.copy(Hs.matrixWorld).invert();
+    const walk = (o) => { if (stop.has(o) || o.name.startsWith('cyl_') || o.name === 'logo') return; if (o.isMesh) { const p = o.geometry.attributes.position, m = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld); for (let i = 0; i < p.count; i += 2) pts.push(v.fromBufferAttribute(p, i).applyMatrix4(m).clone()); } for (const c of o.children) walk(c); };
+    for (const c of Hs.children) walk(c);
+    if (pts.length < 50) return;
+    const box = new THREE.Box3().setFromPoints(pts), size = box.getSize(new THREE.Vector3());
+    // (the back: away from the boom's foot — the house's own axes are the model's, not the machine's)
+    const foot = Hs.worldToLocal(this.boomP.getWorldPosition(new THREE.Vector3())), ax = Math.abs(foot.x) > Math.abs(foot.z) ? 'x' : 'z'   /* (the side the owner chose: the house's flank by the engine hood) */, side = ax === 'x' ? 'z' : 'x', sg0 = foot[ax] > (box.min[ax] + box.max[ax]) / 2 ? -1 : 1;
+    for (const sg of [sg0, -sg0]) {   // (both flanks — the owner: the same on the other one)
+    const end = sg < 0 ? box.min[ax] : box.max[ax];
+    const back = pts.filter((q) => Math.abs(q[ax] - end) < size[ax] * 0.05); if (back.length < 10) continue;
+    const bb = new THREE.Box3().setFromPoints(back), bs = bb.getSize(new THREE.Vector3());
+    // the counterweight's face: the band of the back points in its middle height (no roof, no tracks' guards)
+    const midY = (bb.min.y + bb.max.y) / 2, band = back.filter((q) => Math.abs(q.y - midY) < bs.y * 0.3);
+    const face = sg < 0 ? Math.min(...band.map((q) => q[ax])) : Math.max(...band.map((q) => q[ax]));
+    const c = new THREE.Vector3(); c.y = midY; c[ax] = face + sg * size[ax] * 0.003; c[side] = (bb.min[side] + bb.max[side]) / 2;
+    // (the owner: smaller, inside the yellow of the panel with a gap above and below — 0,68 of the first try, its middle 0,27 of that lower)
+    const L = bs[side] * 0.5, H0 = Math.min(bs.y * 0.55, L * 317 / 838), H = H0 * (sg === sg0 ? 0.68 : 0.75), W = H * 838 / 317; c.y += H0 * (sg === sg0 ? -0.27 : 0.13);   /* (the boom's flank: where the owner marked it) */   /* (the boom's flank: its yellow panel sits higher) */
+    const mat = this._logoMat || (this._logoMat = (() => { const m = new THREE.MeshStandardMaterial({ alphaTest: 0.5, roughness: 0.62, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); const img = new Image(); img.onload = () => { m.map = paintedLogo(img); m.needsUpdate = true; }; img.src = 'assets/brand/logo-stack-boom.png'; return m; })());
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), mat);
+    // (facing out of the back, upright, reading left to right from behind)
+    const n = new THREE.Vector3(); n[ax] = sg; const up = new THREE.Vector3(0, 1, 0), right = new THREE.Vector3().crossVectors(up, n).normalize();
+    mesh.matrix.makeBasis(right, up, n).setPosition(c); mesh.matrixAutoUpdate = false; mesh.name = 'logo'; mesh.receiveShadow = true;
+    Hs.add(mesh);
+    }
+  }
   pose() { return [this.swing, this.boom, this.stick, this.curl, this.heave]; }
   setPose(p) { [this.swing, this.boom, this.stick, this.curl, this.heave] = p; this._apply(); }
   // stand on the ground at (x, z) facing yaw: height and tilt from under the tracks' four ends
@@ -371,4 +451,32 @@ export class Excavator {
       c.b.getWorldPosition(a); c.r.getWorldPosition(b); c.b.lookAt(b); c.r.lookAt(a);
     }
   }
+}
+
+// the logo as paint on steel: its colours toned to paint, its alpha worn by chips (more at the edges of the letters), rubbed patches,
+// and grime streaks running down — a canvas texture
+function paintedLogo(img) {
+  const W = img.width, H = img.height, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, W, H), p = d.data;
+  const h = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
+  const vn = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy); return (h(xi, yi) * (1 - u) + h(xi + 1, yi) * u) * (1 - v) + (h(xi, yi + 1) * (1 - u) + h(xi + 1, yi + 1) * u) * v; };
+  const fbm = (x, y) => 0.5 * vn(x, y) + 0.25 * vn(x * 2.1, y * 2.1) + 0.125 * vn(x * 4.3, y * 4.3) + 0.0625 * vn(x * 8.7, y * 8.7);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4; if (p[i + 3] < 8) continue;
+    // (an edge of a letter: some neighbour clear)
+    const edge = (x > 2 && p[i - 12 + 3] < 8) || (x < W - 3 && p[i + 12 + 3] < 8) || (y > 2 && p[i - W * 12 + 3] < 8) || (y < H - 3 && p[i + W * 12 + 3] < 8);
+    const chip = fbm(x / 6, y / 6), rub = fbm(x / 40 + 7, y / 40 + 3), streak = fbm(x / 3 + 13, y / 60);
+    let a = p[i + 3];
+    if (chip > (edge ? 0.66 : 0.79)) a = 0;   // chipped off (a little: a machine of a season, not a wreck)
+    else if (rub > 0.68) a *= 0.7;           // rubbed thin (cut out below the half: holes where it is worn through)
+    p[i + 3] = a;
+    // (paint colours: the black a warm charcoal, the red an oxide red; dirt darkening down the streaks)
+    const r = p[i], gg = p[i + 1], b = p[i + 2], red = r > 120 && gg < 90;
+    const dirt = 0.82 + 0.18 * (1 - Math.max(0, streak - 0.45) * 2);
+    p[i] = (red ? 168 : 46) * dirt; p[i + 1] = (red ? 32 : 42) * dirt; p[i + 2] = (red ? 28 : 38) * dirt;
+  }
+  g.putImageData(d, 0, 0);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
 }

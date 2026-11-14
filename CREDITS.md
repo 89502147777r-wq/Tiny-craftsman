@@ -12,6 +12,7 @@
 | `assets/textures/plywood/` (1k) — фанера (дно, отвалы) | Plywood | Rob Tuytel | CC0 | https://polyhaven.com/a/plywood |
 | `assets/textures/raw_plank_wall/` (1k) — доски опалубки | Raw Plank Wall | Dimitrios Savva | CC0 | https://polyhaven.com/a/raw_plank_wall |
 | `assets/textures/hinoki_planks/` (1k) — доски опалубки плиты и ленты | Hinoki Planks | Charlotte Baglioni | CC0 | https://polyhaven.com/a/hinoki_planks |
+| `assets/textures/rough_concrete/` — свежий бетон и раствор (цвет, нормали; 1,23 м плитка) | Rough Concrete | Dimitrios Savva | CC0 | https://polyhaven.com/a/rough_concrete |
 | `assets/textures/forest_ground_06/` (1k) — пятна тёмного суглинка на участке | Forest Ground 06 | Charlotte Baglioni | CC0 | https://polyhaven.com/a/forest_ground_06 |
 | `assets/textures/dense_sand/` (diff, nor_gl 1k) — песок (материал) | Dense Sand | Dimitrios Savva | CC0 | https://polyhaven.com/a/dense_sand |
 | `assets/textures/gravel_floor_02/` (diff, nor_gl 1k) — щебень 5–20 и 20–40 (одно фото в двух масштабах, затемнено до серого гранита) | Gravel Floor 02 | Dimitrios Savva (фото), Jenelle van Heerden (обработка) | CC0 | https://polyhaven.com/a/gravel_floor_02 |
@@ -140,7 +141,7 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | Файл | Модель | Автор | Лицензия | Источник |
 |---|---|---|---|---|
 | `assets/models/loader.glb` — мини-погрузчик | Skid Steer Loader | jeandiz | CC BY 4.0 | https://sketchfab.com/3d-models/91948c1f514141fc82fee40ea56cc8df |
-| `assets/models/excavator.glb` — экскаватор (переразвешен на настоящих шарнирах: ходовая, башня, стрела, рукоять, ковш; каждый гидроцилиндр — гильза и шток на своих пальцах; текстуры 512 webp, meshopt; в игре 0,8 размера) | Excavator (CAT) | sarvesh777 (sarvesh903) | CC BY 4.0 | https://sketchfab.com/3d-models/excavator-cat-5f195244108c46e495a1e78040f02f7e |
+| `assets/models/excavator.glb` — экскаватор (переразвешен на настоящих шарнирах: ходовая, башня, стрела, рукоять, ковш; каждый гидроцилиндр — гильза и шток на своих пальцах; текстуры 512 webp, meshopt; в игре 0,8 размера; логотип производителя закрашен) | Excavator (CAT) | sarvesh777 (sarvesh903) | CC BY 4.0 | https://sketchfab.com/3d-models/excavator-cat-5f195244108c46e495a1e78040f02f7e |
 | `assets/models/canter.glb` — бортовой грузовик-самосвал | 1975 FUSO Canter T200 | thejinjinjin | CC BY 4.0 | https://sketchfab.com/3d-models/4fe39804350e463795bf5404aef22138 |
 | `assets/models/bucket.glb` — ведро для бетона | Plasticbucket | Alexander.Treiner | CC BY 4.0 | https://sketchfab.com/3d-models/10d60b25c7ac4c0c9de056686ed01002 |
 | `assets/models/trowel.glb` — кельма каменщика | Trowel | vcotta | CC BY 4.0 | https://sketchfab.com/3d-models/b22da70bd64a49539d6226950c5355ca |

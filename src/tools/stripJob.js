@@ -58,9 +58,9 @@ export class StripJob {
     chunk(pieces.filter((p) => p.k === 'brace'), 3);
     chunk(pieces.filter((p) => p.k === 'stake'), 5);
     chunk(pieces.filter((p) => p.k === 'board').sort((a, b) => b.s.x - a.s.x), 1);
-    const free = [0.1, 0.6], WALK = M(1.25);
+    const free = [0.1, 0.5, 0.9], WALK = M(1.25);   // (three men: two were too slow to watch — the owner)
     for (const tr of trips) {
-      const w = free[0] <= free[1] ? 0 : 1, t0 = free[w], c = tr[0];
+      const w = free.indexOf(Math.min(...free)), t0 = free[w], c = tr[0];
       const dist = Math.hypot(c.target.x - c.p.x, c.target.z - c.p.z);
       const tPull = c.k === 'stake' ? 0.5 : c.k === 'board' ? 0.4 : 0.2, tWalk = Math.max(0.6, dist / WALK), dur = tPull + 0.4 + tWalk + 0.5;
       for (const pc of tr) Object.assign(pc, { carry: t0, tPull, tWalk, dur, ease: pc.k === 'board' && !pc.inside });
