@@ -1296,6 +1296,9 @@ console.log('—', sec());
       laid: f.laid, hud: { rows: document.querySelectorAll('#film .f-hud .f-row').length, on: document.querySelector('#film .f-hud .f-row:nth-child(2) b.on')?.textContent, fab: !!document.querySelector('#film .f-hud .f-fab img') }, jobs: f.jobs, spreads: f.spreads, pitch: f.grows.map((g) => g.pitch), spreadLeft: tc.wallView.spreadG.children.length, t: +f.t.toFixed(1), hook: f.marks?.hook != null && f.marks?.hookEnd != null };
   });
   check('film: «нарастание» — one brick close at its real pace (the game\'s own job: mallet, mortar, trowel), then more and more at once, the camera further each step; all the bricks laid', o.done && o.steps >= 8 && o.first.n === 1 && o.first.s >= 2 && o.near && o.faster && o.up > 100 && o.laid.total === o.laid.done && o.laid.total > 500 && o.hud.rows === 2 && o.hud.on === 'Course' && o.hud.fab /* (the game's face over the film: the chips' rows, the tool button; the way of laying switched) */ && o.spreads >= 4 && o.spreadLeft === 0 /* (the bed spread with the trowel ten bricks at a time, none left unlaid) */ && Math.min(...o.pitch.slice(-4)) < 0.25 /* (rule 3: the courses seen from near level — the horizon in frame) */ && o.jobs >= 40 /* (the close and the sped-up steps: the game's own laying job, brick by brick) */ && o.hook && o.t < 22, JSON.stringify(o));
+  // the owner (2026-11-14): the masonry mortar has the photo he chose (the bed, what is pressed out, the joints) — not a flat colour
+  const mp = await page.evaluate(() => { const wv = window.__tc.wallView; return { bed: !!wv.spreadMat.userData.photo, squeeze: !!wv.squeeze.material.userData.photo, joints: !!wv.mortar.material.userData.photo }; });
+  check('masonry mortar: the photo texture on the bed, the squeeze and the joints', mp.bed && mp.squeeze && mp.joints, JSON.stringify(mp));
   check('film (plinth): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
