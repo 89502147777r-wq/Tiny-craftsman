@@ -67,6 +67,7 @@ export class Excavator {
     this.body = holder; this.root.add(holder);
     this.root.updateMatrixWorld(true);
     this.under = findNode(scene, 'under'); this.house = findNode(scene, 'house'); this.boomP = findNode(scene, 'boom'); this.stickP = findNode(scene, 'stick'); this.bucketP = findNode(scene, 'bucket');
+    this._logo(scene);
     this.cyl = CYLS.map((n) => ({ b: findNode(scene, `cyl_${n}_b`), r: findNode(scene, `cyl_${n}_r`) })).filter((c) => c.b && c.r);
     // (a part's own meshes: not those of the parts hung on it)
     const parts = new Set([this.under, this.house, this.boomP, this.stickP, this.bucketP]);
@@ -301,6 +302,39 @@ export class Excavator {
   // the bucket's opening faces down (the soil falls out) — its curl opened past the stick's line
   get open() { return this.curl < -0.6; }
   // the joints as they are now / set back (a move the ground did not let happen)
+  // our logo on both sides of the boom, where the maker's was (the owner: «put ours in place of CAT»): a decal on the side plate,
+  // found from the boom's own vertices — its thin axis is the sides' normal, the flat plate's points the place, along its length
+  _logo() {
+    const B = this.boomP, stop = new Set([this.stickP, this.bucketP]), pts = [], v = new THREE.Vector3(), inv = new THREE.Matrix4();
+    B.updateMatrixWorld(true); inv.copy(B.matrixWorld).invert();
+    const walk = (o) => { if (stop.has(o) || o.name.startsWith('cyl_')) return; if (o.isMesh) { const p = o.geometry.attributes.position, m = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld); for (let i = 0; i < p.count; i += 3) pts.push(v.fromBufferAttribute(p, i).applyMatrix4(m).clone()); } for (const c of o.children) walk(c); };
+    for (const c of B.children) walk(c);
+    if (pts.length < 50) return;
+    const box = new THREE.Box3().setFromPoints(pts), size = box.getSize(new THREE.Vector3()), ax = ['x', 'y', 'z'];
+    const thin = ax.reduce((a, k) => (size[k] < size[a] ? k : a), 'x'), long = ax.filter((k) => k !== thin).reduce((a, k) => (size[k] > size[a] ? k : a));
+    const other = ax.find((k) => k !== thin && k !== long);
+    const tex = new THREE.TextureLoader().load('assets/brand/logo-line-dark.png'); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.35, roughness: 0.55, metalness: 0, polygonOffset: true, polygonOffsetFactor: -4, depthWrite: false });
+    for (const side of [1, -1]) {
+      const face = side > 0 ? box.max[thin] : box.min[thin];
+      // (the side plate: the points within 4 % of the thin size of that face; the middle third of the boom's length)
+      const near = pts.filter((q) => Math.abs(q[thin] - face) < size[thin] * 0.06);
+      const lo = box.min[long] + size[long] * 0.3, hi = box.min[long] + size[long] * 0.62, mid = near.filter((q) => q[long] > lo && q[long] < hi);
+      if (mid.length < 8) continue;
+      const c = new THREE.Vector3(); for (const q of mid) c.add(q); c.divideScalar(mid.length); c[thin] = face + side * size[thin] * 0.004;
+      // the plate's slope in the boom's length: a line through its points (least squares of `other` on `long`)
+      let sx = 0, sy = 0, sxx = 0, sxy = 0; for (const q of mid) { sx += q[long]; sy += q[other]; sxx += q[long] * q[long]; sxy += q[long] * q[other]; }
+      const nN = mid.length, k = (nN * sxy - sx * sy) / Math.max(1e-12, nN * sxx - sx * sx);
+      const dir = new THREE.Vector3(); dir[long] = 1; dir[other] = Number.isFinite(k) ? k : 0; dir.normalize();
+      const n = new THREE.Vector3(); n[thin] = side;
+      let up = new THREE.Vector3().crossVectors(n, dir).normalize(); if (up.y < 0) up.negate();
+      const right = new THREE.Vector3().crossVectors(up, n).normalize();   // (reads left to right from that side)
+      const L = size[long] * 0.32, H = L * 88 / 720;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(L, H), mat);
+      m.matrix.makeBasis(right, up, n).setPosition(c); m.matrixAutoUpdate = false; m.name = 'logo'; m.castShadow = false;
+      B.add(m);
+    }
+  }
   pose() { return [this.swing, this.boom, this.stick, this.curl, this.heave]; }
   setPose(p) { [this.swing, this.boom, this.stick, this.curl, this.heave] = p; this._apply(); }
   // stand on the ground at (x, z) facing yaw: height and tilt from under the tracks' four ends
