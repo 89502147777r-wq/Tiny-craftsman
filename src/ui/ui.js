@@ -161,10 +161,7 @@ export class UI {
     showHints(hintsOn);
     hb.addEventListener('click', () => showHints(ui.classList.contains('no-hints')));
     $('menu-close').addEventListener('click', () => this.openMenu(false));
-    $('act-film').addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=plinth'; });
-    $('act-film-found')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=found'; });
-    $('act-film-stair')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=stair'; });
-    $('act-film-slab')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=slab'; });
+    $('act-film').addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=found'; });
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     for (const b of document.querySelectorAll('#budget-row button')) b.addEventListener('click', () => { const v = +b.dataset.b; if (v) app.budget.start(v); else app.budget.stop(); this.openMenu(false); this.refresh(); });
     $('act-export').addEventListener('click', () => app.exportProject());
@@ -532,7 +529,8 @@ export class UI {
         C('Забутовочный', has('brick') && !bf, () => lay({ wallKind: 'brick', brickFace: null })),
         G('brickF', 'Облицовочный', Object.entries(FACING).map(([k, F]) => C('◼ ' + F.name, has('brick') && bf === k, () => lay({ wallKind: 'brick', brickFace: k }))), null, C('', has('brick') && !!bf, () => lay({ wallKind: 'brick', brickFace: bf || 'red' }))),
       ], null, C('', has('brick'), () => lay({ wallKind: 'brick' })));
-      const masonry = [K('block', 'Газоблок'), brickG, K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];
+      const masonry = [G('dpc', 'Гидроизоляция', [[400, 'Под газоблок 300 — 400 мм'], [480, 'Под кирпич 380 — 480 мм'], [1300, 'Под шлакоблок 1190 — 1300 мм']].map(([w, l]) => C(l, wk === 'dpc' && (+s.dpcW || 400) === w, () => lay({ wallKind: 'dpc', dpcW: w }))), null, C('', L && wk === 'dpc', () => lay({ wallKind: 'dpc' }))),
+        K('block', 'Газоблок'), brickG, K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];
       // («↻ Повернуть»: a button on the right, over «Ряд»)
       if (has('block', 'brick', 'cinder')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
       // the budget: pallets bought onto the plot (the units laid come off them)
@@ -687,7 +685,7 @@ export class UI {
           ];
         })(), null, C('', has('fence'), () => lay({ wallKind: 'fence' })))),
         hid(G('land', 'Благоустройство', [G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('plants', 'Растения', [['tree', 'Деревья'], ['bush', 'Кустарники'], ['flower', 'Цветы и клумбы'], ['pot', 'В кашпо']].map(([gq, gn]) => { const ks = Object.entries(PLANTS).filter(([, P]) => P.grp === gq); return G('pl' + gq, gn, ks.map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && PLANTS[lw.plantKind].grp === gq, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: ks[0][0] }))); }), null, C('', has('land') && lw.what === 'plant' && !PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }))), G('lights', 'Освещение', [['path', 'У дорожки'], ['accent', 'Подсветка'], ['deco', 'Декоративные'], ['post', 'Фонарные столбы']].map(([gq, gn]) => { const ks = Object.entries(PLANTS).filter(([, P]) => P.lgrp === gq); return G('li' + gq, gn, ks.map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && PLANTS[lw.plantKind].lgrp === gq, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: ks[0][0] }))); }), null, C('', has('land') && lw.what === 'plant' && !!PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'bollard' }))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
-        G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
+        G('masonry', 'Кладка', masonry, null, C('', has('dpc', 'block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м'], [3500, 'Консоль 3,5 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие'))], null, C('', has('belt', 'studs', 'slab'))),
         del(),

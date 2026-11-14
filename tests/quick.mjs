@@ -1283,26 +1283,6 @@ console.log('—', sec());
   await browser.close();
 }
 
-// ---- 2l''. «Нарастание» (the owner's first rule of shooting): the plinth film — the first brick close at its pace, then
-// the wall sped up, then walls and courses at once: each step no nearer (but a new angle) and more bricks a second ----
-{
-  const { browser, page, errors } = await open(pw.chromium, '&film=plinth&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
-  const o = await page.evaluate(async () => {
-    const tc = window.__tc, f = tc.film;
-    for (let i = 0; i < 3000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
-    const G = f.grows || [], rate = G.map((g) => g.n / g.s);
-    return { done: f.done, steps: G.length, first: G[0], near: G.every((g, i) => !i || g.turn || g.dist >= G[i - 1].dist * 0.999), faster: rate.every((r, i) => !i || r > rate[i - 1] * 0.5) /* (a shorter wall, the last hold for the eye: not under half the pace before) */ && rate[1] > rate[0] * 5 && rate[2] > rate[1] * 2 && rate[6] > rate[5], up: rate.at(-1) / rate[0],
-      laid: f.laid, hud: { rows: document.querySelectorAll('#film .f-hud .f-row').length, on: document.querySelector('#film .f-hud .f-row:nth-child(2) b.on')?.textContent, fab: !!document.querySelector('#film .f-hud .f-fab img') }, jobs: f.jobs, spreads: f.spreads, pitch: f.grows.map((g) => g.pitch), spreadLeft: tc.wallView.spreadG.children.length, t: +f.t.toFixed(1), hook: f.marks?.hook != null && f.marks?.hookEnd != null };
-  });
-  check('film: «нарастание» — one brick close at its real pace (the game\'s own job: mallet, mortar, trowel), then more and more at once, the camera further each step; all the bricks laid', o.done && o.steps >= 8 && o.first.n === 1 && o.first.s >= 2 && o.near && o.faster && o.up > 100 && o.laid.total === o.laid.done && o.laid.total > 500 && o.hud.rows === 2 && o.hud.on === 'Course' && o.hud.fab /* (the game's face over the film: the chips' rows, the tool button; the way of laying switched) */ && o.spreads >= 4 && o.spreadLeft === 0 /* (the bed spread with the trowel ten bricks at a time, none left unlaid) */ && Math.min(...o.pitch.slice(-4)) < 0.25 /* (rule 3: the courses seen from near level — the horizon in frame) */ && o.jobs >= 40 /* (the close and the sped-up steps: the game's own laying job, brick by brick) */ && o.hook && o.t < 22, JSON.stringify(o));
-  // the owner (2026-11-14): the masonry mortar has the photo he chose (the bed, what is pressed out, the joints) — not a flat colour
-  const mp = await page.evaluate(() => { const wv = window.__tc.wallView; return { bed: !!wv.spreadMat.userData.photo, squeeze: !!wv.squeeze.material.userData.photo, joints: !!wv.mortar.material.userData.photo }; });
-  check('masonry mortar: the photo texture on the bed, the squeeze and the joints', mp.bed && mp.squeeze && mp.joints, JSON.stringify(mp));
-  check('film (plinth): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-  await browser.close();
-}
-
 // ---- 2l⁰. «Ibiza» stage 1, the foundations: every stage the game's own work, in the order of a site — the pits dug (the new
 // «dig a marked pit» job), the beds, the pool's shell poured, the strip / slab / pad formed, caged, poured, a week, the boards off
 {
@@ -1322,170 +1302,42 @@ console.log('—', sec());
     o.bills.length === 6 && o.bills.every((v) => v > 0) && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 5 && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.t < 110, JSON.stringify({ bills: o.bills, spent: o.spent, t: o.t, marks: o.marks }));
   check('film (found): the pool\'s walls: nothing over their boards (a gap 250 wide holds no heap: it runs over)', o.over <= 1, 'over ' + Math.round(o.over) + ' mm');
   check('film (found): the stripped boards, stakes and braces stacked off the concrete', o.onConc === 0, 'on concrete ' + o.onConc);
+  // the owner (2026-11-14): the masonry mortar has the photo he chose (the bed, what is pressed out, the joints) — not a flat colour
+  const mp = await page.evaluate(() => { const wv = window.__tc.wallView; return { bed: !!wv.spreadMat.userData.photo, squeeze: !!wv.squeeze.material.userData.photo, joints: !!wv.mortar.material.userData.photo }; });
+  check('masonry mortar: the photo texture on the bed, the squeeze and the joints', mp.bed && mp.squeeze && mp.joints, JSON.stringify(mp));
   check('film (found): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 
-// ---- 2l''''. «34 steps to the sea» (Ibiza, stage 2): the stepped cinder-block wall — the bond across every other course, the
-// sea's end flush, every tread one course, all the blocks laid, the hook (the last block) marked for the loop, two stage bills
-{
-  const { browser, page, errors } = await open(pw.chromium, '&film=stair&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
-  const o = await page.evaluate(async () => {
-    const tc = window.__tc, f = tc.film;
-    const [{ stairCourses }, { MODEL_SCALE }] = await Promise.all([import('/src/film/stairFilm.js'), import('/src/config.js')]);
-    const C = stairCourses(0), S = 1 / 1000 / MODEL_SCALE;
-    for (let i = 0; i < 4000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
-    const ends = C.map((k) => k.flat()), zl = (r) => (r.q[1] ? r.s[0] : r.s[2]) /* (a stretcher is turned along the wall) */, lo = ends.map((l) => Math.max(...l.map((r) => r.p[2] + zl(r) / 2))), hi = ends.map((l) => Math.min(...l.map((r) => r.p[2] - zl(r) / 2)));
-    const run = lo.slice(1).map((v, k) => (lo[k] - v) / S);
-    return { done: f.done, laid: f.laid, n: C.length, rows: C.map((k) => k.length), sea: hi.map((v) => Math.round((v - hi[0]) / S)), run, total: C.flat(2).length,
-      marks: f.marks, bills: (f.stageBillsLog || []).map((q) => q.usd), spent: 60000 - tc.budget.money };
-  });
-  check('film (stair): 34 courses, each a 300 tread, the bond across every other course, the sea end flush, under the cinder limit',
-    o.n === 34 && o.rows.every((r, k) => r === (k % 2 ? 3 : 6)) && o.run.every((v) => Math.abs(v - 300) < 2) && o.sea.every((v) => Math.abs(v) <= 1) && o.total < 4000,
-    JSON.stringify({ rows: o.rows.slice(0, 4), run: o.run.slice(0, 3), sea: o.sea.slice(0, 4), total: o.total }));
-  check('film (stair): every block laid, the hook marked before its end (the loop), blocks and mortar billed = spent',
-    o.done && o.laid?.done === o.total && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.bills.length === 2 && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 3,
-    JSON.stringify({ done: o.done, laid: o.laid, marks: o.marks, bills: o.bills, spent: o.spent }));
-  check('film (stair): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-  await browser.close();
-}
-
-// ---- 2l'''. The slab film: every stage is the game's own work, started as the finger starts it — the formwork, the slab's
-// cage, the columns' cages carried and tied into it, the hose, the poker, the rule, a day on the clock, the columns' forms
-// and concrete; the slab ends level, the columns full ----
-{
-  const { browser, page, errors } = await open(pw.chromium, '&film=slab&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
-  const o = await page.evaluate(async () => {
-    const tc = window.__tc, f = tc.film, t = tc.terrain, M = 1 / 10.4651, H = 5 * M;
-    const toast = tc.ui.toast.bind(tc.ui), said = []; tc.ui.toast = (m) => { said.push(String(m)); return toast(m); };
-    const g = t.heightAt(0, 0);
-    let ghosts = 0, hudMax = 0, frogEarly = 0, frogEnd = 0, frogAll = 0;
-    for (let i = 0; i < 3600 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); if (tc.columnTool.col.V?.ghost) ghosts++;
-      { const J = tc.physJob; if (J?.frogAt != null) { frogAll = J.frogs.length; if (J.t < J.frogAt - 0.05) frogEarly = Math.max(frogEarly, J.nFrogs || 0); else frogEnd = Math.max(frogEnd, J.nFrogs || 0); } } const R = document.querySelector('#film .f-hud .f-row')?.getBoundingClientRect(); if (R) hudMax = Math.max(hudMax, R.right - innerWidth, -R.left); }
-    const hs = []; for (let x = -H * 0.95; x <= H * 0.95; x += H / 10) for (let z = -H * 0.95; z <= H * 0.95; z += H / 10) hs.push((t.heightAt(x, z) - g) / M * 1000); hs.sort((a, b) => a - b);
-    const cols = tc.objects.all('column');
-    // (the top mat under the concrete everywhere: the cover over its bars after the rule — none showing through, the far board too)
-    let cover = 1e9; { const cg = tc.objects.all('cage')[0], top = Math.max(...cg.bars.map((b) => Math.max(b[1], b[4]))); for (let x = -H * 0.99; x <= H * 0.99; x += H / 40) for (let z = -H * 0.99; z <= H * 0.99; z += H / 40) cover = Math.min(cover, (t.heightAt(x, z) - top) / M * 1000); }
-    // (what went over the boards: the concrete lying outside the outline)
-    let over = 0; for (let i = 0; i < t.conc.length; i++) { if (t.conc[i] <= 1e-7) continue; const x = t.toWorldX(i % t.nx), z = t.toWorldZ(Math.floor(i / t.nx)); if (Math.abs(x) > H + 0.008 || Math.abs(z) > H + 0.008) over += t.conc[i]; }
-    return { cover: Math.round(cover), bills: (f.stageBillsLog || []).map((q) => q.usd), billNames: (f.stageBillsLog || []).map((q) => q.label).join('|'), frogEarly, frogEnd, frogAll, over: +(over * t.cellArea / M ** 3).toFixed(2), money: tc.budget.money, weather: tc.settings.weather, raining: !!tc.sky.raining, moneyShown: !document.querySelector('#film .f-money')?.hidden, done: f.done, t: +f.t.toFixed(1), forms: tc.objects.all('form').length, cages: tc.objects.all('cage').length, cols: cols.length, tied: cols.filter((r) => r.anc > 100).length, full: cols.filter((r) => (r.fill || 0) >= 0.99 && r.stage >= 3).length,
-      m3: +(t.concVolume() / M ** 3).toFixed(1), p10: Math.round(hs[Math.floor(hs.length * 0.1)]), p90: Math.round(hs[Math.floor(hs.length * 0.9)]), ghosts, hudOut: Math.round(hudMax), refused: said.filter((m) => /Сначала опалубка|привязан к фундаменту/.test(m)).length, hook: f.marks?.hook != null && f.marks?.hookEnd != null };
-  });
-  check('film (slab): the formwork, the cage, four column cages carried under the finger and tied in, 30 m³ out of the hose run level by the poker and the rule, the columns formed and cast — all by the game\'s own jobs', o.done && o.t < 60 && o.forms === 4 && o.cages === 1 && o.cols === 4 && o.tied === 4 && o.full === 4 && o.m3 > 28.5 && o.m3 < 31 && o.p10 > 255 && o.p90 < 335 && o.ghosts > 20 && o.hudOut <= 0 && o.refused === 0 && o.hook && o.over < 0.12 /* (not over the boards) */ && o.frogAll > 20 && o.frogEarly === 0 && o.frogEnd === o.frogAll /* (the frogs: none before the bottom mat lies, all before the top one) */ && o.money < 56000 && o.money > 40000 && o.moneyShown /* (the budget billed and shown) */ && o.weather === 'clear' && !o.raining && o.cover >= 15 && o.bills.length === 6 && o.bills.every((v) => v > 0) && Math.abs(o.bills.reduce((a, v) => a + v, 0) - (60000 - o.money)) <= 3 /* (billed stage by stage, by name — all of what was spent) */, JSON.stringify(o));
-  check('film (slab): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-  await browser.close();
-}
-
-// ---- 2l'. A film shot in the game frame by frame (film/recorder.js): an mp4 of exactly a 60th a frame, the
-// hook first, the words painted into the frames (film/compose.js), the sounds on the film's clock ----
+// ---- 2o. The damp-proof course (the owner: «a roll, rolled out as it really is»): drawn on the concrete, a strip the
+// wall + 100 wide torched down along it at its pace — the roll on it shrinking, the torch at the nip; wider than the roll —
+// two strips lapped 100; done: no roll, no torch, the beads at the edges; undo takes it off ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.dpcView, null, { timeout: 120000 });
   const o = await page.evaluate(async () => {
-    const tc = window.__tc, { Director } = await import('./src/film/director.js'), THREE = await import('three'), o = {};
-    const P = new THREE.Vector3(0, tc.terrain.heightAt(0, 0), 0);
-    function* script(d) {
-      d.bar(2); d.cut({ target: P, yaw: 0, pitch: 0.6, dist: 1.5 }); d.title('BIG WORDS', '', 1);
-      yield d.sec(0.5); d.mark('hook'); tc.sfx.play('block'); yield d.sec(0.4); d.mark('hookEnd'); yield d.sec(0.2);
+    const tc = window.__tc, T = tc.terrain, MM = (v) => v / 1000 / 10.4651;
+    for (let iz = 0; iz < T.nz; iz++) for (let ix = 0; ix < T.nx; ix++) { const x = T.toWorldX(ix), z = T.toWorldZ(iz); if (Math.abs(z) < MM(900) && Math.abs(x) < MM(2600)) { const i = iz * T.nx + ix; T._concAdd(i, MM(150), 0.5); T.cTime[i] = tc.clock - 1e6; } }
+    T._concTouch?.(0, 0, T.rx, T.rz); T._touch(0, 0, T.rx, T.rz);
+    const W = tc.wallTool.dpc, V = tc.dpcView, y = T.heightAt(0, 0);
+    tc.settings.dpcW = 1300;
+    W.down({ x: MM(-2000), y, z: 0 }); W.move({ x: MM(2000), y, z: MM(40) }); W.up();
+    const r = tc.objects.all('dpc')[0], g0 = V.meshes.get(r.id);
+    let mid = null, steps = 0;
+    for (; W.jobs.length && steps < 4000; steps++) {
+      W.update(1 / 30); V.update(1 / 30);
+      if (!mid && W.jobs[0]?.k === 0 && W.jobs[0].s > 1500) { let rolls = 0, torch = 0; V.meshes.get(r.id).traverse((m) => { if (m.geometry?.type === 'CylinderGeometry' && m.geometry.parameters.height > MM(500)) rolls++; if (m.geometry?.type === 'ConeGeometry') torch++; }); mid = { rolls, torch }; }
     }
-    // (the sky's birds and wind off: the check is the blow against the film's quiet, not the ambience's random bars)
-    tc.sfx.ambience = () => {}; tc.sfx.rain = () => {};
-    tc.filmOffline = true; const d = new Director(tc, script, true); tc.film = d;   /* (held: the frame loop does not step it while the recorder is fetched) */
-    const { recordFilm } = await import('./src/film/recorder.js');
-    // (the words: white text in the title's band of a frame after the title came up)
-    const onFrame = (x, i) => { if (i !== 20) return; const px = x.getImageData(0, 30, 180, 40).data; let n = 0; for (let j = 0; j < px.length; j += 4) if (px[j] > 235 && px[j + 1] > 235 && px[j + 2] > 235) n++; o.words = n; };
-    let r; try { r = await recordFilm(tc, { fps: 30, w: 180, h: 320, max: 3, onFrame, batch: 16384, head: 65536 }   /* (small blobs and head: the parts and their joins tested) */); } catch (e) { return { err: String(e) }; }
-    const buf = new Uint8Array(await r.blob.arrayBuffer());
-    o.ftyp = String.fromCharCode(...buf.slice(4, 8)); o.seconds = +r.seconds.toFixed(3); o.frames = r.frames;
-    // (the sound cut like the frames: the blow at the hook's start — the video's start; before it, in the film, quiet)
-    const peak = (a, b) => { let m = 0; for (let i = Math.round(a * r.rate); i < Math.round(b * r.rate); i++) m = Math.max(m, Math.abs(r.pcm[0][i])); return m; };
-    o.blow = +peak(0, 0.15).toFixed(3); o.before = +peak(0.5, r.seconds).toFixed(3);
-    o.sound = o.blow > 0.02 && o.before < o.blow * 0.2;
-    // (the sound IN the video: an AAC track whose decoder config is ours — 0x11 0x90, AAC-LC 48 kHz stereo; Safari's encoder gives a
-    // wrong one and the video played silent on the owner's phone) — or, with no AAC encoder, the WAV beside it
-    { const at = (t) => { for (let i = 0; i < buf.length - 4; i++) if (buf[i] === t.charCodeAt(0) && buf[i + 1] === t.charCodeAt(1) && buf[i + 2] === t.charCodeAt(2) && buf[i + 3] === t.charCodeAt(3)) return i; return -1; };
-      const e = at('esds'); o.track = r.sound; o.asc = e < 0 ? null : (() => { for (let i = e; i < Math.min(buf.length - 2, e + 60); i++) if (buf[i] === 0x05) return [buf[i + 2], buf[i + 3]]; return null; })();
-      o.inVideo = r.sound === 'wav' ? !!r.wav : (r.sound === 'opus' || (o.asc?.[0] === 0x11 && o.asc?.[1] === 0x90)); }
-    const v = document.createElement('video'); v.muted = true; v.src = URL.createObjectURL(r.blob);
-    await new Promise((res) => { v.onloadedmetadata = res; v.onerror = res; setTimeout(res, 8000); });
-    o.dur = +v.duration.toFixed(2); o.size = [v.videoWidth, v.videoHeight];
-    // (the picture decoded from the file itself — the owner's video saved whole and long, with sound, but every frame blank: the parts were
-    // joined without the muxer's reserved gap, the samples' offsets pointed past their bytes)
-    { const pic = []; for (const t of [0.15, 0.7]) { v.currentTime = t; await new Promise((res) => { v.onseeked = res; setTimeout(res, 4000); }); const c = document.createElement('canvas'); c.width = 180; c.height = 320; const g = c.getContext('2d'); g.drawImage(v, 0, 0); const px = g.getImageData(0, 0, 180, 320).data; let sum = 0, sq = 0, n = 0; for (let j = 0; j < px.length; j += 16) { const l = (px[j] + px[j + 1] + px[j + 2]) / 3; sum += l; sq += l * l; n++; } const m = sum / n; pic.push([Math.round(m), Math.round(Math.sqrt(Math.max(0, sq / n - m * m)))]); } o.pic = pic; }
-    o.box = !!tc.recBox && tc.renderer.domElement.width === 180;
-    // (the sound decoded from the file itself — the owner's saved video was silent too: its samples' offsets were off as well)
-    try { const ab = await new AudioContext().decodeAudioData(buf.slice().buffer); let m = 0; const c0 = ab.getChannelData(0); for (let i = 0; i < Math.min(c0.length, ab.sampleRate * 0.2); i++) m = Math.max(m, Math.abs(c0[i])); o.heard = +m.toFixed(3); } catch (e) { o.heard = 'x ' + String(e).slice(0, 60); }
-    return o;
+    let tubes = 0, cones = 0, cyl = 0; V.meshes.get(r.id).traverse((m) => { if (m.geometry?.type === 'TubeGeometry') tubes++; if (m.geometry?.type === 'ConeGeometry') cones++; if (m.geometry?.type === 'CylinderGeometry') cyl++; });
+    const snapped = Math.abs(r.b[1] - r.a[1]) < 1e-9, secs = steps / 30;
+    tc.journal.undo(); V.update(0);
+    return { w: r.w, snapped, strips: (await import('/src/world/dpc.js')).dpcStrips(r).length, mid, secs: +secs.toFixed(1), done: { tubes, cones, cyl }, undone: tc.objects.all('dpc').length, meshes: V.meshes.size, lenM: 4 };
   });
-  check('film shot frame by frame: an mp4, 180×320, the hook first (0.4 s), the film up to it after (0.5 s)', !o.err && o.ftyp === 'ftyp' && o.frames >= 26 && o.frames <= 30 && Math.abs(o.seconds - 0.93) < 0.07 && Math.abs(o.dur - o.seconds) < 0.1 && o.size[0] === 180 && o.size[1] === 320 && o.box && o.pic?.every(([m, sd]) => m > 20 && sd > 8) /* (a picture, not a blank) */, JSON.stringify(o));
-  check('film shot frame by frame: the title painted into the frame; the sound in it (decoded from the file: the blow heard)', o.words > 40 && o.sound && o.inVideo && (o.track === 'wav' || o.heard > 0.02), JSON.stringify(o));
-  check('film shot frame by frame: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-  await browser.close();
-}
-
-// ---- 2n. The 360° places: the photo's own ground laid on the ground round the plot (no disc of other ground over it,
-// no fence, no trees), a ragged rim of the site's soil at the plot's edge; the site's things round it ----
-{
-  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  const o = await page.evaluate(async () => {
-    const tc = window.__tc, o = {};
-    // (two choices of one place at once — the start, a tap: one load, the sky kept, not dropped by the other)
-    tc.settings.backdrop = 'lake'; await Promise.all([tc.backdrop.set('lake'), tc.backdrop.set('lake')]); o.oneLoad = !!tc.backdrop.panos.lake?.sky?.parent && tc.backdrop.panos.lake.sky.visible;
-    tc.settings.backdrop = 'meadow'; await tc.backdrop.set('meadow'); tc.simulate(0.1);
-    const P = tc.backdrop.panos.meadow, U = P.sky.material.uniforms, tu = tc.terrainMat.userData.uniforms;
-    o.laid = /vGr = 1\.0/.test(P.sky.material.vertexShader) && !!U.tSoil.value && U.uLow.value === 0;
-    o.noDisc = !tc.backdrop.ground.visible; o.noSurround = !tc.scene.getObjectByName('surround');
-    o.site = tu.uSite.value;
-    tc.settings.backdrop = 'site'; await tc.backdrop.set('site'); tc.simulate(0.1); o.siteTrodden = tu.uSite.value === 1 && tc.backdrop.panos.site.sky.material.uniforms.uSite.value === 1;
-    // (the site's things: put round it once; the finger carries one, turns it, takes it away; undo brings it back)
-    const PR = () => tc.objects.all('siteprop'), V = tc.camera.position.constructor, W = tc.wallTool.prop;
-    o.props = PR().length; o.meshes = tc.siteProps.group.children.length;
-    const m0 = PR().find((r) => r.kind === 'mixer'), M1 = (m) => m / 10.4651;
-    Object.assign(tc.settings, { wallKind: 'siteprop', propMode: 'move' });
-    W.down(new V(m0.x, 0, m0.z)); W.move(new V(m0.x + M1(3), 0, m0.z - M1(2))); W.up(); tc.simulate(0.05);
-    const m1 = tc.objects.get(m0.id); o.moved = +((m1.x - m0.x) * 10.4651).toFixed(2);
-    tc.journal.undo?.(); tc.simulate(0.05); o.undone = Math.abs(tc.objects.get(m0.id).x - m0.x) < 1e-6;
-    tc.settings.propMode = 'turn'; W.down(new V(m0.x, 0, m0.z)); o.turned = +(tc.objects.get(m0.id).yaw - m0.yaw).toFixed(3);
-    tc.settings.propMode = 'del'; W.down(new V(m0.x, 0, m0.z)); tc.simulate(0.05); o.gone = !tc.objects.get(m0.id) && tc.siteProps.group.children.length === o.meshes - 1;
-    // (the bin — «Удалить» — in this tab: the thing under the finger, nothing else)
-    { const t0 = PR().find((r) => r.kind === 'toilet'), n0 = tc.objects.all().length; tc.wallTool._delete(new V(t0.x, 0, t0.z)); tc.simulate(0.05); o.binTook = !tc.objects.get(t0.id) && tc.objects.all().length === n0 - 1; }
-    tc.settings.propMode = 'cabin'; W.down(new V(0, 0, 0)); o.added = PR().filter((r) => r.kind === 'cabin').length;
-    // (the ground changed under one — dug, heaped: it is stood on it again, not left in the air)
-    { const m = tc.siteProps.meshes.get(PR()[0].id), y = m.position.y; m.position.y = y + 1; tc.terrain.rev = (tc.terrain.rev || 0) + 1; tc.siteProps.update(); o.restood = Math.abs(m.position.y - y) < 1e-6; }
-    // (each thing its real height — a part lost in a comment, a roof gone, shows here)
-    { const SP = await import('/src/world/siteProps.js'), THREE = await import('three'); o.heights = {};
-      for (const k of Object.keys(SP.PROPS)) { const g = await SP.propMesh(k).userData.ready, b = new THREE.Box3().setFromObject(g.children.at(-1)); /* (the model, not its blocks) */ o.heights[k] = Math.round((b.max.y - b.min.y) * 1000);
-        /* (its foot — what stands on the ground: no wider than the model, not much narrower) */ const f = SP.PROPS[k].foot, d = [(b.max.x - b.min.x) * 1000, (b.max.z - b.min.z) * 1000]; (o.feet ||= {})[k] = f.every((v, i) => v <= d[i] + 25 && v >= d[i] * 0.8); } }   // (the models in metres)
-    tc.settings.backdrop = 'workshop'; await tc.backdrop.set('workshop'); tc.simulate(0.1);
-    o.hidden = tu.uSite.value === 0;
-    return o;
-  });
-  check('360° places: the photo\'s own ground laid round the plot (no disc, no fence, no trees), the site\'s soil rim; the trodden ground only at the site', o.oneLoad && o.laid && o.noDisc && o.noSurround && o.site === 0 && o.siteTrodden && o.hidden, JSON.stringify(o));
-  check('site things: put round the site once (10), carried by the finger (3 m), undone, turned 45°, taken away, put down', o.props === 10 && o.meshes === 10 && Math.abs(o.moved - 3) < 0.05 && o.undone && Math.abs(o.turned - 0.785) < 0.01 && o.gone && o.binTook && o.added === 2 && o.restood, JSON.stringify(o));
-  check('site things: each its model, its real height (toilet 2,3 m, cabin 2,55 — taller than it, mixer 1,35, barrow 0,74, cones 0,75; none missing)', Object.values(o.feet).every(Boolean) && Math.abs(o.heights.toilet - 2300) < 30 && Math.abs(o.heights.cabin - 2550) < 40 && o.heights.cabin / o.heights.toilet >= 1.08 && Math.abs(o.heights.mixer - 1350) < 30 && o.heights.pallet > 500 && o.heights.bricks > 500 && o.heights.bags > 500 && Math.abs(o.heights.barrow - 740) < 40 && Math.abs(o.heights.cones - 750) < 30 && Object.values(o.heights).every((h) => h > 200), JSON.stringify(o.heights));
-  check('360° places: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-  await browser.close();
-}
-
-// ---- 2o. Facing bricks («Стены» → «Кладка» → «Кирпич» → «Облицовочный»): a brick laid takes the colour chosen, drawn
-// with its colour's band of the atlas; the filler brick none ----
-{
-  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  const o = await page.evaluate(async () => {
-    const tc = window.__tc, wt = tc.wallTool, M = 1 / 1000 / 10.4651, o = {}, W = await import('/src/world/walls.js');
-    o.colours = Object.keys(W.FACING).length;
-    tc.settings.brickFace = 'anthracite'; o.face = wt._face('brick').face; o.blockNone = !wt._face('block').face;
-    tc.settings.brickFace = null; o.fillerNone = !wt._face('brick').face;
-    const g = tc.terrain.heightAt(0, 0), add = (x, face) => tc.objects.add({ type: 'unit', kind: 'brick', free: true, ...(face ? { face } : {}), p: [x, g + 32.5 * M, 0], s: [250 * M, 65 * M, 120 * M], q: [0, 0, 0, 1] });
-    add(0, 'yellow'); add(260 * M, null); tc.simulate(0.2);
-    const a = tc.wallView.bricks.geometry.attributes.aLayer.array, own = tc.wallView.owner.bricks, recs = tc.objects.all('unit');
-    o.layers = own.slice(0, tc.wallView.bricks.count).map((id, i) => [recs.find((r) => r.id === id)?.face || 'filler', a[i]]);
-    o.tex = !!tc.wallView.bricks.material.map?.image?.src?.includes('brick_atlas');
-    return o;
-  });
-  check('facing bricks: 7 colours; a brick laid takes the colour chosen (the filler one none, a block none); drawn with its band of the atlas', o.colours === 7 && o.face === 'anthracite' && o.blockNone && o.fillerNone && o.layers.some(([f, l]) => f === 'yellow' && l === 6) && o.layers.some(([f, l]) => f === 'filler' && l === 0), JSON.stringify(o));
-  check('facing bricks: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  check('damp-proof course: drawn on the concrete — snapped along the axis, 1300 = two strips lapped, the roll and the torch while it is laid',
+    o.snapped && o.strips === 2 && o.mid?.rolls === 1 && o.mid?.torch >= 2, JSON.stringify(o));
+  check('damp-proof course: laid at its pace (2 × 4 m at 0.25 m/s ≈ 32 s), then no roll, no torch, the beads at both edges of each strip; undo takes it off',
+    o.secs > 25 && o.secs < 40 && o.done.cones === 0 && o.done.cyl === 0 && o.done.tubes === 4 && o.undone === 0 && o.meshes === 0, JSON.stringify(o));
+  check('damp-proof course: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 

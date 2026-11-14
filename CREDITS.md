@@ -346,6 +346,7 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | `assets/sounds/` — gravel_pour | rocks2.wav | mystiscool | CC BY 4.0 | https://freesound.org/people/mystiscool/sounds/7136/ |
 | `assets/sounds/` — birds | morning_birds_ambience.wav | vibe_crc | CC0 | https://freesound.org/people/vibe_crc/sounds/50619/ |
 | `assets/sounds/` — loader | Bobcat idling 080320.wav | BoilingSand | CC BY 3.0 | https://freesound.org/people/BoilingSand/sounds/50661/ |
+| `assets/sounds/` — torch | gas vuur dakwerken gasbrander luchtballon.wav | NickPeeters | CC0 | https://freesound.org/people/NickPeeters/sounds/243763/ |
 | `assets/sounds/` — loader_work | Bobcat moving pallets etc Part 1 080320.wav | BoilingSand | CC BY 3.0 | https://freesound.org/people/BoilingSand/sounds/50662/ |
 | `assets/sounds/` — hammer_nail | HammerNailWood.wav | mikaelfernstrom | CC BY 4.0 | https://freesound.org/people/mikaelfernstrom/sounds/68696/ |
 | `assets/sounds/` — paint | Painting 02 090420.wav | LG | CC BY 4.0 | https://freesound.org/people/LG/sounds/71431/ |

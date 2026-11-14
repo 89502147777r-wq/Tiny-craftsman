@@ -1,5 +1,8 @@
 // English for every Russian line of the game (the key: the Russian, {n} — what a template puts in)
 export default {
+"Под газоблок 300 — 400 мм": "Under 300 aerated block — 400 mm",
+"Под кирпич 380 — 480 мм": "Under 380 brick — 480 mm",
+"Под шлакоблок 1190 — 1300 мм": "Under 1190 cinder block — 1300 mm",
 "🐞 Экспорт построек и участка (без истории) — для разбора ошибок": "🐞 Export the buildings and the plot (no history) — for bug reports",
 "Перекрытие разбили отбойником и вывезли": "The slab was broken up with a breaker and taken away",
 "Перемычку разбили отбойником — проём снова открыт": "The lintel was broken up with a breaker — the opening is open again",
