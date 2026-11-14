@@ -554,9 +554,10 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
 export function makeLoadMaterial(ground) {
   const gu = ground?.userData?.uniforms;
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
-  if (!gu?.tWall || !gu?.tMat) { m.setMix = (w) => m.color.setRGB(0.44 * w[0] + 0.79 * w[1] + 0.64 * w[2] + 0.53 * w[3], 0.32 * w[0] + 0.64 * w[1] + 0.64 * w[2] + 0.52 * w[3], 0.22 * w[0] + 0.42 * w[1] + 0.62 * w[2] + 0.5 * w[3]); m.objScale = new THREE.Vector3(); return m; }
-  const u = { uW: { value: new THREE.Vector4(1, 0, 0, 0) }, uObjScale: { value: new THREE.Vector3(1, 1, 1) } };
-  m.setMix = (w) => u.uW.value.set(w[0], w[1], w[2], w[3]);
+  // (a fifth share, black topsoil: the dug soil's photo taken almost to black, as on the ground)
+  if (!gu?.tWall || !gu?.tMat) { m.setMix = (w) => { const b = w[4] || 0, t = w[0] + w[1] + w[2] + w[3] + b || 1; m.color.setRGB((0.44 * w[0] + 0.79 * w[1] + 0.64 * w[2] + 0.53 * w[3] + 0.12 * b) / t, (0.32 * w[0] + 0.64 * w[1] + 0.64 * w[2] + 0.52 * w[3] + 0.1 * b) / t, (0.22 * w[0] + 0.42 * w[1] + 0.62 * w[2] + 0.5 * w[3] + 0.09 * b) / t); }; m.objScale = new THREE.Vector3(); return m; }
+  const u = { uW: { value: new THREE.Vector4(1, 0, 0, 0) }, uB: { value: 0 }, uObjScale: { value: new THREE.Vector3(1, 1, 1) } };
+  m.setMix = (w) => { u.uW.value.set(w[0], w[1], w[2], w[3]); u.uB.value = w[4] || 0; };
   m.objScale = u.uObjScale.value;
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u, { tWall: gu.tWall, uWallScale: gu.uWallScale, uWallMean: gu.uWallMean, tMat: gu.tMat, uMatScale: gu.uMatScale });
@@ -566,7 +567,7 @@ export function makeLoadMaterial(ground) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform sampler2D tWall; uniform float uWallScale; uniform vec4 uWallMean;
-        uniform highp sampler2DArray tMat; uniform vec3 uMatScale; uniform vec4 uW;
+        uniform highp sampler2DArray tMat; uniform vec3 uMatScale; uniform vec4 uW; uniform float uB;
         varying vec3 vObj;`)
       .replace('#include <map_fragment>', `
         {
@@ -575,7 +576,8 @@ export function makeLoadMaterial(ground) {
           vec3 cS = texture(tMat, vec3(q * uMatScale.x, 0.0)).rgb * vec3(1.05, 1.0, 0.86);
           vec3 c5 = texture(tMat, vec3(q * uMatScale.y, 1.0)).rgb * vec3(0.56, 0.56, 0.58);
           vec3 c20 = texture(tMat, vec3(q * uMatScale.z + 0.37, 1.0)).rgb * vec3(0.46, 0.45, 0.44);
-          diffuseColor.rgb = (cSoil * uW.x + cS * uW.y + c5 * uW.z + c20 * uW.w) / max(1e-4, uW.x + uW.y + uW.z + uW.w);
+          vec3 cB = cSoil * vec3(0.26, 0.24, 0.23);
+          diffuseColor.rgb = (cSoil * uW.x + cS * uW.y + c5 * uW.z + c20 * uW.w + cB * uB) / max(1e-4, uW.x + uW.y + uW.z + uW.w + uB);
         }`);
   };
   return m;

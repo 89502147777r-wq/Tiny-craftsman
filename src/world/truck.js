@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODEL_SCALE } from '../config.js';
+import { MODEL_SCALE, MATERIALS } from '../config.js';
 import { loadModel, normalise } from './machines/models.js';
 
 // The small tipper (FUSO Canter T200, CC BY — CREDITS.md) at the scale of the blocks: 4,7 m long,
@@ -14,6 +14,9 @@ export class Truck {
     this.root = new THREE.Group(); this.root.name = 'truck';
     this.x = 0; this.z = 0; this.yaw = 0; this.y = 0;
     this.tip = 0; this.tipGoal = 0; this.load = 0;
+    // what it carries, by material (soil, sand, 5–20, 20–40, black topsoil) — shares of a body; and what has run over a
+    // side and is to fall to the ground (`spills`: taken by the machines' tool, which drops it as crumbs)
+    this.mix = [1, 0, 0, 0, 0]; this.spills = [];
     this.ready = this._build();
   }
   async _build() {
@@ -63,6 +66,25 @@ export class Truck {
       }
       ys.sort((a, b) => a - b);
       if (ys.length >= 5) this.floor = ys[Math.floor(ys.length / 2)] + H * 0.004;
+    }
+    // (the tops of the drop sides and the tailgate, and their inner faces: what it carries lies against them — no gap
+    // between the load and the sides — and over the top of a side it runs off; the headboard at the front is higher)
+    this.rim = this.floor + R(0.28); this.rimFront = this.hMax;
+    {
+      const v = new THREE.Vector3(), inv = this.bed.matrixWorld.clone().invert(), side = [], inner = [], rear = [], front = [];
+      for (const o of parts) { o.updateMatrixWorld(true); const P = o.geometry.attributes.position; for (let i = 0; i < P.count; i++) {
+        v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld).applyMatrix4(inv);
+        const midX = v.x > L * 0.3 && v.x < L * 0.7, low = v.y > this.floor + R(0.05);
+        if (midX && Math.abs(v.z) > W * 0.4) side.push(v.y);
+        if (v.x > L * 0.88 && Math.abs(v.z) < W * 0.3) front.push(v.y);
+        if (midX && low && Math.abs(v.z) > W * 0.3) inner.push(Math.abs(v.z));
+        if (low && v.x < L * 0.25 && Math.abs(v.z) < W * 0.25) rear.push(v.x);
+      } }
+      const q = (a, k) => { a.sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(a.length * k))]; };
+      if (side.length > 20) { const r = q(side, 0.98); if (r > this.floor + R(0.1) && r < this.floor + R(1)) this.rim = r; }
+      if (front.length > 20) this.rimFront = Math.max(this.rim, q(front, 0.98));
+      if (inner.length > 8) { const zi = q(inner, 0); if (zi > W * 0.35 && zi < W * 0.5) this.hz = 2 * (zi - R(0.02)); }
+      if (rear.length > 4) { const xr = q(rear, 1); if (xr > 0 && xr < this.x0) { this.hx += this.x0 - (xr + R(0.02)); this.x0 = xr + R(0.02); } }
     }
     this.cA = (this.hx / (this.NX - 1)) * (this.hz / (this.NZ - 1));
     this.cap = R(1) ** 3 * TRUCK_LOAD;   // (the body's load, model volume)
@@ -160,20 +182,54 @@ export class Truck {
   // a share `frac` of a full body tipped in from p (world): it is counted in the load at once (the room left, the
   // records), but the heap grows when it has fallen from p to what lies there — √(2h/g), not before it gets there
   // (now: at once — the grid made to match a load)
+  // (no limit here: the body holds what lies in it at its angle of repose, the rest runs over its sides — `_slump`)
   pourAt(p, frac, now = false) {
     if (!this.bed || !(frac > 0)) return;
     const q = this.bed.worldToLocal(p.clone());
-    if (now) { this._heap(q, frac); this.load = Math.min(1, this.load + frac); this._hfLoad = this.load; return; }
-    const had = this.load, h = Math.max(0, p.y - this.surfaceAt(p));
-    this.load = Math.min(1, this.load + frac); this._hfLoad = this.load;
-    const f = this.load - had; if (!(f > 0)) return;
-    (this.falling ||= []).push({ q, f, t: Math.min(1.5, Math.sqrt(2 * h / (9.81 / MODEL_SCALE))) }); this.air = (this.air || 0) + f;
+    this._unsettled = true;
+    if (now) { this._heap(q, frac); this.load += frac; this._hfLoad = this.load; return; }
+    const h = Math.max(0, p.y - this.surfaceAt(p));
+    this.load += frac; this._hfLoad = this.load;
+    (this.falling ||= []).push({ q, f: frac, t: Math.min(1.5, Math.sqrt(2 * h / (9.81 / MODEL_SCALE))) }); this.air = (this.air || 0) + frac;
   }
+  // what is in it, by material: `w` a material's index or shares of each, `frac` of a body of it came in
+  addMix(w, frac) {
+    if (!(frac > 0)) return;
+    if (this.load < 0.02) this.mix = [0, 0, 0, 0, 0];
+    if (typeof w === 'number') this.mix[w] = (this.mix[w] || 0) + frac;
+    else { const tot = w.reduce((a, b) => a + b, 0) || 1; for (let k = 0; k < 5; k++) this.mix[k] = (this.mix[k] || 0) + frac * (w[k] || 0) / tot; }
+    this._mixDirty = true;
+  }
+  setMix(w) { if (!w?.length) return; this.mix = [0, 0, 0, 0, 0]; for (let k = 0; k < 5; k++) this.mix[k] = Math.max(0, +w[k] || 0); if (!this.mix.some((v) => v > 0)) this.mix[0] = 1; this._mixDirty = true; }
+  // the shares of the materials in it (they add up to 1)
+  mixW() { const tot = this.mix.reduce((a, b) => a + b, 0); return tot > 0 ? this.mix.map((v) => v / tot) : [1, 0, 0, 0, 0]; }
+  // a crumb (a falling bit of a load: off a shovel, a bucket, a stream) at p (world) with `vol` of `mat` (model volume):
+  // inside the body's sides and down to what lies in it — it is in it (a share of a body there); `force`: anywhere over
+  // the body (everything is landed at once). → true when it is
+  catchCrumb(p, vol, mat = 0, force = false) {
+    if (!this.bed || !this.root.visible || !this.root.parent || this.tip > 0.05) return false;
+    if (Math.abs(p.x - this.x) > R(3.5) || Math.abs(p.z - this.z) > R(3.5)) return false;   // (far from it: not a matrix inverted for each crumb)
+    const q = this.bed.worldToLocal(_c.copy(p));
+    if (q.x < this.x0 || q.x > this.x0 + this.hx || Math.abs(q.z) > this.hz / 2) return false;
+    if (q.y < this.floor - R(0.25)) return false;   // (a fast crumb may be a little under the floor's top in its frame: not through it)
+    if (!force && q.y > this.floor + this._hAt(q.x, q.z) + R(0.03)) return false;
+    if (vol > 0) { const f = vol / this.cap; this.addMix(mat > 4 ? 0 : mat, f); this.load += f; this._hfLoad = this.load; this._heap(q, f, 1.2); this._unsettled = true; }
+    return true;
+  }
+  // the height of what lies at (x, z) of the bed's frame over its floor
+  _hAt(x, z) {
+    const NX = this.NX, NZ = this.NZ, ix = Math.round(Math.max(0, Math.min(NX - 1, (x - this.x0) / this.hx * (NX - 1)))), iz = Math.round(Math.max(0, Math.min(NZ - 1, (z / this.hz + 0.5) * (NZ - 1))));
+    return this.hf[iz * NX + ix];
+  }
+  // still moving: crumbs landed in it and not yet come to rest, what has run over a side not yet fallen
+  get settling() { return !!(this._unsettled || this.spills.length || this.falling?.length); }
+  // what ran over the sides since the last call: [{ p (world, just outside the side), n (world, outward), v (model volume) }]
+  takeSpills() { const s = this.spills; this.spills = []; return s; }
   // a heap of `frac` of a body round q (the bed's own frame)
-  _heap(q, frac) {
+  _heap(q, frac, r = 3.0) {
     const NX = this.NX, NZ = this.NZ;
     const cx = Math.max(1, Math.min(NX - 2, (q.x - this.x0) / this.hx * (NX - 1))), cz = Math.max(1, Math.min(NZ - 2, (q.z / this.hz + 0.5) * (NZ - 1)));
-    const vol = frac * this.cap, w = [], r = 3.0;
+    const vol = frac * this.cap, w = [];
     let sum = 0;
     for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) { const d2 = ((ix - cx) ** 2 + (iz - cz) ** 2) / (r * r), k = Math.exp(-d2); w.push(k); sum += k; }
     for (let i = 0; i < w.length; i++) this.hf[i] += vol * w[i] / sum / this.cA;
@@ -226,23 +282,54 @@ export class Truck {
     if (Math.abs(want - have) < this.cap * 0.002) return;
     if (want <= 1e-9) this.hf.fill(0);
     else if (want < have) { const k = want / have; for (let i = 0; i < this.hf.length; i++) this.hf[i] *= k; }
-    else { const l = this.load; this.load = have / this.cap; this.pourAt(this.bed.localToWorld(new THREE.Vector3(this.x0 + this.hx * 0.5, 0, 0)), want / this.cap - this.load, true); this.load = l; }
+    else { const l = this.load; this.load = have / this.cap; this.pourAt(this.bed.localToWorld(new THREE.Vector3(this.x0 + this.hx * 0.5, 0, 0)), want / this.cap - this.load, true); this.load = l; this._quiet = true; }
     this._hfDirty = true;
   }
-  // it slumps: each pair of cells steeper than its repose shares the excess (a few sweeps a frame)
+  // it slumps: each pair of cells steeper than its repose shares the excess (sweeps till it rests); against the sides
+  // it lies no higher than their tops — what comes over a top runs off it (`spills`, to the ground): heaped over the
+  // body it keeps only the cone its angle of repose holds, as a real load does
   _slump() {
-    const NX = this.NX, NZ = this.NZ, h = this.hf, dx = this.hx / (NX - 1), dz = this.hz / (NZ - 1), rep = 0.72;
-    let moved = false;
-    for (let it = 0; it < 6; it++) for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
-      const i = iz * NX + ix;
-      for (const [j, d] of [[ix + 1 < NX ? i + 1 : -1, dx], [iz + 1 < NZ ? i + NX : -1, dz]]) {
-        if (j < 0) continue;
-        const diff = h[i] - h[j], lim = rep * d;
-        if (Math.abs(diff) > lim) { const m = (Math.abs(diff) - lim) / 2 * Math.sign(diff); h[i] -= m; h[j] += m; moved = true; }
+    const NX = this.NX, NZ = this.NZ, h = this.hf, dx = this.hx / (NX - 1), dz = this.hz / (NZ - 1), w = this.mixW();
+    let rep = 0; for (let k = 0; k < 5; k++) rep += w[k] * MATERIALS[k].repose;
+    const eps = this.hx * 2e-5, side = this.rim - this.floor, head = this.rimFront - this.floor, tipped = this.tip > 0.05;
+    const over = (this._over ||= new Float32Array(NX * NZ));
+    let moved = false, any = false;
+    for (let it = 0; it < 40; it++) {
+      let m0 = false;
+      for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
+        const i = iz * NX + ix;
+        for (const [j, d] of [[ix + 1 < NX ? i + 1 : -1, dx], [iz + 1 < NZ ? i + NX : -1, dz]]) {
+          if (j < 0) continue;
+          const diff = h[i] - h[j], lim = rep * d;
+          if (Math.abs(diff) > lim + eps) { const m = (Math.abs(diff) - lim) / 2 * Math.sign(diff); h[i] -= m; h[j] += m; m0 = true; }
+        }
       }
+      // (the cells along the sides and the tailgate: at most their tops; along the headboard, its top)
+      if (!tipped) for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
+        if (iz > 0 && iz < NZ - 1 && ix > 0 && ix < NX - 1) continue;
+        const i = iz * NX + ix, top = ix === NX - 1 && iz > 0 && iz < NZ - 1 ? head : side;
+        if (h[i] > top + eps) { over[i] += h[i] - top; h[i] = top; any = true; m0 = true; }
+      }
+      if (!m0) break;
+      moved = true;
     }
-    // (heaped no higher than a little over the sides)
-    for (let i = 0; i < h.length; i++) if (h[i] > this.hMax - this.floor) h[i] = this.hMax - this.floor;
+    if (any) {
+      // (over the side: a share of a body less in it; set from a record it was at rest — nothing to drop)
+      let v = 0;
+      for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
+        const i = iz * NX + ix; if (!(over[i] > 0)) continue;
+        const vol = over[i] * this.cA; v += vol; over[i] = 0;
+        if (this._quiet) continue;
+        const sx = ix === 0 ? -1 : ix === NX - 1 && iz > 0 && iz < NZ - 1 ? 1 : 0, sz = sx ? 0 : iz === 0 ? -1 : 1;
+        const lx = sx < 0 ? this.x0 - R(0.12) : sx > 0 ? this.x0 + this.hx + R(0.12) : this.x0 + ix / (NX - 1) * this.hx;
+        const lz = sz ? sz * (this.hz / 2 + R(0.12)) : (iz / (NZ - 1) - 0.5) * this.hz;
+        const p = this.bed.localToWorld(new THREE.Vector3(lx, (sx > 0 ? this.rimFront : this.rim) + R(0.02), lz));
+        const n = new THREE.Vector3(sx, 0, sz).transformDirection(this.bed.matrixWorld); n.y = 0; n.normalize();
+        this.spills.push({ p, n, v: vol });
+      }
+      this.load = Math.max(0, this.load - v / this.cap); this._hfLoad = this.load;
+    }
+    if (!moved) { this._quiet = false; this._unsettled = false; }
     return moved;
   }
   update(dt) {
@@ -257,6 +344,7 @@ export class Truck {
       for (let i = 0; i < pos.count; i++) pos.setY(i, this.hf[i] > this.hx * 0.0015 ? this.hf[i] : -this.hx * 0.004);
       pos.needsUpdate = true; this.soil.geometry.computeVertexNormals();
     }
+    if (this._mixDirty) { this._mixDirty = false; this.soil.material.setMix?.(this.mixW()); }
     this.tip += (this.tipGoal - this.tip) * (1 - Math.exp(-dt * 1.5));
     this.bed.rotation.z = this.tip;   // (+: the front up, on the rear hinge)
     if (this.gate) this.gate.rotation.z = -this.tip * 0.97;
@@ -264,3 +352,4 @@ export class Truck {
     this.soil.visible = this.load > 0.005;
   }
 }
+const _c = new THREE.Vector3();

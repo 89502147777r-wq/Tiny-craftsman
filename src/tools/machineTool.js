@@ -41,7 +41,7 @@ export class MachineTool {
       if (rec?.type !== 'vehicle' || this.state === 'work' || this.state === 'haul') return;
       if (rec.kind === 'loader' && this.loader?.loaded) this.loader.place(app.terrain, rec.x, rec.z, rec.yaw);
       if (rec.kind === 'excavator' && this.exc?.loaded) { const E = this.exc; E.place(app.terrain, rec.x, rec.z, rec.yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = rec[k] || 0; E.load = rec.load || 0; }
-      if (rec.kind === 'truck' && this.truck?.loaded) { this.truck.place(app.terrain, rec.x, rec.z, rec.yaw); this.truck.load = rec.load || 0; this.truck.root.visible = !rec.away; }
+      if (rec.kind === 'truck' && this.truck?.loaded) { this.truck.place(app.terrain, rec.x, rec.z, rec.yaw); this.truck.load = rec.load || 0; this.truck.setMix(rec.mix); this.truck.root.visible = !rec.away; }
     });
   }
   get machine() { return this.loader; }
@@ -69,9 +69,11 @@ export class MachineTool {
     const app = this.app, T = (this.truck = new Truck());
     return T.ready.then(() => {
       app.scene.add(T.root);
-      T.soil.material = makeLoadMaterial(app.terrainMat); T.soil.material.objScale.set(T.soil.scale.x, 1, T.soil.scale.z); T.mix = [1, 0, 0, 0];
+      T.soil.material = makeLoadMaterial(app.terrainMat); T.soil.material.objScale.set(T.soil.scale.x, 1, T.soil.scale.z); T._mixDirty = true;
+      // (whatever falls into its body — off a shovel, a bucket, a stream of crumbs — is in it, not through it onto the ground)
+      app.particles.catcher = (p, vol, mat, force) => T.catchCrumb(p, vol, mat, force);
       const r = this.recOf('truck');
-      if (r) { T.place(app.terrain, r.x, r.z, r.yaw); T.load = r.load || 0; T.root.visible = !r.away; } else T.root.visible = false;
+      if (r) { T.place(app.terrain, r.x, r.z, r.yaw); T.load = r.load || 0; T.setMix(r.mix); T.root.visible = !r.away; } else T.root.visible = false;
     });
   }
   // the mini excavator: where it was left, else at the far right corner, facing into the plot
@@ -241,7 +243,8 @@ export class MachineTool {
     if (!this.exc && this.recOf('excavator')) this.ensureExc();
     if (this.exc?.loaded && !(this.state === 'drive' && this.drv === 'excavator')) this.exc.update(dt);
     const L = this.loader;
-    if (!L?.loaded) return;
+    // (the truck with no loader on the plot — loaded by the excavator, by shovels — lives too)
+    if (!L?.loaded) { if (this.truck?.loaded) { this.truck.update(dt); this._overTop(); } return; }
     let moved = 0;
     if (this.state === 'drive') this._driveStep(dt);
     else {
@@ -250,7 +253,7 @@ export class MachineTool {
       L.soil.material.setMix?.(this._mixW());
       L.update(dt, moved);
     }
-    this.truck?.update(dt);
+    this.truck?.update(dt); this._overTop();
     this._life(dt);
   }
   // the engines (their sound), the exhaust and the dust off the wheels — while the machines work
@@ -354,7 +357,7 @@ export class MachineTool {
   }
   _saveTruck(patch) {
     const app = this.app, T = this.truck, r = this.recOf('truck');
-    const rec = { x: +T.x.toFixed(5), z: +T.z.toFixed(5), yaw: +T.yaw.toFixed(4), load: +T.load.toFixed(4), ...patch };
+    const rec = { x: +T.x.toFixed(5), z: +T.z.toFixed(5), yaw: +T.yaw.toFixed(4), load: +T.load.toFixed(4), mix: T.mixW().map((v) => +v.toFixed(3)), ...patch };
     if (r) app.objects.update(r.id, rec); else app.objects.add({ type: 'vehicle', kind: 'truck', hauled: 0, ...rec });
   }
 
@@ -547,7 +550,7 @@ export class MachineTool {
       if (!this._dumpV) {
         // (as much as the body takes; the rest runs over its side)
         const v = g.realVolume(), into = Math.min(v, Math.max(0, (1 - T.load) * TRUCK_LOAD));
-        const mw = this._mixW(); if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let m = 0; m < 4; m++) T.mix[m] += mw[m] * into; T.soil.material.setMix?.(T.mix);
+        T.addMix(this._mixW(), into / TRUCK_LOAD);
         this._dumpV = { v, into, done: 0, col: this._mix().clone() };
         app.sfx.play(into > 0 ? 'dump_truck' : 'soil_dump', { at: L.root.position });
       }
@@ -560,7 +563,7 @@ export class MachineTool {
         T.pourLine(new THREE.Vector3(land.x, Math.max(land.y, e.y), land.z), new THREE.Vector3(Math.sin(L.yaw), 0, Math.cos(L.yaw)), hw, dv / TRUCK_LOAD);   // (from the lip's height: it heaps when it has fallen)
         const ly = land.clone(); ly.y = Math.max(T.surfaceAt(land), e.y - R(2));
         (this.streams ||= new Streams(app.scene)).set(1, e, ly, hw * 1.7, D.col, 1, new THREE.Vector3(-fz, 0, fx));
-        const mw = this._mixW(); for (let j = 0; j < 6; j++) { const w = (r() * 2 - 1) * hw * 0.9; let m = 0, u = r(); for (let q = 0; q < 4; q++) { u -= mw[q]; if (u <= 0) { m = q; break; } } app.particles.emit(new THREE.Vector3(e.x + fz * w, e.y, e.z - fx * w), new THREE.Vector3(fx * R(0.4) * r(), -R(0.3) * r(), fz * R(0.4) * r()), 0, R(0.03 + r() * 0.05), 0, 0, m); }
+        const mw = this._mixW(); for (let j = 0; j < 6; j++) { const w = (r() * 2 - 1) * hw * 0.9; let m = 0, u = r(); for (let q = 0; q < 5; q++) { u -= mw[q]; if (u <= 0) { m = q; break; } } app.particles.emit(new THREE.Vector3(e.x + fz * w, e.y, e.z - fx * w), new THREE.Vector3(fx * R(0.4) * r(), -R(0.3) * r(), fz * R(0.4) * r()), 0, R(0.03 + r() * 0.05), 0, 0, m); }
       }
       if (this.wait <= 0) {
         // the bucketful is in the body: one action — the heap lower, the truck fuller
@@ -1158,10 +1161,10 @@ export class MachineTool {
       const v = take.reduce((a, b) => a + b, 0);
       app.sfx.play(into ? 'dump_truck' : 'soil_dump', { gap: 1.6, at: m });
       if (into) {
-        const vol = v * t.cellArea * MODEL_SCALE ** 3, room = Math.max(0, (1 - T.load) * TRUCK_LOAD), inT = Math.min(vol, room);
-        if (T.load < 0.02) T.mix = [0, 0, 0, 0]; for (let k = 0; k < 4; k++) T.mix[k] += (take[k] + (k ? 0 : take[4])) / Math.max(1e-12, v) * inT; T.soil.material.setMix?.(T.mix);
+        // (all of it into the body: what the body does not hold at its angle runs over its sides — the truck's own)
+        const inT = v * t.cellArea * MODEL_SCALE ** 3;
+        T.addMix(take, inT / TRUCK_LOAD);
         T.pourLine(m, new THREE.Vector3(Math.sin(E.yaw + E.swing), 0, Math.cos(E.yaw + E.swing)), E.bucketW / 2, inT / TRUCK_LOAD);
-        const k = vol > 0 ? 1 - inT / vol : 0; if (k > 1e-6) { const sp = this._overSide(m); for (let j = 0; j < 5; j++) if (take[j] > 0) t.deposit(sp.x, sp.z, take[j] * k * t.cellArea, R(0.4), 0, j); }
       } else {
         // (onto the ground: it falls off all the lip's width as clods and crumbs, each with its share — the ridge under it
         // grows where they land, not before they get there)
@@ -1198,7 +1201,7 @@ export class MachineTool {
     if (out < R(3) || T.load < 0.02 || this._tipT) return;
     const r = this.recOf('truck'), got = T.load * TRUCK_LOAD, total = (r?.hauled || 0) + got;
     this._tipT = 1;
-    T.load = 0; T.tip = T.tipGoal = 0; T.mix = [1, 0, 0, 0]; T.soil.material.setMix?.(T.mix);
+    T.load = 0; T.tip = T.tipGoal = 0; T.setMix([1, 0, 0, 0, 0]);
     app.sfx.play('truck_tip', { vol: 0.5 });
     if (app.journal.pending?.type === 'drive') this._commitDrive();
     app.journal.act('truck-out', {}, app.clock, () => this._saveTruck({ load: 0, hauled: +total.toFixed(3) }));
@@ -1254,7 +1257,7 @@ export class MachineTool {
   _spill(dt, e, f, amount) {
     const app = this.app, t = app.terrain, g = this.grader, L = this.loader, T = this.truck, r = Math.random;
     const a = Math.min(amount, this.cap * 1.2 * dt), k = a / g.load, hw = L.bucketW / 2;
-    for (const m of [0, 1, 2, 3]) {
+    for (const m of [0, 1, 2, 3, 4]) {
       const q = g.carry[m] * k; if (q <= 0) continue;
       g.carry[m] -= q;
       const vol = q * t.cellArea, N = 6;
@@ -1264,7 +1267,7 @@ export class MachineTool {
         const pos = new THREE.Vector3(e.x - f[1] * w - f[0] * back, e.y + R(0.25), e.z + f[0] * w - f[1] * back);
         const over = T?.root.visible && T.loaded ? T.root.worldToLocal(pos.clone()) : null, bb = T?.bodyBox;
         const inTruck = over && over.x > bb.min.x && over.x < bb.max.x && over.z > bb.min.z && over.z < bb.max.z;
-        if (inTruck) { T.pourAt(pos, vol / N * MODEL_SCALE ** 3 / TRUCK_LOAD); app.particles.emit(pos, new THREE.Vector3(0, -R(0.2), 0), 0, R(0.03 + r() * 0.04), 0, 0, m); }
+        if (inTruck) { T.addMix(m, vol / N / T.cap); T.pourAt(pos, vol / N / T.cap); app.particles.emit(pos, new THREE.Vector3(0, -R(0.2), 0), 0, R(0.03 + r() * 0.04), 0, 0, m); }
         else app.particles.emit(pos, new THREE.Vector3((r() - 0.5) * R(0.2), -R(0.1), (r() - 0.5) * R(0.2)), vol / N, R(0.03 + r() * 0.04), m === 1 ? 0 : 0.05, 0, m);
       }
     }
@@ -1436,10 +1439,10 @@ export class MachineTool {
     const lip = T.tailLip(new THREE.Vector3()), fx = Math.cos(T.yaw), fz = -Math.sin(T.yaw), r = Math.random;
     const gx = lip.x - fx * R(0.25), gz = lip.z - fz * R(0.25);
     // (the stream off the tailgate's lip, as wide as the gate opens, down onto the heap)
-    { const col = new THREE.Color(0, 0, 0), mx = T.mix || [1, 0, 0, 0], tot = mx.reduce((a, v) => a + v, 0) || 1; for (let m = 0; m < 4; m++) { const c = BUCKET_COL[m]; col.r += c.r * mx[m] / tot; col.g += c.g * mx[m] / tot; col.b += c.b * mx[m] / tot; }
+    { const col = new THREE.Color(0, 0, 0), mx = T.mix, tot = mx.reduce((a, v) => a + v, 0) || 1; for (let m = 0; m < 5; m++) { const c = BUCKET_COL[m]; col.r += c.r * mx[m] / tot; col.g += c.g * mx[m] / tot; col.b += c.b * mx[m] / tot; }
       (this.streams ||= new Streams(this.app.scene)).set(2, lip, new THREE.Vector3(gx, t.heightAt(gx, gz), gz), T.hz * 0.8, col, Math.min(1, v / (R(0.02) ** 3)), new THREE.Vector3(-fz, 0, fx)); }
-    const mix = T.mix || [1, 0, 0, 0], tot = mix[0] + mix[1] + mix[2] + mix[3] || 1;
-    for (const m of [0, 1, 2, 3]) {
+    const mix = T.mix, tot = mix.reduce((a, v) => a + v, 0) || 1;
+    for (const m of [0, 1, 2, 3, 4]) {
       const a = v * mix[m] / tot; if (!(a > 0)) continue;
       // (the stream wanders across the gate's width as it runs: the heap grows round, not cut by the grid)
       const w = (r() * 2 - 1) * R(0.45), u = (r() - 0.3) * R(0.3), dx = gx - fz * w - fx * u, dz = gz + fx * w - fz * u;
@@ -1468,16 +1471,13 @@ export class MachineTool {
       land.y = truck ? Math.max(T.surfaceAt(land), T.root.localToWorld(new THREE.Vector3(0, b.min.y, 0)).y) : app.terrain.heightAt(land.x, land.z);
       if (g.load > 1e-9) (this.streams ||= new Streams(app.scene)).set(0, e.clone().add(new THREE.Vector3(f[0] * R(0.04), 0, f[1] * R(0.04))), land, hw * 1.7, this._mix(), Math.min(1, (-L.tilt - 0.45) / 0.45), new THREE.Vector3(-f[1], 0, f[0]));
     }
-    for (const m of [0, 1, 2, 3]) {
+    for (const m of [0, 1, 2, 3, 4]) {
       const a = g.carry[m] * k; if (a <= 0) continue;
       g.carry[m] -= a;
       const vol = a * t.cellArea;
       // (into the body as much as it takes; what it does not, runs over its side onto the ground)
-      if (truck) {
-        const room = Math.max(0, (1 - T.load) * TRUCK_LOAD / MODEL_SCALE ** 3), into = Math.min(vol, room), spill = vol - into;
-        if (into > 0) { if (T.load < 0.02) T.mix = [0, 0, 0, 0]; T.mix[m] += into; T.soil.material.setMix?.(T.mix); T.pourAt(e.clone().add(new THREE.Vector3(f[0] * R(0.3), 0, f[1] * R(0.3))), into * MODEL_SCALE ** 3 / TRUCK_LOAD); this._intoTruck = true; }   // (a heap where it lands)
-        if (spill > 0) { const sp = this._overSide(e); for (let j = 0; j < 4; j++) app.particles.emit(sp.clone().add(new THREE.Vector3((r() - 0.5) * R(0.6), 0, (r() - 0.5) * R(0.6))), new THREE.Vector3(0, -R(0.2), 0), spill / 4, R(0.03 + r() * 0.05), 0.05, 0, m); }
-      }
+      // (into the body all of it, a heap where it lands: what it does not hold at its angle runs over its sides)
+      if (truck) { T.addMix(m, vol / T.cap); T.pourAt(e.clone().add(new THREE.Vector3(f[0] * R(0.3), 0, f[1] * R(0.3))), vol / T.cap); this._intoTruck = true; }
       for (let j = 0; j < N; j++) {
         const w = (r() * 2 - 1) * hw * 0.9, pos = new THREE.Vector3(e.x - f[1] * w + f[0] * R(0.05), e.y + R(0.05), e.z + f[0] * w + f[1] * R(0.05));
         const vel = new THREE.Vector3(f[0] * R(0.4) * (0.5 + r()), -R(0.3) * r(), f[1] * R(0.4) * (0.5 + r()));
@@ -1488,9 +1488,41 @@ export class MachineTool {
   }
   // the shares of the materials in the bucket (soil, sand, g5, g20)
   _mixW() {
-    const c = this.grader.carry, tot = c[0] + c[1] + c[2] + c[3] + c[4], w = (this._mw ||= [1, 0, 0, 0]);
-    if (tot > 0) for (let k = 0; k < 4; k++) w[k] = (c[k] + (k ? 0 : c[4])) / tot;   // (black topsoil: shown as soil)
+    const c = this.grader.carry, tot = c[0] + c[1] + c[2] + c[3] + c[4], w = (this._mw ||= [1, 0, 0, 0, 0]);
+    if (tot > 0) for (let k = 0; k < 5; k++) w[k] = c[k] / tot;
     return w;
+  }
+  // the finger on the truck's body (the ray from the camera): the point over it at the top of its sides, where a shovel
+  // is held to throw its load in (→ a world point, or null)
+  truckAim(ray) {
+    const T = this.truck; if (!ray || !T?.loaded || !T.root.visible || T.tip > 0.05) return null;
+    T.root.updateMatrixWorld(true);
+    const top = T.bed.localToWorld(new THREE.Vector3(T.x0 + T.hx / 2, T.rim, 0)).y, p = new THREE.Vector3();
+    if (!ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -top), p)) return null;
+    const q = T.bed.worldToLocal(p.clone());
+    if (q.x < T.x0 || q.x > T.x0 + T.hx || Math.abs(q.z) > T.hz / 2) return null;
+    // (a little in from the sides: what leaves the blade falls inside them)
+    q.x = Math.max(T.x0 + R(0.25), Math.min(T.x0 + T.hx - R(0.25), q.x)); q.z = Math.max(-T.hz / 2 + R(0.25), Math.min(T.hz / 2 - R(0.25), q.z)); q.y = T.rim;
+    return T.bed.localToWorld(q);
+  }
+  // what has run over the top of the truck's sides: it falls off them to the ground as crumbs, each with its share — the
+  // heap grows by the wheels where they land (the load's materials as they are mixed in it)
+  _overTop() {
+    const T = this.truck; if (!T?.spills.length) return;
+    const app = this.app, P = app.particles, w = T.mixW(), r = Math.random, sp = T.takeSpills();
+    let tot = 0; for (const s of sp) tot += s.v;
+    if (!(tot > 0)) return;
+    // (a few crumbs a frame however much: each spill a crumb or two, a big one more)
+    const per = Math.max(tot / 40, R(0.025) ** 3);
+    for (const s of sp) {
+      const n = Math.max(1, Math.min(4, Math.round(s.v / per)));
+      for (let j = 0; j < n; j++) {
+        let m = 0, u = r(); for (let q = 0; q < 5; q++) { u -= w[q]; if (u <= 0) { m = q; break; } }
+        const vel = s.n.clone().multiplyScalar(R(0.15 + r() * 0.35)).add(new THREE.Vector3((r() - 0.5) * R(0.15), -R(0.05), (r() - 0.5) * R(0.15)));
+        const p = s.p.clone().add(new THREE.Vector3((r() - 0.5) * R(0.08), 0, (r() - 0.5) * R(0.08)));
+        P.emit(p, vel, s.v / n, R(0.025 + r() * 0.04), m === 1 ? 0 : 0.08, 0, m, true);
+      }
+    }
   }
   // where what runs over the truck's side lands: just outside the side nearest to p, level with it
   _overSide(p) {
@@ -1514,7 +1546,7 @@ export class MachineTool {
       if (app.journal.pending?.type !== 'drive') return false;
       app.journal.cancel(); this.grader.carry.fill(0); L.load = 0; this.v = 0;
       const r = this.rec; if (r) L.place(app.terrain, r.x, r.z, r.yaw);
-      const T = this.truck, q = this.recOf('truck'); if (T && q) { T.place(app.terrain, q.x, q.z, q.yaw); T.load = q.load || 0; }
+      const T = this.truck, q = this.recOf('truck'); if (T && q) { T.place(app.terrain, q.x, q.z, q.yaw); T.load = q.load || 0; T.setMix(q.mix); }
       const E = this.exc, qe = this.recOf('excavator'); if (E && qe) { E.place(app.terrain, qe.x, qe.z, qe.yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = qe[k] || 0; E.load = qe.load || 0; this.digG?.carry.fill(0); }
       return true;
     }
@@ -1532,7 +1564,7 @@ export class MachineTool {
       if (app.journal.pending?.type === 'haul') app.journal.cancel();
       this.grader.carry.fill(0); L.load = 0; this.heap = null;
       const T = this.truck, r = this.recOf('truck');
-      if (T && r) { T.place(app.terrain, r.x, r.z, r.yaw); T.load = r.load || 0; T.root.visible = !r.away; }
+      if (T && r) { T.place(app.terrain, r.x, r.z, r.yaw); T.load = r.load || 0; T.setMix(r.mix); T.root.visible = !r.away; }
       this.state = 'idle'; this.phase = null; this.area = null; this._rectDraw();
       app.sfx.scrapeStop();
       app.ui?.refresh();

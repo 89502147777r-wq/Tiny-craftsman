@@ -49,7 +49,7 @@ export class SoilParticles {
   // (real: vel is a real speed (m/s in model units, R()); else it was set for the old 10× gravity — scaled by 1/√k, its
   // drag and life with it: the same path in space as it was tuned, gone through at the real pace)
   emit(pos, vel, vol, size, keep = 0.25, depth = 0, mat = 0, real = false) {
-    if (this.items.length >= this.max) { this.terrain.deposit(pos.x, pos.z, vol, 0.002, depth, mat); return; }
+    if (this.items.length >= this.max) { if (!this.tryCatch(pos, vol, mat, true)) this.terrain.deposit(pos.x, pos.z, vol, 0.002, depth, mat); return; }
     const r = this.rnd;
     this.items.push({
       p: pos.clone(), v: real ? vel.clone() : vel.clone().multiplyScalar(SLOW), drag: real ? 0.1 : 0.6 * SLOW, life: real ? 3 : 3 / SLOW, vol, size: size * (0.6 + r() * 0.8),
@@ -57,9 +57,13 @@ export class SoilParticles {
     });
   }
 
+  // something that catches crumbs before they reach the ground (the truck's body: `catcher(p, vol, mat, force)` → true
+  // when it took it; force: anywhere over it — landed at once)
+  tryCatch(p, vol, mat, force = false) { return !!this.catcher?.(p, vol, mat, force); }
+
   // Land everything immediately (used before committing an action).
   flush() {
-    for (const it of this.items) this._land(it, it.p.x, it.p.z);
+    for (const it of this.items) if (!this.tryCatch(it.p, it.vol, it.mat || 0, true)) this._land(it, it.p.x, it.p.z);
     this.items.length = 0;
     this.mesh.count = 0;
   }
@@ -91,6 +95,7 @@ export class SoilParticles {
       it.v.multiplyScalar(1 - it.drag * dt);
       it.p.addScaledVector(it.v, dt);
       it.rot.x += it.spin * dt; it.rot.z += it.spin * 0.7 * dt;
+      if (this.catcher && this.catcher(it.p, it.vol, it.mat || 0, false)) continue;
       const inside = t.inside(it.p.x, it.p.z);
       const ground = inside ? t.heightAt(it.p.x, it.p.z) : 0;
       if (it.p.y - it.size * 0.5 <= ground || it.age > it.life) {
