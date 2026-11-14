@@ -1450,6 +1450,25 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2l². «Ibiza» stage 2 (the owner: in the order of the build, from where stage 1 ended): the plot of film 1's end loaded, the
+// damp-proof course torched down, the spine and the pavilion laid to one level, the ring beam over them, the steps up to 6,8, the
+// landing's beam; the hook marked before the end (the loop) ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '&film=stair&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, f = tc.film;
+    for (let i = 0; i < 20000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
+    const pools = tc.objects.all('pool').length, strips = tc.objects.all('belt').filter((b) => b.stripped).length;
+    const cinder = tc.objects.all('unit').filter((u) => u.kind === 'cinder'), top = Math.max(...cinder.map((u) => u.p[1] + u.s[1] / 2)), base = Math.min(...cinder.map((u) => u.p[1] - u.s[1] / 2));
+    return { done: f.done, t: +f.t.toFixed(1), stair: f.stair, pools, stripped: strips, rise: Math.round((top - base) * 1000 * 10.4651), hook: f.marks?.hook != null && f.marks?.hookEnd > f.marks?.hook };
+  });
+  check('film (stair): starts where stage 1 ended (its pool shell there), the DPC, the walls, the ring beam (stripped after a week), the steps to ~6,8, the landing; 30–50 s, the hook marked',
+    o.done && o.pools >= 1 && o.stair?.dpc >= 6 && o.stair.beltId != null && o.stair.landId != null && o.stripped >= 1 && o.rise > 6300 && o.rise < 7200 && o.t > 30 && o.t < 50 && o.hook, JSON.stringify(o));
+  check('film (stair): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
