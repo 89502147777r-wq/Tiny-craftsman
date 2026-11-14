@@ -5,7 +5,7 @@
 // into an offline context (audio/sfx.js) and are rendered at the end. The hook («hook» … «hookEnd»,
 // marked at the end of the film) is put first, as scripts/render-film.mjs does: the frames are kept
 // encoded, a key frame where the hook starts, and the mp4 made of them in the new order (mp4-muxer).
-import { Muxer, ArrayBufferTarget } from '../../vendor/mp4-muxer/mp4-muxer.mjs';
+import { Muxer, StreamTarget } from '../../vendor/mp4-muxer/mp4-muxer.mjs';
 import { paintDom } from './compose.js';
 import { LANG } from '../i18n/i18n.js';
 
@@ -14,7 +14,7 @@ const L = (ru, en) => (LANG === 'en' ? en : ru);
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 async function videoConfig(w, h, fps) {
-  const bitrate = fps > 30 ? 10e6 : 7e6;   // (YouTube's 1080p: 8–12 Mbit/s)
+  const bitrate = fps > 30 ? 8e6 : 6e6;   // (YouTube's 1080p: 8–12 Mbit/s; the low end — a 100 s film in a phone's memory)
   for (const codec of ['avc1.64002A', 'avc1.4D402A', 'avc1.42E02A', 'avc1.640028', 'avc1.4D4028', 'avc1.42001F']) {
     const c = { codec, width: w, height: h, bitrate, framerate: fps, latencyMode: 'quality', avc: { format: 'avc' } };
     try { if ((await VideoEncoder.isConfigSupported(c)).supported) return c; } catch { /* next */ }
@@ -105,12 +105,13 @@ export async function recordFilm(app, o = {}) {
   const total = segs.reduce((a, [p, q]) => a + q - p, 0);
   o.onProgress?.({ t: f.t, frames: n, sec: (performance.now() - t0) / 1000, phase: 'sound' });
   // the sound: rendered, cut the same way
-  const buf = await app.sfx.ctx.startRendering();
+  let buf = await app.sfx.ctx.startRendering();
   const ch = [0, 1].map((c) => { const src = buf.getChannelData(Math.min(c, buf.numberOfChannels - 1)), dst = new Float32Array(Math.round(total * RATE / fps)); let w = 0; for (const [p, q] of segs) { const a = Math.round(p * RATE / fps), b = Math.min(src.length, Math.round(q * RATE / fps)); dst.set(src.subarray(a, b).slice(0, dst.length - w), w);
     // (a join of two parts: 8 ms faded out and in — no click where a sound is cut)
     const F = Math.round(0.008 * RATE), e = Math.min(dst.length, w + (b - a));
     if (segs.length > 1) for (let j = 0; j < F; j++) { const g = j / F; if (w + j < e) dst[w + j] *= w ? g : 1; if (e - 1 - j >= w) dst[e - 1 - j] *= g; }
     w += Math.round((q - p) * RATE / fps); } return dst; });
+  buf = null; app.sfx.offlineDone?.();   // (the long render let go before the encoding: the phone's memory — the owner: the game restarted while the sound was mixed)
   const ac = await audioConfig(RATE);
   const achunks = []; let ameta = null;
   if (ac) {
@@ -127,14 +128,26 @@ export async function recordFilm(app, o = {}) {
     if (aerr || !achunks.length) achunks.length = 0;
   }
   // the mp4
-  const target = new ArrayBufferTarget();
-  const mux = new Muxer({ target, fastStart: 'in-memory', firstTimestampBehavior: 'offset', video: { codec: 'avc', width: W, height: H, frameRate: fps }, ...(achunks.length ? { audio: { codec: ac.mux, numberOfChannels: 2, sampleRate: RATE } } : {}) });
-  const byI = new Map(chunks.map((c) => [c.i, c]));
+  // (written as it is muxed, in parts — not the whole film once more in memory and then once again as one buffer: on the phone the
+  // tab ran out of memory and the game restarted at «saving»; each frame's bytes let go once they are in)
+  const parts = []; let end = 0;
+  const put = (data, pos) => {
+    let d = data, at = pos;
+    if (at < end) for (const q of parts) {   // (a write back over what is there: the boxes' sizes, the index)
+      const a = Math.max(at, q.pos), b = Math.min(at + d.length, q.pos + q.d.length);
+      if (a < b) q.d.set(d.subarray(a - at, b - at), a - q.pos);
+    }
+    if (at + d.length > end) { const s = Math.max(0, end - at); parts.push({ pos: end, d: d.slice(s) }); end = at + d.length; }
+  };
+  const target = new StreamTarget({ onData: (data, position) => put(data, position), chunked: true, chunkSize: 4 * 2 ** 20 });
+  const byI = new Map(chunks.map((c) => [c.i, c])); chunks.length = 0;   // (the map holds them now: each let go as it goes in)
+  let nv = 0; for (const [p, q] of segs) for (let j = p; j < q; j++) if (byI.has(j)) nv++;
+  const mux = new Muxer({ target, fastStart: { expectedVideoChunks: nv, expectedAudioChunks: achunks.length }, firstTimestampBehavior: 'offset', video: { codec: 'avc', width: W, height: H, frameRate: fps }, ...(achunks.length ? { audio: { codec: ac.mux, numberOfChannels: 2, sampleRate: RATE } } : {}) });
   let v = 0, first = true;
   for (const [p, q] of segs) for (let j = p; j < q; j++, v++) {
     const c = byI.get(j); if (!c) continue;
     mux.addVideoChunkRaw(c.d, first || c.key ? 'key' : 'delta', Math.round(v * 1e6 / fps), Math.round(1e6 / fps), first ? vmeta : undefined);
-    first = false;
+    first = false; c.d = null; byI.delete(j);
   }
     // (AAC: the decoder's config written by us, not taken from the encoder — Safari's AAC encoder gives a wrong one (WebKit bug 302253),
   // and the video plays silent on the phone (the owner: «видео записал, а звука нет»); its frames with ADTS headers have them cut off)
@@ -145,7 +158,7 @@ export async function recordFilm(app, o = {}) {
   }
   achunks.forEach((c, j) => mux.addAudioChunkRaw(c.d, c.key || ac?.mux === 'aac' ? 'key' : 'delta', c.ts, c.dur, j === 0 ? ameta : undefined));
   mux.finalize();
-  return { sound: achunks.length ? ac.mux : 'wav', blob: new Blob([target.buffer], { type: 'video/mp4' }), pcm: ch, rate: RATE, w: W, h: H, fps, wav: achunks.length ? null : wav(ch, RATE), seconds: total / fps, frames: total, took: (performance.now() - t0) / 1000 };
+  return { sound: achunks.length ? ac.mux : 'wav', blob: new Blob(parts.map((q) => q.d), { type: 'video/mp4' }), pcm: ch, rate: RATE, w: W, h: H, fps, wav: achunks.length ? null : wav(ch, RATE), seconds: total / fps, frames: total, took: (performance.now() - t0) / 1000 };
 }
 
 // the screens round it: the shooting's progress, then the video — save it, watch it, again, back to the game
