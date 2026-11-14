@@ -313,30 +313,34 @@ export class Excavator {
     const box = new THREE.Box3().setFromPoints(pts), size = box.getSize(new THREE.Vector3()), ax = ['x', 'y', 'z'];
     const thin = ax.reduce((a, k) => (size[k] < size[a] ? k : a), 'x'), long = ax.filter((k) => k !== thin).reduce((a, k) => (size[k] > size[a] ? k : a));
     const other = ax.find((k) => k !== thin && k !== long);
-    const tex = new THREE.TextureLoader().load('assets/brand/logo-line-dark.png'); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const tex = new THREE.TextureLoader().load('assets/brand/logo-stack-boom.png')   /* (the owner's logo for it: two lines, the red initials) */; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
     const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.35, roughness: 0.55, metalness: 0, polygonOffset: true, polygonOffsetFactor: -4, depthWrite: false });
     for (const side of [1, -1]) {
-      const face = side > 0 ? box.max[thin] : box.min[thin];
-      // (the side plate: the points within 4 % of the thin size of that face; the middle third of the boom's length)
+      // (on the upper straight stretch, toward the nose — where the stick hangs: clear of the boom's cylinder by the knee); the side
+      // plate there: its own face (the boom is narrower toward the nose than at its foot)
+      const nose = this.stickP.position[long] > box.min[long] + size[long] / 2 ? 1 : -1, fc = nose > 0 ? 0.68 : 0.32, at = box.min[long] + size[long] * fc;
+      const win = pts.filter((q) => Math.abs(q[long] - at) < size[long] * 0.14); if (win.length < 12) continue;
+      const face = side > 0 ? Math.max(...win.map((q) => q[thin])) : Math.min(...win.map((q) => q[thin]));
       const near = pts.filter((q) => Math.abs(q[thin] - face) < size[thin] * 0.06);
       // (the straightest stretch of the plate: the window whose points lie best on a line — a decal on the knee stood off it)
       const fit = (ps) => { let sx = 0, sy = 0, sxx = 0, sxy = 0; for (const q of ps) { sx += q[long]; sy += q[other]; sxx += q[long] * q[long]; sxy += q[long] * q[other]; } const n0 = ps.length, k0 = (n0 * sxy - sx * sy) / Math.max(1e-12, n0 * sxx - sx * sx), b0 = (sy - k0 * sx) / n0; let e = 0; for (const q of ps) e = Math.max(e, Math.abs(q[other] - (k0 * q[long] + b0))); return e; };
-      let mid = [], best = Infinity;
-      for (let f = 0.12; f <= 0.6; f += 0.06) { const lo = box.min[long] + size[long] * f, hi = lo + size[long] * 0.28, w = near.filter((q) => q[long] > lo && q[long] < hi); if (w.length < 12) continue; const e = fit(w); if (e < best) { best = e; mid = w; } }
+      const mid = near.filter((q) => Math.abs(q[long] - at) < size[long] * 0.12);
       if (mid.length < 8) continue;
       const c = new THREE.Vector3(); for (const q of mid) c.add(q); c.divideScalar(mid.length); c[thin] = face + side * size[thin] * 0.004;
-      // (the plate's own height where the decal goes: its points within a slice there — the decal 60 % of it, centred on it)
-      const slice = near.filter((q) => Math.abs(q[long] - c[long]) < size[long] * 0.06);
-      const oLo = Math.min(...slice.map((q) => q[other])), oHi = Math.max(...slice.map((q) => q[other]));
-      if (Number.isFinite(oLo) && oHi > oLo) c[other] = (oLo + oHi) / 2;
-      // the plate's slope in the boom's length: a line through its points (least squares of `other` on `long`)
-      let sx = 0, sy = 0, sxx = 0, sxy = 0; for (const q of mid) { sx += q[long]; sy += q[other]; sxx += q[long] * q[long]; sxy += q[long] * q[other]; }
-      const nN = mid.length, k = (nN * sxy - sx * sy) / Math.max(1e-12, nN * sxx - sx * sx);
-      const dir = new THREE.Vector3(); dir[long] = 1; dir[other] = Number.isFinite(k) ? k : 0; dir.normalize();
+      // the plate's way along the boom: the main axis of its points there (the stretch may be steep — no line of `other` on `long`)
+      // (from the middle of the plate a little before to a little after: two slices' centres)
+      const cen = (f0, f1) => { const ps = near.filter((q) => q[long] > at + size[long] * f0 && q[long] < at + size[long] * f1); const o = new THREE.Vector3(); for (const q of ps) o.add(q); return ps.length ? o.divideScalar(ps.length) : null; };
+      const c1 = cen(-0.2, -0.08), c2 = cen(0.08, 0.2), dir = new THREE.Vector3(); dir[long] = 1;
+      if (c1 && c2) { dir.subVectors(c2, c1); dir[thin] = 0; dir.normalize(); }
       const n = new THREE.Vector3(); n[thin] = side;
-      let up = new THREE.Vector3().crossVectors(n, dir).normalize(); if (up.y < 0) up.negate();
+      const up = new THREE.Vector3().crossVectors(n, dir).normalize();
+      if (up.clone().transformDirection(B.matrixWorld).y < 0) up.negate();   // (up as the world's up at the boom's rest pose)
       const right = new THREE.Vector3().crossVectors(up, n).normalize();   // (reads left to right from that side)
-      const hp = Number.isFinite(oLo) && oHi > oLo ? (oHi - oLo) : size[other] * 0.3, H = Math.min(hp * 0.55, size[long] * 0.3 * 88 / 720), L = H * 720 / 88;
+      // the plate's height across the boom there, the decal centred in it and 70 % of it
+      const slice = near.filter((q) => Math.abs(q.clone().sub(c).dot(dir)) < size[long] * 0.05), ups = slice.map((q) => q.clone().sub(c).dot(up));
+      const uLo = Math.min(...ups), uHi = Math.max(...ups), hp = Number.isFinite(uLo) && uHi > uLo ? uHi - uLo : size[other] * 0.3;
+      if (Number.isFinite(uLo) && uHi > uLo) c.addScaledVector(up, (uLo + uHi) / 2);
+      const H = Math.min(hp * 0.7, size[long] * 0.28 * 317 / 838), L = H * 838 / 317;
       const m = new THREE.Mesh(new THREE.PlaneGeometry(L, H), mat);
       m.matrix.makeBasis(right, up, n).setPosition(c); m.matrixAutoUpdate = false; m.name = 'logo'; m.castShadow = false;
       B.add(m);
