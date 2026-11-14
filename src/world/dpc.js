@@ -353,7 +353,7 @@ export class DpcView {
     const T = torch(); W.add(T);
     const tongues = [0, 1, 2].map(() => { const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), tongueMat()); W.add(m); return m; });
     const bottle = new THREE.Group(), red = reducer(); bottle.add(red); red.position.y = MM(580);
-    loadModel('site/gasbottle.glb').then(({ scene }) => { scene.scale.setScalar(1 / MODEL_SCALE); scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; if (o.material) o.material.metalness = 0; } }); bottle.add(scene); }).catch(() => {});
+    loadModel('site/gasbottle').then(({ scene }) => { scene.scale.setScalar(1 / MODEL_SCALE); scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; if (o.material) o.material.metalness = 0; } }); bottle.add(scene); }).catch(() => {});
     W.add(bottle);
     const hose = new THREE.Mesh(new THREE.BufferGeometry(), M.hose()); hose.castShadow = true; W.add(hose);
     this.work = { W, rollG, spin, body, ends, core, melt, T, tongues, bottle, red, hose, hoseKey: '', endKey: '' };
