@@ -532,7 +532,9 @@ export class WallTool {
     if (!q) { this._rowStop('Ряд уложен по линии'); return; }
     const D = dims(J.kind, J.half), y = q.bot ?? (J.pts[0].y);
     // (bricks: the bed spread with the trowel first — for the next ten or so, not the whole course)
-    if (D.kind === 'brick' && !(J.bed && J.n < J.bedTo)) {
+    // (the bed spread ahead for ten bricks first — build 288 — the owner 2026-11-14: «too long, put it back»: each brick on its own
+    // bed again, one tap; the spread bed stays for the films — WallTool.spreadBed)
+    if (false && D.kind === 'brick' && !(J.bed && J.n < J.bedTo)) {
       const next = J.plan.slice(J.n, J.n + 10), Y = new THREE.Vector3(0, 1, 0);
       const pl = next.map((e) => { const bot = (e.bot ?? J.pts[0].y); return { p: new THREE.Vector3(e.x, bot + D.B + D.H / 2, e.z), q: new THREE.Quaternion().setFromAxisAngle(Y, e.yaw || 0), s: new THREE.Vector3(D.L, D.H, D.W), bedBot: bot, bedT: D.B }; });
       app.wallView.clearSpread();
