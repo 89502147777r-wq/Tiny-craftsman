@@ -37,22 +37,22 @@ export const CONC_PHOTO_GLSL = /* glsl */ `
 // the masonry mortar (the bed spread with the trowel, what is pressed out from under a brick, the joints): the same photo
 // (the owner's choice), finer — a sand mortar, not concrete: a tile of 0,45 m — projected on the faces by the world normal
 // (three planes), so it shows on the top of a bed and on the sides of a joint alike, and stays put when a brick moves.
-// k: how strongly the photo's light and dark show (fresh wet mortar — less, set — more)
-export function mortarPhoto(m, { tile = 0.35, k = 0.8 } = {}) {
+// k: how strongly the photo's light and dark show (fresh wet mortar — less, set — more); tint: how much of its colour
+export function mortarPhoto(m, { tile = 0.35, k = 0.8, tint = 0.2 } = {}) {
   const sc = 1.23 / tile;
   m.userData.photo = true;
   m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, { tConcD: { value: concTex().d }, tConcN: { value: concTex().n }, uMortK: { value: k }, uMortSc: { value: sc } });
+    Object.assign(sh.uniforms, { tConcD: { value: concTex().d }, tConcN: { value: concTex().n }, uMortK: { value: k }, uMortSc: { value: sc }, uMortT: { value: tint } });
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vMWPos;\nvarying vec3 vMWNrm;')
       .replace('#include <project_vertex>', '#include <project_vertex>\n{ vec4 mwp = vec4(transformed, 1.0); vec3 mwn = objectNormal;\n#ifdef USE_INSTANCING\nmwp = instanceMatrix * mwp; mwn = mat3(instanceMatrix) * mwn;\n#endif\nvMWPos = (modelMatrix * mwp).xyz; vMWNrm = normalize(mat3(modelMatrix) * mwn); }');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\n${CONC_PHOTO_GLSL}\nuniform float uMortK;\nuniform float uMortSc;\nvarying vec3 vMWPos;\nvarying vec3 vMWNrm;`)
+      .replace('#include <common>', `#include <common>\n${CONC_PHOTO_GLSL}\nuniform float uMortK;\nuniform float uMortSc;\nuniform float uMortT;\nvarying vec3 vMWPos;\nvarying vec3 vMWNrm;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         { vec3 an = abs(normalize(vMWNrm)); an /= max(1e-4, an.x + an.y + an.z);
           vec4 px = tcPhoto(vMWPos.zy * uMortSc), py = tcPhoto(vMWPos.xz * uMortSc), pz = tcPhoto(vMWPos.xy * uMortSc);
           float d = px.x * an.x + py.x * an.y + pz.x * an.z; vec3 t = px.yzw * an.x + py.yzw * an.y + pz.yzw * an.z;
-          diffuseColor.rgb *= mix(1.0, d, uMortK) * mix(vec3(1.0), t, 0.2); }`)
+          diffuseColor.rgb *= mix(1.0, d, uMortK) * mix(vec3(1.0), t, uMortT); }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         { vec3 an = abs(normalize(vMWNrm)); an /= max(1e-4, an.x + an.y + an.z);
           vec2 nx = tcPhotoN(vMWPos.zy * uMortSc), ny = tcPhotoN(vMWPos.xz * uMortSc), nz = tcPhotoN(vMWPos.xy * uMortSc);

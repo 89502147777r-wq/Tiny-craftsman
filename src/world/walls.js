@@ -440,12 +440,12 @@ export class WallView {
     for (const m of [this.lintels, this.frames]) { m.frustumCulled = false; m.count = 0; this.group.add(m); }
     this.cord.visible = false; this.group.add(this.cord);
     // the mortar under a brick being laid and what is pressed out of it (mortarSqueeze.js)
-    this.squeeze = new THREE.Mesh(new THREE.BufferGeometry(), mortarPhoto(new THREE.MeshStandardMaterial({ color: 0x47443f, roughness: 0.86, side: THREE.DoubleSide }), { k: 1.0 }));   // (fresh mortar: the same wet dark grey as the bed spread for a course)
+    this.squeeze = new THREE.Mesh(new THREE.BufferGeometry(), mortarPhoto(new THREE.MeshStandardMaterial({ color: 0x37342f, roughness: 0.86, side: THREE.DoubleSide }), { k: 0.45, tint: 0.1 }));   // (fresh mortar: the same wet dark grey as the bed spread for a course)
     this.squeeze.castShadow = this.squeeze.receiveShadow = true; this.squeeze.frustumCulled = false; this.squeeze.visible = false;
     this.group.add(this.squeeze);
     // the bed spread with the trowel ahead of a course being laid (wallTool's SpreadJob): a piece under each brick to come
     this.spreadG = new THREE.Group(); this.group.add(this.spreadG);
-    this.spreadMat = mortarPhoto(new THREE.MeshStandardMaterial({ color: 0x47443f, roughness: 0.86, side: THREE.DoubleSide }), { k: 1.0 });   // (fresh mortar: wet, darker than set concrete)
+    this.spreadMat = mortarPhoto(new THREE.MeshStandardMaterial({ color: 0x37342f, roughness: 0.86, side: THREE.DoubleSide }), { k: 0.45, tint: 0.1 });   // (fresh mortar: wet, darker than set concrete)
     // where the carried unit would go: green — it can, red — it cannot
     this.hlMesh = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x35d06a, transparent: true, opacity: 0.45, depthWrite: false }));
     this.hlMesh.renderOrder = 5; this.hlMesh.visible = false; this.group.add(this.hlMesh);
