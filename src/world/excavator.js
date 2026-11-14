@@ -339,6 +339,8 @@ export class Excavator {
       const up = new THREE.Vector3().crossVectors(n, dir).normalize();
       if (up.clone().transformDirection(B.matrixWorld).y < 0) up.negate();   // (up as the world's up at the boom's rest pose)
       const right = new THREE.Vector3().crossVectors(up, n).normalize();   // (reads left to right from that side)
+      // (turned 9° counterclockwise as seen from outside: both lines parallel to the boom's bottom edge, which tapers up to the nose — the owner)
+      { const tilt = 9 * Math.PI / 180; right.applyAxisAngle(n, tilt); up.applyAxisAngle(n, tilt); }
       // the plate's height across the boom there, the decal centred in it and 70 % of it
       const slice = near.filter((q) => Math.abs(q.clone().sub(c).dot(dir)) < size[long] * 0.05), ups = slice.map((q) => q.clone().sub(c).dot(up));
       const uLo = Math.min(...ups), uHi = Math.max(...ups), hp = Number.isFinite(uLo) && uHi > uLo ? uHi - uLo : size[other] * 0.3;
