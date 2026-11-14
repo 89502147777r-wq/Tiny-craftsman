@@ -272,7 +272,8 @@ export class DpcView {
   frame(r) { const dx = r.b[0] - r.a[0], dz = r.b[1] - r.a[1], L = Math.hypot(dx, dz) || 1; return { x: r.a[0], z: r.a[1], y: r.y, ux: dx / L, uz: dz / L, L: L / S }; }
   // what is under a point: the concrete and the strips laid before (other records before this one; this one's earlier strips)
   _under(id, k, x, z) {
-    let y = this.app.terrain.heightAt(x, z) + MM(0.4);
+    const me = this.app.objects.get(id);
+    let y = (me?.top ? me.y : this.app.terrain.heightAt(x, z)) + MM(0.4);   // (on a course of masonry: its flat top; else what the ground is there)
     for (const r of this.app.objects.all('dpc')) {
       if (r.id > id) continue;
       const A = this.anim.get(r.id), sts = dpcStrips(r);

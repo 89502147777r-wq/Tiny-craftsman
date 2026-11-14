@@ -79,6 +79,8 @@ export function* stairFilm(d, app) {
   d.lock = true; d.hand = 0.3;
   d.logo();
   d.money(true); d.byStages();
+  // (stage 1's excavator gone: its pits are long dug — in the way of the cameras (it stood in two shots))
+  for (const r of O.all('vehicle')) O.remove(r.id);
   const g = T.heightAt(MM(-9000), MM(9000)), P = (x, y, z) => new V(MM(x), g + MM(y), MM(z)), idle = () => !app.busy();
   const sTop = T.heightAt(MM(X0), MM(0)), pTop = T.heightAt(MM(0), MM(1000));   // (the strip's top and the slab's: stage 1's concrete)
   const say = (m) => { (d.notes = d.notes || []).push([+d.t.toFixed(1), m]); };
@@ -252,12 +254,13 @@ export function* stairFilm(d, app) {
     const a = new V(MM(X0), yb, MM(-4300)), b = new V(MM(X0), yb, MM(-5600));
     st.pump = 1e-5; hose.down(a, ev(a)); { let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(a, ev(a)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - a.x, sp.z - a.z) < MM(250)); }); }
     st.pump = 2; tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-    act([[0.9, [1800, 700, 1800], 3]]);
-    let pt = 0; const t0 = d.t; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1200)); return !!hose.ch?.full || d.t - t0 > 2.2; });
+    act([[1.0, [1800, 700, 1800], 3], [0.9, [-2200, 1400, -1600], 6]]);
+    let pt = 0; const t0 = d.t; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1200)); return !!hose.ch?.full || d.t - t0 > 1.9; });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
   }
+  shots([[9, [15500, 5600, -9500], [6000, 4300, -1500]]]);
   app.budget._pay?.([{ usd: rest.length * 2.2 + 900 }], P(0, 0, 0));
   d.stageBill('STEPS & LANDING');
   yield d.sec(1.0);

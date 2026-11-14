@@ -1342,7 +1342,11 @@ console.log('—', sec());
     const bottle = Wk.bottle.position, bottleOff = +((bottle.y - T.heightAt(bottle.x, bottle.z)) / MM(1)).toFixed(1), bottleDist = +(Math.hypot(bottle.x - r.a[0], bottle.z - r.a[1]) / MM(1000)).toFixed(2);
     const secs = steps / 30;
     tc.journal.undo(); V.update(0);
-    return { strips: D.dpcStrips(r).length, snapped: Math.abs(r.b[1] - r.a[1]) < 1e-9, mid, mid2, r0: Math.round(r0), r1: Math.round(r1), secs: +secs.toFixed(1), done, meshes, bottleOff, bottleDist, undone: tc.objects.all('dpc').length, left: V.meshes.size };
+    const undone = tc.objects.all('dpc').length, left = V.meshes.size;
+    // (on any base — the owner: on the ground too, not only on concrete)
+    const yg = T.heightAt(MM(3500), MM(3000)); tc.settings.dpcW = 400; W.down({ x: MM(3500), y: yg, z: MM(3000) }); W.move({ x: MM(3500), y: yg, z: MM(1500) }); W.up();
+    const onGround = tc.objects.all('dpc').length; for (let i = 0; i < 2000 && W.jobs.length; i++) { W.update(1 / 30); V.update(1 / 30); }
+    return { onGround, strips: D.dpcStrips(r).length, snapped: Math.abs(r.b[1] - r.a[1]) < 1e-9, mid, mid2, r0: Math.round(r0), r1: Math.round(r1), secs: +secs.toFixed(1), done, meshes, bottleOff, bottleDist, undone, left };
   });
   check('damp-proof course: snapped along the axis, 1300 = two strips; while laid — the roll, the jet, the burning at the nip, the melt, the smoke',
     o.snapped && o.strips === 2 && o.mid?.roll && o.mid.flame && o.mid.tongues === 3 && o.mid.melt && o.mid.smoke > 0, JSON.stringify(o));
@@ -1350,6 +1354,7 @@ console.log('—', sec());
     o.r0 > 55 && o.r0 < 75 && o.r1 < 30 && o.mid2?.lap > 2.5 && o.mid2.beyond < 0.6, JSON.stringify(o));
   check('damp-proof course: at the pace of its width (2 × 4 m × 700 at 0,06 m²/s ≈ 93 s); done — no roll, the torch out on its stand on the ground; a top, sides and 4 beads a strip; the bottle on the ground ≥ 3 m off; undo takes it off',
     o.secs > 80 && o.secs < 105 && !o.done.roll && !o.done.flame && o.done.torchY < 120 && o.meshes === 12 && Math.abs(o.bottleOff) < 10 && o.bottleDist >= 3 && o.undone === 0 && o.left === 0, JSON.stringify(o));
+  check('damp-proof course: on any base — drawn on the bare ground it is laid too (the owner)', o.onGround === 1, JSON.stringify(o));
   check('damp-proof course: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
