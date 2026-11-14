@@ -20,19 +20,23 @@ const RUN = 300, NLOW = 16, NUP = 17;         // (the tread; the courses under t
 const CB = { L: 390, H: 188, T: 190, J: 10, BED: 12, ROWS: 6 };   // (the cinder block: six across — a wall 1190)
 // the pavilion: its walls on the slab's edges ([kind, along, outer face, from, to, gaps, inwards]), the brick piers between the
 // glass openings of the front, the inner wall with a door
-const SL = IBIZA.slab;
-const FRONT = [[SL.x0, -4400], [-1920, -1410], [1070, 1580], [4060, SL.x1]];   // (block corners, brick piers — the openings 2,48 m between)
+// (the slab as it was cast — measured from its concrete at the film's start: the walls stand on its very edge, not half over it —
+// the owner saw a block hanging in the air; stage 1's boards stood inside the outline, the slab is a little smaller than drawn)
+const IN = -1665;   // (the inner bearing wall's middle: under the front's first brick pier)
+let SL = { ...IBIZA.slab }, FRONT, PAV;
+function layout() {
+FRONT = [[SL.x0, -4400], [-1920, -1410], [1070, 1580], [4060, SL.x1]];   // (block corners, brick piers — the openings 2,48 m between)
 // (the corners bonded — the owner: «перехлёстом»: every other course the front and the back run through to the corner and the sides
 // stop at them, on the next the sides run through; the inner wall, under the front's pier, ties into the back wall every other
 // course: [kind, along, outer face, from, to, inwards, even course's ends trimmed [from, to], odd's]
-const IN = -1665;   // (the inner bearing wall's middle: under the front's first brick pier)
-const PAV = [
+PAV = [
   ['block', 'x', SL.z0, FRONT[0][0], FRONT[0][1], 1, [0, 0], [300, 0]], ['brick', 'x', SL.z0, FRONT[1][0], FRONT[1][1], 1, [0, 0], [0, 0]],
   ['brick', 'x', SL.z0, FRONT[2][0], FRONT[2][1], 1, [0, 0], [0, 0]], ['block', 'x', SL.z0, FRONT[3][0], FRONT[3][1], 1, [0, 0], [0, 300]],
   ['block', 'x', SL.z1, SL.x0, IN - 150, -1, [0, 0], [300, 300]], ['block', 'x', SL.z1, IN + 150, SL.x1, -1, [-300, 0], [300, 0]],
   ['block', 'z', SL.x0, SL.z0, SL.z1, 1, [300, 300], [0, 0]], ['block', 'z', SL.x1, SL.z0, SL.z1, -1, [300, 300], [0, 0]],
   ['block', 'z', IN, SL.z0 + 380, 800, 1, [0, 0], [0, 0]], ['block', 'z', IN, 1700, SL.z1, 1, [0, 300], [0, 0]],   // (the inner wall: a door 0,9 m)
 ];
+}
 
 // the spine's courses: [course k] → records, as a mason lays them (from the back on); course k starts at its tread `step`; the bond
 // across every other course (headers); base — the top it stands on (y, model units)
@@ -79,10 +83,21 @@ export function* stairFilm(d, app) {
   d.lock = true; d.hand = 0.3;
   d.logo();
   d.money(true); d.byStages();
-  // (stage 1's excavator gone: its pits are long dug — in the way of the cameras (it stood in two shots))
+  // (stage 1's excavator parked at the plot's edge, past the fireplace's pad — out of the work's way, now and then in a wide shot (the
+  // owner); it stood in two shots, a camera inside it)
   for (const r of O.all('vehicle')) O.remove(r.id);
+  { const mt = app.machineTool, x = MM(-12600), z = MM(7400), yaw = 0.35;
+    O.add({ type: 'vehicle', kind: 'excavator', x, z, yaw, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
+    let ok = false; mt.ensureExc?.().then(() => { ok = true; }).catch(() => { ok = true; }); yield d.until(() => ok);
+    const E = mt.exc; if (E) { E.place(T, x, z, yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = 0; E.boom = E.boomGoal = 0.15; E.update(0); } }
   const g = T.heightAt(MM(-9000), MM(9000)), P = (x, y, z) => new V(MM(x), g + MM(y), MM(z)), idle = () => !app.busy();
-  const sTop = T.heightAt(MM(X0), MM(0)), pTop = T.heightAt(MM(0), MM(1000));   // (the strip's top and the slab's: stage 1's concrete)
+  const sTop = T.heightAt(MM(X0), MM(0)), pTop = T.heightAt(MM(0), MM(1000));
+  { const B0 = IBIZA.slab; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; const half = T.cell / S / 2 || 15;
+    for (let i = 0; i < T.conc.length; i++) { if (T.conc[i] < MM(150)) continue; const x = T.toWorldX(i % T.nx) / S, z = T.toWorldZ(Math.floor(i / T.nx)) / S;
+      if (x < B0.x0 - 400 || x > B0.x1 + 400 || z < B0.z0 - 400 || z > B0.z1 + 400) continue; x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    // (the outermost cells' middles → their edges, less a hair: the block's face flush with the slab's)
+    if (x1 > x0) SL = { ...B0, x0: Math.round(x0 - half + 5), x1: Math.round(x1 + half - 5), z0: Math.round(z0 - half + 5), z1: Math.round(z1 + half - 5) };
+    layout(); }   // (the strip's top and the slab's: stage 1's concrete)
   const say = (m) => { (d.notes = d.notes || []).push([+d.t.toFixed(1), m]); };
   const hud = (row1, i, row2, tool) => d.hud([row1.map((t, k) => (k === i ? '*' + t : t)), ...(row2 ? [row2] : [])], tool);
   loadPhysics().catch(() => {});
