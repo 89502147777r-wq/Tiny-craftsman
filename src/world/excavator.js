@@ -319,9 +319,16 @@ export class Excavator {
       const face = side > 0 ? box.max[thin] : box.min[thin];
       // (the side plate: the points within 4 % of the thin size of that face; the middle third of the boom's length)
       const near = pts.filter((q) => Math.abs(q[thin] - face) < size[thin] * 0.06);
-      const lo = box.min[long] + size[long] * 0.3, hi = box.min[long] + size[long] * 0.62, mid = near.filter((q) => q[long] > lo && q[long] < hi);
+      // (the straightest stretch of the plate: the window whose points lie best on a line — a decal on the knee stood off it)
+      const fit = (ps) => { let sx = 0, sy = 0, sxx = 0, sxy = 0; for (const q of ps) { sx += q[long]; sy += q[other]; sxx += q[long] * q[long]; sxy += q[long] * q[other]; } const n0 = ps.length, k0 = (n0 * sxy - sx * sy) / Math.max(1e-12, n0 * sxx - sx * sx), b0 = (sy - k0 * sx) / n0; let e = 0; for (const q of ps) e = Math.max(e, Math.abs(q[other] - (k0 * q[long] + b0))); return e; };
+      let mid = [], best = Infinity;
+      for (let f = 0.12; f <= 0.6; f += 0.06) { const lo = box.min[long] + size[long] * f, hi = lo + size[long] * 0.28, w = near.filter((q) => q[long] > lo && q[long] < hi); if (w.length < 12) continue; const e = fit(w); if (e < best) { best = e; mid = w; } }
       if (mid.length < 8) continue;
       const c = new THREE.Vector3(); for (const q of mid) c.add(q); c.divideScalar(mid.length); c[thin] = face + side * size[thin] * 0.004;
+      // (the plate's own height where the decal goes: its points within a slice there — the decal 60 % of it, centred on it)
+      const slice = near.filter((q) => Math.abs(q[long] - c[long]) < size[long] * 0.06);
+      const oLo = Math.min(...slice.map((q) => q[other])), oHi = Math.max(...slice.map((q) => q[other]));
+      if (Number.isFinite(oLo) && oHi > oLo) c[other] = (oLo + oHi) / 2;
       // the plate's slope in the boom's length: a line through its points (least squares of `other` on `long`)
       let sx = 0, sy = 0, sxx = 0, sxy = 0; for (const q of mid) { sx += q[long]; sy += q[other]; sxx += q[long] * q[long]; sxy += q[long] * q[other]; }
       const nN = mid.length, k = (nN * sxy - sx * sy) / Math.max(1e-12, nN * sxx - sx * sx);
@@ -329,7 +336,7 @@ export class Excavator {
       const n = new THREE.Vector3(); n[thin] = side;
       let up = new THREE.Vector3().crossVectors(n, dir).normalize(); if (up.y < 0) up.negate();
       const right = new THREE.Vector3().crossVectors(up, n).normalize();   // (reads left to right from that side)
-      const L = size[long] * 0.32, H = L * 88 / 720;
+      const hp = Number.isFinite(oLo) && oHi > oLo ? (oHi - oLo) : size[other] * 0.3, H = Math.min(hp * 0.55, size[long] * 0.3 * 88 / 720), L = H * 720 / 88;
       const m = new THREE.Mesh(new THREE.PlaneGeometry(L, H), mat);
       m.matrix.makeBasis(right, up, n).setPosition(c); m.matrixAutoUpdate = false; m.name = 'logo'; m.castShadow = false;
       B.add(m);

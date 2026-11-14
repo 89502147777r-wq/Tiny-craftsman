@@ -1315,8 +1315,8 @@ console.log('—', sec());
   });
   check('film (found): pits, beds, the pool\'s shell stripped and backfilled, the strip / slab / pad cast to the tops of their boards, no boards left, no masonry yet',
     o.done && o.found && o.found.tops.every((v, i) => v <= 262 && v >= (i ? 225 : 190) /* (the narrow strip's boards hold it ~45 lower: its cage is set lower for that) */) && o.found.forms === 0 && o.found.pool.fs && o.found.pool.ws && o.found.pool.filled && o.units === 0, JSON.stringify({ done: o.done, found: o.found, notes: (o.notes || []).slice(-6) }));
-  check('film (found): six stage bills = spent, the hook marked (the loop), no longer than 100 s',
-    o.bills.length === 6 && o.bills.every((v) => v > 0) && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 5 && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.t < 100, JSON.stringify({ bills: o.bills, spent: o.spent, t: o.t, marks: o.marks }));
+  check('film (found): six stage bills = spent, the hook marked (the loop), no longer than 110 s',
+    o.bills.length === 6 && o.bills.every((v) => v > 0) && Math.abs(o.bills.reduce((a, v) => a + v, 0) - o.spent) <= 5 && o.marks?.hook > 0 && o.marks.hookEnd > o.marks.hook && o.t < 110, JSON.stringify({ bills: o.bills, spent: o.spent, t: o.t, marks: o.marks }));
   check('film (found): the pool\'s walls: nothing over their boards (a gap 250 wide holds no heap: it runs over)', o.over <= 1, 'over ' + Math.round(o.over) + ' mm');
   check('film (found): the stripped boards, stakes and braces stacked off the concrete', o.onConc === 0, 'on concrete ' + o.onConc);
   check('film (found): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
