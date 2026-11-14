@@ -44,7 +44,7 @@ function spineCourse(base, k, step, y0 = null) {
   const out = [], y = (y0 ?? base) + MM(CB.BED + (y0 == null ? k : 0) * (CB.H + CB.J) + CB.H / 2), a0 = -(ZB - step * RUN), a1 = -ZS;   // (along: −z → +a)
   const head = k % 2 === 1, n = head ? 3 : CB.ROWS, w = head ? CB.L : CB.T, along = head ? CB.T : CB.L, ZW = (CB.ROWS * CB.T + (CB.ROWS - 1) * CB.J) / 2;
   for (let r = 0; r < n; r++) {
-    const x = -ZW + w / 2 + r * (w + CB.J), off = head ? (r % 2) * (along + CB.J) / 2 : ((k / 2 + r) % 2) * (CB.L + CB.J) / 2, cuts = [];
+    const x = -ZW + w / 2 + r * (w + CB.J), off = head ? ((r + 1) % 2) * (along + CB.J) / 2 : ((k / 2 + r) % 2) * (CB.L + CB.J) / 2, cuts = [];   // (headers at the faces shifted ¼ — the realist: else the joints ran through two courses)
     let b = a1; if (off > 0) { cuts.push([a1 - (along - off), a1]); b = a1 - (along - off) - CB.J; }
     while (b - a0 > 1) { const rem = b - a0; if (rem <= along) { cuts.push([a0, b]); break; } if (rem < along + CB.J + 90) { const h = (rem - CB.J) / 2; cuts.push([b - h, b], [a0, a0 + h]); break; } cuts.push([b - along, b]); b -= along + CB.J; }
     for (const [lo, hi] of cuts.reverse()) out.push({ type: 'unit', kind: 'cinder', free: true, p: [MM(X0 + x), y, MM(-(lo + hi) / 2)], s: (head ? [CB.L, CB.H, hi - lo] : [hi - lo, CB.H, CB.T]).map(MM), q: head ? [0, 0, 0, 1] : [0, 0.70711, 0, 0.70711] });
@@ -62,11 +62,15 @@ function pavilion(base, top) {
     const crs = blk ? [...Array(12).keys()].map((k) => [20 + k * 253, 250, k]).concat([[3053 + 3, cut, 12]]) : [...Array(41).keys()].map((k) => [12 + k * pitch, 65, k]);
     for (const [y0, H, k] of crs) {
       const [t0, t1] = k % 2 ? odd : even, a0 = A0 + t0, a1 = A1 - t1;
-      const rows = blk ? [[150, 300, 600, 3]] : (k % 2 ? [[60, 120, 250, 10], [255, 250, 120, 10]] : [[60, 120, 120, 10], [255, 250, 250, 10]]);
-      // (bricks: [across from the face, its width across, its length along, joint]; a stretcher row and a header row swapped)
-      for (const [r, wid, L, J] of (blk ? rows : rows.map((q, i) => (k % 2 ? q : [q[0], i ? 250 : 120, i ? 120 : 250, 10])))) {
-        const off = blk ? (k % 2) * (L + J) / 2 : 0, w = fixed + inw * r;
-        for (let a = a0 - off; a < a1; a += L + J) {
+      // (bricks — a pier 1½: [across from the face, its width across, its length along, joint, its row's shift]; a stretcher course —
+      // stretchers at the face, headers behind; the next — headers at the face (shifted ¼), stretchers behind (shifted ½): no joint over a
+      // joint (the realist: the courses were all alike — a joint up the pier's middle))
+      const rows = blk ? [[150, 300, 600, 3, (k % 2) * 301.5]] : (k % 2 ? [[125, 250, 120, 10, 65], [320, 120, 250, 10, 125]] : [[60, 120, 250, 10, 0], [255, 250, 120, 10, 0]]);
+      for (const [r, wid, L, J, off] of rows) {
+        const w = fixed + inw * r;
+        // (from the wall's corner A0, not from the trimmed start: the realist — the trim of the corner and the shift of the course
+        // cancelled each other, the joints one over another the whole height)
+        for (let a = (blk ? A0 : a0) - off; a < a1; a += L + J) {
           const lo = Math.max(a, a0), hi = Math.min(a + L, a1); if (hi - lo < 40) continue;
           const m = (lo + hi) / 2, sz = [hi - lo, H, wid], y = base + MM(y0 + H / 2);
           out.push({ y: y0, rec: { type: 'unit', kind, free: true, p: ax === 'x' ? [MM(m), y, MM(w)] : [MM(w), y, MM(m)], s: (ax === 'x' ? sz : [sz[2], sz[1], sz[0]]).map(MM), q: [0, 0, 0, 1] } });
@@ -135,9 +139,10 @@ export function* stairFilm(d, app) {
   // the pavilion's strips: one after another, seen from far and high — the whole footprint (the owner: from above, far, for the scale)
   shots([[9, [-14000, 13000, -12000], [500, 0, 1000]]]);
   // (the ends 60 in from the slab's edge: a line ending on its very edge is «off the concrete»)
-  const z0 = SL.z0 + 150, z1 = SL.z1 - 150, xa = SL.x0 + 150, xb = SL.x1 - 150, e0 = SL.x0 + 60, e1 = SL.x1 - 60;
-  for (const [a, b] of [[[e0, z0], [e1, z0]], [[e0, z1], [e1, z1]], [[xa, SL.z0 + 60], [xa, SL.z1 - 60]], [[xb, SL.z0 + 60], [xb, SL.z1 - 60]], [[IN, SL.z0 + 380], [IN, SL.z1 - 300]]]) {
-    lay(a, b, 400); d.jumpTo(() => !dpc.jobs.length, 600); app.sfx?.play?.('fabric', { vol: 0.5 }); yield d.sec(0.2);
+  // (under the front 480 — its brick piers are 380; the rest 400; 25 mm out past the slab's edge — the realist)
+  const z0 = SL.z0 + 215, z1 = SL.z1 - 175, xa = SL.x0 + 175, xb = SL.x1 - 175, e0 = SL.x0 + 60, e1 = SL.x1 - 60;
+  for (const [a, b, w] of [[[e0, z0], [e1, z0], 480], [[e0, z1], [e1, z1], 400], [[xa, SL.z0 + 60], [xa, SL.z1 - 60], 400], [[xb, SL.z0 + 60], [xb, SL.z1 - 60], 400], [[IN, SL.z0 + 380], [IN, SL.z1 - 300], 400]]) {
+    lay(a, b, w); d.jumpTo(() => !dpc.jobs.length, 600); app.sfx?.play?.('fabric', { vol: 0.5 }); yield d.sec(0.2);
   }
   app.budget._pay?.([{ usd: 6 * 0.4 * 47 + 1.3 * 11.8 * 9 }], P(0, 0, 0));
   d.stageBill('DPC MEMBRANE');
@@ -198,22 +203,28 @@ export function* stairFilm(d, app) {
   const topS = Math.max(...O.all('unit').filter((u) => u.kind === 'cinder').map((u) => u.p[1] + u.s[1] / 2));
   const B = findBelt(app, new V(MM(X0), topS, MM(-3000)));
   say('belt ' + (B ? `${B.rec.ni}×${B.rec.nj}` : 'none'));
-  let beltId = null;
+  // (the pavilion's walls: a ring of their own — they stand apart from the spine (a gap between the two foundations): the beam found
+  // from the spine's top does not reach them (the realist: the pavilion stood bare under a bill «RING BEAM»); over its openings the
+  // beam is a lintel on props)
+  const topP = Math.max(...O.all('unit').filter((u) => u.kind === 'block').map((u) => u.p[1] + u.s[1] / 2));
+  const BP = findBelt(app, new V(MM(0), topP, MM(SL.z1 - 150)));
+  say('pavilion belt ' + (BP ? `${BP.rec.ni}×${BP.rec.nj}` : 'none'));
+  let beltId = null, pavId = null;
   if (B) {
     B.rec.H = MM(200);   // (a course high: the step over it no taller than the rest — the foreman)
     shots([[1.4, [7600, 3900, -2400], [6000, 3300, -5000]], [1.2, [-12000, 14000, 12000], [1000, 3000, 0]]]);
     app.sfx?.seq?.(['plank', 'plank', 'hammer_nail', 'plank', 'hammer_nail']);
-    app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; });
+    app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; if (BP) { BP.rec.H = MM(200); pavId = O.add(BP.rec).id; } });
     yield d.sec(1.6);
     hud(['Formwork', 'Rebar', 'Concrete'], 1, null, 'wall');
     shots([[1.2, [7200, 4200, -4000], [6000, 3300, -5200]]]);
     app.sfx?.seq?.(['rebar', 'wire', 'wire']);
-    app.journal.act('belt-cage', {}, app.clock, () => O.add(beltCage(O.get(beltId))));
+    app.journal.act('belt-cage', {}, app.clock, () => { O.add(beltCage(O.get(beltId))); if (pavId != null) O.add(beltCage(O.get(pavId))); });
     yield d.sec(0.9);
     // the concrete: the hose along the spine's beam, then round the pavilion's (the poker after it)
     hud(['Formwork', 'Rebar', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
     const hose = app.concreteTools.hose, yb = topS + MM(200);
-    const pts = [[X0, -5600], [X0, 1100], [SL.x1 - 150, SL.z0 + 150], [SL.x0 + 150, SL.z0 + 150], [SL.x0 + 150, SL.z1 - 150], [SL.x1 - 150, SL.z1 - 150], [SL.x1 - 150, SL.z0 + 150]];
+    const pts = [[X0, -5600], [X0, 1100]];
     const segs = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1])), tot = segs.reduce((a, b) => a + b, 0);
     const path = (u) => { let s = u * tot, i = 0; while (i < segs.length - 1 && s > segs[i]) { s -= segs[i]; i++; } const a = pts[i], b = pts[i + 1], f = Math.min(1, s / segs[i]); return new V(MM(a[0] + (b[0] - a[0]) * f), yb, MM(a[1] + (b[1] - a[1]) * f)); };
     app.setTool('hose');
@@ -227,7 +238,7 @@ export function* stairFilm(d, app) {
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
     // (the rest of the pour between two shots — the crew's hour: the beam full, worked level)
-    { const b = O.get(beltId); if (b) app.journal.act('belt-pour', {}, app.clock, () => O.update(beltId, { lv: b.lv.map(() => b.H / S), sm: b.lv.map(() => 0.9), fill: 1 })); }
+    app.journal.act('belt-pour', {}, app.clock, () => { for (const id of [beltId, pavId]) { const b = id != null && O.get(id); if (b) O.update(id, { lv: b.lv.map(() => b.H / S), sm: b.lv.map(() => 0.9), fill: 1 }); } });
     say('belt fill ' + O.get(beltId)?.fill);
   }
   d.stageBill('RING BEAM 3.4');
@@ -237,7 +248,7 @@ export function* stairFilm(d, app) {
   shots([[9, [-16000, 18000, 14000], [1500, 2000, 0]]]);
   yield* d.lapse(7, 1.3, () => { app.clock += 9000 * d.dt / 1.3; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });
   app.sky.setHour(9.5);
-  if (beltId != null) app.journal.act('belt-strip', {}, app.clock, () => O.update(beltId, { stripped: true }));
+  app.journal.act('belt-strip', {}, app.clock, () => { for (const id of [beltId, pavId]) if (id != null) O.update(id, { stripped: true }); });
   d.kick('+7 DAYS', 1.2, 'top');
 
   // ---- 4 · the steps on up: the first block over the beam close, its course; then the courses one by one in profile ----
@@ -290,9 +301,9 @@ export function* stairFilm(d, app) {
   yield d.sec(0.4);
   d.mark('hook');
   d.kick('WHERE DO THEY LEAD?', 2.2, 'top');
-  { const r = landId != null && O.get(landId); if (r) { const t0 = d.t; yield d.until(() => { const u = (d.t - t0) / 2.2; app.sfx?.play?.('screed', { vol: 0.5, gap: 0.5 }); return u >= 1; }); } else yield d.sec(2.2); }
+  yield d.sec(2.2);   // (no rule in the frame — no rule's sound: the realist)
   d.mark('hookEnd');
-  d.stair = { units: O.all('unit').length, cinder: O.all('unit').filter((u) => u.kind === 'cinder').length, belts: O.all('belt').length, dpc: O.all('dpc').length, beltId, landId, laidN };
+  d.stair = { pavId, units: O.all('unit').length, cinder: O.all('unit').filter((u) => u.kind === 'cinder').length, belts: O.all('belt').length, dpc: O.all('dpc').length, beltId, landId, laidN };
   yield d.sec(0.1);
 }
 stairFilm.seconds = 45;
