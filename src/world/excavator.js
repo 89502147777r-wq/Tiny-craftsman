@@ -68,6 +68,7 @@ export class Excavator {
     this.root.updateMatrixWorld(true);
     this.under = findNode(scene, 'under'); this.house = findNode(scene, 'house'); this.boomP = findNode(scene, 'boom'); this.stickP = findNode(scene, 'stick'); this.bucketP = findNode(scene, 'bucket');
     this._logo(scene);
+    this._logoBack();
     this.cyl = CYLS.map((n) => ({ b: findNode(scene, `cyl_${n}_b`), r: findNode(scene, `cyl_${n}_r`) })).filter((c) => c.b && c.r);
     // (a part's own meshes: not those of the parts hung on it)
     const parts = new Set([this.under, this.house, this.boomP, this.stickP, this.bucketP]);
@@ -350,6 +351,32 @@ export class Excavator {
       m.matrix.makeBasis(right, up, n).setPosition(c); m.matrixAutoUpdate = false; m.name = 'logo'; m.castShadow = false; m.receiveShadow = true;
       B.add(m);
     }
+  }
+  // and on the counterweight, at the house's back — where a machine carries its name, the side most seen (the owner): a decal on the
+  // rear face (the house's own points farthest back: its face, its width and height there), across it, upright
+  _logoBack() {
+    const Hs = this.house, stop = new Set([this.boomP]), pts = [], v = new THREE.Vector3(), inv = new THREE.Matrix4();
+    Hs.updateMatrixWorld(true); inv.copy(Hs.matrixWorld).invert();
+    const walk = (o) => { if (stop.has(o) || o.name.startsWith('cyl_') || o.name === 'logo') return; if (o.isMesh) { const p = o.geometry.attributes.position, m = new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld); for (let i = 0; i < p.count; i += 2) pts.push(v.fromBufferAttribute(p, i).applyMatrix4(m).clone()); } for (const c of o.children) walk(c); };
+    for (const c of Hs.children) walk(c);
+    if (pts.length < 50) return;
+    const box = new THREE.Box3().setFromPoints(pts), size = box.getSize(new THREE.Vector3());
+    // (the back: away from the boom's foot — the house's own axes are the model's, not the machine's)
+    const foot = Hs.worldToLocal(this.boomP.getWorldPosition(new THREE.Vector3())), ax = size.x > size.z ? 'x' : 'z'   /* (front to back: the house's long way; the boom's foot tells which end is the front) */, side = ax === 'x' ? 'z' : 'x', sg = foot[ax] > (box.min[ax] + box.max[ax]) / 2 ? -1 : 1;
+    const end = sg < 0 ? box.min[ax] : box.max[ax];
+    const back = pts.filter((q) => Math.abs(q[ax] - end) < size[ax] * 0.05); if (back.length < 10) return;
+    const bb = new THREE.Box3().setFromPoints(back), bs = bb.getSize(new THREE.Vector3());
+    // the counterweight's face: the band of the back points in its middle height (no roof, no tracks' guards)
+    const midY = (bb.min.y + bb.max.y) / 2, band = back.filter((q) => Math.abs(q.y - midY) < bs.y * 0.3);
+    const face = sg < 0 ? Math.min(...band.map((q) => q[ax])) : Math.max(...band.map((q) => q[ax]));
+    const c = new THREE.Vector3(); c.y = midY; c[ax] = face + sg * size[ax] * 0.003; c[side] = (bb.min[side] + bb.max[side]) / 2;
+    const L = bs[side] * 0.5, H = Math.min(bs.y * 0.55, L * 317 / 838), W = H * 838 / 317;
+    const mat = this._logoMat || (this._logoMat = (() => { const m = new THREE.MeshStandardMaterial({ alphaTest: 0.5, roughness: 0.62, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); const img = new Image(); img.onload = () => { m.map = paintedLogo(img); m.needsUpdate = true; }; img.src = 'assets/brand/logo-stack-boom.png'; return m; })());
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), mat);
+    // (facing out of the back, upright, reading left to right from behind)
+    const n = new THREE.Vector3(); n[ax] = sg; const up = new THREE.Vector3(0, 1, 0), right = new THREE.Vector3().crossVectors(up, n).normalize();
+    mesh.matrix.makeBasis(right, up, n).setPosition(c); mesh.matrixAutoUpdate = false; mesh.name = 'logo'; mesh.receiveShadow = true;
+    Hs.add(mesh);
   }
   pose() { return [this.swing, this.boom, this.stick, this.curl, this.heave]; }
   setPose(p) { [this.swing, this.boom, this.stick, this.curl, this.heave] = p; this._apply(); }
