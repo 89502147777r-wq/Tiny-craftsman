@@ -3,6 +3,7 @@ import { MODEL_SCALE, K, KT } from '../config.js';
 import { KINDS, OPENINGS, axis, rows, rowY, course, slotPose, wallState, taken, cutName, openingRows, beddable, layable, palletStock, level, topY } from '../world/walls.js';
 import { Episode, loadPhysics, physicsReady } from '../world/physics.js';
 import { placeUnit, freeTops, topAt, beltTopAt, boxOf, dims } from './freeBrick.js';
+import { DpcWork } from './dpcTool.js';
 import { placeLintel, placeProp, placeLintelForm, uRun, cageRec, uStrength } from './lintels.js';
 import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds, rle } from './belt.js';
@@ -81,10 +82,11 @@ export class WallTool {
     this.col = new ColumnWork(app);
     this.proof = new PitchedWork(app);
     this.rwin = new RoofWindowWork(app);
+    this.dpc = new DpcWork(app);   // (the damp-proof course rolled out before the first course — dpcTool.js)
     // the works this tool does besides the masonry, by the menu's «wallKind»: each has down / move / up
     // (a finger on its own work), status, and some: carryMove / carryDrop (a piece from the tray),
     // interrupt, update, remove. The masonry itself (blocks, bricks, lintels…) is this file's.
-    this.works = { roof: this.roof, facade: this.facade, blind: this.blind, pool: this.pool, land: this.land, fence: this.fence, ext: this.ext, column: this.col, proof: this.proof, rwin: this.rwin, siteprop: this.prop };
+    this.works = { roof: this.roof, facade: this.facade, blind: this.blind, pool: this.pool, land: this.land, fence: this.fence, ext: this.ext, column: this.col, proof: this.proof, rwin: this.rwin, siteprop: this.prop, dpc: this.dpc };
     this.mode = 'lay';
     this.drag = null;
     // the tray of blocks in the corner of the screen: drag a block out of it onto a wall
@@ -146,7 +148,7 @@ export class WallTool {
     }
   }
 
-  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || [this.pool, this.land, this.ext, this.col, this.fence].some((w) => this._held(w)); }
+  get busy() { return !!this.drag || !!this.carry || !!this.rowDrag || !!this.rowJob || [this.pool, this.land, this.ext, this.col, this.fence, this.dpc].some((w) => this._held(w)) || this.dpc.busy; }
   // the work under the menu's choice (null: the masonry); a work a finger is on now
   get work() { return this.works[this.kind] || null; }
   // a brick laid now: the facing one's colour (the filler brick has none — «Кирпич» → «Забутовочный» / «Облицовочный»)
@@ -346,7 +348,7 @@ export class WallTool {
 
   interrupt() { for (const w of [this.pool, this.land, this.fence, this.ext, this.col]) w.interrupt(); this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
 
-  update(dt) { if (this.rowJob) this._rowStep(); this.blind.update(dt); this.pool.update(dt); }
+  update(dt) { if (this.rowJob) this._rowStep(); this.blind.update(dt); this.pool.update(dt); this.dpc.update(dt); }
 
   // ---- a course along a line: the «Ряд» button under the tray, then a finger drawn along
   // where the course goes — the units go down one after another (each set as by hand:
@@ -1184,7 +1186,7 @@ export class WallTool {
     this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');
     this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', rail: 'Ограждение', fascia: 'Кант', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
+    const NAMES = { dpc: 'Гидроизоляция', studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', rail: 'Ограждение', fascia: 'Кант', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
     if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', joists: 'Лаги', ridge: 'Прогон', cover: { metal: 'Лист', seam: 'Панель', shingle: 'Черепица' }[this.app.settings.proofCover || 'metal'], trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
     if (lab && kind === 'blind') { lab.textContent = this.app.settings.blindLayer === 'drain' ? 'Лоток' : 'Опалубка'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель', br: 'Кронштейн', mw: 'Плита минваты', mb: 'Рулон мембраны', rl: 'Направляющая', vp: 'Панель НВФ' }[this.app.settings.facLayer || 'eps']; return; }
@@ -1440,6 +1442,7 @@ export class WallTool {
   _delete(p, e) {
     // («Площадка»: the bin takes away the site's things — the office, a pallet — not the masonry under the finger)
     if (this.kind === 'siteprop') { this.prop.remove(p, e); return; }
+    if (this.kind === 'dpc') { this.dpc.remove(p); return; }
     const app = this.app, id = app.pickObject(e.clientX, e.clientY, 'wall');
     if (id && app.objects.get(id)?.type === 'opening') {
       const o = app.objects.get(id);

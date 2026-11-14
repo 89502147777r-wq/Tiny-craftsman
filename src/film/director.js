@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-// The film mode (?film=plinth): a short played out by itself — the work done stage by stage by the
+// The film mode (?film=found): a short played out by itself — the work done stage by stage by the
 // same jobs the finger starts, filmed and cut in the game (what is recorded off the screen is the
 // short). A script is a generator: it does a thing, then yields what to wait for (d.sec(2),
 // d.job(), d.until(f)). Its time is the film's (real seconds); the work runs `speed` times faster.
@@ -15,7 +15,7 @@ import * as THREE from 'three';
 // very close at its real pace (started where a builder starts: from the corner); the camera a little further —
 // the row to the next corner, sped up; further still — whole parts appear at once, one after another; then from
 // another angle whole layers at once. Never the whole thing at one pace from one distance. d.grow(steps) plays
-// it and logs it (d.grows); the model film is film/plinthFilm.js (?film=plinth).
+// it and logs it (d.grows); the model film was film/plinthFilm.js (in git before build 308).
 // THE SECOND RULE (the owner, 2026-11-10): a film shows the game's own work — what the finger starts and the game
 // animates (a brick set on its mortar, the mallet, the mortar pressed out, the trowel cutting it off; and so for
 // forms, insulation, facades, roofs…). The close step and the sped-up step of a growth run the same jobs (a step's

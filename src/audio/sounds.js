@@ -89,6 +89,7 @@ export const SOUNDS = {
   waves: {"f": ["waves-0"], "vol": 1.0, "range": 6, "loop": 1},
   flood: {"f": ["flood-0"], "vol": 0.8, "range": 6, "loop": 1},
   fire: {"f": ["fire-0"], "loop": 1},
+  torch: {"f": ["torch-0"], "vol": 0.8, "range": 5, "loop": 1},
   explosion: {"f": ["explosion-0"], "vol": 1.0, "range": 6},
   creak: {"f": ["creak-0", "creak-1"]},
   applause: {"f": ["applause-0", "applause-1"], "vol": 0.8},

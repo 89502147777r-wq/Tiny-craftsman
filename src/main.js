@@ -14,6 +14,7 @@ import { OutlineView, contains, gradeY } from './world/outlines.js';
 import { FormworkView } from './world/formwork.js';
 import { RebarView } from './world/rebar.js';
 import { SitePropView } from './world/siteProps.js';
+import { DpcView } from './world/dpc.js';
 import { WallView } from './world/walls.js';
 import { kitsPending, onKits } from './world/openingKits.js';
 import { buildStacks } from './world/stacks.js';
@@ -126,6 +127,7 @@ async function main() {
   app.projectView = new ProjectView(); scene.add(app.projectView.group);
   app.formView = new FormworkView(tex, app.objects, terrain); scene.add(app.formView.group);
   app.rebarView = new RebarView(app.objects); scene.add(app.rebarView.group);
+  app.dpcView = new DpcView(app);   // (the damp-proof course on the foundations — world/dpc.js)
   app.siteProps = new SitePropView(app);   // (the site's things: the office, the mixer, the pallets … — world/siteProps.js)
   app.wallView = new WallView(app.objects, tex); scene.add(app.wallView.group); app.wallView.app = app;
   app.wallView.terrain = terrain;   // (what the props of a slab stand on)
@@ -361,7 +363,7 @@ function step(dt, time, render = true) {
   app.grass.update();
   app.outlineView.update();
   app.formView.update();
-  app.rebarView.update(); app.rebarView.lod(app.rig.dist); app.siteProps.update();
+  app.rebarView.update(); app.rebarView.lod(app.rig.dist); app.siteProps.update(); app.dpcView.update(dt);
   app.wallView.clock = app.clock; app.wallView.update();
   app.poolView.update(dt, app);
   app.gardenView.update(dt, app);
@@ -406,8 +408,8 @@ function step(dt, time, render = true) {
 // the film mode: the director's frame, then the work `speed` times as fast (in steps of a 30th
 // at most), drawn once
 async function startFilm(name) {
-  const [{ Director }, films] = await Promise.all([import('./film/director.js'), import({ slab: './film/slabFilm.js', stair: './film/stairFilm.js', found: './film/foundFilm.js' }[name] || './film/plinthFilm.js')]);
-  const script = { plinth: films.plinthFilm, slab: films.slabFilm, stair: films.stairFilm, found: films.foundFilm }[name];
+  const [{ Director }, films] = await Promise.all([import('./film/director.js'), import('./film/foundFilm.js')]);
+  const script = { found: films.foundFilm }[name] || films.foundFilm;   // (the one film kept — the owner, 2026-11-14: the others are in git before build 308)
   if (!script) { app.ui.toast('Нет такого ролика: ' + name); return; }
   app.rig.shake = false;
   // (a back garden: a meadow round the plot, not the construction yard's blocks of flats)
