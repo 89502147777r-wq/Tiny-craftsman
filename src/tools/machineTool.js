@@ -1074,6 +1074,7 @@ export class MachineTool {
       if ((this.v || lx) && this._fits('excavator', nx, nz, yaw)) {
         const keep = [E.x, E.z, E.yaw]; E.place(t, nx, nz, yaw);
         if (this._tooSteep('excavator', E, keep)) { E.place(t, ...keep); this.v = 0; }
+        else this._tracks('excavator', Math.hypot(nx - keep[0], nz - keep[1]) + Math.abs(yaw - keep[2]) * R(1));   // (the tracks press the ground)
       } else this.v = 0;
     } else {
       E.swingGoal -= lx * 1.0 * dt;   // (1 rad/s: a 13–20 t machine's slew — the realist)
@@ -1241,11 +1242,12 @@ export class MachineTool {
     const app = this.app, t = app.terrain;
     if (!app.journal.pending) return;
     const pts = [], d = Math.max(Math.abs(moved), R(0.05));
-    if (kind === 'loader') { const L = this.loader; for (const w of L.wheels) pts.push(L.body.localToWorld(w.at.clone())); }
-    else { const T = this.truck; for (const w of T.wheels) for (const sz of [-1, 1]) pts.push(T.root.localToWorld(new THREE.Vector3(w.g.position.x, 0, sz * R(0.72)).add(new THREE.Vector3(0, 0, 0)))); }
-    const M = kind === 'loader' ? this.loader : this.truck, fx = Math.cos(M.yaw), fz = -Math.sin(M.yaw);
-    const gain = kind === 'loader' ? 0.3 : 0.3 + 0.25 * (this.truck.load || 0);   // (a pass of a wheel ≈ several of the plate)
-    for (const p of pts) t.compactStep(p.x, p.z, fx, fz, R(0.28), d, gain);
+    if (kind === 'excavator') { const E = this.exc, Tr = E.track; if (!Tr) return; E.root.updateMatrixWorld(true); const hz = Tr.w / 2 - R(0.3); for (let f = 0.1; f <= 0.9; f += 0.2) for (const sz of [-1, 1]) pts.push(E.root.localToWorld(new THREE.Vector3(Tr.x0 + (Tr.x1 - Tr.x0) * f, 0, sz * hz))); }   // (along both tracks, shoe-wide)
+    else if (kind === 'loader') { const L = this.loader; for (const w of L.wheels) pts.push(L.body.localToWorld(w.at.clone())); }
+    else { const T = this.truck; for (const w of T.wheels) pts.push(T.root.localToWorld(new THREE.Vector3((w.steer || w.g.parent).position.x, 0, w.zw ?? 0))); }   // (each tyre where it rolls)
+    const M = kind === 'loader' ? this.loader : kind === 'excavator' ? this.exc : this.truck, fx = Math.cos(M.yaw), fz = -Math.sin(M.yaw);
+    const gain = kind === 'loader' ? 0.3 : kind === 'excavator' ? 0.45 : 0.3 + 0.25 * (this.truck.load || 0);   // (a 13 t machine on its tracks: more than a wheel's pass, spread wider)   // (a pass of a wheel ≈ several of the plate)
+    for (const p of pts) t.compactStep(p.x, p.z, fx, fz, kind === 'excavator' ? R(0.3) : R(0.28), d, gain);
   }
   // what the bucket does not hold any more (amount: carry units) — off its lip and its sides, as
   // crumbs falling: to the ground, or into the truck's body when it is over it

@@ -59,6 +59,7 @@ export class Loader {
     // (it stands on its wheels: the bucket in the model's rest pose may hang lower)
     const low = Math.min(...this.wheels.map((w) => w.at.y - w.r));
     holder.position.y -= low; for (const w of this.wheels) w.at.y -= low;
+    holder.updateMatrixWorld(true); for (const w of this.wheels) w.zw = this.root.worldToLocal(holder.localToWorld(w.at.clone())).z;   // (the wheel's side: its offset across, world units)
     // the soil in the bucket: a sheet over its floor whose top rises as it fills — level at the
     // back, heaped in the middle, low at the lip and at the sides (shaped in update)
     const bb = this.bucketBox, inB = this.bucketP.worldToLocal(bb.getCenter(new THREE.Vector3()));
@@ -89,6 +90,13 @@ export class Loader {
   }
   // stand on the ground at (x, z) facing yaw: height and tilt from under the four wheels
   place(terrain, x, z, yaw) {
+    // (each wheel turns by the way its own side went: a skid steer turning on the spot runs its sides opposite ways — the owner:
+    // everything as it really is; a jump — set down elsewhere — turns nothing)
+    if (this.wheels && this.x != null) {
+      const c0 = Math.cos(this.yaw), s0 = Math.sin(this.yaw), d = (x - this.x) * c0 - (z - this.z) * s0;
+      let dy = yaw - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      if (Math.abs(d) < 2 / 10.4651 && Math.abs(dy) < 0.5) for (const w of this.wheels) w.spin = (w.spin || 0) + d + dy * (w.zw ?? 0);
+    }
     this.x = x; this.z = z; this.yaw = yaw;
     const c = Math.cos(yaw), s = Math.sin(yaw), at = (lx, lz) => terrain.heightAt(x + c * lx + s * lz, z - s * lx + c * lz);
     const w = this.wheels;
@@ -110,7 +118,7 @@ export class Loader {
     this.arm += (this.armGoal - this.arm) * k; this.tilt += (this.tiltGoal - this.tilt) * k;
     this.armP.rotation.z = this.arm; this.bucketP.rotation.z = this.tilt - this.arm * 0.85;   // (self-levelling: the bucket keeps its angle as the arms rise)
     this.spin += moved;
-    for (const w of this.wheels) w.g.rotation.z = -this.spin / w.r;
+    for (const w of this.wheels) w.g.rotation.z = -(w.spin || 0) / w.r;
     this.soil.visible = this.load > 0.03;
     if (this.soil.visible && Math.abs(this.load - this._fill) > 0.005) {
       // (the top: as high as full — a little over the rim when heaped — falling to the lip and the sides)
