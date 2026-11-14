@@ -362,22 +362,24 @@ export class Excavator {
     if (pts.length < 50) return;
     const box = new THREE.Box3().setFromPoints(pts), size = box.getSize(new THREE.Vector3());
     // (the back: away from the boom's foot — the house's own axes are the model's, not the machine's)
-    const foot = Hs.worldToLocal(this.boomP.getWorldPosition(new THREE.Vector3())), ax = Math.abs(foot.x) > Math.abs(foot.z) ? 'x' : 'z'   /* (the side the owner chose: the house's flank by the engine hood) */, side = ax === 'x' ? 'z' : 'x', sg = foot[ax] > (box.min[ax] + box.max[ax]) / 2 ? -1 : 1;
+    const foot = Hs.worldToLocal(this.boomP.getWorldPosition(new THREE.Vector3())), ax = Math.abs(foot.x) > Math.abs(foot.z) ? 'x' : 'z'   /* (the side the owner chose: the house's flank by the engine hood) */, side = ax === 'x' ? 'z' : 'x', sg0 = foot[ax] > (box.min[ax] + box.max[ax]) / 2 ? -1 : 1;
+    for (const sg of [sg0, -sg0]) {   // (both flanks — the owner: the same on the other one)
     const end = sg < 0 ? box.min[ax] : box.max[ax];
-    const back = pts.filter((q) => Math.abs(q[ax] - end) < size[ax] * 0.05); if (back.length < 10) return;
+    const back = pts.filter((q) => Math.abs(q[ax] - end) < size[ax] * 0.05); if (back.length < 10) continue;
     const bb = new THREE.Box3().setFromPoints(back), bs = bb.getSize(new THREE.Vector3());
     // the counterweight's face: the band of the back points in its middle height (no roof, no tracks' guards)
     const midY = (bb.min.y + bb.max.y) / 2, band = back.filter((q) => Math.abs(q.y - midY) < bs.y * 0.3);
     const face = sg < 0 ? Math.min(...band.map((q) => q[ax])) : Math.max(...band.map((q) => q[ax]));
     const c = new THREE.Vector3(); c.y = midY; c[ax] = face + sg * size[ax] * 0.003; c[side] = (bb.min[side] + bb.max[side]) / 2;
     // (the owner: smaller, inside the yellow of the panel with a gap above and below — 0,68 of the first try, its middle 0,27 of that lower)
-    const L = bs[side] * 0.5, H0 = Math.min(bs.y * 0.55, L * 317 / 838), H = H0 * 0.68, W = H * 838 / 317; c.y -= H0 * 0.27;
+    const L = bs[side] * 0.5, H0 = Math.min(bs.y * 0.55, L * 317 / 838), H = H0 * 0.68, W = H * 838 / 317; c.y += H0 * (sg === sg0 ? -0.27 : 0.28);   /* (the boom's flank: its yellow panel sits higher) */
     const mat = this._logoMat || (this._logoMat = (() => { const m = new THREE.MeshStandardMaterial({ alphaTest: 0.5, roughness: 0.62, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); const img = new Image(); img.onload = () => { m.map = paintedLogo(img); m.needsUpdate = true; }; img.src = 'assets/brand/logo-stack-boom.png'; return m; })());
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), mat);
     // (facing out of the back, upright, reading left to right from behind)
     const n = new THREE.Vector3(); n[ax] = sg; const up = new THREE.Vector3(0, 1, 0), right = new THREE.Vector3().crossVectors(up, n).normalize();
     mesh.matrix.makeBasis(right, up, n).setPosition(c); mesh.matrixAutoUpdate = false; mesh.name = 'logo'; mesh.receiveShadow = true;
     Hs.add(mesh);
+    }
   }
   pose() { return [this.swing, this.boom, this.stick, this.curl, this.heave]; }
   setPose(p) { [this.swing, this.boom, this.stick, this.curl, this.heave] = p; this._apply(); }
