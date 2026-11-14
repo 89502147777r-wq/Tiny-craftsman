@@ -99,6 +99,36 @@ export class Truck {
         for (const o of gr.parts) pv.attach(o);
         this.wheels.push({ g: pv, r });
       }
+      // each tyre on its own: the model's tyres are an axle's pair in one mesh — cut in two by side (a tyre's own hub with it), each
+      // on its own pivot at its centre: the front pair under a steering pivot (the owner: the front wheels did not turn), the outer
+      // wheel in a turn rolling farther than the inner one
+      const front = Math.max(...this.wheels.map((w) => w.g.position.x)), axles = this.wheels.slice(); this.wheels = [];
+      for (const ax of axles) {
+        const pv = ax.g; pv.updateMatrixWorld(true);
+        for (const sd of [-1, 1]) {
+          const half = new THREE.Group(), meshes = [];
+          pv.traverse((o) => { if (o.isMesh) meshes.push(o); });
+          for (const o of meshes) {
+            const g0 = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(), P = g0.attributes.position, m = new THREE.Matrix4().multiplyMatrices(new THREE.Matrix4().copy(pv.matrixWorld).invert(), o.matrixWorld), v = new THREE.Vector3(), keep = [];
+            for (let t = 0; t < P.count; t += 3) { let zc = 0; for (let k = 0; k < 3; k++) zc += v.fromBufferAttribute(P, t + k).applyMatrix4(m).z; if (Math.sign(zc) === sd) keep.push(t); }
+            if (!keep.length) continue;
+            const g1 = new THREE.BufferGeometry();
+            for (const [name, a] of Object.entries(g0.attributes)) { const arr = new a.array.constructor(keep.length * 3 * a.itemSize); keep.forEach((t, j) => { for (let k = 0; k < 3 * a.itemSize; k++) arr[j * 3 * a.itemSize + k] = a.array[t * a.itemSize + k]; }); g1.setAttribute(name, new THREE.BufferAttribute(arr, a.itemSize, a.normalized)); }
+            g1.applyMatrix4(m);
+            const mesh = new THREE.Mesh(g1, o.material); mesh.castShadow = mesh.receiveShadow = true; half.add(mesh);
+          }
+          if (!half.children.length) continue;
+          const hb = new THREE.Box3().setFromObject(half), cz = (hb.min.z + hb.max.z) / 2;   // (pv's frame: its matrix is still identity on the meshes' parent chain)
+          const steer = new THREE.Group(), spin = new THREE.Group();
+          steer.position.set(pv.position.x, pv.position.y, pv.position.z + cz * pv.scale.z); holder.add(steer); steer.add(spin);
+          for (const mesh of half.children.slice()) { mesh.geometry.translate(0, 0, -cz); spin.add(mesh); }
+          holder.updateMatrixWorld(true);
+          const zw = this.root.worldToLocal(steer.getWorldPosition(new THREE.Vector3())).z;
+          this.wheels.push({ g: spin, steer: Math.abs(pv.position.x - front) < 1e-6 ? steer : null, r: ax.r, zw });
+        }
+        pv.parent.remove(pv);
+      }
+      this.base = Math.abs(front - Math.min(...axles.map((w) => w.g.position.x))) * holder.scale.x;   // (wheelbase, world units)
     }
     this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.len = R(4.7); this.width = W * this.root.scale.x;
@@ -110,7 +140,13 @@ export class Truck {
   place(terrain, x, z, yaw) {
     // (the way gone along its forward since the last place — not a jump — turns the wheels)
     const d = (x - this.x) * Math.cos(yaw) - (z - this.z) * Math.sin(yaw);
-    if (Math.abs(d) < R(2)) this.spin = (this.spin || 0) + d;
+    let dy = yaw - (this.yaw ?? yaw); dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    if (Math.abs(d) < R(2) && Math.abs(dy) < 0.5) {
+      this.spin = (this.spin || 0) + d;
+      for (const w of this.wheels || []) w.spin = (w.spin || 0) + d + dy * (w.zw ?? 0);
+      // the steering angle from the way it turns on the way it goes (a bicycle's: tan δ = wheelbase · turn / way), eased; standing, held
+      if (Math.abs(d) > R(0.002)) { const want = Math.max(-0.6, Math.min(0.6, Math.atan((this.base || R(2.5)) * dy / d))); this.steer = (this.steer || 0) + (want - (this.steer || 0)) * 0.35; }
+    }
     this.x = x; this.z = z; this.yaw = yaw;
     const c = Math.cos(yaw), s = Math.sin(yaw), at = (lx, lz) => terrain.heightAt(x + c * lx + s * lz, z - s * lx + c * lz);
     const hf = at(R(1.6), 0), hb = at(-R(1.4), 0), hl = at(0, -R(0.8)), hr = at(0, R(0.8));
@@ -224,7 +260,7 @@ export class Truck {
     this.tip += (this.tipGoal - this.tip) * (1 - Math.exp(-dt * 1.5));
     this.bed.rotation.z = this.tip;   // (+: the front up, on the rear hinge)
     if (this.gate) this.gate.rotation.z = -this.tip * 0.97;
-    for (const w of this.wheels || []) w.g.rotation.z = -(this.spin || 0) / w.r;
+    for (const w of this.wheels || []) { w.g.rotation.z = -(w.spin ?? this.spin ?? 0) / w.r; if (w.steer) w.steer.rotation.y = this.steer || 0; }
     this.soil.visible = this.load > 0.005;
   }
 }

@@ -76,6 +76,7 @@ export class Excavator {
     const ub = only(this.under);
     holder.position.y -= ub.min.y; this.root.updateMatrixWorld(true); ub.translate(new THREE.Vector3(0, -ub.min.y, 0));
     this.track = { x0: ub.min.x, x1: ub.max.x, w: ub.max.z - ub.min.z };
+    this._chains();
     // the bucket: its cutting edge (the teeth' tips — the lowest front points at rest), its width; the
     // points of its shell (what may not go through the ground) and of the stick's lower end
     const kp = pointsOf(this.bucketP), kb = new THREE.Box3().setFromPoints(kp), toB = (q) => this.bucketP.worldToLocal(q.clone());
@@ -381,10 +382,89 @@ export class Excavator {
     Hs.add(mesh);
     }
   }
+  // the tracks' chains: in the model each track is one mesh — its shoes, rollers, idler, sprocket and frame together. The shoes are
+  // the outer band of the track's side outline (a stadium: two straights, a round end at the idler and at the sprocket); each of their
+  // points is kept as (s — how far along the loop, r — out from its middle line, x across), and moving the chain is s + run: the
+  // shoes go along the top, round the idler, under and round the sprocket as on the machine — the bottom run still on the ground
+  _chains() {
+    const sides = [];
+    this.under.traverse((o) => { if (!o.isMesh || o.name === 'logo') return; o.geometry.computeBoundingBox(); const b = o.geometry.boundingBox; if (b.min.x * b.max.x > 0 && Math.min(Math.abs(b.min.x), Math.abs(b.max.x)) > (b.max.x - b.min.x) * 0.3 && b.max.z - b.min.z > (b.max.y - b.min.y) * 3) sides.push(o); });
+    if (!sides.length) return;
+    // (the two meshes of one side — a big mesh cut in two — share its outline: by the side, from all its points)
+    const bySide = new Map(); for (const o of sides) { const k = Math.sign(o.geometry.boundingBox.min.x + o.geometry.boundingBox.max.x); if (!bySide.has(k)) bySide.set(k, []); bySide.get(k).push(o); }
+    this.chains = [];
+    for (const [k, list] of bySide) {
+      const B = new THREE.Box3(); for (const o of list) B.union(o.geometry.boundingBox);
+      const R0 = (B.max.y - B.min.y) / 2, yc = (B.min.y + B.max.y) / 2, a = (B.max.z - B.min.z) / 2 - R0, zc = (B.min.z + B.max.z) / 2, z0 = zc - a, z1 = zc + a;
+      const L = 4 * a + 2 * Math.PI * R0, band = R0 * 0.27;
+      const proj = (z, y) => {
+        if (z >= z0 && z <= z1) return y >= yc ? [z - z0, y - yc] : [2 * a + Math.PI * R0 + (z1 - z), yc - y];
+        if (z > z1) { const dz = z - z1, dy = y - yc; return [2 * a + R0 * Math.atan2(dz, dy), Math.hypot(dz, dy)]; }
+        const dz = z - z0, dy = y - yc, f = Math.atan2(-dz, -dy); return [4 * a + Math.PI * R0 + R0 * (f < 0 ? f + 2 * Math.PI : f), Math.hypot(dz, dy)];
+      };
+      const parts = [];
+      for (const o of list) {
+        const P = o.geometry.attributes.position, N = o.geometry.attributes.normal, idx = [], S = [], Rr = [], NT = [], NR = [];
+        // (by whole parts: a shoe or a link goes with the chain only if all of it is in the band; a roller or a wheel, reaching in
+        // deeper, stays — the parts are the mesh's connected pieces)
+        const par = new Int32Array(P.count); for (let i = 0; i < P.count; i++) par[i] = i;
+        const root = (i) => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+        const I = o.geometry.index; if (I) for (let t = 0; t < I.count; t += 3) { const a0 = root(I.getX(t)), a1 = root(I.getX(t + 1)), a2 = root(I.getX(t + 2)); par[a1] = a0; par[a2] = a0; }
+        const deep = new Uint8Array(P.count); for (let i = 0; i < P.count; i++) { const [, r] = proj(P.getZ(i), P.getY(i)); if (R0 - r > band) deep[root(i)] = 1; }
+        for (let i = 0; i < P.count; i++) {
+          if (deep[root(i)]) continue;
+          const [sv, r] = proj(P.getZ(i), P.getY(i));
+          idx.push(i); S.push(sv); Rr.push(r);
+          if (N) { const [tz, ty, nz, ny] = frame(sv); NT.push(N.getZ(i) * tz + N.getY(i) * ty); NR.push(N.getZ(i) * nz + N.getY(i) * ny); }
+        }
+        parts.push({ o, idx: Int32Array.from(idx), s: Float32Array.from(S), r: Float32Array.from(Rr), nt: Float32Array.from(NT), nr: Float32Array.from(NR) });
+      }
+      // (the loop's point and its tangent / outward normal at s, in (z, y))
+      function frame(sv) {
+        sv = ((sv % L) + L) % L;
+        if (sv < 2 * a) return [1, 0, 0, 1];
+        if (sv < 2 * a + Math.PI * R0) { const f = (sv - 2 * a) / R0; return [Math.cos(f), -Math.sin(f), Math.sin(f), Math.cos(f)]; }
+        if (sv < 4 * a + Math.PI * R0) return [-1, 0, 0, -1];
+        const f = (sv - 4 * a - Math.PI * R0) / R0; return [-Math.cos(f), Math.sin(f), -Math.sin(f), -Math.cos(f)];
+      }
+      const at = (sv, r) => {
+        sv = ((sv % L) + L) % L;
+        if (sv < 2 * a) return [z0 + sv, yc + r];
+        if (sv < 2 * a + Math.PI * R0) { const f = (sv - 2 * a) / R0; return [z1 + r * Math.sin(f), yc + r * Math.cos(f)]; }
+        if (sv < 4 * a + Math.PI * R0) return [z1 - (sv - 2 * a - Math.PI * R0), yc - r];
+        const f = (sv - 4 * a - Math.PI * R0) / R0; return [z0 - r * Math.sin(f), yc - r * Math.cos(f)];
+      };
+      this.chains.push({ side: k, parts, frame, at, L, run: 0, o: list[0] });
+    }
+  }
+  // d: the way the machine went along its forward (world units), dy: how much it turned (rad) — each chain runs by its side's way
+  _runChains(d, dy) {
+    for (const C of this.chains) {
+      const o = C.o; o.updateMatrixWorld(true);
+      const zAx = new THREE.Vector3(0, 0, 1).transformDirection(o.matrixWorld), fwd = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+      const sc = new THREE.Vector3().setFromMatrixScale(o.matrixWorld).z, sideW = this.root.worldToLocal(o.localToWorld(new THREE.Vector3(C.side * 0.5, 0, 0))).z;
+      // (moving forward the bottom run stays on the ground: the chain turns so its top goes the way the machine goes)
+      C.run += Math.sign(zAx.dot(fwd) || 1) * (d + dy * sideW) / sc;
+      for (const p of C.parts) {
+        const P = p.o.geometry.attributes.position, N = p.o.geometry.attributes.normal;
+        for (let j = 0; j < p.idx.length; j++) {
+          const i = p.idx[j], sv = p.s[j] + C.run, [z, y] = C.at(sv, p.r[j]); P.setZ(i, z); P.setY(i, y);
+          if (N) { const [tz, ty, nz, ny] = C.frame(sv); N.setZ(i, p.nt[j] * tz + p.nr[j] * nz); N.setY(i, p.nt[j] * ty + p.nr[j] * ny); }
+        }
+        P.needsUpdate = true; if (N) N.needsUpdate = true;
+      }
+    }
+  }
   pose() { return [this.swing, this.boom, this.stick, this.curl, this.heave]; }
   setPose(p) { [this.swing, this.boom, this.stick, this.curl, this.heave] = p; this._apply(); }
   // stand on the ground at (x, z) facing yaw: height and tilt from under the tracks' four ends
   place(terrain, x, z, yaw) {
+    // (the tracks run with the way each side went: forward/back with the machine, opposite ways turning on the spot; a jump runs nothing)
+    if (this.chains && this.x != null && this.yaw != null) {
+      const c0 = Math.cos(this.yaw), s0 = Math.sin(this.yaw), d = (x - this.x) * c0 - (z - this.z) * s0;
+      let dy = yaw - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      if (Math.abs(d) < R(2) && Math.abs(dy) < 0.6 && (d || dy)) this._runChains(d, dy);
+    }
     this.x = x; this.z = z; this.yaw = yaw; this._terrain = terrain;
     const c = Math.cos(yaw), s = Math.sin(yaw), at = (lx, lz) => terrain.heightAt(x + c * lx + s * lz, z - s * lx + c * lz);
     const T = this.track;
