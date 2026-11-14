@@ -373,7 +373,7 @@ console.log('—', sec());
   await page.reload({ timeout: 120000 });   // (a loaded container: the load event can take more than 30 s)
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const after = await page.evaluate(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(tc.terrain.excavatedVolume() * 1e6).toFixed(3), sand: +(tc.terrain.materialVolumes()[1] * 1e6).toFixed(2), conc: +(tc.terrain.concVolume() * 1e6).toFixed(2) }; });
-  check('stripping as a crew does it (the realist): ≤ 2 trips in the hands at once, a stake not turned while its point is in the ground (< 5°), the longest boards lowest, on 3 bearers', play.strip.trips <= 2 && play.strip.tilt < 5 && play.strip.layered && play.strip.bearers === 3, JSON.stringify(play.strip));
+  check('stripping as a crew does it (the realist): ≤ 3 trips in the hands at once (three men), a stake not turned while its point is in the ground (< 5°), the longest boards lowest, on 3 bearers', play.strip.trips <= 3 && play.strip.tilt < 5 && play.strip.layered && play.strip.bearers === 3, JSON.stringify(play.strip));
   check('stripping: warns while soft, then boards come off into a stack, concrete stays, undo', play.strip.warned && play.strip.running && play.strip.still && play.strip.stripped && play.strip.back && play.strip.conc && play.strip.n0 > 0, JSON.stringify(play.strip));
   check('project restored after reload', JSON.stringify(after) === JSON.stringify(play.saved), `${JSON.stringify(play.saved)} → ${JSON.stringify(after)}`);
   check('no console errors while playing', errors.length === 0, errors.slice(0, 3).join(' | '));
