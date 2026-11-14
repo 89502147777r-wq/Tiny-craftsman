@@ -5,3 +5,5 @@ node_modules/
 __pycache__/
 *.pyc
 tests/_one.mjs
+.claude/worktrees/
+tests/_p*.mjs

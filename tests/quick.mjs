@@ -1082,6 +1082,97 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2i'. The truck takes any loose material, from anything (the owner: «грузить любой материал не только с погрузчика —
+// экскаватором или лопатами; куча выше борта — пересыпается на землю»): sand tipped in far over what it holds — the heap no
+// steeper than its angle, at the sides no higher than their tops, the rest on the ground by them (not under the body), nothing
+// lost; a shovel thrown in with the finger on the body — in it; the excavator's bucket of black topsoil opened over it — in it,
+// as black topsoil, and so in its record ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {}, M = 1 / 10.4651, S3 = 10.4651 ** 3;
+    const frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
+    const soilV = () => { let v = 0; for (let i = 0; i < t.nat.length; i++) v += t.nat[i] + t.loose[i]; return v * t.cellArea; };
+    const rest = () => { let k = 0; for (; k < 900 && (mt.truck.settling || tc.particles.busy || t.active || tc.shovelTool.busy); k++) tc.simulate(1 / 30); return k; };
+    tc.setTool('machine'); await mt.ensureTruck(); const T = mt.truck;
+    T.place(t, 0.05, -0.2, 0.3); T.root.visible = true; mt._saveTruck({ away: false }); frames(3);
+    const side = T.rim - T.floor; o.sideMm = Math.round(side / M * 1000);
+    // (1) 1,8 bodies of sand from 1,2 m over it, lot by lot
+    const v0 = soilV(), c = T.bedCentre(new V()), under = T.bedCentre(new V()), sd = new V(Math.sin(T.yaw), 0, Math.cos(T.yaw)).multiplyScalar(1.15 * M), by = [under.clone().add(sd), under.clone().sub(sd)], uh0 = t.heightAt(under.x, under.z), bh0 = by.map((q) => t.heightAt(q.x, q.z));
+    c.y += 1.2 * M;
+    for (let k = 0; k < 9; k++) { T.addMix(1, 0.2); T.pourAt(c.clone().add(new V((k % 3 - 1) * 0.6 * M, 0, 0)), 0.2); frames(15); }
+    o.restK = rest();
+    const NX = T.NX, NZ = T.NZ, dx = T.hx / (NX - 1), dz = T.hz / (NZ - 1), rep = Math.tan(33 * Math.PI / 180);
+    let overCone = -1, sideTop = -1, peak = 0;
+    for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
+      // (against the sides and the tailgate at most their tops, up from them at the sand's angle; the headboard is higher)
+      const h = T.hf[iz * NX + ix], d = Math.min(ix * dx, iz * dz, (NZ - 1 - iz) * dz);
+      overCone = Math.max(overCone, h - side - rep * d); peak = Math.max(peak, h - side);
+      if (ix === 0 || iz === 0 || iz === NZ - 1) sideTop = Math.max(sideTop, h - side);
+    }
+    o.overCone = Math.round(overCone / M * 1000); o.sideTop = Math.round(sideTop / M * 1000); o.peak = Math.round(peak / M * 1000);
+    o.load = +(T.load * T.cap * S3).toFixed(2); o.ground = +((soilV() - v0) * S3).toFixed(2); o.kept = +((soilV() - v0 + T._hfVol()) / (1.8 * T.cap)).toFixed(3);
+    o.underMm = Math.round((t.heightAt(under.x, under.z) - uh0) / M * 1000); o.byMm = by.map((q, k) => Math.round((t.heightAt(q.x, q.z) - bh0[k]) / M * 1000));
+    o.sand = +T.mixW()[1].toFixed(2);
+    // (the steepest of it, any way — across the cells too: no steeper than sand's 33° (+1,5°))
+    const slope = () => { let g = 0; for (let iz = 1; iz < NZ - 1; iz++) for (let ix = 1; ix < NX - 1; ix++) { const i = iz * NX + ix, hh = T.hf;
+      if (hh[i - 1] > 5e-4 && hh[i + 1] > 5e-4 && hh[i - NX] > 5e-4 && hh[i + NX] > 5e-4) g = Math.max(g, Math.hypot((hh[i + 1] - hh[i - 1]) / (2 * dx), (hh[i + NX] - hh[i - NX]) / (2 * dz))); }
+      return +(Math.atan(g) * 180 / Math.PI).toFixed(1); };
+    o.slopeSand = slope();
+    // (2) a shovelful: dug, the finger on the body (the ray from the camera over it) — thrown in over the side
+    T.load = 0; T.hf.fill(0); T.setMix([1, 0, 0, 0, 0]); frames(3);
+    tc.setTool('shovel');
+    const s0 = soilV(), uh1 = t.heightAt(under.x, under.z);
+    tc.shovelTool.down(new V(0.35, 0.1, 0.2)); for (let s = 0; s < 1 && tc.shovelTool.state === 'dig'; s += 0.04) tc.shovelTool.move(new V(0.35 + 0.12 * s, 0.1, 0.2)); tc.shovelTool.up();
+    const dug = s0 - soilV();
+    { const ray = tc.gestures.ray.ray, b = T.bedCentre(new V()); ray.origin.set(b.x, b.y + 3 * M, b.z + 0.5 * M); ray.direction.set(0, -3, -0.5).normalize(); }
+    if (tc.shovelTool.state === 'loaded') { tc.shovelTool.down(new V(0.35, 0.1, 0.2)); tc.shovelTool.up(); }
+    o.restS = rest();
+    o.shovel = +(T.load * T.cap / Math.max(1e-12, dug)).toFixed(2); o.shovelUnder = Math.round((t.heightAt(under.x, under.z) - uh1) / M * 1000);
+    // (3) the excavator: a bucket of black topsoil curled in, lifted, the truck under its lip, opened
+    tc.setTool('machine'); T.load = 0; T.hf.fill(0); frames(2);
+    mt.enter('excavator'); for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
+    const E = mt.exc; frames(2); const g = mt.digG;
+    mt.joystick('r', -1, 0); frames(30); mt.joystick('r', 0, 0);
+    g.carry.fill(0); g.carry[4] = 0.3 / S3 / t.cellArea; frames(2);
+    mt.joystick('r', 0, -1); frames(60); mt.joystick('r', 0, 0); frames(3);
+    const held = g.load * t.cellArea * S3, lip = E.lipWorld(new V()), b = T.bedCentre(new V());
+    T.place(t, T.x + (lip.x - b.x), T.z + (lip.z - b.z), T.yaw); frames(2);
+    mt.joystick('r', 1, 0); frames(70); mt.joystick('r', 0, 0); frames(30); rest();
+    o.exc = +(T.load * T.cap * S3 / Math.max(1e-9, held)).toFixed(2); o.black = +T.mixW()[4].toFixed(2);
+    mt.exit(); frames(3); mt._saveTruck({}); o.recBlack = mt.recOf('truck')?.mix?.[4];
+    // (4) a loader's buckets (0,4 m³, 1,6 m wide along the body, in its middle) to «full»: little over the sides; then
+    // 0,5 m³ more along it: it runs over the sides as a ridge along each (not a cone in one place), against the tyres —
+    // not under them: the truck stands on its tyres as before
+    T.load = 0; T.hf.fill(0); T.place(t, -0.3, 0.4, 0.3); frames(3);   // (on clean ground, away from the first heaps)
+    let spilled = 0; const take = T.takeSpills.bind(T); T.takeSpills = () => { const sp = take(); for (const q of sp) spilled += q.v; return sp; };
+    const cb = T.bedCentre(new V()); cb.y += 0.6 * M; const along = new V(Math.cos(T.yaw), 0, -Math.sin(T.yaw));
+    for (let k = 0; k < 5; k++) { T.addMix(0, 0.2); T.pourLine(cb, along, 0.8 * M, 0.2); frames(40); }
+    rest(); o.spillFull = +(spilled / T.cap).toFixed(3); o.slopeSoil = slope();
+    T.place(t, T.x, T.z, T.yaw); const p0 = [T.y, T.pitch, T.roll], cy = Math.cos(T.yaw), sy = Math.sin(T.yaw);
+    const wh = T.contacts.map((w) => [T.x + cy * w.x + sy * w.z, T.z - sy * w.x + cy * w.z]), wh0 = wh.map(([x, z]) => t.heightAt(x, z));
+    const N = 60, span = 3.2 * M, base = [], gx = T.x, gz = T.z, at = (u, v) => t.heightAt(gx + cy * u + sy * v, gz - sy * u + cy * v);
+    for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) base.push(at((a / (N - 1) - 0.5) * 2 * span, (b / (N - 1) - 0.5) * 2 * span));
+    spilled = 0;
+    for (let k = 0; k < 30 && spilled * S3 < 0.5; k++) { T.pourLine(cb.clone().addScaledVector(along, ((k % 3) - 1) * 0.9 * M), along, 0.4 * M, 0.04); frames(20); }
+    rest(); o.spilt = +(spilled * S3).toFixed(2);
+    T.place(t, T.x, T.z, T.yaw);
+    o.dyMm = +Math.abs((T.y - p0[0]) / M * 1000).toFixed(1); o.dTilt = +(Math.max(Math.abs(T.pitch - p0[1]), Math.abs(T.roll - p0[2])) * 180 / Math.PI).toFixed(2);
+    o.tyreMm = Math.max(...wh.map(([x, z], k) => Math.abs(t.heightAt(x, z) - wh0[k]) / M * 1000)).toFixed(1) * 1;
+    // (the ridge by each side — outside the wheels' inner faces: its length along the side : its width)
+    { const sd = { L: [1e9, -1e9, 1e9, -1e9], R: [1e9, -1e9, 1e9, -1e9] }; let k = 0;
+      for (let a = 0; a < N; a++) for (let b = 0; b < N; b++, k++) { const u = (a / (N - 1) - 0.5) * 2 * span, v = (b / (N - 1) - 0.5) * 2 * span;
+        if (at(u, v) - base[k] > 0.01 * M && Math.abs(v) > 0.6 * M) { const q = v > 0 ? sd.R : sd.L; q[0] = Math.min(q[0], u); q[1] = Math.max(q[1], u); q[2] = Math.min(q[2], v); q[3] = Math.max(q[3], v); } }
+      o.ridge = Object.values(sd).map((q) => (q[1] > q[0] ? +((q[1] - q[0]) / Math.max(1e-9, q[3] - q[2])).toFixed(2) : 0)); }
+    return o;
+  });
+  check('truck: heaped over its sides it keeps only what its angle holds — at the sides no higher than their tops, the rest on the ground by them (not under it), nothing lost', o.overCone <= 2 && o.sideTop <= 2 && o.peak > 200 && o.ground > 0.3 && o.kept > 0.98 && o.kept < 1.02 && Math.min(...o.byMm) > 20 && Math.abs(o.underMm) <= 5 && o.sand === 1, JSON.stringify(o));
+  check('truck (the realist): the heap no steeper than its angle any way (+1,5°); loaded to «full» by buckets ≤ 10 % over the sides; what runs over lies along each side (length ≥ 2 × width) against the tyres, not under them — the truck stands as it stood (≤ 5 mm, ≤ 0,2°)', o.slopeSand <= 34.5 && o.slopeSoil <= 38.5 && o.spillFull <= 0.1 && o.spilt >= 0.45 && o.dyMm <= 5 && o.dTilt <= 0.2 && o.tyreMm <= 10 && Math.min(...o.ridge) >= 2, JSON.stringify(o));
+  check('truck: loaded by a shovel (the finger on its body) and by the excavator (black topsoil — in its record too)', o.shovel > 0.85 && Math.abs(o.shovelUnder) <= 5 && o.exc > 0.95 && o.exc < 1.05 && o.black > 0.99 && o.recBlack > 0.99, JSON.stringify(o));
+  check('truck: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2j. Sounds: every sound the code asks for is in the library, every file of it is there and decodes ----
 {
   const fs = await import('fs'), path = await import('path');
@@ -1342,7 +1433,11 @@ console.log('—', sec());
     const bottle = Wk.bottle.position, bottleOff = +((bottle.y - T.heightAt(bottle.x, bottle.z)) / MM(1)).toFixed(1), bottleDist = +(Math.hypot(bottle.x - r.a[0], bottle.z - r.a[1]) / MM(1000)).toFixed(2);
     const secs = steps / 30;
     tc.journal.undo(); V.update(0);
-    return { strips: D.dpcStrips(r).length, snapped: Math.abs(r.b[1] - r.a[1]) < 1e-9, mid, mid2, r0: Math.round(r0), r1: Math.round(r1), secs: +secs.toFixed(1), done, meshes, bottleOff, bottleDist, undone: tc.objects.all('dpc').length, left: V.meshes.size };
+    const undone = tc.objects.all('dpc').length, left = V.meshes.size;
+    // (on any base — the owner: on the ground too, not only on concrete)
+    const yg = T.heightAt(MM(3500), MM(3000)); tc.settings.dpcW = 400; W.down({ x: MM(3500), y: yg, z: MM(3000) }); W.move({ x: MM(3500), y: yg, z: MM(1500) }); W.up();
+    const onGround = tc.objects.all('dpc').length; for (let i = 0; i < 2000 && W.jobs.length; i++) { W.update(1 / 30); V.update(1 / 30); }
+    return { onGround, strips: D.dpcStrips(r).length, snapped: Math.abs(r.b[1] - r.a[1]) < 1e-9, mid, mid2, r0: Math.round(r0), r1: Math.round(r1), secs: +secs.toFixed(1), done, meshes, bottleOff, bottleDist, undone, left };
   });
   check('damp-proof course: snapped along the axis, 1300 = two strips; while laid — the roll, the jet, the burning at the nip, the melt, the smoke',
     o.snapped && o.strips === 2 && o.mid?.roll && o.mid.flame && o.mid.tongues === 3 && o.mid.melt && o.mid.smoke > 0, JSON.stringify(o));
@@ -1350,7 +1445,27 @@ console.log('—', sec());
     o.r0 > 55 && o.r0 < 75 && o.r1 < 30 && o.mid2?.lap > 2.5 && o.mid2.beyond < 0.6, JSON.stringify(o));
   check('damp-proof course: at the pace of its width (2 × 4 m × 700 at 0,06 m²/s ≈ 93 s); done — no roll, the torch out on its stand on the ground; a top, sides and 4 beads a strip; the bottle on the ground ≥ 3 m off; undo takes it off',
     o.secs > 80 && o.secs < 105 && !o.done.roll && !o.done.flame && o.done.torchY < 120 && o.meshes === 12 && Math.abs(o.bottleOff) < 10 && o.bottleDist >= 3 && o.undone === 0 && o.left === 0, JSON.stringify(o));
+  check('damp-proof course: on any base — drawn on the bare ground it is laid too (the owner)', o.onGround === 1, JSON.stringify(o));
   check('damp-proof course: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2l². «Ibiza» stage 2 (the owner: in the order of the build, from where stage 1 ended): the plot of film 1's end loaded, the
+// damp-proof course torched down, the spine and the pavilion laid to one level, the ring beam over them, the steps up to 6,8, the
+// landing's beam; the hook marked before the end (the loop) ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '&film=stair&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, f = tc.film;
+    for (let i = 0; i < 20000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
+    const pools = tc.objects.all('pool').length, strips = tc.objects.all('belt').filter((b) => b.stripped).length;
+    const cinder = tc.objects.all('unit').filter((u) => u.kind === 'cinder'), top = Math.max(...cinder.map((u) => u.p[1] + u.s[1] / 2)), base = Math.min(...cinder.map((u) => u.p[1] - u.s[1] / 2));
+    return { done: f.done, t: +f.t.toFixed(1), stair: f.stair, pools, stripped: strips, rise: Math.round((top - base) * 1000 * 10.4651), hook: f.marks?.hook != null && f.marks?.hookEnd > f.marks?.hook };
+  });
+  check('film (stair): starts where stage 1 ended (its pool shell there), the DPC, the walls, the ring beam (stripped after a week), the steps to ~6,8, the landing; 30–50 s, the hook marked',
+    o.done && o.pools >= 1 && o.stair?.dpc >= 6 && o.stair.beltId != null && o.stair.landId != null && o.stripped >= 1 && o.rise > 6300 && o.rise < 7200 && o.t > 30 && o.t < 50 && o.hook, JSON.stringify(o));
+  check('film (stair): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 

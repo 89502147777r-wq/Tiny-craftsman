@@ -408,8 +408,8 @@ function step(dt, time, render = true) {
 // the film mode: the director's frame, then the work `speed` times as fast (in steps of a 30th
 // at most), drawn once
 async function startFilm(name) {
-  const [{ Director }, films] = await Promise.all([import('./film/director.js'), import('./film/foundFilm.js')]);
-  const script = { found: films.foundFilm }[name] || films.foundFilm;   // (the one film kept — the owner, 2026-11-14: the others are in git before build 308)
+  const [{ Director }, films] = await Promise.all([import('./film/director.js'), import(name === 'stair' ? './film/stairFilm.js' : './film/foundFilm.js')]);
+  const script = { found: films.foundFilm, stair: films.stairFilm }[name] || films.foundFilm;   // (the Ibiza stages, in order — the owner, 2026-11-14: the older films are in git before build 308)
   if (!script) { app.ui.toast('Нет такого ролика: ' + name); return; }
   app.rig.shake = false;
   // (a back garden: a meadow round the plot, not the construction yard's blocks of flats)
@@ -418,6 +418,16 @@ async function startFilm(name) {
   try { await app.backdrop.set(place); } catch (e) { console.warn(e); }
   app.sfx.unlock?.();
   // (what a film needs fetched before its first frame — a machine's model: loading it while the film runs is a still frame)
+  // (a stage film starts where the one before ended — the owner: «the same plot, the same records»: that film's last state,
+  // made offline once — scripts/film-start.mjs — and shipped with the game)
+  if (script.start) {
+    try {
+      const res = await fetch(script.start); let text;
+      if (typeof DecompressionStream !== 'undefined') text = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).text(); else throw new Error('no gzip');
+      const p = fromJSON(text); applyProject(p);
+      app.journal.done = []; app.journal.undone = []; app.journal.pending = null;
+    } catch (e) { console.warn('film start', e); app.ui.toast('Не удалось загрузить начало ролика'); }
+  }
   if (script.prepare) { try { await script.prepare(app); } catch (e) { console.warn(e); } }
   app.film = new Director(app, script, app.filmOffline);
 }
@@ -649,6 +659,8 @@ function buildProject(parts = false) {
   };
 }
 app.buildProject = buildProject;
+// the plot as it is now, as text (no undo history, no track): a stage film's start (scripts/film-start.mjs)
+app.projectText = () => { const p = buildProject(); p.journal = { nextId: app.journal.nextId, done: [], undone: [] }; delete p.track; return toJSON(p); };
 
 function applyProject(p) {
   if (p.format !== 'tiny-craftsman-project') throw new Error('not a Tiny Craftsman project');

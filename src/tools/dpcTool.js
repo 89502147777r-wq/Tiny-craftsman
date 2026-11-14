@@ -11,9 +11,10 @@ const en = () => LANG === 'en';
 export class DpcWork {
   constructor(app) { this.app = app; this.drag = null; this.jobs = []; }
   get W() { const w = +this.app.settings.dpcW; return DPC.widths.includes(w) ? w : DPC.widths[0]; }
-  _conc(x, z) { const t = this.app.terrain; return t.inside(x, z) && t.conc[t.index(x, z)] > 1e-6; }
+  // (on anything — the owner: not only concrete: the ground, sand, gravel, a course of masonry; inside the plot)
+  _on(x, z) { return this.app.terrain.inside(x, z); }
   down(p) {
-    if (!this._conc(p.x, p.z)) { this.app.ui?.toast(en() ? 'Draw the wall\'s line on the concrete of the foundation' : 'Ведите линию стены по бетону фундамента'); return true; }
+    if (!this._on(p.x, p.z)) return true;
     this.drag = { a: [p.x, p.z], b: [p.x, p.z], y: p.y };
     return true;
   }
@@ -29,12 +30,13 @@ export class DpcWork {
     const D = this.drag; this.drag = null; if (!D) return;
     const app = this.app, L = Math.hypot(D.b[0] - D.a[0], D.b[1] - D.a[1]) / S;
     if (L < 300) { app.ui?.toast(en() ? 'Too short — draw along the wall, at least 0.3 m' : 'Коротко — ведите вдоль стены, от 0,3 м'); return; }
-    if (!this._conc(D.b[0], D.b[1])) { app.ui?.toast(en() ? 'Its end is off the concrete' : 'Конец линии — не на бетоне'); return; }
+    if (!this._on(D.b[0], D.b[1])) { app.ui?.toast(en() ? 'Its end is off the plot' : 'Конец линии — за участком'); return; }
     // (longer than a roll: the next strip lapped 150 over the end of the one before — the realist)
     const n = Math.ceil((L - DPC.endLap) / (DPC.len - DPC.endLap)), ux = (D.b[0] - D.a[0]) / (L * S), uz = (D.b[1] - D.a[1]) / (L * S), recs = [];
     for (let i = 0; i < n; i++) {
       const s0 = i * (DPC.len - DPC.endLap), s1 = Math.min(L, s0 + DPC.len), P = (s) => [+(D.a[0] + ux * s * S).toFixed(6), +(D.a[1] + uz * s * S).toFixed(6)];
-      recs.push({ type: 'dpc', a: P(s0), b: P(s1), y: +(D.y).toFixed(6), w: this.W });
+      const top = D.y - this.app.terrain.heightAt(D.a[0], D.a[1]) > MM(20);   // (touched on a course of masonry, not on the ground: it lies flat on that top)
+      recs.push({ type: 'dpc', a: P(s0), b: P(s1), y: +(D.y).toFixed(6), w: this.W, ...(top ? { top: 1 } : {}) });
     }
     const ids = []; app.journal.act('dpc-add', {}, app.clock, () => { for (const r of recs) ids.push(app.objects.add(r).id); });
     for (const id of ids) this.lay(id);
@@ -70,7 +72,7 @@ export class DpcWork {
     app.ui?.toast(en() ? 'Torn off' : 'Полосу сорвали');
   }
   status() {
-    return en() ? `Damp-proof course ${this.W} mm: draw the wall's line on the concrete — the roll is torched down along it`
-      : `Гидроизоляция ${this.W} мм: ведите линию стены по бетону — рулон наплавят вдоль неё`;
+    return en() ? `Damp-proof course ${this.W} mm: draw the wall's line on its base — concrete, ground, masonry: the roll is torched down along it`
+      : `Гидроизоляция ${this.W} мм: ведите линию стены по основанию — бетону, грунту, кладке: рулон наплавят вдоль неё`;
   }
 }

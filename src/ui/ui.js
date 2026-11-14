@@ -162,6 +162,7 @@ export class UI {
     hb.addEventListener('click', () => showHints(ui.classList.contains('no-hints')));
     $('menu-close').addEventListener('click', () => this.openMenu(false));
     $('act-film').addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=found'; });
+    $('act-film-stair')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=stair'; });
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     for (const b of document.querySelectorAll('#budget-row button')) b.addEventListener('click', () => { const v = +b.dataset.b; if (v) app.budget.start(v); else app.budget.stop(); this.openMenu(false); this.refresh(); });
     $('act-export').addEventListener('click', () => app.exportProject());
@@ -527,7 +528,7 @@ export class UI {
       const bf = FACING[s.brickFace] ? s.brickFace : null;
       const brickG = G('brickG', 'Кирпич', [
         C('Забутовочный', has('brick') && !bf, () => lay({ wallKind: 'brick', brickFace: null })),
-        G('brickF', 'Облицовочный', Object.entries(FACING).map(([k, F]) => C('◼ ' + F.name, has('brick') && bf === k, () => lay({ wallKind: 'brick', brickFace: k }))), null, C('', has('brick') && !!bf, () => lay({ wallKind: 'brick', brickFace: bf || 'red' }))),
+        G('brickF', 'Облицовочный', Object.entries(FACING).filter(([, F]) => !F.old).map(([k, F]) => C('◼ ' + F.name, has('brick') && bf === k, () => lay({ wallKind: 'brick', brickFace: k }))), null, C('', has('brick') && !!bf, () => lay({ wallKind: 'brick', brickFace: bf || 'red' }))),
       ], null, C('', has('brick'), () => lay({ wallKind: 'brick' })));
       const masonry = [G('dpc', 'Гидроизоляция', [[400, 'Под газоблок 300 — 400 мм'], [480, 'Под кирпич 380 — 480 мм'], [1300, 'Под шлакоблок 1190 — 1300 мм']].map(([w, l]) => C(l, wk === 'dpc' && (+s.dpcW || 400) === w, () => lay({ wallKind: 'dpc', dpcW: w }))), null, C('', L && wk === 'dpc', () => lay({ wallKind: 'dpc' }))),
         K('block', 'Газоблок'), brickG, K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];

@@ -40,7 +40,7 @@ export class ScoopTool {
   down(p) {
     const { app, imp } = this;
     p = imp.clampReach(p.clone());
-    if (this.state === 'loaded') { this.state = 'aim'; this.aim(p); return true; }
+    if (this.state === 'loaded') { this.state = 'aim'; this.aim(p, true); return true; }
     // (the last throw still landing: it lands at once — the next cut does not wait for it)
     if (this.state === 'dump' || this.state === 'settle') this.finish(true);
     if (this.state !== 'idle') return true;
@@ -65,7 +65,7 @@ export class ScoopTool {
 
   move(p) {
     p = this.imp.clampReach(p.clone());
-    if (this.state === 'aim') { this.aim(p); return; }
+    if (this.state === 'aim') { this.aim(p, true); return; }
     if (this.state !== 'dig') return;
     const d = new THREE.Vector2(p.x - this.last.x, p.z - this.last.z);
     const len = d.length();
@@ -96,10 +96,14 @@ export class ScoopTool {
     else if (this.state === 'aim') this.state = 'loaded';
   }
 
-  aim(p) {
+  aim(p, finger = false) {
     const app = this.app;
+    // (the finger on a truck's body: the load is thrown in over its side — held over the top of the sides there)
+    const tr = finger && this.imp.name === 'shovel' ? app.machineTool?.truckAim?.(app.gestures?.ray?.ray) : null;
+    if (tr) p = tr;
     this.lastP.copy(p);
-    const h = app.terrain.inside(p.x, p.z) ? app.terrain.heightAt(p.x, p.z) : 0;
+    const h = tr ? tr.y : app.terrain.inside(p.x, p.z) ? app.terrain.heightAt(p.x, p.z) : 0;
+    this.aimY = h;
     this.imp.poseAim(p, this.dir, h);
   }
 
@@ -251,7 +255,8 @@ export class ScoopTool {
       }
     } else if (this.state === 'settle') {
       this.settleT += dt;
-      if ((!app.particles.busy && !app.terrain.active) || this.settleT > 6) this.finish();
+      // (thrown into a truck: till what came over its sides has fallen too)
+      if ((!app.particles.busy && !app.terrain.active && !app.machineTool?.truck?.settling) || this.settleT > 6) this.finish();
     }
   }
 
@@ -267,11 +272,14 @@ export class ScoopTool {
       const rc = rest * (this.share?.[CONC] || 0);
       this.concOut = (this.concOut || 0) + rc;
       this._dropConc();
-      if (rest - rc > 0) t.deposit(x, z, rest - rc, 0.004 * K, this.depth || 0, this.soilMat || 0);
+      if (rest - rc > 0 && !app.particles.tryCatch(new THREE.Vector3(this.lastP.x, (this.aimY ?? 0) + 1e-4, this.lastP.z), rest - rc, this.soilMat || 0, true)) t.deposit(x, z, rest - rc, 0.004 * K, this.depth || 0, this.soilMat || 0);
       this.emitted = this.total;
     }
     if (this.state === 'dump' || this.state === 'settle') {
       app.particles.flush();
+      // (in a truck: it comes to rest in its body now, what runs over the sides lands now — all in this one action)
+      const T = app.machineTool?.truck;
+      for (let i = 0; i < 20 && T?.settling; i++) { T.update(1 / 30); app.machineTool._overTop(); app.particles.flush(); }
       // (the next cut started: what is still sliding goes on in the frames after — a long loop here froze the game)
       const t0 = performance.now();
       for (let i = 0; i < 40000 && app.terrain.active && (!quick || performance.now() - t0 < 4); i++) app.terrain.relax(1);
