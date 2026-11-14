@@ -18,6 +18,22 @@ import { innerCorner } from './plotShape.js';
 
 // shared GLSL: layer colour for a depth below the original surface
 // the stones of the aggregate and a smooth noise (shared with the concrete in the U-blocks)
+// the photo of fresh concrete / mortar the owner chose (Poly Haven CC0 «Rough Concrete», 1,23 m a tile): its grain and relief
+// on the top of what is cast — the colour of the paste and of the set grey kept, the photo's light and dark and a little of its tint
+let _conc = null;
+export function concTex() {
+  if (_conc) return _conc;
+  const L = new THREE.TextureLoader(), set = (t, srgb) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; if (srgb) t.colorSpace = THREE.SRGBColorSpace; return t; };
+  _conc = { d: set(L.load('assets/textures/rough_concrete/diff.jpg'), true), n: set(L.load('assets/textures/rough_concrete/nor_gl.jpg'), false) };
+  return _conc;
+}
+export const CONC_PHOTO_GLSL = /* glsl */ `
+  uniform sampler2D tConcD;
+  uniform sampler2D tConcN;
+  // p: model units on the surface → [detail (light/dark about 1), tint (its colour, mean 1)]
+  vec4 tcPhoto(vec2 p) { vec3 ph = texture(tConcD, p * ${(9000/860/1.23).toFixed(5)}).rgb; float l = dot(ph, vec3(0.3333)); return vec4(clamp(l / 0.4261, 0.45, 1.7), ph / max(1e-3, l) * 0.3333 * 3.0); }
+  vec2 tcPhotoN(vec2 p) { return texture(tConcN, p * ${(9000/860/1.23).toFixed(5)}).xy * 2.0 - 1.0; }
+`;
 export const CONC_NOISE_GLSL = /* glsl */ `
   // the stones of the concrete aggregate: rounded grains (Voronoi cells with a dome),
   // x = height of the stone here (0 = cement paste between stones), yz = its slope
@@ -63,6 +79,7 @@ const STRATA_GLSL = CONC_NOISE_GLSL + /* glsl */ `
 
 function baseUniforms(tex) {
   return {
+    tConcD: { value: concTex().d }, tConcN: { value: concTex().n },
     tWall: { value: tex.wall.diff },
     uWallMean: { value: textureMean(tex.wall.diff) },
     tLoam: { value: tex.loam.diff },
@@ -110,6 +127,7 @@ const VERT_PROJECT = `#include <project_vertex>
 
 // one sampler per declaration: some mobile shader compilers choke on lists
 const FRAG_DECL = `
+        ${CONC_PHOTO_GLSL}
         uniform float uWet;
         uniform sampler2D tWall;
         uniform sampler2D tLoam;
@@ -209,8 +227,9 @@ const FRAG_SOIL = `
           float shade = fract(sin(dot(floor(cq * 240.0), vec2(41.3, 289.1))) * 9631.7);
           vec3 paste = vec3(0.062, 0.062, 0.06) * mix(0.92, 1.05, big) * mix(1.0, 0.82, smoothstep(0.2, 1.0, sm));
           vec3 rock = vec3(0.092, 0.09, 0.086) * mix(0.8, 1.25, shade);   // stones still under a film of paste
-          vec3 fresh = mix(paste, rock, stone * 0.8);
-          vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.88, 1.05, mix(big, 0.6, vConc.z * 0.6));
+          vec4 ph = tcPhoto(vWPos.xz);
+          vec3 fresh = mix(paste, rock, stone * 0.5) * mix(1.0, ph.x, 0.85);   // (the photo's lumps and grain in the wet paste)
+          vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.94, 1.03, mix(big, 0.6, vConc.z * 0.6)) * mix(1.0, ph.x, 0.9) * mix(vec3(1.0), ph.yzw, 0.3);
           float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * vConc.z);
           setC *= 1.0 - pore * 0.35;
           // dries patchily
@@ -366,7 +385,8 @@ export function makeTerrainMaterial(tex) {
             float w2 = smoothstep(sink - 0.05, sink + 0.3, st2.x) * step(0.55, tcHash(floor(sq * 115.0 + 17.0)));
             vec2 rq = vWPos.xz * (700.0 * ${RESCALE.toFixed(5)});
             float r0 = tcNoise(rq), rx = tcNoise(rq + vec2(0.4, 0.0)), rz = tcNoise(rq + vec2(0.0, 0.4));
-            vec3 g = vec3(f0 - fx, 0.0, f0 - fz) * rough * 0.9 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06
+            vec2 pn = tcPhotoN(vWPos.xz) * (0.75 - 0.45 * vConc.z);   // (the photo's relief: sharper as poured, softer worked)
+            vec3 g = vec3(pn.x, 0.0, -pn.y) + vec3(f0 - fx, 0.0, f0 - fz) * rough * 0.45 - vec3(st.y, 0.0, st.z) * w1 * 0.12 - vec3(st2.y, 0.0, st2.z) * w2 * 0.06
                    + vec3(r0 - rx, 0.0, r0 - rz) * (1.0 - 0.85 * vConc.z) * 0.25;
             vec3 cn = normalize(normalize(vNormal) * faceDirection + (viewMatrix * vec4(g, 0.0)).xyz);
             normal = normalize(mix(normal, cn, cw * smoothstep(0.35, 0.7, normalize(vWNrm).y)));   // (not on a stripped side: it would streak)
@@ -418,12 +438,13 @@ export function makeFallbackTerrainMaterial(tex) {
 export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, side: THREE.DoubleSide, vertexColors: true });
   m.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, uniforms);
+    Object.assign(sh.uniforms, uniforms, { tConcD: { value: concTex().d }, tConcN: { value: concTex().n } });
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aPour;\nattribute float aSm;\nvarying float vPour;\nvarying float vSm;\nvarying vec3 vCWPos;\nvarying vec3 vCWNrm;')
       .replace('#include <project_vertex>', '#include <project_vertex>\nvPour = aPour;\nvSm = aSm;\n#ifdef USE_INSTANCING\nvCWPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;\nvCWNrm = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);\n#else\nvCWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvCWNrm = normalize(mat3(modelMatrix) * objectNormal);\n#endif');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
+        ${CONC_PHOTO_GLSL}
         uniform float uClock;
         uniform float uCure;
         varying float vPour;
@@ -446,8 +467,9 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
           float shade = fract(sin(dot(floor(cq * 240.0), vec2(41.3, 289.1))) * 9631.7);
           vec3 paste = vec3(0.062, 0.062, 0.06) * mix(0.92, 1.05, big) * mix(1.0, 0.82, smoothstep(0.2, 1.0, sm));
           vec3 rock = vec3(0.092, 0.09, 0.086) * mix(0.8, 1.25, shade);
-          vec3 fresh = mix(paste, rock, stone * 0.8);
-          vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.88, 1.05, mix(big, 0.6, sm * 0.6));
+          vec4 ph = tcPhoto(p);
+          vec3 fresh = mix(paste, rock, stone * 0.5) * mix(1.0, ph.x, 0.85);
+          vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.94, 1.03, mix(big, 0.6, sm * 0.6)) * mix(1.0, ph.x, 0.9) * mix(vec3(1.0), ph.yzw, 0.3);
           float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * sm);
           setC *= 1.0 - pore * 0.35;
           return mix(fresh, setC, smoothstep(0.05, 1.0, cure + (big - 0.5) * 0.2));
@@ -464,7 +486,7 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
           float w2 = smoothstep(sink - 0.05, sink + 0.3, st2.x) * step(0.55, tcHash(floor(sq * 115.0 + 17.0)));
           vec2 rq = p * (700.0 * ${RESCALE.toFixed(5)});
           float r0 = tcSNoise(rq), rx = tcSNoise(rq + vec2(0.4, 0.0)), rz = tcSNoise(rq + vec2(0.0, 0.4));
-          return vec2(f0 - fx, f0 - fz) * rough * 1.6 - st.yz * w1 * 0.12 - st2.yz * w2 * 0.06 + vec2(r0 - rx, r0 - rz) * (1.0 - 0.85 * sm) * 0.25;
+          return tcPhotoN(p) * vec2(1.0, -1.0) * (0.75 - 0.45 * sm) + vec2(f0 - fx, f0 - fz) * rough * 0.8 - st.yz * w1 * 0.12 - st2.yz * w2 * 0.06 + vec2(r0 - rx, r0 - rz) * (1.0 - 0.85 * sm) * 0.25;
         }`)
       .replace('#include <map_fragment>', `#include <map_fragment>
         float cure = clamp((uClock - vPour) / uCure, 0.0, 1.0);
