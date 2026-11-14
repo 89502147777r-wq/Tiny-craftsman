@@ -1,5 +1,9 @@
 // English for every Russian line of the game (the key: the Russian, {n} — what a template puts in)
 export default {
+"Бордовый": "Burgundy",
+"Серо-оливковый": "Grey-olive",
+"Флэш красный": "Red flashed",
+"Флэш светлый": "Light flashed",
 "Под газоблок 300 — 400 мм": "Under 300 aerated block — 400 mm",
 "Под кирпич 380 — 480 мм": "Under 380 brick — 480 mm",
 "Под шлакоблок 1190 — 1300 мм": "Under 1190 cinder block — 1300 mm",

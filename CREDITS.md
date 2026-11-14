@@ -159,13 +159,16 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | Файл | Модель | Автор | Лицензия | Источник |
 |---|---|---|---|---|
 | `assets/textures/brick_scan/` — кирпич | Red Brick | jimmy_jee | CC BY 4.0 | https://sketchfab.com/3d-models/60e8f501a6dc421e9eae3adf7d08789e | (полоса 0 атласа `brick_atlas`)
-| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Red Brick | Poly Haven | CC0 | https://polyhaven.com/a/red_brick |
-| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Large Red Bricks | Poly Haven | CC0 | https://polyhaven.com/a/large_red_bricks |
-| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Factory Brick | Poly Haven | CC0 | https://polyhaven.com/a/factory_brick |
-| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Brick Wall 10 | Poly Haven | CC0 | https://polyhaven.com/a/brick_wall_10 |
-| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Dark Brick Wall | Poly Haven | CC0 | https://polyhaven.com/a/dark_brick_wall |
-| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Yellow Brick | Poly Haven | CC0 | https://polyhaven.com/a/yellow_brick |
-| `assets/textures/brick_atlas/` (полоса цвета; вырезаны отдельные кирпичи, 128 px) — облицовочный кирпич | Brick Wall 08 | Poly Haven | CC0 | https://polyhaven.com/a/brick_wall_08 |
+| `assets/textures/aerated/diff.jpg` — газоблок (основа под поры и следы пилы, тонирована) | White Stucco (Poly Haven) | Amal Kumar | CC0 | https://polyhaven.com/a/white_stucco |
+| `assets/textures/brick_atlas/` (полоса 1; вырезаны отдельные кирпичи по швам, 128 px) — облицовочный кирпич | Bricks059 (ambientCG) | Lennart Demes | CC0 | https://ambientcg.com/a/Bricks059 |
+| `assets/textures/brick_atlas/` (полоса 2; вырезаны отдельные кирпичи по швам, 128 px) — облицовочный кирпич | Red Brick 03 (Poly Haven) | Rob Tuytel | CC0 | https://polyhaven.com/a/red_brick_03 |
+| `assets/textures/brick_atlas/` (полоса 3; вырезаны отдельные кирпичи по швам, 128 px) — облицовочный кирпич | Bricks057 (ambientCG) | Lennart Demes | CC0 | https://ambientcg.com/a/Bricks057 |
+| `assets/textures/brick_atlas/` (полоса 4; вырезаны отдельные кирпичи по швам, 128 px) — облицовочный кирпич | Bricks053 (ambientCG) | Lennart Demes | CC0 | https://ambientcg.com/a/Bricks053 |
+| `assets/textures/brick_atlas/` (полоса 5; вырезаны отдельные кирпичи по швам, 128 px) — облицовочный кирпич | Bricks060 (ambientCG) | Lennart Demes | CC0 | https://ambientcg.com/a/Bricks060 |
+| `assets/textures/brick_atlas/` (полоса 6; вырезаны отдельные кирпичи по швам, 128 px) — облицовочный кирпич | Bricks058 (ambientCG) | Lennart Demes | CC0 | https://ambientcg.com/a/Bricks058 |
+| `assets/textures/brick_atlas/` (полоса 7; вырезаны отдельные кирпичи по швам, 128 px) — облицовочный кирпич | Bricks055 (ambientCG) | Lennart Demes | CC0 | https://ambientcg.com/a/Bricks055 |
+| `assets/textures/brick_atlas/` (полоса 8; вырезаны отдельные кирпичи по швам, 128 px) — облицовочный кирпич | Brick Wall 001 (Poly Haven) | Rob Tuytel, Dimitrios Savva | CC0 | https://polyhaven.com/a/brick_wall_001 |
+| `assets/textures/brick_atlas/` (полоса 9; вырезаны отдельные кирпичи по швам, 128 px) — облицовочный кирпич | Bricks022 (ambientCG) | Lennart Demes | CC0 | https://ambientcg.com/a/Bricks022 |
 | `assets/models/cinder/` — шлакоблок | Cinderblock/concrete brick | william.sayin | CC BY 4.0 | https://sketchfab.com/3d-models/2358b37cb7d142dca00aff66c678f5cd |
 
 ## Окна, двери, гаражные ворота (Sketchfab, CC BY 4.0)

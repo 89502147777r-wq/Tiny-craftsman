@@ -34,13 +34,16 @@ import { mortarOf } from '../tools/freeBrick.js';
 //          a course, s along the axis from a (real mm)
 //   unit { wall, row, i, s0, s1, off, p, q, s, kind } – a block / brick as it was laid
 // Sizes in real millimetres, converted with MODEL_SCALE.
-// the facing bricks (Poly Haven photos of brick walls, CC0 — single stretchers cut out of them, CREDITS.md): their
-// colours, each a band of the brick atlas (assets/textures/brick_atlas: band 0 — the filler brick's scan)
+// the facing bricks (the owner's choice 2026-11-14 of the CC0 brick walls — ambientCG and Poly Haven, CREDITS.md; single bricks cut
+// out of them by their joints: scratchpad tex/atlas.py): their colours, each a band of the brick atlas (assets/textures/brick_atlas:
+// band 0 — the filler brick's scan). The colours of before (red, handmade, grey) read as the nearest ones — not in the menu
 export const FACING = {
-  red: { name: 'Красный гладкий', layer: 1 }, handmade: { name: 'Ручной формовки', layer: 2 }, brown: { name: 'Коричневый', layer: 3 },
-  darkred: { name: 'Тёмно-красный', layer: 4 }, anthracite: { name: 'Антрацит', layer: 5 }, yellow: { name: 'Жёлтый', layer: 6 }, grey: { name: 'Серый', layer: 7 },
+  darkred: { name: 'Тёмно-красный', layer: 1 }, burgundy: { name: 'Бордовый', layer: 2 }, brown: { name: 'Коричневый', layer: 3 },
+  yellow: { name: 'Жёлтый', layer: 4 }, white: { name: 'Белый', layer: 5 }, anthracite: { name: 'Графит', layer: 6 },
+  olive: { name: 'Серо-оливковый', layer: 7 }, flash: { name: 'Флэш красный', layer: 8 }, flashlight: { name: 'Флэш светлый', layer: 9 },
+  red: { name: 'Флэш красный', layer: 8, old: true }, handmade: { name: 'Флэш красный', layer: 8, old: true }, grey: { name: 'Серо-оливковый', layer: 7, old: true },
 };
-const BRICK_LAYERS = 8;
+const BRICK_LAYERS = 10;
 export const KINDS = {
   block: { name: 'Газоблок', L: 600, H: 250, T: 300, bed0: 20, bed: 3, head: 3, min: 100, lintelRows: 1 },     // aerated concrete on glue (first course on mortar)
   cinder: { name: 'Шлакоблок', L: 390, H: 188, T: 190, W: 190, bed0: 12, bed: 10, head: 10, min: 90, lintelRows: 1 },   // hollow cinder block on mortar (free masonry only)
@@ -381,7 +384,7 @@ export class WallView {
     const block = new THREE.MeshStandardMaterial({ map: at, bumpMap: at, bumpScale: 1.5, roughness: 0.92, color: 0xffffff });   // (the pores in relief)
     const brick = new THREE.MeshStandardMaterial({ map: brickTexture(), roughness: 0.85, color: 0xffffff });
     scanBrick(brick);
-    this.max = { block: 4000, brick: 20000, cinder: 4000, mortar: 24000, lintel: 200, frame: 800 };
+    this.max = { block: 4000, brick: 20000, cinder: 6000, mortar: 24000, lintel: 200, frame: 800 };
     this.blocks = new THREE.InstancedMesh(box, block, this.max.block);
     this.bricks = new THREE.InstancedMesh(atlasBox(), brick, this.max.brick);
     this.bricks.geometry.setAttribute('aSkin', new THREE.InstancedBufferAttribute(new Float32Array(this.max.brick), 1));
@@ -1195,22 +1198,38 @@ function uShape(cuts = []) {
 }
 function hash(i) { const s = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); }
 
-// aerated concrete: white-grey with small round pores, saw marks
+// aerated concrete: the photo of a white mineral surface (Poly Haven «White Stucco», CC0 — no CC0 photo of an autoclaved aerated block
+// exists; the owner: «make it believable») toned to the block's cool white-grey, its pores over it — many fine round ones, a few
+// bigger, each with a lit lip — and the wire-saw's faint parallel lines; the glue's dark line and the chamfer's shadow at the edges
+let _aac = null;
 export function aeratedTexture() {
-  const c = document.createElement('canvas'); c.width = c.height = 256;
-  const g = c.getContext('2d');
-  g.fillStyle = '#e9e7e1'; g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 2600; i++) {
-    const x = Math.random() * 256, y = Math.random() * 256, r = Math.random() < 0.9 ? 0.6 + Math.random() * 0.9 : 1.5 + Math.random() * 1.6;
-    g.fillStyle = `rgba(120,116,108,${0.25 + Math.random() * 0.35})`;
-    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-  }
-  for (let y = 0; y < 256; y += 3) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.06})`; g.fillRect(0, y, 256, 1); }
-  // the joint: glue squeezed out and the shadow of the chamfered edge — a dark line round each face
-  g.strokeStyle = 'rgba(70,66,60,0.85)'; g.lineWidth = 5; g.strokeRect(0, 0, 256, 256);
-  g.strokeStyle = 'rgba(90,86,80,0.35)'; g.lineWidth = 12; g.strokeRect(0, 0, 256, 256);
+  if (_aac) return _aac;
+  const N = 512, c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d', { willReadFrequently: true });
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-  return t;
+  const rnd = (() => { let q = 11; return () => ((q = (q * 16807) % 2147483647) / 2147483647); })();
+  const over = () => {
+    for (let i = 0; i < 9000; i++) {
+      const x = rnd() * N, y = rnd() * N, big = rnd() > 0.93, r = big ? 1.6 + rnd() * 2.4 : 0.5 + rnd() * 1.1;
+      g.fillStyle = `rgba(${big ? '96,92,86' : '128,124,116'},${0.28 + rnd() * 0.32})`; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+      if (big) { g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 0.8; g.beginPath(); g.arc(x - 0.4, y - 0.4, r + 0.6, Math.PI * 0.9, Math.PI * 1.6); g.stroke(); }
+    }
+    for (let y = 0; y < N; y += 2 + rnd() * 3) { g.fillStyle = `rgba(${rnd() > 0.5 ? '255,255,255' : '90,88,84'},${rnd() * 0.05})`; g.fillRect(0, y, N, 1); }
+    g.strokeStyle = 'rgba(70,66,60,0.8)'; g.lineWidth = 8; g.strokeRect(0, 0, N, N);
+    g.strokeStyle = 'rgba(90,86,80,0.3)'; g.lineWidth = 22; g.strokeRect(0, 0, N, N);
+    t.needsUpdate = true;
+  };
+  g.fillStyle = '#e9e7e1'; g.fillRect(0, 0, N, N); over();
+  const img = new Image();
+  img.onload = () => {
+    g.drawImage(img, img.width * 0.2, img.height * 0.2, img.width * 0.5, img.height * 0.5, 0, 0, N, N);
+    // (toned: lighter, a little cool — the photo is a warmer plaster; its relief kept)
+    g.globalCompositeOperation = 'screen'; g.fillStyle = 'rgba(70,72,74,0.55)'; g.fillRect(0, 0, N, N);
+    g.globalCompositeOperation = 'saturation'; g.fillStyle = 'rgba(128,128,128,0.75)'; g.fillRect(0, 0, N, N);
+    g.globalCompositeOperation = 'source-over'; over();
+  };
+  img.src = 'assets/textures/aerated/diff.jpg';
+  return (_aac = t);
 }
 
 // the brick: a photo-scanned one (CC BY, CREDITS.md) baked onto a box — six faces in a 3 × 2
