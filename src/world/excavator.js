@@ -313,8 +313,11 @@ export class Excavator {
     const box = new THREE.Box3().setFromPoints(pts), size = box.getSize(new THREE.Vector3()), ax = ['x', 'y', 'z'];
     const thin = ax.reduce((a, k) => (size[k] < size[a] ? k : a), 'x'), long = ax.filter((k) => k !== thin).reduce((a, k) => (size[k] > size[a] ? k : a));
     const other = ax.find((k) => k !== thin && k !== long);
-    const tex = new THREE.TextureLoader().load('assets/brand/logo-stack-boom.png')   /* (the owner's logo for it: two lines, the red initials) */; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-    const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.35, roughness: 0.55, metalness: 0, polygonOffset: true, polygonOffsetFactor: -4, depthWrite: false });
+    // (the owner's logo for it: two lines, the red initials) — painted on, not a sticker over it (the owner: «not like a word put on
+    // in Word»): the colours of paint, not pure; worn — chipped at its edges, rubbed thin here and there; grime run down over it; lit and
+    // shadowed as the boom's own paint, opaque (cut out, depth written)
+    const mat = new THREE.MeshStandardMaterial({ transparent: false, alphaTest: 0.5, roughness: 0.62, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const img = new Image(); img.onload = () => { mat.map = paintedLogo(img); mat.needsUpdate = true; }; img.src = 'assets/brand/logo-stack-boom.png';
     for (const side of [1, -1]) {
       // (on the upper straight stretch, toward the nose — where the stick hangs: clear of the boom's cylinder by the knee); the side
       // plate there: its own face (the boom is narrower toward the nose than at its foot)
@@ -342,7 +345,7 @@ export class Excavator {
       if (Number.isFinite(uLo) && uHi > uLo) c.addScaledVector(up, (uLo + uHi) / 2);
       const H = Math.min(hp * 0.7, size[long] * 0.28 * 317 / 838), L = H * 838 / 317;
       const m = new THREE.Mesh(new THREE.PlaneGeometry(L, H), mat);
-      m.matrix.makeBasis(right, up, n).setPosition(c); m.matrixAutoUpdate = false; m.name = 'logo'; m.castShadow = false;
+      m.matrix.makeBasis(right, up, n).setPosition(c); m.matrixAutoUpdate = false; m.name = 'logo'; m.castShadow = false; m.receiveShadow = true;
       B.add(m);
     }
   }
@@ -416,4 +419,32 @@ export class Excavator {
       c.b.getWorldPosition(a); c.r.getWorldPosition(b); c.b.lookAt(b); c.r.lookAt(a);
     }
   }
+}
+
+// the logo as paint on steel: its colours toned to paint, its alpha worn by chips (more at the edges of the letters), rubbed patches,
+// and grime streaks running down — a canvas texture
+function paintedLogo(img) {
+  const W = img.width, H = img.height, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, W, H), p = d.data;
+  const h = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
+  const vn = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy); return (h(xi, yi) * (1 - u) + h(xi + 1, yi) * u) * (1 - v) + (h(xi, yi + 1) * (1 - u) + h(xi + 1, yi + 1) * u) * v; };
+  const fbm = (x, y) => 0.5 * vn(x, y) + 0.25 * vn(x * 2.1, y * 2.1) + 0.125 * vn(x * 4.3, y * 4.3) + 0.0625 * vn(x * 8.7, y * 8.7);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4; if (p[i + 3] < 8) continue;
+    // (an edge of a letter: some neighbour clear)
+    const edge = (x > 2 && p[i - 12 + 3] < 8) || (x < W - 3 && p[i + 12 + 3] < 8) || (y > 2 && p[i - W * 12 + 3] < 8) || (y < H - 3 && p[i + W * 12 + 3] < 8);
+    const chip = fbm(x / 6, y / 6), rub = fbm(x / 40 + 7, y / 40 + 3), streak = fbm(x / 3 + 13, y / 60);
+    let a = p[i + 3];
+    if (chip > (edge ? 0.66 : 0.79)) a = 0;   // chipped off (a little: a machine of a season, not a wreck)
+    else if (rub > 0.68) a *= 0.7;           // rubbed thin (cut out below the half: holes where it is worn through)
+    p[i + 3] = a;
+    // (paint colours: the black a warm charcoal, the red an oxide red; dirt darkening down the streaks)
+    const r = p[i], gg = p[i + 1], b = p[i + 2], red = r > 120 && gg < 90;
+    const dirt = 0.82 + 0.18 * (1 - Math.max(0, streak - 0.45) * 2);
+    p[i] = (red ? 168 : 46) * dirt; p[i + 1] = (red ? 32 : 42) * dirt; p[i + 2] = (red ? 28 : 38) * dirt;
+  }
+  g.putImageData(d, 0, 0);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
 }
