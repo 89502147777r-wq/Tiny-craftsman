@@ -22,11 +22,16 @@ const CB = { L: 390, H: 188, T: 190, J: 10, BED: 12, ROWS: 6 };   // (the cinder
 // glass openings of the front, the inner wall with a door
 const SL = IBIZA.slab;
 const FRONT = [[SL.x0, -4400], [-1920, -1410], [1070, 1580], [4060, SL.x1]];   // (block corners, brick piers — the openings 2,48 m between)
+// (the corners bonded — the owner: «перехлёстом»: every other course the front and the back run through to the corner and the sides
+// stop at them, on the next the sides run through; the inner wall, under the front's pier, ties into the back wall every other
+// course: [kind, along, outer face, from, to, inwards, even course's ends trimmed [from, to], odd's]
+const IN = -1665;   // (the inner bearing wall's middle: under the front's first brick pier)
 const PAV = [
-  ['block', 'x', SL.z0, FRONT[0][0], FRONT[0][1], 1], ['brick', 'x', SL.z0, FRONT[1][0], FRONT[1][1], 1], ['brick', 'x', SL.z0, FRONT[2][0], FRONT[2][1], 1], ['block', 'x', SL.z0, FRONT[3][0], FRONT[3][1], 1],
-  ['block', 'x', SL.z1, SL.x0, SL.x1, -1],
-  ['block', 'z', SL.x0, SL.z0 + 300, SL.z1 - 300, 1], ['block', 'z', SL.x1, SL.z0 + 300, SL.z1 - 300, -1],
-  ['block', 'z', -1350, SL.z0 + 300, 800, 1], ['block', 'z', -1350, 1700, SL.z1 - 300, 1],   // (the inner bearing wall, its door 0,9 m)
+  ['block', 'x', SL.z0, FRONT[0][0], FRONT[0][1], 1, [0, 0], [300, 0]], ['brick', 'x', SL.z0, FRONT[1][0], FRONT[1][1], 1, [0, 0], [0, 0]],
+  ['brick', 'x', SL.z0, FRONT[2][0], FRONT[2][1], 1, [0, 0], [0, 0]], ['block', 'x', SL.z0, FRONT[3][0], FRONT[3][1], 1, [0, 0], [0, 300]],
+  ['block', 'x', SL.z1, SL.x0, IN - 150, -1, [0, 0], [300, 300]], ['block', 'x', SL.z1, IN + 150, SL.x1, -1, [-300, 0], [300, 0]],
+  ['block', 'z', SL.x0, SL.z0, SL.z1, 1, [300, 300], [0, 0]], ['block', 'z', SL.x1, SL.z0, SL.z1, -1, [300, 300], [0, 0]],
+  ['block', 'z', IN, SL.z0 + 380, 800, 1, [0, 0], [0, 0]], ['block', 'z', IN, 1700, SL.z1, 1, [0, 300], [0, 0]],   // (the inner wall: a door 0,9 m)
 ];
 
 // the spine's courses: [course k] → records, as a mason lays them (from the back on); course k starts at its tread `step`; the bond
@@ -46,10 +51,11 @@ function spineCourse(base, k, step, y0 = null) {
 // the first on mortar 20), bricks 41 courses (77) in piers 510 × 380 (a stretcher row and a header row, swapped each course)
 function pavilion(base) {
   const out = [];
-  for (const [kind, ax, fixed, a0, a1, inw] of PAV) {
+  for (const [kind, ax, fixed, A0, A1, inw, even, odd] of PAV) {
     const blk = kind === 'block';
     const crs = blk ? [...Array(12).keys()].map((k) => [20 + k * 253, 250, k]).concat([[20 + 12 * 253 + 3 - 20 + 20, 100, 12]]) : [...Array(41).keys()].map((k) => [12 + k * 77, 65, k]);
     for (const [y0, H, k] of crs) {
+      const [t0, t1] = k % 2 ? odd : even, a0 = A0 + t0, a1 = A1 - t1;
       const rows = blk ? [[150, 300, 600, 3]] : (k % 2 ? [[60, 120, 250, 10], [255, 250, 120, 10]] : [[60, 120, 120, 10], [255, 250, 250, 10]]);
       // (bricks: [across from the face, its width across, its length along, joint]; a stretcher row and a header row swapped)
       for (const [r, wid, L, J] of (blk ? rows : rows.map((q, i) => (k % 2 ? q : [q[0], i ? 250 : 120, i ? 120 : 250, 10])))) {
@@ -109,7 +115,7 @@ export function* stairFilm(d, app) {
   // the pavilion's strips: one after another, seen from far and high — the whole footprint (the owner: from above, far, for the scale)
   shots([[9, [-14000, 13000, -12000], [500, 0, 1000]]]);
   const z0 = SL.z0 + 150, z1 = SL.z1 - 150, xa = SL.x0 + 150, xb = SL.x1 - 150;
-  for (const [a, b] of [[[SL.x0, z0], [SL.x1, z0]], [[SL.x0, z1], [SL.x1, z1]], [[xa, SL.z0], [xa, SL.z1]], [[xb, SL.z0], [xb, SL.z1]], [[-1200, SL.z0 + 300], [-1200, SL.z1 - 300]]]) {
+  for (const [a, b] of [[[SL.x0, z0], [SL.x1, z0]], [[SL.x0, z1], [SL.x1, z1]], [[xa, SL.z0], [xa, SL.z1]], [[xb, SL.z0], [xb, SL.z1]], [[IN, SL.z0 + 380], [IN, SL.z1 - 300]]]) {
     lay(a, b, 400); d.jumpTo(() => !dpc.jobs.length, 600); app.sfx?.play?.('fabric', { vol: 0.5 }); yield d.sec(0.32);
   }
   app.budget._pay?.([{ usd: 6 * 0.4 * 47 + 1.3 * 11.8 * 9 }], P(0, 0, 0));
@@ -146,7 +152,7 @@ export function* stairFilm(d, app) {
   yield d.until(idle);
   // a brick pier
   hud(['DPC', 'Cinder', 'Gas block', 'Brick'], 3, ['*By hand', 'Course'], 'wall');
-  const pier = pav.filter((r) => r.kind === 'brick' && r.p[0] < MM(-1000));
+  const pier = pav.filter((r) => r.kind === 'brick' && r.p[0] < MM(-1000));   // (the pier the inner wall stands against)
   tool = () => new V().fromArray(pier[0].p);
   act([[1.4, [-900, 900, -1100], 1], [1.2, [1500, 1300, -1800], 4]]);
   for (const r of pier.slice(0, 6)) { yield d.until(() => job(r, r !== pier[0])); }
