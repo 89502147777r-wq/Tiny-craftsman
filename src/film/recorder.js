@@ -151,14 +151,19 @@ export async function recordFilm(app, o = {}) {
   // tab ran out of memory and the game restarted at «saving»; each frame's bytes let go once they are in)
   // (the head — the reserved index, the boxes' sizes, written back over at the end — kept; the samples after it go to blobs)
   const HEAD = o.head ?? 4 * 2 ** 20, head = [], file = blobStore(o.batch); let end = 0;
+  // (bytes at their exact positions: a write back goes into the head; a write past the end leaves the muxer's gap — the reserved
+  // index — which is filled with zeros, or every sample after it would sit at the wrong offset: the owner's video was blank)
+  const append = (d) => { if (end < HEAD) head.push({ pos: end, d }); else file.add(d); end += d.length; };
   const put = (data, pos) => {
     let d = data, at = pos;
-    if (at < end) {   // (a write back over what is there: only into the head)
+    if (at < end) {
+      if (Math.min(at + d.length, end) > HEAD && head.length && Math.min(at + d.length, end) > head.at(-1).pos + head.at(-1).d.length) throw new Error('mp4: a write back past the head');
       for (const q of head) { const a = Math.max(at, q.pos), b = Math.min(at + d.length, q.pos + q.d.length); if (a < b) q.d.set(d.subarray(a - at, b - at), a - q.pos); }
-      if (at + d.length > end && at < end) { d = d.subarray(end - at); at = end; } else if (at + d.length <= end) { if (at + d.length > HEAD) throw new Error('mp4: a write back past the head'); return; }
+      if (at + d.length <= end) return;
+      d = d.subarray(end - at); at = end;
     }
-    if (end < HEAD) head.push({ pos: end, d: d.slice() }); else file.add(d.slice());
-    end = at + d.length;
+    if (at > end) append(new Uint8Array(at - end));
+    append(d.slice());
   };
   const target = new StreamTarget({ onData: (data, position) => put(data, position), chunked: true, chunkSize: Math.max(2 ** 10, Math.min(HEAD, 4 * 2 ** 20)) });
   const byI = new Map(chunks.map((c) => [c.i, c])); chunks.length = 0;

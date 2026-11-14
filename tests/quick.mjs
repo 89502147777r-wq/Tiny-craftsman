@@ -1405,10 +1405,13 @@ console.log('—', sec());
     const v = document.createElement('video'); v.muted = true; v.src = URL.createObjectURL(r.blob);
     await new Promise((res) => { v.onloadedmetadata = res; v.onerror = res; setTimeout(res, 8000); });
     o.dur = +v.duration.toFixed(2); o.size = [v.videoWidth, v.videoHeight];
+    // (the picture decoded from the file itself — the owner's video saved whole and long, with sound, but every frame blank: the parts were
+    // joined without the muxer's reserved gap, the samples' offsets pointed past their bytes)
+    { const pic = []; for (const t of [0.15, 0.7]) { v.currentTime = t; await new Promise((res) => { v.onseeked = res; setTimeout(res, 4000); }); const c = document.createElement('canvas'); c.width = 180; c.height = 320; const g = c.getContext('2d'); g.drawImage(v, 0, 0); const px = g.getImageData(0, 0, 180, 320).data; let sum = 0, sq = 0, n = 0; for (let j = 0; j < px.length; j += 16) { const l = (px[j] + px[j + 1] + px[j + 2]) / 3; sum += l; sq += l * l; n++; } const m = sum / n; pic.push([Math.round(m), Math.round(Math.sqrt(Math.max(0, sq / n - m * m)))]); } o.pic = pic; }
     o.box = !!tc.recBox && tc.renderer.domElement.width === 180;
     return o;
   });
-  check('film shot frame by frame: an mp4, 180×320, the hook first (0.4 s), the film up to it after (0.5 s)', !o.err && o.ftyp === 'ftyp' && o.frames >= 26 && o.frames <= 30 && Math.abs(o.seconds - 0.93) < 0.07 && Math.abs(o.dur - o.seconds) < 0.1 && o.size[0] === 180 && o.size[1] === 320 && o.box, JSON.stringify(o));
+  check('film shot frame by frame: an mp4, 180×320, the hook first (0.4 s), the film up to it after (0.5 s)', !o.err && o.ftyp === 'ftyp' && o.frames >= 26 && o.frames <= 30 && Math.abs(o.seconds - 0.93) < 0.07 && Math.abs(o.dur - o.seconds) < 0.1 && o.size[0] === 180 && o.size[1] === 320 && o.box && o.pic?.every(([m, sd]) => m > 20 && sd > 8) /* (a picture, not a blank) */, JSON.stringify(o));
   check('film shot frame by frame: the title painted into the frame; the sound in it', o.words > 40 && o.sound && o.inVideo, JSON.stringify(o));
   check('film shot frame by frame: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
