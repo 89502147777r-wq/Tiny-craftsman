@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { look } from './director.js';
 import { loadPhysics, physicsReady } from '../world/physics.js';
-import { findBelt, beltCage } from '../tools/belt.js';
+import { findBelt, beltCage, beltsOverlap } from '../tools/belt.js';
 import { IBIZA } from './foundFilm.js';
 
 // «Ibiza», stage 2 — the stair wall and the pavilion (docs/ideas/ibiza.md; the foreman's plan and the owner's choices 2026-11-14;
@@ -214,7 +214,7 @@ export function* stairFilm(d, app) {
     B.rec.H = MM(200);   // (a course high: the step over it no taller than the rest — the foreman)
     shots([[1.4, [7600, 3900, -2400], [6000, 3300, -5000]], [1.2, [-12000, 14000, 12000], [1000, 3000, 0]]]);
     app.sfx?.seq?.(['plank', 'plank', 'hammer_nail', 'plank', 'hammer_nail']);
-    app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; if (BP) { BP.rec.H = MM(200); pavId = O.add(BP.rec).id; } });
+    app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; if (BP && !beltsOverlap(BP.rec, B.rec)) { BP.rec.H = MM(200); pavId = O.add(BP.rec).id; }   /* (one ring over both when the tops meet: not twice) */ });
     yield d.sec(1.6);
     hud(['Formwork', 'Rebar', 'Concrete'], 1, null, 'wall');
     shots([[1.2, [7200, 4200, -4000], [6000, 3300, -5200]]]);
