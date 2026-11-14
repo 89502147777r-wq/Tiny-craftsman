@@ -1390,7 +1390,7 @@ console.log('—', sec());
     const { recordFilm } = await import('./src/film/recorder.js');
     // (the words: white text in the title's band of a frame after the title came up)
     const onFrame = (x, i) => { if (i !== 20) return; const px = x.getImageData(0, 30, 180, 40).data; let n = 0; for (let j = 0; j < px.length; j += 4) if (px[j] > 235 && px[j + 1] > 235 && px[j + 2] > 235) n++; o.words = n; };
-    let r; try { r = await recordFilm(tc, { fps: 30, w: 180, h: 320, max: 3, onFrame }); } catch (e) { return { err: String(e) }; }
+    let r; try { r = await recordFilm(tc, { fps: 30, w: 180, h: 320, max: 3, onFrame, batch: 16384, head: 65536 }   /* (small blobs and head: the parts and their joins tested) */); } catch (e) { return { err: String(e) }; }
     const buf = new Uint8Array(await r.blob.arrayBuffer());
     o.ftyp = String.fromCharCode(...buf.slice(4, 8)); o.seconds = +r.seconds.toFixed(3); o.frames = r.frames;
     // (the sound cut like the frames: the blow at the hook's start — the video's start; before it, in the film, quiet)
