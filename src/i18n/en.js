@@ -1,5 +1,6 @@
 // English for every Russian line of the game (the key: the Russian, {n} — what a template puts in)
 export default {
+"🎥 Ролик: «Ибица» 2 — стена-лестница и павильон (ваш участок не тронется)": "🎥 Film: «Ibiza» 2 — the stair wall and the pavilion (your plot stays as it is)",
 "Бордовый": "Burgundy",
 "Серо-оливковый": "Grey-olive",
 "Флэш красный": "Red flashed",
