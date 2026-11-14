@@ -1309,9 +1309,10 @@ console.log('—', sec());
   await browser.close();
 }
 
-// ---- 2o. The damp-proof course (the owner: «a roll, rolled out as it really is»): drawn on the concrete, a strip the
-// wall + 100 wide torched down along it at its pace — the roll on it shrinking, the torch at the nip; wider than the roll —
-// two strips lapped 100; done: no roll, no torch, the beads at the edges; undo takes it off ----
+// ---- 2o. The damp-proof course (the owner: «a roll, rolled out as it really is»; the realist's review): drawn on the concrete,
+// a strip the wall + 100 wide torched down along it at the pace of its width (v · w = 0,06 m²/s) — the roll (the strip's own
+// length, thinning), the torch's jet into the nip, the burning, the smoke; wider than the roll — two strips lapped 100, the
+// second over the first only in the lap; done — the torch out on its stand, the beads at the edges; undo takes it off ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.dpcView, null, { timeout: 120000 });
@@ -1319,24 +1320,36 @@ console.log('—', sec());
     const tc = window.__tc, T = tc.terrain, MM = (v) => v / 1000 / 10.4651;
     for (let iz = 0; iz < T.nz; iz++) for (let ix = 0; ix < T.nx; ix++) { const x = T.toWorldX(ix), z = T.toWorldZ(iz); if (Math.abs(z) < MM(900) && Math.abs(x) < MM(2600)) { const i = iz * T.nx + ix; T._concAdd(i, MM(150), 0.5); T.cTime[i] = tc.clock - 1e6; } }
     T._concTouch?.(0, 0, T.rx, T.rz); T._touch(0, 0, T.rx, T.rz);
-    const W = tc.wallTool.dpc, V = tc.dpcView, y = T.heightAt(0, 0);
+    const W = tc.wallTool.dpc, V = tc.dpcView, y = T.heightAt(0, 0), D = await import('/src/world/dpc.js');
     tc.settings.dpcW = 1300;
     W.down({ x: MM(-2000), y, z: 0 }); W.move({ x: MM(2000), y, z: MM(40) }); W.up();
-    const r = tc.objects.all('dpc')[0], g0 = V.meshes.get(r.id);
-    let mid = null, steps = 0;
-    for (; W.jobs.length && steps < 4000; steps++) {
+    const r = tc.objects.all('dpc')[0];
+    let mid = null, mid2 = null, steps = 0, r0 = null, r1 = null;
+    for (; W.jobs.length && steps < 20000; steps++) {
       W.update(1 / 30); V.update(1 / 30);
-      if (!mid && W.jobs[0]?.k === 0 && W.jobs[0].s > 1500) { let rolls = 0, torch = 0; V.meshes.get(r.id).traverse((m) => { if (m.geometry?.type === 'CylinderGeometry' && m.geometry.parameters.height > MM(500)) rolls++; if (m.geometry?.type === 'ConeGeometry') torch++; }); mid = { rolls, torch }; }
+      const J = W.jobs[0], Wk = V.work;
+      if (J && J.k === 0 && J.s > 100 && r0 == null) r0 = Wk.body.scale.x / MM(1);
+      if (J && J.k === 0 && J.s > 3600 && r1 == null) r1 = Wk.body.scale.x / MM(1);
+      if (!mid && J?.k === 0 && J.s > 1500) mid = { roll: Wk.rollG.visible, flame: Wk.T.userData.flame.visible, tongues: Wk.tongues.filter((m) => m.visible).length, smoke: V.smoke.length, melt: Wk.melt.visible };
+      if (!mid2 && J?.k === 1 && J.s > 1500) {
+        // (the second strip: on the first in the lap — 3 mm up; on the concrete beyond — not)
+        const F = { x: r.a[0], z: r.a[1] }, at = (ac) => V._under(r.id, 1, MM(1500) + F.x, F.z + MM(ac)) - T.heightAt(MM(1500) + F.x, F.z + MM(ac));
+        mid2 = { lap: +(at(0) / MM(1)).toFixed(1), beyond: +(at(500) / MM(1)).toFixed(1) };
+      }
     }
-    let tubes = 0, cones = 0, cyl = 0; V.meshes.get(r.id).traverse((m) => { if (m.geometry?.type === 'TubeGeometry') tubes++; if (m.geometry?.type === 'ConeGeometry') cones++; if (m.geometry?.type === 'CylinderGeometry') cyl++; });
-    const snapped = Math.abs(r.b[1] - r.a[1]) < 1e-9, secs = steps / 30;
+    const Wk = V.work, done = { roll: Wk.rollG.visible, flame: Wk.T.userData.flame.visible, torchY: +((Wk.T.position.y - T.heightAt(Wk.T.position.x, Wk.T.position.z)) / MM(1)).toFixed(0) };
+    let meshes = 0; V.meshes.get(r.id).traverse((m) => { if (m.isMesh) meshes++; });
+    const bottle = Wk.bottle.position, bottleOff = +((bottle.y - T.heightAt(bottle.x, bottle.z)) / MM(1)).toFixed(1), bottleDist = +(Math.hypot(bottle.x - r.a[0], bottle.z - r.a[1]) / MM(1000)).toFixed(2);
+    const secs = steps / 30;
     tc.journal.undo(); V.update(0);
-    return { w: r.w, snapped, strips: (await import('/src/world/dpc.js')).dpcStrips(r).length, mid, secs: +secs.toFixed(1), done: { tubes, cones, cyl }, undone: tc.objects.all('dpc').length, meshes: V.meshes.size, lenM: 4 };
+    return { strips: D.dpcStrips(r).length, snapped: Math.abs(r.b[1] - r.a[1]) < 1e-9, mid, mid2, r0: Math.round(r0), r1: Math.round(r1), secs: +secs.toFixed(1), done, meshes, bottleOff, bottleDist, undone: tc.objects.all('dpc').length, left: V.meshes.size };
   });
-  check('damp-proof course: drawn on the concrete — snapped along the axis, 1300 = two strips lapped, the roll and the torch while it is laid',
-    o.snapped && o.strips === 2 && o.mid?.rolls === 1 && o.mid?.torch >= 2, JSON.stringify(o));
-  check('damp-proof course: laid at its pace (2 × 4 m at 0.25 m/s ≈ 32 s), then no roll, no torch, the beads at both edges of each strip; undo takes it off',
-    o.secs > 25 && o.secs < 40 && o.done.cones === 0 && o.done.cyl === 0 && o.done.tubes === 4 && o.undone === 0 && o.meshes === 0, JSON.stringify(o));
+  check('damp-proof course: snapped along the axis, 1300 = two strips; while laid — the roll, the jet, the burning at the nip, the melt, the smoke',
+    o.snapped && o.strips === 2 && o.mid?.roll && o.mid.flame && o.mid.tongues === 3 && o.mid.melt && o.mid.smoke > 0, JSON.stringify(o));
+  check('damp-proof course: the roll is the strip\'s own length (4 m: Ø ≈ 0,13 m) and thins to its core; the second strip is on the first only in the lap',
+    o.r0 > 55 && o.r0 < 75 && o.r1 < 30 && o.mid2?.lap > 2.5 && o.mid2.beyond < 0.6, JSON.stringify(o));
+  check('damp-proof course: at the pace of its width (2 × 4 m × 700 at 0,06 m²/s ≈ 93 s); done — no roll, the torch out on its stand on the ground; a top, sides and 4 beads a strip; the bottle on the ground ≥ 3 m off; undo takes it off',
+    o.secs > 80 && o.secs < 105 && !o.done.roll && !o.done.flame && o.done.torchY < 120 && o.meshes === 12 && Math.abs(o.bottleOff) < 10 && o.bottleDist >= 3 && o.undone === 0 && o.left === 0, JSON.stringify(o));
   check('damp-proof course: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

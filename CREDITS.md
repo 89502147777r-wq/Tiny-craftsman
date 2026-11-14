@@ -19,6 +19,7 @@
 | `assets/textures/coast_sand_01/` (diff, nor_gl 1k) — песок вокруг участка на фонах «У моря», «У озера» | Coast Sand 01 | Rob Tuytel | CC0 | https://polyhaven.com/a/coast_sand_01 |
 | `assets/textures/leafy_grass/` (diff, nor_gl 1k) — трава вокруг участка на фонах «Луг», «Горы» | Leafy Grass | Charlotte Baglioni | CC0 | https://polyhaven.com/a/leafy_grass |
 | `assets/models/site/office.glb` — бытовка (к 6,0×2,55×2,8 м, текстуры 512 webp, meshopt) | Building | Container | Metal | YadroGames | CC BY 4.0 | https://sketchfab.com/3d-models/building-container-metal-36380c606bae46848237e9bbe073fa3b |
+| `assets/models/site/gasbottle.glb` — баллон пропана у горелки гидроизоляции (красный, к высоте 0,58 м, текстуры 512 webp, meshopt) | Gas Bottles Set | step | CC BY 4.0 | https://sketchfab.com/3d-models/gas-bottles-set-d671d93577b546b3bc8eda586ee75b31 |
 | `assets/models/site/toilet.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Porta Potty | Porta Loo | CC BY 4.0 | CC Attribution |
 | `assets/models/site/mixer.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Cement Mixer | Víctor Hernández | CC BY 4.0 | https://sketchfab.com/3d-models/cement-mixer-6994b7287ecb4cd39b0917ec9fb49196 |
 | `assets/models/site/barrow.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Wheelbarrow | Alex | CC BY 4.0 | https://sketchfab.com/3d-models/wheelbarrow-c0dcebcb0d4b47bd98df534334f4caf6 |
