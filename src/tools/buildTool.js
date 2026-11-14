@@ -224,15 +224,16 @@ export class BuildTool {
   pileSpot(runs, len) {
     const t = this.app.terrain, H = MAT.board.h;
     const sorted = runs.slice().sort((p, q) => Math.hypot(q.b[0] - q.a[0], q.b[1] - q.a[1]) - Math.hypot(p.b[0] - p.a[0], p.b[1] - p.a[1]));
-    for (const dist of [0.045 * K, 0.07 * K, 0.025 * K, 0.11 * K, 0.16 * K, 0.24 * K]) for (const r of sorted) {
+    for (const dist of [0.045 * K, 0.07 * K, 0.025 * K, 0.11 * K, 0.16 * K, 0.24 * K, 0.34 * K, 0.48 * K]) for (const r of sorted) {
       const mx = (r.a[0] + r.b[0]) / 2, mz = (r.a[1] + r.b[1]) / 2;
       const x = mx + r.n[0] * (dist + 2.2 * H), z = mz + r.n[1] * (dist + 2.2 * H);   // n: away from the outline
       const yaw = Math.atan2(-(r.b[1] - r.a[1]), r.b[0] - r.a[0]);
       const ux = Math.cos(yaw) * len / 2, uz = -Math.sin(yaw) * len / 2;
       // the whole stack and room around it on the plot (boards slide off a stack a bit)
-      const wx = Math.sin(yaw) * (2.5 * H + MM(500)), wz = Math.cos(yaw) * (2.5 * H + MM(500)), ex = ux * 1.15, ez = uz * 1.15;
+      const wx = Math.sin(yaw) * (2.6 * H + MM(1300)), wz = Math.cos(yaw) * (2.6 * H + MM(1300)), ex = ux * 1.15, ez = uz * 1.15;   // (and the bundles of stakes and braces beside it: the owner saw boards lying in the concrete)
       const free = (px, pz) => t.inside(px, pz) && !(t.conc[t.index(px, pz)] > 1e-6) && Math.abs(t.heightAt(px, pz) - TRAY.soil) < 0.01 * K && !this.app.objects.all('form').some((f) => Math.hypot((f.a[0] + f.b[0]) / 2 - px, (f.a[1] + f.b[1]) / 2 - pz) < Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]) / 2 + MM(400));
-      if ([[1, 1], [1, -1], [-1, 1], [-1, -1], [0, 0]].every(([a, b]) => free(x + ex * a + wx * b, z + ez * a + wz * b))) return { x, z, yaw };   // (on bare ground beside the site: not on the concrete, not over a pit, clear of other boards — the owner: the stack lay on the slab)
+      const grid = []; for (const a of [-1, -0.5, 0, 0.5, 1]) for (const b of [-1, -0.5, 0, 0.5, 1]) grid.push([a, b]);
+      if (grid.every(([a, b]) => free(x + ex * a + wx * b, z + ez * a + wz * b))) return { x, z, yaw };   // (on bare ground beside the site: not on the concrete, not over a pit, clear of other boards — the owner: the stack lay on the slab)
     }
     const r = sorted[0];
     return { x: t.clampX((r.a[0] + r.b[0]) / 2 + r.n[0] * 0.05 * K), z: t.clampZ((r.a[1] + r.b[1]) / 2 + r.n[1] * 0.05 * K), yaw: Math.atan2(-(r.b[1] - r.a[1]), r.b[0] - r.a[0]) };
