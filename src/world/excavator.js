@@ -372,7 +372,7 @@ export class Excavator {
     const face = sg < 0 ? Math.min(...band.map((q) => q[ax])) : Math.max(...band.map((q) => q[ax]));
     const c = new THREE.Vector3(); c.y = midY; c[ax] = face + sg * size[ax] * 0.003; c[side] = (bb.min[side] + bb.max[side]) / 2;
     // (the owner: smaller, inside the yellow of the panel with a gap above and below — 0,68 of the first try, its middle 0,27 of that lower)
-    const L = bs[side] * 0.5, H0 = Math.min(bs.y * 0.55, L * 317 / 838), H = H0 * 0.68, W = H * 838 / 317; c.y += H0 * (sg === sg0 ? -0.27 : 0.28);   /* (the boom's flank: its yellow panel sits higher) */
+    const L = bs[side] * 0.5, H0 = Math.min(bs.y * 0.55, L * 317 / 838), H = H0 * (sg === sg0 ? 0.68 : 0.75), W = H * 838 / 317; c.y += H0 * (sg === sg0 ? -0.27 : 0.13);   /* (the boom's flank: where the owner marked it) */   /* (the boom's flank: its yellow panel sits higher) */
     const mat = this._logoMat || (this._logoMat = (() => { const m = new THREE.MeshStandardMaterial({ alphaTest: 0.5, roughness: 0.62, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); const img = new Image(); img.onload = () => { m.map = paintedLogo(img); m.needsUpdate = true; }; img.src = 'assets/brand/logo-stack-boom.png'; return m; })());
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(W, H), mat);
     // (facing out of the back, upright, reading left to right from behind)
