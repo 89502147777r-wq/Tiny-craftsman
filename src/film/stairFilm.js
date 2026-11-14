@@ -80,7 +80,7 @@ export function* stairFilm(d, app) {
   const g = T.heightAt(MM(-9000), MM(9000)), P = (x, y, z) => new V(MM(x), g + MM(y), MM(z)), idle = () => !app.busy();
   const sTop = T.heightAt(MM(X0), MM(0)), pTop = T.heightAt(MM(0), MM(1000));   // (the strip's top and the slab's: stage 1's concrete)
   const say = (m) => { (d.notes = d.notes || []).push([+d.t.toFixed(1), m]); };
-  const hud = (row1, i, row2, tool) => d.hud([row1.map((t, k) => (k === i ? '*' + t : t)), row2], tool);
+  const hud = (row1, i, row2, tool) => d.hud([row1.map((t, k) => (k === i ? '*' + t : t)), ...(row2 ? [row2] : [])], tool);
   loadPhysics().catch(() => {});
   // ---- the camera (as in stage 1): a still shot list cut by the film's clock, or a tripod panning after the tool ----
   let shotN = 0, tool = () => null;
