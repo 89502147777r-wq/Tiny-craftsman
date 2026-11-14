@@ -182,13 +182,15 @@ function tongueMat() {
     fragmentShader: /* glsl */ `uniform float uTime; uniform float uSeed; varying vec2 vU; ${NOISE}
       void main() {
         float x = vU.x, y = vU.y;
-        float side = smoothstep(0.0, 0.12, x) * smoothstep(1.0, 0.88, x);
-        float n = fbm(vec3(x * 9.0 + uSeed, y * 3.0 - uTime * 6.0, uTime * 2.3 + uSeed));
-        float hgt = 0.25 + 0.75 * fbm(vec3(x * 6.0 + uSeed, uTime * 11.0, 1.0));
-        float body = smoothstep(hgt, hgt * 0.35, y) * side;
-        float a = body * (0.45 + 0.55 * n);
-        vec3 c = mix(vec3(1.0, 0.55, 0.12), vec3(1.0, 0.85, 0.35), smoothstep(0.5, 0.0, y)) * mix(1.0, 0.35, smoothstep(0.4, 0.95, y / max(hgt, 0.01)));
-        gl_FragColor = vec4(c * a * 0.9, 1.0);
+        float side = smoothstep(0.0, 0.15, x) * smoothstep(1.0, 0.85, x);
+        // (separate tongues across: a ragged comb, each its own height, licking up and torn off)
+        float comb = smoothstep(0.35, 0.7, n3(vec3(x * 16.0 + uSeed, uTime * 9.0, 0.0)));
+        float hgt = 0.2 + 0.8 * fbm(vec3(x * 10.0 + uSeed, uTime * 12.0, 1.0)) * comb;
+        float n = fbm(vec3(x * 14.0 + uSeed, y * 4.0 - uTime * 7.0, uTime * 2.3 + uSeed));
+        float body = smoothstep(hgt, hgt * 0.3, y) * side * smoothstep(0.25, 0.6, n + 0.25 * (1.0 - y));
+        float a = body;
+        vec3 c = mix(vec3(0.95, 0.32, 0.05), vec3(1.0, 0.62, 0.18), smoothstep(0.45, 0.0, y)) * mix(1.0, 0.3, smoothstep(0.3, 0.9, y / max(hgt, 0.01)));
+        gl_FragColor = vec4(c * a * 0.6, 1.0);
       }`,
   });
 }
@@ -372,8 +374,10 @@ export class DpcView {
     const key = [from, to].map((v) => v.toArray().map((q) => Math.round(q / MM(20))).join(',')).join('|'); if (key === Wk.hoseKey) return; Wk.hoseKey = key;
     const dx = to.x - from.x, dz = to.z - from.z, L = Math.hypot(dx, dz) || 1, nx = -dz / L, nz = dx / L, n = Math.max(4, Math.ceil(L / MM(350)));
     const pts = [from.clone(), new THREE.Vector3(from.x + dx / L * MM(150), ground(from.x + dx / L * MM(150), from.z + dz / L * MM(150)) + MM(9), from.z + dz / L * MM(150))];
-    for (let i = 1; i < n; i++) { const t = i / n, sw = Math.sin(t * Math.PI * 2.2) * MM(450) * Math.sin(t * Math.PI), x = from.x + dx * t + nx * sw, z = from.z + dz * t + nz * sw; pts.push(new THREE.Vector3(x, ground(x, z) + MM(9), z)); }
-    const near = new THREE.Vector3(to.x - dx / L * MM(450), 0, to.z - dz / L * MM(450)); near.y = ground(near.x, near.z) + MM(9); pts.push(near, to.clone());
+    const tEnd = Math.max(0.2, 1 - MM(900) / L); for (let i = 1; i < n; i++) { const t = i / n * tEnd, sw = Math.sin(t * Math.PI * 2.2) * MM(450) * Math.sin(t * Math.PI), x = from.x + dx * t + nx * sw, z = from.z + dz * t + nz * sw; pts.push(new THREE.Vector3(x, ground(x, z) + MM(9), z)); }
+    const near = new THREE.Vector3(to.x - dx / L * MM(650), 0, to.z - dz / L * MM(650)); near.y = ground(near.x, near.z) + MM(9);
+    const sag = new THREE.Vector3(to.x - dx / L * MM(230), 0, to.z - dz / L * MM(230)); sag.y = (ground(sag.x, sag.z) + to.y) * 0.5 - MM(80);
+    pts.push(near, sag, to.clone());
     Wk.hose.geometry.dispose(); Wk.hose.geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 6, MM(9), 8, false);
   }
   update(dt = 1 / 60) {
@@ -423,9 +427,9 @@ export class DpcView {
     // the burning at the nip: three tongues across, 70–120 mm high, over 0,6–0,8 of the width
     Wk.tongues.forEach((m, i) => {
       m.visible = working; if (!working) return;
-      const [x, z] = P(s + 15 + i * 9, (i - 1) * st.w * 0.08), y = this._under(R0.id, live.k, x, z);
-      const hgt = MM(70 + 50 * Math.abs(Math.sin(this._t * (8 + i * 3.3) + i)));
-      m.position.set(x, y + hgt / 2 + MM(3), z); m.rotation.set(0, yaw + Math.PI / 2 + (i - 1) * 0.12, 0); m.scale.set(MM(st.w * (0.6 + 0.1 * i)), hgt, 1);
+      const [x, z] = P(s + 4 + i * 6, (i - 1) * st.w * 0.07), y = this._under(R0.id, live.k, x, z);
+      const hgt = MM(45 + 45 * Math.abs(Math.sin(this._t * (8 + i * 3.3) + i)));
+      m.position.set(x, y + hgt / 2 + MM(3), z); m.rotation.set(0, yaw + Math.PI / 2 + (i - 1) * 0.12, 0); m.scale.set(MM(st.w * (0.55 + 0.08 * i)), hgt, 1);
     });
     // the bottle and its hose
     const [bx, by, bz] = this._bottleAt(stripFrame(R0, sts[0]));
