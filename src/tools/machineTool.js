@@ -1518,8 +1518,9 @@ export class MachineTool {
       const n = Math.max(1, Math.min(4, Math.round(s.v / per)));
       for (let j = 0; j < n; j++) {
         let m = 0, u = r(); for (let q = 0; q < 5; q++) { u -= w[q]; if (u <= 0) { m = q; break; } }
-        const vel = s.n.clone().multiplyScalar(R(0.15 + r() * 0.35)).add(new THREE.Vector3((r() - 0.5) * R(0.15), -R(0.05), (r() - 0.5) * R(0.15)));
-        const p = s.p.clone().add(new THREE.Vector3((r() - 0.5) * R(0.08), 0, (r() - 0.5) * R(0.08)));
+        const vel = s.n.clone().multiplyScalar(R(0.05 + r() * 0.2)).add(new THREE.Vector3((r() - 0.5) * R(0.15), -R(0.05), (r() - 0.5) * R(0.15)));
+        // (along the side ±0,15 m from the edge's cell it came over: a ridge along the side, not a cone in one place)
+        const a = (r() * 2 - 1) * R(0.15), p = s.p.clone().add(new THREE.Vector3(-s.n.z * a, 0, s.n.x * a));
         P.emit(p, vel, s.v / n, R(0.025 + r() * 0.04), m === 1 ? 0 : 0.08, 0, m, true);
       }
     }

@@ -151,6 +151,9 @@ export class Truck {
         pv.parent.remove(pv);
       }
       this.base = Math.abs(front - Math.min(...axles.map((w) => w.g.position.x))) * holder.scale.x;   // (wheelbase, world units)
+      // (where each tyre stands, in the truck's frame: what it stands on, what is kept from under it)
+      this.root.updateMatrixWorld(true);
+      this.contacts = this.wheels.map((w) => { const p = this.root.worldToLocal(w.g.parent.getWorldPosition(new THREE.Vector3())); return { x: p.x, z: p.z, r: w.r }; });
     }
     this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.len = R(4.7); this.width = W * this.root.scale.x;
@@ -169,13 +172,35 @@ export class Truck {
       // the steering angle from the way it turns on the way it goes (a bicycle's: tan δ = wheelbase · turn / way), eased; standing, held
       if (Math.abs(d) > R(0.002)) { const want = Math.max(-0.6, Math.min(0.6, Math.atan((this.base || R(2.5)) * dy / d))); this.steer = (this.steer || 0) + (want - (this.steer || 0)) * 0.35; }
     }
-    this.x = x; this.z = z; this.yaw = yaw;
+    this.x = x; this.z = z; this.yaw = yaw; this.terrain = terrain;
     const c = Math.cos(yaw), s = Math.sin(yaw), at = (lx, lz) => terrain.heightAt(x + c * lx + s * lz, z - s * lx + c * lz);
-    const hf = at(R(1.6), 0), hb = at(-R(1.4), 0), hl = at(0, -R(0.8)), hr = at(0, R(0.8));
-    this.y = (hf + hb + hl + hr) / 4;
+    const C = this.contacts;
+    if (C?.length >= 4) {
+      // (it stands on its tyres: each on the lowest of its patch — a ridge of loose stuff against its side does not lift it)
+      const pl = R(0.1), pw = R(0.07), h = C.map((w) => { let m = Infinity; for (const u of [-1, 0, 1]) for (const v of [-1, 0, 1]) m = Math.min(m, at(w.x + u * pl, w.z + v * pw)); return m; });
+      const avg = (f) => { let a = 0, n = 0, px = 0, pz = 0; C.forEach((w, k) => { if (f(w)) { a += h[k]; px += w.x; pz += w.z; n++; } }); return [a / n, px / n, pz / n]; };
+      const mx = (Math.max(...C.map((w) => w.x)) + Math.min(...C.map((w) => w.x))) / 2;
+      const [hf, xf] = avg((w) => w.x > mx), [hb, xb] = avg((w) => w.x <= mx), [hl, , zl] = avg((w) => w.z < 0), [hr, , zr] = avg((w) => w.z >= 0);
+      this.y = h.reduce((a, b) => a + b, 0) / h.length;
+      this.pitch = Math.atan2(hf - hb, xf - xb); this.roll = Math.atan2(hl - hr, zr - zl);
+    } else {
+      const hf = at(R(1.6), 0), hb = at(-R(1.4), 0), hl = at(0, -R(0.8)), hr = at(0, R(0.8));
+      this.y = (hf + hb + hl + hr) / 4;
+      this.pitch = Math.atan2(hf - hb, R(3)); this.roll = Math.atan2(hl - hr, R(1.6));
+    }
     this.root.position.set(x, this.y, z);
-    this.pitch = Math.atan2(hf - hb, R(3)); this.roll = Math.atan2(hl - hr, R(1.6));
+    this._syncStops();
     this.root.rotation.set(0, 0, 0); this.root.rotateY(yaw); this.root.rotateZ(this.pitch); this.root.rotateX(this.roll);
+  }
+  // the tyres on the ground keep what falls by them from under them (the terrain's obstacles), while it stands on the plot
+  _syncStops() {
+    const T = this.terrain, on = this.root.visible && !!this.root.parent && !!this.contacts;
+    const key = on ? `${this.x.toFixed(5)},${this.z.toFixed(5)},${this.yaw.toFixed(4)}` : '';
+    if (!T?.setStops || key === this._stopsAt) return;
+    this._stopsAt = key;
+    if (!on) { T.setStops('truck', null); return; }
+    const c = Math.cos(this.yaw), s = Math.sin(this.yaw);
+    T.setStops('truck', this.contacts.map((w) => ({ x: this.x + c * w.x + s * w.z, z: this.z - s * w.x + c * w.z, ax: c, az: -s, hl: w.r * 0.8, hw: R(0.11), ox: s * Math.sign(w.z), oz: c * Math.sign(w.z) })));
   }
   // the volume in the body's grid (model)
   _hfVol() { let v = 0; for (const h of this.hf) v += h; return v * this.cA; }
@@ -290,7 +315,11 @@ export class Truck {
   // body it keeps only the cone its angle of repose holds, as a real load does
   _slump() {
     const NX = this.NX, NZ = this.NZ, h = this.hf, dx = this.hx / (NX - 1), dz = this.hz / (NZ - 1), w = this.mixW();
+    // (eight ways — along the cells and across them: only along, a diagonal slope came √2 steeper, sand at 42° not 33°;
+    // a little under the angle along each of the eight so that no way between them is steeper than it: ≤ 1/cos 22,5°)
     let rep = 0; for (let k = 0; k < 5; k++) rep += w[k] * MATERIALS[k].repose;
+    rep *= 0.96;
+    const dd = Math.hypot(dx, dz);
     const eps = this.hx * 2e-5, side = this.rim - this.floor, head = this.rimFront - this.floor, tipped = this.tip > 0.05;
     const over = (this._over ||= new Float32Array(NX * NZ));
     let moved = false, any = false;
@@ -298,9 +327,10 @@ export class Truck {
       let m0 = false;
       for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
         const i = iz * NX + ix;
-        for (const [j, d] of [[ix + 1 < NX ? i + 1 : -1, dx], [iz + 1 < NZ ? i + NX : -1, dz]]) {
+        for (let q = 0; q < 4; q++) {
+          const j = q === 0 ? (ix + 1 < NX ? i + 1 : -1) : q === 1 ? (iz + 1 < NZ ? i + NX : -1) : q === 2 ? (ix + 1 < NX && iz + 1 < NZ ? i + NX + 1 : -1) : (ix > 0 && iz + 1 < NZ ? i + NX - 1 : -1);
           if (j < 0) continue;
-          const diff = h[i] - h[j], lim = rep * d;
+          const diff = h[i] - h[j], lim = rep * (q === 0 ? dx : q === 1 ? dz : dd);
           if (Math.abs(diff) > lim + eps) { const m = (Math.abs(diff) - lim) / 2 * Math.sign(diff); h[i] -= m; h[j] += m; m0 = true; }
         }
       }
@@ -334,6 +364,7 @@ export class Truck {
   }
   update(dt) {
     if (!this.bed) return;
+    this._syncStops();
     this._landing(dt, this.tip >= 0.12);
     this.outflow = (this.outflow || 0) + this._flowOut(dt);
     this._sync();

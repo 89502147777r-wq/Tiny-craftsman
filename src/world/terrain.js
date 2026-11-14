@@ -53,6 +53,9 @@ export class Terrain {
     // poured there does not run out under the boards, nor in from outside)
     this.zone = new Uint8Array(N);
     this.zTop = new Float32Array(N);   // (inside: the top of the board it is held by — over it, it runs over)
+    // what stands on the ground and is not buried by what falls by it (a truck's tyres): no loose material comes onto these
+    // cells — what lands there is moved out of them (`stopDir`: the way out, a unit vector ×127), a heap lies against them
+    this.stop = new Uint8Array(N); this.stopDir = new Int8Array(2 * N); this._stops = new Map();
     // concrete is simulated tile by tile (16 × 16 cells): only tiles where it moves
     this.TS = 16; this.tnx = Math.ceil(this.nx / 16); this.tnz = Math.ceil(this.nz / 16);
     this._tAct = new Uint8Array(this.tnx * this.tnz); this._tList = [];
@@ -464,9 +467,41 @@ export class Terrain {
   }
 
   // Drop a volume of loose material as a soft gaussian splat.
+  // the cells of an obstacle `key` (a truck's tyres): `rects` [{ x, z, ax, az, hl, hw, ox, oz }] — a rectangle round
+  // (x, z) with its half length hl along (ax, az), half width hw across, its way out (ox, oz); null takes it away (what
+  // lies by it may run in again: it is woken)
+  setStops(key, rects) {
+    const old = this._stops.get(key);
+    if (old) { for (const i of old) { this.stop[i] = 0; this.stopDir[2 * i] = this.stopDir[2 * i + 1] = 0; } if (old.length) { const b = old.box; this._touch(b[0], b[1], b[2], b[3]); } }
+    if (!rects?.length) { this._stops.delete(key); return; }
+    const cells = []; let bx0 = 1e9, bz0 = 1e9, bx1 = -1, bz1 = -1;
+    for (const r of rects) {
+      const ext = r.hl + r.hw, ix0 = Math.max(0, Math.floor(this.toCellX(r.x - ext))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(r.x + ext)));
+      const iz0 = Math.max(0, Math.floor(this.toCellZ(r.z - ext))), iz1 = Math.min(this.rz, Math.ceil(this.toCellZ(r.z + ext)));
+      for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+        const dx = this.toWorldX(ix) - r.x, dz = this.toWorldZ(iz) - r.z, u = dx * r.ax + dz * r.az, v = -dx * r.az + dz * r.ax;
+        if (Math.abs(u) > r.hl || Math.abs(v) > r.hw) continue;
+        const i = iz * this.nx + ix; if (this.stop[i]) continue;
+        this.stop[i] = 1; this.stopDir[2 * i] = Math.round(r.ox * 127); this.stopDir[2 * i + 1] = Math.round(r.oz * 127); cells.push(i);
+        if (ix < bx0) bx0 = ix; if (ix > bx1) bx1 = ix; if (iz < bz0) bz0 = iz; if (iz > bz1) bz1 = iz;
+      }
+    }
+    cells.box = [Math.max(0, bx0 - 2), Math.max(0, bz0 - 2), Math.min(this.rx, bx1 + 2), Math.min(this.rz, bz1 + 2)];
+    this._stops.set(key, cells);
+  }
+  // (x, z) on an obstacle: moved out of it the way out → [x, z]
+  _outOfStop(x, z) {
+    for (let k = 0; k < 60 && this.inside(x, z); k++) {
+      const i = this.index(x, z); if (!this.stop[i]) break;
+      x += this.stopDir[2 * i] / 127 * this.cell; z += this.stopDir[2 * i + 1] / 127 * this.cell;
+    }
+    return [x, z];
+  }
   deposit(x, z, vol, radius, depth = 0, mat = M_SOIL) {
     if (vol <= 0) return;
     const { nx: n, cell } = this;
+    const stops = this._stops.size > 0;
+    if (stops && this.inside(x, z) && this.stop[this.index(x, z)]) [x, z] = this._outOfStop(x, z);
     const r = Math.max(radius, cell * 0.8);
     const reach = r * 2.2;
     const ix0 = Math.max(0, Math.floor(this.toCellX(x - reach))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(x + reach)));
@@ -474,6 +509,7 @@ export class Terrain {
     let wsum = 0;
     const inv = 1 / (2 * r * r);
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      if (stops && this.stop[iz * n + ix]) continue;
       const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
       wsum += Math.exp(-(dx * dx + dz * dz) * inv);
     }
@@ -487,6 +523,7 @@ export class Terrain {
     }
     const k = vol / (wsum * this.cellArea);
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
+      if (stops && this.stop[iz * n + ix]) continue;
       const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
       this._push(iz * n + ix, k * Math.exp(-(dx * dx + dz * dz) * inv), mat, depth);
     }
@@ -552,7 +589,7 @@ export class Terrain {
     const D1 = cell, D2 = cell * Math.SQRT2;
     const x0 = a.x0, z0 = a.z0, x1 = a.x1, z1 = a.z1;
     let mx0 = 1e9, mz0 = 1e9, mx1 = -1, mz1 = -1;
-    const NB = fwd ? NB_FWD : NB_BWD;
+    const NB = fwd ? NB_FWD : NB_BWD, stop = this._stops.size ? this.stop : null;
     for (let zz = z0; zz <= z1; zz++) {
       const iz = fwd ? zz : z1 - (zz - z0);
       for (let xx = x0; xx <= x1; xx++) {
@@ -562,6 +599,7 @@ export class Terrain {
           const jx = ix + NB[k][0], jz = iz + NB[k][1];
           if (jx < 0 || jx > rx || jz < 0 || jz > rz) continue;
           const j = jz * n + jx;
+          if (stop && (stop[i] || stop[j])) continue;   // (against a tyre: it lies against it, not under it)
           // (into or out of a blind area: only what is over the board's top, at the boards)
           let zCap = Infinity;
           if (this.zone[i] !== this.zone[j]) {

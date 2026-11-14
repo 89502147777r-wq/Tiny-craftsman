@@ -1114,6 +1114,11 @@ console.log('—', sec());
     o.load = +(T.load * T.cap * S3).toFixed(2); o.ground = +((soilV() - v0) * S3).toFixed(2); o.kept = +((soilV() - v0 + T._hfVol()) / (1.8 * T.cap)).toFixed(3);
     o.underMm = Math.round((t.heightAt(under.x, under.z) - uh0) / M * 1000); o.byMm = by.map((q, k) => Math.round((t.heightAt(q.x, q.z) - bh0[k]) / M * 1000));
     o.sand = +T.mixW()[1].toFixed(2);
+    // (the steepest of it, any way — across the cells too: no steeper than sand's 33° (+1,5°))
+    const slope = () => { let g = 0; for (let iz = 1; iz < NZ - 1; iz++) for (let ix = 1; ix < NX - 1; ix++) { const i = iz * NX + ix, hh = T.hf;
+      if (hh[i - 1] > 5e-4 && hh[i + 1] > 5e-4 && hh[i - NX] > 5e-4 && hh[i + NX] > 5e-4) g = Math.max(g, Math.hypot((hh[i + 1] - hh[i - 1]) / (2 * dx), (hh[i + NX] - hh[i - NX]) / (2 * dz))); }
+      return +(Math.atan(g) * 180 / Math.PI).toFixed(1); };
+    o.slopeSand = slope();
     // (2) a shovelful: dug, the finger on the body (the ray from the camera over it) — thrown in over the side
     T.load = 0; T.hf.fill(0); T.setMix([1, 0, 0, 0, 0]); frames(3);
     tc.setTool('shovel');
@@ -1136,9 +1141,33 @@ console.log('—', sec());
     mt.joystick('r', 1, 0); frames(70); mt.joystick('r', 0, 0); frames(30); rest();
     o.exc = +(T.load * T.cap * S3 / Math.max(1e-9, held)).toFixed(2); o.black = +T.mixW()[4].toFixed(2);
     mt.exit(); frames(3); mt._saveTruck({}); o.recBlack = mt.recOf('truck')?.mix?.[4];
+    // (4) a loader's buckets (0,4 m³, 1,6 m wide along the body, in its middle) to «full»: little over the sides; then
+    // 0,5 m³ more along it: it runs over the sides as a ridge along each (not a cone in one place), against the tyres —
+    // not under them: the truck stands on its tyres as before
+    T.load = 0; T.hf.fill(0); T.place(t, -0.3, 0.4, 0.3); frames(3);   // (on clean ground, away from the first heaps)
+    let spilled = 0; const take = T.takeSpills.bind(T); T.takeSpills = () => { const sp = take(); for (const q of sp) spilled += q.v; return sp; };
+    const cb = T.bedCentre(new V()); cb.y += 0.6 * M; const along = new V(Math.cos(T.yaw), 0, -Math.sin(T.yaw));
+    for (let k = 0; k < 5; k++) { T.addMix(0, 0.2); T.pourLine(cb, along, 0.8 * M, 0.2); frames(40); }
+    rest(); o.spillFull = +(spilled / T.cap).toFixed(3); o.slopeSoil = slope();
+    T.place(t, T.x, T.z, T.yaw); const p0 = [T.y, T.pitch, T.roll], cy = Math.cos(T.yaw), sy = Math.sin(T.yaw);
+    const wh = T.contacts.map((w) => [T.x + cy * w.x + sy * w.z, T.z - sy * w.x + cy * w.z]), wh0 = wh.map(([x, z]) => t.heightAt(x, z));
+    const N = 60, span = 3.2 * M, base = [], gx = T.x, gz = T.z, at = (u, v) => t.heightAt(gx + cy * u + sy * v, gz - sy * u + cy * v);
+    for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) base.push(at((a / (N - 1) - 0.5) * 2 * span, (b / (N - 1) - 0.5) * 2 * span));
+    spilled = 0;
+    for (let k = 0; k < 30 && spilled * S3 < 0.5; k++) { T.pourLine(cb.clone().addScaledVector(along, ((k % 3) - 1) * 0.9 * M), along, 0.4 * M, 0.04); frames(20); }
+    rest(); o.spilt = +(spilled * S3).toFixed(2);
+    T.place(t, T.x, T.z, T.yaw);
+    o.dyMm = +Math.abs((T.y - p0[0]) / M * 1000).toFixed(1); o.dTilt = +(Math.max(Math.abs(T.pitch - p0[1]), Math.abs(T.roll - p0[2])) * 180 / Math.PI).toFixed(2);
+    o.tyreMm = Math.max(...wh.map(([x, z], k) => Math.abs(t.heightAt(x, z) - wh0[k]) / M * 1000)).toFixed(1) * 1;
+    // (the ridge by each side — outside the wheels' inner faces: its length along the side : its width)
+    { const sd = { L: [1e9, -1e9, 1e9, -1e9], R: [1e9, -1e9, 1e9, -1e9] }; let k = 0;
+      for (let a = 0; a < N; a++) for (let b = 0; b < N; b++, k++) { const u = (a / (N - 1) - 0.5) * 2 * span, v = (b / (N - 1) - 0.5) * 2 * span;
+        if (at(u, v) - base[k] > 0.01 * M && Math.abs(v) > 0.6 * M) { const q = v > 0 ? sd.R : sd.L; q[0] = Math.min(q[0], u); q[1] = Math.max(q[1], u); q[2] = Math.min(q[2], v); q[3] = Math.max(q[3], v); } }
+      o.ridge = Object.values(sd).map((q) => (q[1] > q[0] ? +((q[1] - q[0]) / Math.max(1e-9, q[3] - q[2])).toFixed(2) : 0)); }
     return o;
   });
   check('truck: heaped over its sides it keeps only what its angle holds — at the sides no higher than their tops, the rest on the ground by them (not under it), nothing lost', o.overCone <= 2 && o.sideTop <= 2 && o.peak > 200 && o.ground > 0.3 && o.kept > 0.98 && o.kept < 1.02 && Math.min(...o.byMm) > 20 && Math.abs(o.underMm) <= 5 && o.sand === 1, JSON.stringify(o));
+  check('truck (the realist): the heap no steeper than its angle any way (+1,5°); loaded to «full» by buckets ≤ 10 % over the sides; what runs over lies along each side (length ≥ 2 × width) against the tyres, not under them — the truck stands as it stood (≤ 5 mm, ≤ 0,2°)', o.slopeSand <= 34.5 && o.slopeSoil <= 38.5 && o.spillFull <= 0.1 && o.spilt >= 0.45 && o.dyMm <= 5 && o.dTilt <= 0.2 && o.tyreMm <= 10 && Math.min(...o.ridge) >= 2, JSON.stringify(o));
   check('truck: loaded by a shovel (the finger on its body) and by the excavator (black topsoil — in its record too)', o.shovel > 0.85 && Math.abs(o.shovelUnder) <= 5 && o.exc > 0.95 && o.exc < 1.05 && o.black > 0.99 && o.recBlack > 0.99, JSON.stringify(o));
   check('truck: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
