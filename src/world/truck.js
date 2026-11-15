@@ -22,7 +22,7 @@ export class Truck {
   async _build() {
     const { scene } = await loadModel('canter');
     const { holder } = normalise(scene, { forward: '+z', length: R(4.7) });
-    this.root.add(holder); holder.updateMatrixWorld(true);
+    this.root.add(holder); holder.updateMatrixWorld(true); this.holder = holder;
     // the body: the parts in its materials
     const parts = [];
     scene.traverse((o) => { if (o.isMesh && /carry|caarrt/i.test(o.material?.name || '')) parts.push(o); });
@@ -89,6 +89,12 @@ export class Truck {
     this.cA = (this.hx / (this.NX - 1)) * (this.hz / (this.NZ - 1));
     this.cap = R(1) ** 3 * TRUCK_LOAD;   // (the body's load, model volume)
     this.hf = new Float32Array(this.NX * this.NZ);
+    // (its face as it is seen: lumps and little runs over the shape the slope holds — fixed noise of two scales; and the bumps of
+    // the last portions where they landed, fading as it moves)
+    this.bump = new Float32Array(this.NX * this.NZ); this._nz = new Float32Array(this.NX * this.NZ);
+    { const hsh = (a, b) => { const v = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return v - Math.floor(v); }, sm = (t) => t * t * (3 - 2 * t);
+      const val = (x, z) => { const ix = Math.floor(x), iz = Math.floor(z), fx = sm(x - ix), fz = sm(z - iz), a = hsh(ix, iz), b = hsh(ix + 1, iz), c = hsh(ix, iz + 1), d = hsh(ix + 1, iz + 1); return (a + (b - a) * fx) * (1 - fz) + (c + (d - c) * fx) * fz; };
+      for (let iz = 0; iz < this.NZ; iz++) for (let ix = 0; ix < this.NX; ix++) this._nz[iz * this.NX + ix] = (val(ix * 0.55, iz * 0.9) * 0.6 + hsh(ix, iz + 7) * 0.4) * 2 - 1; }
     const g = new THREE.PlaneGeometry(1, 1, this.NX - 1, this.NZ - 1); g.rotateX(-Math.PI / 2); g.translate(0.5, 0, 0);
     this.soil = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x75553a, roughness: 1 }));
     this.soil.position.set(this.x0, this.floor, 0); this.soil.scale.set(this.hx, 1, this.hz); this.soil.visible = false;
@@ -154,6 +160,11 @@ export class Truck {
       // (where each tyre stands, in the truck's frame: what it stands on, what is kept from under it)
       this.root.updateMatrixWorld(true);
       this.contacts = this.wheels.map((w) => { const p = this.root.worldToLocal(w.g.parent.getWorldPosition(new THREE.Vector3())); return { x: p.x, z: p.z, r: w.r }; });
+      // (the springs: a load sits the body down on its axles — the wheels stay where they are; the root's up in the holder's frame)
+      const xs = this.contacts.map((c) => c.x), mid = (Math.max(...xs) + Math.min(...xs)) / 2, mean = (f) => { const a = xs.filter(f); return a.reduce((p, q) => p + q, 0) / a.length; };
+      this.axF = mean((x) => x > mid); this.axB = mean((x) => x <= mid);
+      for (const w of this.wheels) w.g.parent.userData.p0 = w.g.parent.position.clone();
+      this._upH = new THREE.Vector3(0, 1, 0).applyQuaternion(holder.quaternion.clone().invert()).divide(holder.scale);
     }
     this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.len = R(4.7); this.width = W * this.root.scale.x;
@@ -188,9 +199,25 @@ export class Truck {
       this.y = (hf + hb + hl + hr) / 4;
       this.pitch = Math.atan2(hf - hb, R(3)); this.roll = Math.atan2(hl - hr, R(1.6));
     }
-    this.root.position.set(x, this.y, z);
     this._syncStops();
-    this.root.rotation.set(0, 0, 0); this.root.rotateY(yaw); this.root.rotateZ(this.pitch); this.root.rotateX(this.roll);
+    this._pose();
+  }
+  // the body on its springs: loaded, it sits down 60 mm × load over the rear axle and 15 mm × load over the front one (a
+  // tipper's leaf springs: the load is over the rear) — the wheels stay on the ground where they are
+  _pose() {
+    const l = Math.max(0, Math.min(1.25, this._sq ?? this.load)), dB = R(0.06) * l, dF = R(0.015) * l;
+    const xb = this.axB ?? -R(1.15), xf = this.axF ?? R(1.34), k = (dF - dB) / (xf - xb), drop = (x) => dB + k * (x - xb);
+    this.root.position.set(this.x, this.y - drop(0), this.z);
+    this.root.rotation.set(0, 0, 0); this.root.rotateY(this.yaw); this.root.rotateZ(this.pitch - Math.atan(k)); this.root.rotateX(this.roll);
+    if (this._upH) for (const [n, w] of (this.wheels || []).entries()) { const sg = w.g.parent, c = this.contacts[n]; if (sg.userData.p0 && c) sg.position.copy(sg.userData.p0).addScaledVector(this._upH, drop(c.x)); }
+    this._posed = l;
+  }
+  // the face of what lies in it at cell i (the bed's frame, over its floor): the shape its slope holds and its lumps — a
+  // little rough by material (soil and black topsoil in clods ±16 mm, crushed stone by its size, sand the finest), less
+  // where it lies thin; the last portions' bumps on it
+  surf(i) {
+    const w = this._mixShown || (this._mixShown = this.mixW()), A = R(0.016) * w[0] + R(0.01) * w[1] + R(0.012) * w[2] + R(0.015) * w[3] + R(0.016) * w[4];
+    const h = this.hf[i]; return h + (A * this._nz[i] + this.bump[i]) * Math.min(1, h / R(0.06));
   }
   // the tyres on the ground keep what falls by them from under them (the terrain's obstacles), while it stands on the plot
   _syncStops() {
@@ -258,6 +285,9 @@ export class Truck {
     let sum = 0;
     for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) { const d2 = ((ix - cx) ** 2 + (iz - cz) ** 2) / (r * r), k = Math.exp(-d2); w.push(k); sum += k; }
     for (let i = 0; i < w.length; i++) this.hf[i] += vol * w[i] / sum / this.cA;
+    // (a portion leaves a lump where it lands: as big as it, up to 20 mm — it shows on the face only)
+    if (r < 5) { const ix = Math.round(cx), iz = Math.round(cz), a = Math.min(R(0.02), Math.cbrt(vol) * 0.5);
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const i = (iz + dz) * NX + ix + dx; if (i >= 0 && i < this.bump.length) this.bump[i] = Math.min(R(0.02), this.bump[i] + a * (dx || dz ? 0.4 : 1)); } }
     this._hfDirty = true;
   }
   // what is still falling into it: landed when its time has come (all of it at once: before it tips, is saved, read)
@@ -307,7 +337,25 @@ export class Truck {
     if (Math.abs(want - have) < this.cap * 0.002) return;
     if (want <= 1e-9) this.hf.fill(0);
     else if (want < have) { const k = want / have; for (let i = 0; i < this.hf.length; i++) this.hf[i] *= k; }
-    else { const l = this.load; this.load = have / this.cap; this.pourAt(this.bed.localToWorld(new THREE.Vector3(this.x0 + this.hx * 0.5, 0, 0)), want / this.cap - this.load, true); this.load = l; this._quiet = true; }
+    // (set from a record: spread over the whole body as a loaded one lies — a heap in the middle ran over its sides: a full
+    // truck read back lost 15 % of its load)
+    else { this._restShape(want); this._quiet = true; }
+    this._hfDirty = true;
+  }
+  // the load as it lies come to rest, `vol` of it (model): level where it is under the sides' tops, over them heaped no
+  // higher than the slope from the sides holds — the highest level that leaves exactly vol
+  _restShape(vol) {
+    const NX = this.NX, NZ = this.NZ, dx = this.hx / (NX - 1), dz = this.hz / (NZ - 1), w = this.mixW();
+    let rep = 0; for (let k = 0; k < 5; k++) rep += w[k] * MATERIALS[k].repose; rep *= 0.95;
+    const side = this.rim - this.floor, head = this.rimFront - this.floor, cap = new Float32Array(NX * NZ);
+    for (let iz = 0; iz < NZ; iz++) for (let ix = 0; ix < NX; ix++) {
+      const ds = Math.min(ix * dx, iz * dz, (NZ - 1 - iz) * dz), df = (NX - 1 - ix) * dx;
+      cap[iz * NX + ix] = Math.min(side + rep * ds, head + rep * df);
+    }
+    const V = (L) => { let v = 0; for (const c of cap) v += Math.min(L, c); return v * this.cA; };
+    let lo = 0, hi = Math.max(...cap);
+    if (V(hi) <= vol) lo = hi; else for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (V(m) < vol) lo = m; else hi = m; }
+    for (let i = 0; i < cap.length; i++) this.hf[i] = Math.min(lo, cap[i]);
     this._hfDirty = true;
   }
   // it slumps: each pair of cells steeper than its repose shares the excess (sweeps till it rests); against the sides
@@ -365,17 +413,21 @@ export class Truck {
   update(dt) {
     if (!this.bed) return;
     this._syncStops();
+    // (the springs follow the load in a moment, not at once)
+    this._sq = (this._sq ?? this.load) + (this.load - (this._sq ?? this.load)) * (1 - Math.exp(-dt * 5));
+    if (Math.abs(this._sq - (this._posed ?? -1)) > 2e-4 && this.terrain) this._pose();
     this._landing(dt, this.tip >= 0.12);
     this.outflow = (this.outflow || 0) + this._flowOut(dt);
     this._sync();
     if (this._slump() || this._hfDirty) {
       this._hfDirty = false;
+      for (let i = 0; i < this.bump.length; i++) this.bump[i] *= 0.985;   // (it slides on: the lumps of the portions go flatter)
       const pos = this.soil.geometry.attributes.position;
       // (where nothing lies the sheet goes under the floor: the floor shows, the heap rises out of it)
-      for (let i = 0; i < pos.count; i++) pos.setY(i, this.hf[i] > this.hx * 0.0015 ? this.hf[i] : -this.hx * 0.004);
+      for (let i = 0; i < pos.count; i++) pos.setY(i, this.hf[i] > this.hx * 0.0015 ? this.surf(i) : -this.hx * 0.004);
       pos.needsUpdate = true; this.soil.geometry.computeVertexNormals();
     }
-    if (this._mixDirty) { this._mixDirty = false; this.soil.material.setMix?.(this.mixW()); }
+    if (this._mixDirty) { this._mixDirty = false; this._mixShown = this.mixW(); this.soil.material.setMix?.(this._mixShown); }
     this.tip += (this.tipGoal - this.tip) * (1 - Math.exp(-dt * 1.5));
     this.bed.rotation.z = this.tip;   // (+: the front up, on the rear hinge)
     if (this.gate) this.gate.rotation.z = -this.tip * 0.97;
