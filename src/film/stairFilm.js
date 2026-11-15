@@ -144,18 +144,21 @@ export function* stairFilm(d, app) {
   const dpc = W.dpc, lay = (a, b, w) => { st.dpcW = w; const y = T.heightAt(MM(a[0]), MM(a[1])); dpc.down({ x: MM(a[0]), y, z: MM(a[1]) }); dpc.move({ x: MM(b[0]), y, z: MM(b[1]) }); dpc.up(); };
   lay([X0, ZB + 150], [X0, ZS - 150], 1300);
   tool = () => { const Tt = app.dpcView?.work?.T; return Tt?.visible !== false && Tt ? Tt.position.clone() : null; };
-  // (the content analyst: the brightest detail first — the flame close at its pace, then the whole strip at once)
-  act([[1.2, [900, 350, 1100], 1], [1.0, [3200, 2200, 3000], 8]]);
-  yield d.sec(2.2);
+  // (the owner's rule for rolled materials, 2026-11-15: the first shot — the work itself at its pace; the next ones — the roll unrolling
+  // faster and faster, smoothly — never a jump to it done)
+  const roll = function* (t1, k, vmax) { const t0 = d.t; yield d.until(() => { const v = d.t - t0 < t1 ? 1 : Math.min(vmax, Math.exp(k * (d.t - t0 - t1))); for (const J of dpc.jobs) J.speed = v; return !dpc.jobs.length; }); };
+  act([[1.3, [900, 350, 1100], 1], [1.4, [-1700, 1000, -2200], 1], [1.6, [3200, 2200, 3000], 1], [9, [6000, 4200, 7000], 1]]);
+  yield* roll(1.2, 1.9, 420);
   still();
-  d.jumpTo(() => !dpc.jobs.length, 2000);
-  // the pavilion's strips: one after another, seen from far and high — the whole footprint (the owner: from above, far, for the scale)
+  // the pavilion's strips: one after another, unrolling fast, seen from far and high — the whole footprint (the owner: from above, far,
+  // for the scale)
   shots([[9, [-14000, 13000, -12000], [500, 0, 1000]]]);
   // (the ends 60 in from the slab's edge: a line ending on its very edge is «off the concrete»)
   // (under the front 480 — its brick piers are 380; the rest 400; 25 mm out past the slab's edge — the realist)
   const z0 = SL.z0 + 215, z1 = SL.z1 - 175, xa = SL.x0 + 175, xb = SL.x1 - 175, e0 = SL.x0 + 60, e1 = SL.x1 - 60;
   for (const [a, b, w] of [[[e0, z0], [e1, z0], 480], [[e0, z1], [e1, z1], 400], [[xa, SL.z0 + 60], [xa, SL.z1 - 60], 400], [[xb, SL.z0 + 60], [xb, SL.z1 - 60], 400], [[IN, SL.z0 + 380], [IN, SL.z1 - 300], 400]]) {
-    lay(a, b, w); d.jumpTo(() => !dpc.jobs.length, 600); app.sfx?.play?.('fabric', { vol: 0.5 }); yield d.sec(0.2);
+    lay(a, b, w); const t0 = d.t; yield d.until(() => { const v = Math.min(450, 60 * Math.exp(4.5 * (d.t - t0))); for (const J of dpc.jobs) J.speed = v; return !dpc.jobs.length; });
+    app.sfx?.play?.('fabric', { vol: 0.5 });
   }
   app.budget._pay?.([{ usd: 6 * 0.4 * 47 + 1.3 * 11.8 * 9 }], P(0, 0, 0));
   d.stageBill('DPC MEMBRANE');
