@@ -355,7 +355,9 @@ export function* stairFilm(d, app) {
   for (const r of spineUp[0].slice(1, 6)) { yield d.until(() => job(r, true)); }
   yield d.until(idle);
   still();
-  const rest = spineUp.flat().filter((r) => r !== u0 && !spineUp[0].slice(1, 6).includes(r));
+  // (one block of a high step held back: the hook's action — laid there by the mallet (the analyst: motion from the 0th frame))
+  const hold = spineUp[NUP - 4][0];
+  const rest = spineUp.flat().filter((r) => r !== u0 && r !== hold && !spineUp[0].slice(1, 6).includes(r));
   // (the analyst: the stair is the stage's «wow» — the most time: in profile against the sky, then on its axis from below)
   // (three different: the profile against the sky; low from the sea's corner up to the top; high from behind along it — the owner:
   // 35–40 s were one profile twice with a view along the steps between)
@@ -389,14 +391,20 @@ export function* stairFilm(d, app) {
   d.stageBill('STEPS & LANDING');
   yield d.sec(2.1);   // (the bill's card gone before the seam of the loop — the analyst)
   d.next();
-  // ---- the hook (put first by the recorder): the stair in profile against the sky and the mountains — its steps up to the fresh
-  // landing, a slow push in (the content analyst: the question must be seen — the steps in the frame; the best frame of the stage) ----
+  // ---- the hook (put first by the recorder; the content analyst, 2026-11-15): low, three-quarters from the stair's foot, up along its
+  // steps into the sky, the sea on the horizon past the top; motion from the first frame — a block laid on a high step by the mallet;
+  // the question names the thing: «34 STEPS TO WHERE?»; the HUD — the masonry's; «TO BE CONTINUED» smaller and lower (the analyst's
+  // option (a): it stays both sides of the loop's seam, under the question) ----
   shotN++;
-  d.cut(look(P(16500, 3800, 1500), P(6000, 4600, -1800)), { drift: 0.012, push: 0.03, hand: 0.25 });
-  yield d.sec(0.4);
+  hud(['Cinder', 'Formwork', 'Concrete'], 0, ['*By hand', 'Course'], 'wall');
+  st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
+  d.nextEl?.classList.add('small');
+  d.cut(look(P(9600, 700, 9800), P(6000, 4900, -2600)), { drift: 0.01, push: 0.025, hand: 0.25 });
+  yield d.sec(0.2);
   d.mark('hook');
-  d.kick('WHERE DO THEY LEAD?', 2.2, 'top');
-  yield d.sec(2.2);   // (no rule in the frame — no rule's sound: the realist)
+  d.kick('34 STEPS TO WHERE?', 2.2, 'top');
+  { const t0 = d.t; let laid = false; yield d.until(() => { if (!laid) laid = job(hold, false); return d.t - t0 >= 2.2; }); }   // (no rule in the frame — no rule's sound: the realist)
+  if (!O.all('unit').some((u) => Math.abs(u.p[0] - hold.p[0]) < 1e-6 && Math.abs(u.p[1] - hold.p[1]) < 1e-6 && Math.abs(u.p[2] - hold.p[2]) < 1e-6)) O.add(hold);
   d.mark('hookEnd');
   d.stair = { pavId, units: O.all('unit').length, cinder: O.all('unit').filter((u) => u.kind === 'cinder').length, belts: O.all('belt').length, dpc: O.all('dpc').length, beltId, landId, laidN };
   yield d.sec(0.1);
