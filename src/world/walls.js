@@ -674,6 +674,18 @@ export class WallView {
     }
     // the formwork of the ring beams (and the one being set up): boards on edge along the
     // faces of the top course, studs every 600 mm outside
+    // (a stripped belt's boards stacked where its record says — b.pile [x, z]: flat, six a layer, the longest at the bottom — the realist:
+    // boards don't vanish, they go onto a stack by the site)
+    for (const b of O.all('belt')) {
+      if (!b.stripped || !b.pile || b.kind === 'slab' || !this.terrain) continue;
+      const n = Math.min(60, Math.max(6, Math.round(boardsOf(b).length * 2.5))), [px, pz] = b.pile, g = this.terrain.heightAt(px, pz), bw = 150 * S, bt = 25 * S, L = 3000 * S;
+      for (let k = 0; k < n && nw < this.max.wood - 40; k++) {
+        const lay = Math.floor(k / 6), i = k % 6, y = g + bt / 2 + lay * bt + 40 * S;
+        Q.setFromAxisAngle(_Y, 0.02 * Math.sin(k * 7.1)); this.wood.setMatrixAt(nw, m.compose(P.set(px + (i - 2.5) * (bw + 4 * S), y, pz), Q, Sv.set(bw, bt, L))); this.owner.wood[nw++] = b.id ?? null;
+      }
+      // (on three bearers 50 × 50)
+      for (const dz of [-1100, 0, 1100]) { Q.identity(); this.wood.setMatrixAt(nw, m.compose(P.set(px, g + 20 * S, pz + dz * S), Q, Sv.set(6 * (bw + 4 * S) + 100 * S, 40 * S, 50 * S))); this.owner.wood[nw++] = b.id ?? null; }
+    }
     for (const b of [...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])]) {
       if (b.stripped) continue;
       if (b.kind === 'slab' && (b.sidesOff || b.stripAt != null)) continue;   // (a slab's edge boards off first — at a week, the props stay: the foreman)
@@ -747,7 +759,8 @@ export class WallView {
         if (ph > 0.002) at(s, Wc / 2, floor + ph / 2, 100 * S, ph, 100 * S);
       }
       // the clamps round the boards every 500 mm
-      for (let s = 150 * S; s < b.ni * b.c - 100 * S; s += 500 * S) at(s, Wc / 2, b.top + b.H * 0.6, 40 * S, 40 * S, Wc + 2 * th + 80 * S);
+      // (over the boards' tops — never through the concrete and the cage: the realist)
+      for (let s = 150 * S; s < b.ni * b.c - 100 * S; s += 500 * S) at(s, Wc / 2, b.top + b.H + 40 * S, 40 * S, 40 * S, Wc + 2 * th + 80 * S);
     }
     // a ring beam's spans (a beam between pillars / a pillar and a wall, over an opening): under each
     // the deck of plywood at the beam's bottom, the side boards down to it, beams across every 600 mm

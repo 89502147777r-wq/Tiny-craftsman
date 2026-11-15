@@ -91,7 +91,8 @@ export function* stairFilm(d, app) {
   // the end it grows to the frame over the same view and washes into the real thing: «the plan came true». Made from the film's own
   // last frame (scratchpad sketch filter) — the lines fall on the real ones)
   const sk = document.createElement('img'); sk.className = 'f-sketch'; sk.src = 'assets/films/ibiza-2-sketch-card.png'; sk.alt = ''; d.el.appendChild(sk);
-  const bill = (label) => { d.stageBill(label); sk.style.opacity = '0.35'; const t1 = d.t + 1.4; d.each(() => { if (d.t < t1) return false; sk.style.opacity = ''; return true; }); };   // (under the bill's card: the sheet dimmed)
+  const pin = document.createElement('img'); pin.className = 'f-pin'; pin.src = 'assets/films/sketch-pin.png'; pin.alt = ''; d.el.appendChild(pin);   // (its own picture: taken out first at the end — the realist)
+  const bill = (label) => { d.stageBill(label); sk.style.opacity = pin.style.opacity = '0.35'; const t1 = d.t + 1.4; d.each(() => { if (d.t < t1) return false; sk.style.opacity = pin.style.opacity = ''; return true; }); };   // (under the bill's card: the sheet dimmed)
   d.money(true); d.byStages();
   // (stage 1's excavator parked at the plot's edge, past the fireplace's pad — out of the work's way, now and then in a wide shot (the
   // owner); it stood in two shots, a camera inside it)
@@ -342,10 +343,10 @@ export function* stairFilm(d, app) {
   shots([[9, [-16000, 18000, 14000], [1500, 2000, 0]]]);
   // (the clock over work — the analyst: never over a still frame: the beams' boards come off board by board under it)
   { const ids = [beltId, pavId, ...lintels.map((l) => l.id)].filter((id) => id != null);
-    yield* d.lapse(7, 1.3, (q) => { app.clock += 9000 * d.dt / 1.3; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); const n = ids.length, k = Math.min(n - 1, Math.floor(q * n)), u = 1 - (q * n - k); for (let i = 0; i < k; i++) if (!O.get(ids[i])?.stripped) O.update(ids[i], { stripped: true }); app.wallView.reveal = { id: ids[k], u: Math.max(0, u) }; app.wallView.dirty = true; if (Math.random() < 0.3) app.sfx?.play?.('plank', { vol: 0.35, gap: 0.15 }); });
+    yield* d.lapse(7, 1.3, (q) => { app.clock += 9000 * d.dt / 1.3; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); const n = ids.length, k = Math.min(n - 1, Math.floor(q * n)), u = 1 - (q * n - k); for (let i = 0; i < k; i++) if (!O.get(ids[i])?.stripped) O.update(ids[i], { stripped: true, pile: [+MM(-3200 + i * 1300).toFixed(6), +MM(7600).toFixed(6)] }); app.wallView.reveal = { id: ids[k], u: Math.max(0, u) }; app.wallView.dirty = true; if (Math.random() < 0.3) app.sfx?.play?.('plank', { vol: 0.35, gap: 0.15 }); });
     app.wallView.reveal = null; }
   app.sky.setHour(9.5);
-  app.journal.act('belt-strip', {}, app.clock, () => { for (const id of [beltId, pavId, ...lintels.map((l) => l.id)]) if (id != null) O.update(id, { stripped: true }); });
+  app.journal.act('belt-strip', {}, app.clock, () => { for (const [i, id] of [beltId, pavId, ...lintels.map((l) => l.id)].entries()) if (id != null) O.update(id, { pile: O.get(id)?.pile || [+MM(-3200 + i * 1300).toFixed(6), +MM(7600).toFixed(6)], stripped: true }); });
   d.kick('+7 DAYS', 1.2, 'top');
 
   // ---- 4 · the steps on up: the first block over the beam close, its course; then the courses one by one in profile ----
@@ -401,6 +402,8 @@ export function* stairFilm(d, app) {
   // (the sheet grows from its corner to its place in the frame — its drawing is the band 36 %…92 % of the frame from the sketch's view,
   // the stair's top off its edge (the analyst: the answer to the hook's «where?» never on the sheet) — then washes away into the real
   // view, which shows the top: the answer)
+  // (the pin out first, up and away — else its red head hung on the sky after the sheet had washed off: the realist)
+  { const tp = d.t; pin.style.opacity = ''; app.sfx?.play?.('tap', { vol: 0.4 }); yield d.until(() => { const u = Math.min(1, (d.t - tp) / 0.2); pin.style.top = 16.8 - 2 * u + '%'; pin.style.opacity = String(1 - u); return u >= 1; }); pin.remove(); }
   { const r0 = { l: 71, t: 16.5, w: 26 }, r1 = { l: -4.81, t: 31.2, w: 109.63 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
     yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.5), e = u * u * (3 - 2 * u); sk.classList.add('grow'); sk.style.left = r0.l + (r1.l - r0.l) * e + '%'; sk.style.top = r0.t + (r1.t - r0.t) * e + '%'; sk.style.width = r0.w + (r1.w - r0.w) * e + '%'; return u >= 1; });
     yield d.sec(0.35);
