@@ -1480,8 +1480,8 @@ console.log('—', sec());
     const cinder = tc.objects.all('unit').filter((u) => u.kind === 'cinder'), top = Math.max(...cinder.map((u) => u.p[1] + u.s[1] / 2)), base = Math.min(...cinder.map((u) => u.p[1] - u.s[1] / 2));
     return { done: f.done, t: +f.t.toFixed(1), stair: f.stair, pools, stripped: strips, rise: Math.round((top - base) * 1000 * 10.4651), hook: f.marks?.hook != null && f.marks?.hookEnd > f.marks?.hook };
   });
-  check('film (stair): starts where stage 1 ended (its pool shell there), the DPC, the walls, the ring beam (stripped after a week), the steps to ~6,8, the landing; 30–50 s, the hook marked',
-    o.done && o.pools >= 1 && o.stair?.dpc >= 6 && o.stair.beltId != null && o.stair.landId != null && o.stripped >= 1 && o.rise > 6300 && o.rise < 7200 && o.t > 30 && o.t < 50 && o.hook, JSON.stringify(o));
+  check('film (stair): starts where stage 1 ended (its pool shell there), the DPC, the walls, the ring beam (stripped after a week), the steps to ~6,8, the landing; 30–60 s (the rolled DPC at its pace first — the owner), the hook marked',
+    o.done && o.pools >= 1 && o.stair?.dpc >= 6 && o.stair.beltId != null && o.stair.landId != null && o.stripped >= 1 && o.rise > 6300 && o.rise < 7200 && o.t > 30 && o.t < 60 && o.hook, JSON.stringify(o));
   check('film (stair): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

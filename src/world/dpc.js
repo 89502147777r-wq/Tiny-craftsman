@@ -129,8 +129,8 @@ function cupTex() {
 const mats = {};
 const mat = (k, f) => mats[k] || (mats[k] = f());
 const M = {
-  top: () => mat('top', () => { const T = topTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.nor, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.42 }); }),
-  under: () => mat('under', () => { const T = underTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.nor, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.45 }); }),
+  top: () => mat('top', () => { const T = topTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.nor, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.74 }); }),   // (0.42 glared white at a grazing angle — the owner)
+  under: () => mat('under', () => { const T = underTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.nor, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.74 }); }),
   edge: () => mat('edge', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.55 })),
   // the molten bitumen pressed out: black, wet glossy while hot; satin cooled
   hot: () => mat('hot', () => new THREE.MeshStandardMaterial({ color: 0x040405, roughness: 0.12 })),
@@ -296,7 +296,10 @@ export class DpcView {
     const F = stripFrame(r, st), g = new THREE.Group(), w = st.w;
     const na = Math.max(2, Math.ceil(s / 50) + 1), nc = Math.max(2, Math.ceil(w / 50) + 1), pos = [], uv = [], idx = [], P = (al, ac) => [F.x + MM(al) * F.ux + MM(ac) * F.nx, F.z + MM(al) * F.uz + MM(ac) * F.nz];
     const top = [];
-    for (let i = 0; i < na; i++) { const al = s * i / (na - 1); top.push([]); for (let j = 0; j < nc; j++) { const ac = -w / 2 + w * j / (nc - 1), [x, z] = P(al, ac), y = this._under(r.id, k, x, z) + MM(DPC.t); top[i].push([x, y, z]); pos.push(x, y, z); uv.push(al / 2000, 1 - (ac + w / 2) / DPC.roll); } }
+    // (past the edge of what it lies on — the slab's edge, a course's face — the film sticks out stiff, a few mm of droop: never
+    // draped down the side to the ground — that read as a black band down the slab's face, the owner)
+    const on = (al, ac) => { const [x, z] = P(al, ac), [cx, cz] = P(al, 0); return Math.max(this._under(r.id, k, x, z), this._under(r.id, k, cx, cz) - MM(6)); };
+    for (let i = 0; i < na; i++) { const al = s * i / (na - 1); top.push([]); for (let j = 0; j < nc; j++) { const ac = -w / 2 + w * j / (nc - 1), [x, z] = P(al, ac), y = on(al, ac) + MM(DPC.t); top[i].push([x, y, z]); pos.push(x, y, z); uv.push(al / 2000, 1 - (ac + w / 2) / DPC.roll); } }
     for (let i = 0; i < na - 1; i++) for (let j = 0; j < nc - 1; j++) { const a = i * nc + j, b = a + nc; idx.push(a, a + 1, b, a + 1, b + 1, b); }
     const gt = new THREE.BufferGeometry(); gt.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gt.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); gt.setIndex(idx); gt.computeVertexNormals();
     // (the normals up: the winding is the grid's — the top must face the sky)
@@ -312,10 +315,10 @@ export class DpcView {
     const bead = (pts) => {
       const bp = [], bi = []; let ring0 = -1;
       const hash = (v) => { const q = Math.sin(v * 12.9898 + r.id * 78.233 + k * 3.1) * 43758.5453; return q - Math.floor(q); };
-      pts.forEach(([x, z, t], i) => {
+      pts.forEach(([x, z, t, al, ac], i) => {
         const gap = hash(Math.floor(t / 90)) < 0.12, rr = DPC.bead / 2 * (0.5 + 1.5 * hash(t * 0.37 + 1.7) ** 1.6);
         if (gap) { ring0 = -1; return; }
-        const y = this._under(r.id, k, x, z), base = bp.length / 3, i1 = Math.min(i + 1, pts.length - 1), i0 = Math.max(i - 1, 0), ex = pts[i1][0] - pts[i0][0], ez = pts[i1][1] - pts[i0][1], el = Math.hypot(ex, ez) || 1, nx = -ez / el, nz = ex / el;
+        const y = on(al, ac), base = bp.length / 3, i1 = Math.min(i + 1, pts.length - 1), i0 = Math.max(i - 1, 0), ex = pts[i1][0] - pts[i0][0], ez = pts[i1][1] - pts[i0][1], el = Math.hypot(ex, ez) || 1, nx = -ez / el, nz = ex / el;
         for (let q = 0; q <= 6; q++) { const a = Math.PI * q / 6; bp.push(x + nx * MM(rr) * Math.cos(a), y + MM(rr) * Math.sin(a) * 0.55, z + nz * MM(rr) * Math.cos(a)); }
         if (ring0 >= 0) for (let q = 0; q < 6; q++) bi.push(ring0 + q, base + q, ring0 + q + 1, ring0 + q + 1, base + q, base + q + 1);
         ring0 = base;
@@ -324,9 +327,9 @@ export class DpcView {
       const gb = new THREE.BufferGeometry(); gb.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); gb.setIndex(bi); gb.computeVertexNormals();
       const mb = new THREE.Mesh(gb, hot ? M.hot() : M.cool()); mb.material.side = THREE.DoubleSide; g.add(mb);
     };
-    for (const sd of [-1, 1]) { const pts = []; for (let al = 0; al <= s; al += 25) { const [x, z] = P(al, sd * (w / 2 + 2)); pts.push([x, z, al + (sd > 0 ? 50000 : 0)]); } bead(pts); }
-    { const pts = []; for (let ac = -w / 2; ac <= w / 2; ac += 25) { const [x, z] = P(-2, ac); pts.push([x, z, ac + 90000]); } bead(pts); }
-    if (s >= F.L - 1) { const pts = []; for (let ac = -w / 2; ac <= w / 2; ac += 25) { const [x, z] = P(s + 2, ac); pts.push([x, z, ac + 120000]); } bead(pts); }
+    for (const sd of [-1, 1]) { const pts = []; for (let al = 0; al <= s; al += 25) { const [x, z] = P(al, sd * (w / 2 + 2)); pts.push([x, z, al + (sd > 0 ? 50000 : 0), al, sd * (w / 2 + 2)]); } bead(pts); }
+    { const pts = []; for (let ac = -w / 2; ac <= w / 2; ac += 25) { const [x, z] = P(-2, ac); pts.push([x, z, ac + 90000, -2, ac]); } bead(pts); }
+    if (s >= F.L - 1) { const pts = []; for (let ac = -w / 2; ac <= w / 2; ac += 25) { const [x, z] = P(s + 2, ac); pts.push([x, z, ac + 120000, s + 2, ac]); } bead(pts); }
     return g;
   }
   _build(id) {
