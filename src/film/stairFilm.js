@@ -90,7 +90,7 @@ export function* stairFilm(d, app) {
   // (the analyst and the owner, 2026-11-15: the stage's own pencil sketch pinned in the corner — the goal of this film, no more; at
   // the end it grows to the frame over the same view and washes into the real thing: «the plan came true». Made from the film's own
   // last frame (scratchpad sketch filter) — the lines fall on the real ones)
-  const sk = document.createElement('img'); sk.className = 'f-sketch'; sk.src = 'assets/films/ibiza-2-sketch-card.jpg'; sk.alt = ''; d.el.appendChild(sk);
+  const sk = document.createElement('img'); sk.className = 'f-sketch'; sk.src = 'assets/films/ibiza-2-sketch-card.png'; sk.alt = ''; d.el.appendChild(sk);
   const skFull = new Image(); skFull.src = 'assets/films/ibiza-2-sketch.jpg';
   const bill = (label) => { d.stageBill(label); sk.style.opacity = '0.35'; const t1 = d.t + 1.4; d.each(() => { if (d.t < t1) return false; sk.style.opacity = ''; return true; }); };   // (under the bill's card: the sheet dimmed)
   d.money(true); d.byStages();
