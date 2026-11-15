@@ -57,12 +57,13 @@ export class SitePropView {
       if (!m || m.userData.kind !== r.kind) {
         if (m) this.group.remove(m);
         m = propMesh(r.kind); m.userData.kind = r.kind; m.scale.setScalar(1 / MODEL_SCALE);   // (the model in metres)
-        const id = r.id; m.userData.ready.then(() => m.traverse((o) => { o.userData.propId = id; }));
+        const id = r.id; m.userData.ready.then(() => { m.traverse((o) => { o.userData.propId = id; }); this.rev = (this.rev || 0) + 1; });   // (rev: a model came in — dpc.js's hose re-reads what it lies on)
         this.group.add(m); this.meshes.set(r.id, m);
       }
       this.place(m, r.x, r.z, r.yaw);
     }
     for (const [id, m] of this.meshes) if (!seen.has(id)) { this.group.remove(m); this.meshes.delete(id); }   // (its geometry is the model's, shared by the copies: not disposed)
+    this.rev = (this.rev || 0) + 1;   // (placed anew: dpc.js's hose re-reads what it lies on)
   }
   // (standing on the ground there: its lowest point under the middle and the four corners of its foot)
   place(m, x, z, yaw = 0) {
