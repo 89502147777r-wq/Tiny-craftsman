@@ -4,6 +4,7 @@ import { look } from './director.js';
 import { loadPhysics, physicsReady } from '../world/physics.js';
 import { findBelt, beltCage, beltsOverlap, plan, toWorld } from '../tools/belt.js';
 import { IBIZA } from './foundFilm.js';
+import { placeLintelForm } from '../tools/lintels.js';
 
 // «Ibiza», stage 2 — the stair wall and the pavilion (docs/ideas/ibiza.md; the foreman's plan and the owner's choices 2026-11-14;
 // the director's shot table). It starts where stage 1 ended — the same plot, the same records (assets/films/ibiza-1.json.gz, made
@@ -228,7 +229,7 @@ export function* stairFilm(d, app) {
   const topP = Math.max(...O.all('unit').filter((u) => u.kind === 'block').map((u) => u.p[1] + u.s[1] / 2));
   const BP = findBelt(app, new V(MM(0), topP, MM(SL.z1 - 150)));
   say('pavilion belt ' + (BP ? `${BP.rec.ni}×${BP.rec.nj}` : 'none'));
-  let beltId = null, pavId = null;
+  let beltId = null, pavId = null; const lintels = [];
   if (B) {
     B.rec.H = MM(200);   // (a course high: the step over it no taller than the rest — the foreman)
     const WV = app.wallView, RV = app.rebarView;
@@ -245,12 +246,22 @@ export function* stairFilm(d, app) {
       WV.reveal = { id: pavId, u: 0 }; WV.dirty = true;
       shots([[9, [-12000, 14000, 12000], [1000, 3000, 0]]]);
       yield* rise(WV, pavId, 1.6, ['plank', 'hammer_nail']);
+      // (over the front's three glass openings the ring is a lintel cast in place — its soffit on props, boards each side, 250 onto the
+      // piers: the game's «lintel formwork»; the ring had no concrete over the openings at all (the owner saw it «not filling»))
+      for (const x of [(FRONT[0][1] + FRONT[1][0]) / 2, (FRONT[1][1] + FRONT[2][0]) / 2, (FRONT[2][1] + FRONT[3][0]) / 2]) {
+        const L = placeLintelForm(app, new V(MM(x), BP.rec.top - MM(5), MM(SL.z0 + 150)));
+        say('lintel ' + x + ' ' + (L ? `${L.ok ? 'ok' : L.why} ${L.lenMm}×${L.hMm} top ${Math.round((L.rec.top - BP.rec.top) / S)}` : 'none'));
+        // ('above' — the ring's own top course over its ends: it is the ring it joins, at its level)
+        if (L?.rec && L.lenMm > 2000) { L.rec.top = BP.rec.top; L.rec.H = MM(200);   // (at the ring's level and height: one beam with it)
+ app.journal.act('lintel-form', {}, app.clock, () => { lintels.push({ id: O.add(L.rec).id, x0: x - L.lenMm / 2, x1: x + L.lenMm / 2 }); }); }
+      }
+      app.sfx?.seq?.(['plank', 'hammer_nail', 'pipe']);
     }
     // the cages lowered in: the chairs, then bar after bar, the ties (the game's reveal of a cage)
     hud(['Formwork', 'Rebar', 'Concrete'], 1, null, 'wall');
     shots([[1.2, [7200, 4200, -4000], [6000, 3300, -5200]]]);
     let cageA = null, cageB = null;
-    app.journal.act('belt-cage', {}, app.clock, () => { cageA = O.add(beltCage(O.get(beltId))).id; if (pavId != null) cageB = O.add(beltCage(O.get(pavId))).id; });
+    app.journal.act('belt-cage', {}, app.clock, () => { cageA = O.add(beltCage(O.get(beltId))).id; if (pavId != null) cageB = O.add(beltCage(O.get(pavId))).id; for (const l of lintels) O.add(beltCage(O.get(l.id))); });
     if (cageB != null) { RV.reveal = { id: cageB, u: 1 }; }
     yield* rise(RV, cageA, 1.4, ['rebar', 'wire']);
     // the concrete: the hose along the spine's beam, always over the place still to fill — the stream seen the whole pour, the beam
@@ -263,16 +274,27 @@ export function* stairFilm(d, app) {
     app.setTool('hose');
     const ev = (q) => ({ target: beltId, hit: q });
     st.pump = 1e-5; { const p0 = path(0); hose.down(p0, ev(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, ev(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
-    st.pump = 8;   // (the pump's delivery buys the film's time — the hand stays at a hand's pace: the owner's lesson of stage 1)
+    st.pump = 12;   // (the pump's delivery buys the film's time — the hand stays at a hand's pace: the owner's lesson of stage 1)
     tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
     act([[1.1, [1800, 600, 1600], 1], [1.1, [-2200, 1100, -1800], 4], [9, [3000, 2000, -3500], 8]]);
     // (the front of the pour: the spout led on to the first cell not yet full along the beam — at most a hand's pace)
     // (to the end and back, over what is still short — a pass a layer, as on site — till the beam is full)
+    // (the hand led from where the SPOUT is: while there is room under it the hand stays and the stream pours; when it is full there —
+    // half a metre on. A beam 200 high takes what lands only ~0,8 m along it (its tongue 1:4): a hand led ahead of the spout left the
+    // spout over full cells, the pump stopped — no stream (the owner)); loop: a ring, round and round; else to the end and back
+    const lead = (ch, pf, len, loop, setDir, dir0 = 1) => {
+      const sp = G.pump?.ready ? G.pump.spout() : null; if (!sp || !ch?.h) return null;
+      let us = 0, bd = Infinity; for (let i = 0; i <= 400; i++) { const q = pf(i / 400), dd = Math.hypot(q.x - sp.x, q.z - sp.z); if (dd < bd) bd = dd, us = i / 400; }
+      const k = ch.at(sp.x, sp.z), roomy = ch.room ? ch.room(k) : ch.h[k] < ch.cap - 8;
+      if (roomy) return pf(us);
+      let dv = dir0, un = us + dv * 500 / len;
+      if (!loop && (un > 1 || un < 0)) { dv = -dv; setDir?.(dv); un = us + dv * 500 / len; }
+      return pf(loop ? un : Math.max(0, Math.min(1, un)));
+    };
     let u = 0, dir = 1; const t0 = d.t, share = (ch) => { let a = 0; for (const v of ch.h) a += Math.min(1, v / ch.cap); return a / ch.h.length; };
     yield d.until(() => {
       const ch = hose.ch;
-      if (ch?.h) { for (let n = 0; n < 40; n++) { const q = path(u), k = ch.at(q.x, q.z); if (k >= 0 && ch.h[k] < ch.cap - 8) break; u += 0.004 * dir; if (u >= 1 || u <= 0) { u = Math.max(0, Math.min(1, u)); dir = -dir; break; } } }
-      const q = path(u); hose.move(q, ev(q));
+      const q = lead(ch, path, tot, false, (v) => { dir = v; }, dir) || path(u); hose.move(q, ev(q));
       return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 6;
     });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
@@ -280,18 +302,31 @@ export function* stairFilm(d, app) {
     say('belt fill ' + O.get(beltId)?.fill + ' u ' + u.toFixed(2) + ' in ' + (d.t - t0).toFixed(1));
     // (the last tenth topped up and worked level between two shots — the poker's round: no step in the frame)
     { const b = O.get(beltId); if (b && b.fill < 0.999) app.journal.act('belt-pour', {}, app.clock, () => O.update(beltId, { lv: b.lv.map(() => b.H / S), sm: b.lv.map(() => 0.9), fill: 1 })); }
-    // the pavilion's ring: poured round under the clock (hours in a second and a half) — the beam filling cell by cell along it
+    // the pavilion's ring: the hose too — round it along the walls, the stream into the boards (the owner: «the ring poured without the
+    // hose, a timelapse — it must be the build-up»): ×1 close, ×3, ×6 from further, the front of the pour led on to what is not yet full
     const pb = pavId != null && O.get(pavId);
     if (pb) {
-      shots([[9, [-12000, 14000, 12000], [1000, 3000, 0]]]);
-      const n = pb.lv.length, ctr = [(SL.x0 + SL.x1) / 2, (SL.z0 + SL.z1) / 2];
-      // (the cells by their angle round the pavilion: the hose goes round)
-      const Pp = plan(pb), ang = Pp.cells.map(([i, j]) => { const [x, z] = toWorld(pb, (i + 0.5) * pb.c, (j + 0.5) * pb.c); return Math.atan2(z / S - ctr[1], x / S - ctr[0]); });
-      const idx = [...Array(n).keys()].sort((a, b) => ang[a] - ang[b]), lv = pb.lv.slice(), cap = pb.H / S;
-      yield* d.lapse(0.25, 1.2, (q) => { const want = Math.floor(n * q); for (let i = 0; i < want; i++) lv[idx[i]] = cap; WV.beltLive = WV.beltLive || new Map(); WV.beltLive.set(pavId, { lv, sm: lv.map(() => 0.9) }); WV.fillDirty = true; app.sfx?.play?.('concrete', { vol: 0.35, gap: 0.3 }); });
-      WV.beltLive?.delete(pavId);
-      app.journal.act('belt-pour', {}, app.clock, () => O.update(pavId, { lv: pb.lv.map(() => cap), sm: pb.lv.map(() => 0.9), fill: 1 }));
-      app.sky.setHour(9.5 + 6);
+      const ri = 150, rp = [[SL.x0 + ri, SL.z0 + ri], [SL.x1 - ri, SL.z0 + ri], [SL.x1 - ri, SL.z1 - ri], [SL.x0 + ri, SL.z1 - ri], [SL.x0 + ri, SL.z0 + ri]];
+      const ys = pb.top + pb.H, sg = rp.slice(1).map((q, i) => Math.hypot(q[0] - rp[i][0], q[1] - rp[i][1])), tl = sg.reduce((x, y) => x + y, 0);
+      const ring = (u) => { let s2 = ((u % 1) + 1) % 1 * tl, i = 0; while (i < sg.length - 1 && s2 > sg[i]) { s2 -= sg[i]; i++; } const A = rp[i], Bq = rp[i + 1], f = Math.min(1, s2 / sg[i]); return new V(MM(A[0] + (Bq[0] - A[0]) * f), ys, MM(A[1] + (Bq[1] - A[1]) * f)); };
+      const evp = (q) => { const l = Math.abs(q.z / S - (SL.z0 + 150)) < 300 && lintels.find((r) => q.x / S > r.x0 + 200 && q.x / S < r.x1 - 200); return { target: l ? l.id : pavId, hit: q }; };   // (over an opening — into its lintel)
+      app.setTool('hose');
+      st.pump = 1e-5; { const p0 = ring(0); hose.down(p0, evp(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, evp(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
+      st.pump = 1;   // (a ring's hose — 60 l/s at most: the hand walks at 0,75 m/s; the ring is long and narrow: the delivery up, the hand at its pace)
+      tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
+      act([[1.2, [-1500, 700, -1600], 1], [1.3, [2600, 1500, 2200], 3], [9, [-5200, 3800, -4800], 10]]);
+      // (round it at a steady walk, ~1,2 m/s of the game's clock — the delivery set so that one round fills it: the stream always lands on
+      // what is still to fill)
+      const t0 = d.t; let ur = 0;
+      yield d.until(() => {
+        ur += d.dt * d.speed * MM(ur < 1 ? 750 : 1500) / MM(tl);
+        const q = ring(ur); hose.move(q, evp(q));
+        return (ur >= 1 && hose.ch?.h && share(hose.ch) > 0.97 && hose.ch.b?.id === pavId) || d.t - t0 > 8.5;   // (a second, quicker round over what is short)
+      });
+      hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
+      still();
+      say('pavilion fill ' + O.get(pavId)?.fill + ' lintels ' + lintels.map((l) => O.get(l.id)?.fill?.toFixed(2)).join(',') + ' in ' + (d.t - t0).toFixed(1));
+      for (const id of [pavId, ...lintels.map((l) => l.id)]) { const r = O.get(id); if (r && r.fill < 0.999) app.journal.act('belt-pour', {}, app.clock, () => O.update(id, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
     }
   }
   d.stageBill('RING BEAM 3.4');
@@ -301,7 +336,7 @@ export function* stairFilm(d, app) {
   shots([[9, [-16000, 18000, 14000], [1500, 2000, 0]]]);
   yield* d.lapse(7, 1.3, () => { app.clock += 9000 * d.dt / 1.3; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });
   app.sky.setHour(9.5);
-  app.journal.act('belt-strip', {}, app.clock, () => { for (const id of [beltId, pavId]) if (id != null) O.update(id, { stripped: true }); });
+  app.journal.act('belt-strip', {}, app.clock, () => { for (const id of [beltId, pavId, ...lintels.map((l) => l.id)]) if (id != null) O.update(id, { stripped: true }); });
   d.kick('+7 DAYS', 1.2, 'top');
 
   // ---- 4 · the steps on up: the first block over the beam close, its course; then the courses one by one in profile ----
@@ -318,7 +353,9 @@ export function* stairFilm(d, app) {
   still();
   const rest = spineUp.flat().filter((r) => r !== u0 && !spineUp[0].slice(1, 6).includes(r));
   // (the analyst: the stair is the stage's «wow» — the most time: in profile against the sky, then on its axis from below)
-  shots([[2.4, [15500, 4300, 500], [6000, 4300, -500]], [1.0, [7400, 1400, 9000], [6000, 4500, -2000]], [9, [15500, 4300, 500], [6000, 4300, -500]]]);
+  // (three different: the profile against the sky; low from the sea's corner up to the top; high from behind along it — the owner:
+  // 35–40 s were one profile twice with a view along the steps between)
+  shots([[2.0, [15500, 4300, 500], [6000, 4300, -500]], [1.5, [11000, 1300, -11500], [6000, 4800, -3500]], [9, [13500, 9500, 9500], [5000, 3500, -1500]]]);
   { let i = 0; const n = rest.length, dur = 5.0, t0 = d.t;
     yield d.until(() => { const want = Math.min(n, Math.ceil(n * Math.min(1, (d.t - t0) / dur))); if (want > i) { for (; i < want; i++) O.add(rest[i]); tick(1); } return i >= n; }); }
   // ---- 5 · the landing's beam on the 34th step: boards and cage at once, the concrete ----
@@ -335,9 +372,10 @@ export function* stairFilm(d, app) {
     app.setTool('hose'); hud(['Cinder', 'Formwork', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
     const a = new V(MM(X0), yb, MM(-4300)), b = new V(MM(X0), yb, MM(-5600));
     st.pump = 1e-5; hose.down(a, ev(a)); { let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(a, ev(a)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - a.x, sp.z - a.z) < MM(250)); }); }
-    st.pump = 2; tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-    act([[1.0, [-2200, 1400, -1600], 6]]);
-    let pt = 0; const t0 = d.t; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); return !!hose.ch?.full || d.t - t0 > 1.0; });
+    st.pump = 4; tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
+    act([[1.0, [-2200, 1400, -1600], 3], [9, [-3000, 2200, -2400], 6]]);
+    // (till it is full, the camera on it — the owner: «the landing's beam did not fill in the frames»)
+    let pt = 0; const t0 = d.t; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); const ch = hose.ch; return !!ch?.full || (ch?.h && ch.h.every((v) => v >= ch.cap - 8)) || d.t - t0 > 3.5; });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
