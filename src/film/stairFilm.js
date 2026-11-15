@@ -91,7 +91,6 @@ export function* stairFilm(d, app) {
   // the end it grows to the frame over the same view and washes into the real thing: «the plan came true». Made from the film's own
   // last frame (scratchpad sketch filter) — the lines fall on the real ones)
   const sk = document.createElement('img'); sk.className = 'f-sketch'; sk.src = 'assets/films/ibiza-2-sketch-card.png'; sk.alt = ''; d.el.appendChild(sk);
-  const skFull = new Image(); skFull.src = 'assets/films/ibiza-2-sketch.jpg';
   const bill = (label) => { d.stageBill(label); sk.style.opacity = '0.35'; const t1 = d.t + 1.4; d.each(() => { if (d.t < t1) return false; sk.style.opacity = ''; return true; }); };   // (under the bill's card: the sheet dimmed)
   d.money(true); d.byStages();
   // (stage 1's excavator parked at the plot's edge, past the fireplace's pad — out of the work's way, now and then in a wide shot (the
@@ -397,10 +396,11 @@ export function* stairFilm(d, app) {
   app.budget._pay?.([{ usd: rest.length * 2.2 + 900 }], P(0, 0, 0));
   bill('STEPS & LANDING');
   yield d.sec(0.9);
-  // (the sheet grows from its corner to its place in the frame — the card is the band 22 %…78 % of the full drawing — then washes away)
-  { const r0 = { l: 71, t: 16.5, w: 26 }, r1 = { l: 0, t: 21.9, w: 100 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
+  // (the sheet grows from its corner to its place in the frame — its drawing is the band 36 %…92 % of the frame from the sketch's view,
+  // the stair's top off its edge (the analyst: the answer to the hook's «where?» never on the sheet) — then washes away into the real
+  // view, which shows the top: the answer)
+  { const r0 = { l: 71, t: 16.5, w: 26 }, r1 = { l: -4.81, t: 31.2, w: 109.63 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
     yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.5), e = u * u * (3 - 2 * u); sk.classList.add('grow'); sk.style.left = r0.l + (r1.l - r0.l) * e + '%'; sk.style.top = r0.t + (r1.t - r0.t) * e + '%'; sk.style.width = r0.w + (r1.w - r0.w) * e + '%'; return u >= 1; });
-    sk.src = skFull.src; sk.style.top = '0%'; sk.style.height = '100%';
     yield d.sec(0.35);
     const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 1.0); sk.style.opacity = String(1 - u); return u >= 1; });
     sk.remove(); }
