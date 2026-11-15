@@ -254,11 +254,13 @@ export function* stairFilm(d, app) {
       const ch = hose.ch;
       if (ch?.h) { for (let n = 0; n < 40; n++) { const q = path(u), k = ch.at(q.x, q.z); if (k >= 0 && ch.h[k] < ch.cap - 8) break; u += 0.004 * dir; if (u >= 1 || u <= 0) { u = Math.max(0, Math.min(1, u)); dir = -dir; break; } } }
       const q = path(u); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1500));
-      return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 7;
+      return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 6;
     });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
     say('belt fill ' + O.get(beltId)?.fill + ' u ' + u.toFixed(2) + ' in ' + (d.t - t0).toFixed(1));
+    // (the last tenth topped up and worked level between two shots — the poker's round: no step in the frame)
+    { const b = O.get(beltId); if (b && b.fill < 0.999) app.journal.act('belt-pour', {}, app.clock, () => O.update(beltId, { lv: b.lv.map(() => b.H / S), sm: b.lv.map(() => 0.9), fill: 1 })); }
     // the pavilion's ring: poured round under the clock (hours in a second and a half) — the beam filling cell by cell along it
     const pb = pavId != null && O.get(pavId);
     if (pb) {
