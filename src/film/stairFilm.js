@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
 import { look } from './director.js';
 import { loadPhysics, physicsReady } from '../world/physics.js';
-import { findBelt, beltCage, beltsOverlap } from '../tools/belt.js';
+import { findBelt, beltCage, beltsOverlap, plan, toWorld } from '../tools/belt.js';
 import { IBIZA } from './foundFilm.js';
 
 // «Ibiza», stage 2 — the stair wall and the pavilion (docs/ideas/ibiza.md; the foreman's plan and the owner's choices 2026-11-14;
@@ -157,7 +157,7 @@ export function* stairFilm(d, app) {
   yield d.until(() => physicsReady());
   const first = spineLow[0].find((r) => r.p[0] > MM(X0 + 400)) || spineLow[0][0];
   let laidN = 0;
-  const job = (rec, fast) => { if (app.physJob) return false; if (W.layUnit(rec, fast)) { laidN++; tool = () => new V().fromArray(rec.p); return true; } return false; };
+  const job = (rec, fast) => { if (app.physJob) return false; if (W.layUnit(rec, fast, rec.kind === 'block' ? 20 : 12)) {   /* (the first course of blocks on 20 of mortar) */ laidN++; tool = () => new V().fromArray(rec.p); return true; } return false; };
   tool = () => new V().fromArray(first.p);
   act([[2.4, [1200, 500, 1400], 1]]);
   yield d.until(() => job(first, false));
@@ -212,16 +212,30 @@ export function* stairFilm(d, app) {
   let beltId = null, pavId = null;
   if (B) {
     B.rec.H = MM(200);   // (a course high: the step over it no taller than the rest — the foreman)
-    shots([[1.4, [7600, 3900, -2400], [6000, 3300, -5000]], [1.2, [-12000, 14000, 12000], [1000, 3000, 0]]]);
-    app.sfx?.seq?.(['plank', 'plank', 'hammer_nail', 'plank', 'hammer_nail']);
-    app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; if (BP && !beltsOverlap(BP.rec, B.rec)) { BP.rec.H = MM(200); pavId = O.add(BP.rec).id; }   /* (one ring over both when the tops meet: not twice) */ });
-    yield d.sec(1.6);
+    const WV = app.wallView, RV = app.rebarView;
+    // the formwork going up board by board (the owner: «no process of the formwork» — the game's own reveal, as the pool's boards)
+    const rise = function* (view, id, dur, snd) { const t0 = d.t; let k = 0; yield d.until(() => { const u = Math.min(1, (d.t - t0) / dur); view.reveal = { id, u }; view.dirty = true; if (u * 8 > k) { k++; app.sfx?.play?.(snd[k % snd.length], { vol: 0.5 }); } if (u >= 1) { view.reveal = null; view.dirty = true; return true; } return false; }); };
+    app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; });
+    WV.reveal = { id: beltId, u: 0 }; WV.dirty = true;
+    shots([[1.3, [7600, 3900, -2400], [6000, 3300, -5000]], [1.1, [-1800, 4300, -6900], [6000, 3300, -3000]]]);
+    d.speed = 1; yield* rise(WV, beltId, 2.4, ['plank', 'hammer_nail', 'hammer_nail']);
+    // the pavilion's ring: boards round it, seen whole from far (its openings bridged — a lintel on props)
+    if (BP && !beltsOverlap(BP.rec, B.rec)) {   // (one ring over both when the tops meet: not twice)
+      BP.rec.H = MM(200);
+      app.journal.act('belt', {}, app.clock, () => { pavId = O.add(BP.rec).id; });
+      WV.reveal = { id: pavId, u: 0 }; WV.dirty = true;
+      shots([[9, [-12000, 14000, 12000], [1000, 3000, 0]]]);
+      yield* rise(WV, pavId, 1.6, ['plank', 'hammer_nail']);
+    }
+    // the cages lowered in: the chairs, then bar after bar, the ties (the game's reveal of a cage)
     hud(['Formwork', 'Rebar', 'Concrete'], 1, null, 'wall');
     shots([[1.2, [7200, 4200, -4000], [6000, 3300, -5200]]]);
-    app.sfx?.seq?.(['rebar', 'wire', 'wire']);
-    app.journal.act('belt-cage', {}, app.clock, () => { O.add(beltCage(O.get(beltId))); if (pavId != null) O.add(beltCage(O.get(pavId))); });
-    yield d.sec(0.9);
-    // the concrete: the hose along the spine's beam, then round the pavilion's (the poker after it)
+    let cageA = null, cageB = null;
+    app.journal.act('belt-cage', {}, app.clock, () => { cageA = O.add(beltCage(O.get(beltId))).id; if (pavId != null) cageB = O.add(beltCage(O.get(pavId))).id; });
+    if (cageB != null) { RV.reveal = { id: cageB, u: 1 }; }
+    yield* rise(RV, cageA, 1.4, ['rebar', 'wire']);
+    // the concrete: the hose along the spine's beam, always over the place still to fill — the stream seen the whole pour, the beam
+    // filling under it (the owner: «no stream, the pour stops and at once the beam is full»); the poker after it
     hud(['Formwork', 'Rebar', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
     const hose = app.concreteTools.hose, yb = topS + MM(200);
     const pts = [[X0, -5600], [X0, 1100]];
@@ -230,16 +244,33 @@ export function* stairFilm(d, app) {
     app.setTool('hose');
     const ev = (q) => ({ target: beltId, hit: q });
     st.pump = 1e-5; { const p0 = path(0); hose.down(p0, ev(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, ev(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
-    st.pump = 3;
+    st.pump = 4;
     tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-    act([[1.1, [1800, 600, 1600], 1], [1.0, [3000, 2000, -3500], 8]]);
-    let pt = 0; const TP = 60, t0 = d.t;
-    yield d.until(() => { pt += d.dt * d.speed; const q = path(Math.min(1, pt / TP)); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1500)); return !!hose.ch?.full || d.t - t0 > 2.1; });
+    act([[1.2, [1800, 600, 1600], 1], [1.2, [-2200, 1100, -1800], 4], [9, [3000, 2000, -3500], 10]]);
+    // (the front of the pour: the spout led on to the first cell not yet full along the beam — at most a hand's pace)
+    let u = 0; const t0 = d.t;
+    yield d.until(() => {
+      const ch = hose.ch;
+      if (ch?.h) { for (let n = 0; n < 40 && u < 1; n++) { const q = path(u), k = ch.at(q.x, q.z); if (k >= 0 && ch.h[k] < ch.cap - 8) break; u = Math.min(1, u + 0.004); } }
+      const q = path(u); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1500));
+      return !!ch?.full || u >= 1 || d.t - t0 > 14;
+    });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
-    // (the rest of the pour between two shots — the crew's hour: the beam full, worked level)
-    app.journal.act('belt-pour', {}, app.clock, () => { for (const id of [beltId, pavId]) { const b = id != null && O.get(id); if (b) O.update(id, { lv: b.lv.map(() => b.H / S), sm: b.lv.map(() => 0.9), fill: 1 }); } });
-    say('belt fill ' + O.get(beltId)?.fill);
+    say('belt fill ' + O.get(beltId)?.fill + ' u ' + u.toFixed(2) + ' in ' + (d.t - t0).toFixed(1));
+    // the pavilion's ring: poured round under the clock (hours in a second and a half) — the beam filling cell by cell along it
+    const pb = pavId != null && O.get(pavId);
+    if (pb) {
+      shots([[9, [-12000, 14000, 12000], [1000, 3000, 0]]]);
+      const n = pb.lv.length, ctr = [(SL.x0 + SL.x1) / 2, (SL.z0 + SL.z1) / 2];
+      // (the cells by their angle round the pavilion: the hose goes round)
+      const Pp = plan(pb), ang = Pp.cells.map(([i, j]) => { const [x, z] = toWorld(pb, (i + 0.5) * pb.c, (j + 0.5) * pb.c); return Math.atan2(z / S - ctr[1], x / S - ctr[0]); });
+      const idx = [...Array(n).keys()].sort((a, b) => ang[a] - ang[b]), lv = pb.lv.slice(), cap = pb.H / S;
+      yield* d.lapse(0.25, 1.6, (q) => { const want = Math.floor(n * q); for (let i = 0; i < want; i++) lv[idx[i]] = cap; WV.beltLive = WV.beltLive || new Map(); WV.beltLive.set(pavId, { lv, sm: lv.map(() => 0.9) }); WV.fillDirty = true; app.sfx?.play?.('concrete', { vol: 0.35, gap: 0.3 }); });
+      WV.beltLive?.delete(pavId);
+      app.journal.act('belt-pour', {}, app.clock, () => O.update(pavId, { lv: pb.lv.map(() => cap), sm: pb.lv.map(() => 0.9), fill: 1 }));
+      app.sky.setHour(9.5 + 6);
+    }
   }
   d.stageBill('RING BEAM 3.4');
   yield d.sec(1.9);   // (the bill read over the beam, not over the clock — the analyst: two words at once)
@@ -277,7 +308,7 @@ export function* stairFilm(d, app) {
     shots([[1.2, [18000, 16000, 6000], [5000, 3500, -1000]]]);
     app.sfx?.seq?.(['plank', 'hammer_nail', 'rebar']);
     app.journal.act('belt', {}, app.clock, () => { landId = O.add(B2.rec).id; O.add(beltCage(O.get(landId))); });
-    yield d.sec(0.4);
+    { const WV = app.wallView, t0 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t0) / 1.0); WV.reveal = { id: landId, u }; WV.dirty = true; if (u >= 1) { WV.reveal = null; return true; } return false; }); }   // (its boards going up too)
     const hose = app.concreteTools.hose, yb = topU + MM(200), ev = (q) => ({ target: landId, hit: q });
     app.setTool('hose'); hud(['Cinder', 'Formwork', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
     const a = new V(MM(X0), yb, MM(-4300)), b = new V(MM(X0), yb, MM(-5600));
