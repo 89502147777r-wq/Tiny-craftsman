@@ -1492,6 +1492,33 @@ console.log('—', sec());
   await browser.close();
 }
 
+// ---- 2l³. «Ibiza» stages 3–5 in one (the owner, 2026-11-15): from stage 2's end — the «sail» 300 on the pavilion's walls with its two
+// cantilevers (3 m over the pool, 2,4 m to the left), the olive's opening and the notch round the fireplace's tower; its props over the
+// pool on the shell's floor (not through it); a week; the box; its roof slab; 28 days — the props out piece by piece from the
+// cantilever's edge back to the walls; the green roof, the fascias, the glass, the finish; the hook marked ----
+{
+  const { browser, page, errors } = await open(pw.chromium, '&film=sail&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, f = tc.film, MM = (v) => v / 1000 / 10.4651;
+    for (let i = 0; i < 20000 && !f.done; i++) { if (i % 15 === 0) await new Promise((r) => setTimeout(r, 0)); tc.filmStep(1 / 30, 0, false); }
+    const SL = await import('/src/tools/slab.js'), SF = await import('/src/world/slabForm.js');
+    const sail = tc.objects.get(f.sail?.sail), belts = tc.objects.all('belt'), T = tc.terrain;
+    // (the sail's props as they stood: over the pool's inside — on its floor, never on the dug ground under it)
+    const F = sail ? SL.slabForm(sail, (x, z) => SF.floorUnder(T, belts)(x, z, sail.top - MM(500))) : { props: [] };
+    const inPool = F.props.filter(([x, z]) => x > MM(-5800) && x < MM(3800) && z > MM(-5500) && z < MM(-3300));
+    const sunk = inPool.filter(([x, z, f0]) => f0 < T.heightAt(x, z) + MM(100)).length;
+    return { done: f.done, t: +f.t.toFixed(1), s: f.sail, H: sail && Math.round(sail.H / MM(1)), cants: sail?.cants, holes: sail?.holes?.length, stripped: !!sail?.stripped, pool: inPool.length, sunk,
+      windows: tc.objects.all('window').length, facades: tc.objects.all('facade').length, hook: f.marks?.hook != null && f.marks?.hookEnd > f.marks?.hook };
+  });
+  check('film (sail): the slab 300 with two cantilevers (3 m, 2,4 m), the olive\'s opening; its props over the pool on the shell\'s floor; stripped from the cantilever\'s edge back to the walls',
+    o.done && o.H === 300 && o.cants?.length === 2 && o.holes === 1 && o.pool > 3 && o.sunk === 0 && o.stripped && o.s?.order?.[0] > o.s.order[1], JSON.stringify(o));
+  check('film (sail): the box on it, its roof green, white fascias, the glass, the finish on the pavilion, the box and the spine; 40–62 s, the hook marked',
+    o.s?.box > 300 && o.s.roofGreen > 100 && o.s.fasc >= 4 && o.windows >= 5 && o.s.faces?.[0] >= 4 && o.s.faces[1] >= 4 && o.s.faces[2] > 10 && o.facades > 20 && o.t > 40 && o.t < 62 && o.hook, JSON.stringify(o));
+  check('film (sail): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });

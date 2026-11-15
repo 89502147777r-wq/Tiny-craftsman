@@ -6,6 +6,7 @@ import { findBelt, beltCage, beltContains, plan, toWorld } from '../tools/belt.j
 import { IBIZA } from './foundFilm.js';
 import { slabRuns, findRail } from '../world/railing.js';
 import { findOpenings } from '../tools/windowFit.js';
+import { ext, OFF, CELL, cutPiece, runsOf, ck } from '../world/facade.js';
 
 // «Ibiza», stages 3–5 in one film (the owner, 2026-11-15; the foreman's plan and the analyst's rhythm): the «sail» — the slab 300 over
 // the pavilion with its cantilevers 3 m over the pool and 2,4 m to the left (a notch round the fireplace's tower, a joint 30 — its own
@@ -178,13 +179,15 @@ export function* sailFilm(d, app) {
   d.kick('+28 DAYS', 1.2, 'top');
   yield d.sec(1.0);
   hud(['Ring beam', 'Slab', 'Rebar', 'Concrete'], 1, ['*Strip'], 'wall');
+  const order = () => app.wallView.slabForm.order || [];
   app.journal.act('belt-strip', {}, app.clock, () => { O.update(sail, { stripAt: +app.clock.toFixed(3) }); if (roof != null) O.update(roof, { stripAt: +(app.clock - 1e4).toFixed(3) }); });
   // (the first pieces at their pace, close under the cantilever's edge; then faster from further — the sail still on its props
   // behind; the last prop out — a second of nothing: it hangs)
   shots([[1.6, [-2500, 1200, -7600], [-1500, 3000, -4600]], [2.2, [-11000, 1500, -9500], [-1500, 3000, -3000]], [9, [-14500, 2500, -11500], [-1500, 3000, -1500]]]);
   { const t0 = d.t; yield d.until(() => { const e = d.t - t0; d.speed = e < 1.6 ? 1 : e < 3.8 ? 3 : 12; return !!O.get(sail)?.stripped || e > 14; }); }
   d.speed = 1; say('stripped ' + !!O.get(sail)?.stripped + ' at ' + d.t.toFixed(1));
-  shots([[9, [-1500, 700, -9500], [-800, 3600, -3000]]]);
+  const ord = order().slice();
+  shots([[9, [-12500, 1300, -9000], [-1500, 3900, -3600]]]);
   yield d.sec(1.2);
   // ---- 6 · the box's roof: the vapour barrier, the XPS, the wedge, the membrane — then the sedum mats in strips (500 off the edge:
   // gravel), close from above on the work (the owner: from above only on the action itself, close); the white fascias round the slabs ----
@@ -213,10 +216,36 @@ export function* sailFilm(d, app) {
   shots([[9, [-9000, 2600, -15500], [0, 3500, 0]]]);
   { let wk = 0; const t0 = d.t, dur = 1.8; yield d.until(() => { const n = Math.round(ops.length * Math.min(1, (d.t - t0) / dur)); for (; wk < n; wk++) { const q = ops[wk]; O.add({ type: 'window', key: 'floor', col: 'anth', w: q.w, h: q.h, t: q.t, x: +q.x.toFixed(6), y: +q.y0.toFixed(6), z: +q.z.toFixed(6), yaw: +q.yaw.toFixed(5) }); app.sfx?.play?.('glass', { vol: 0.4 }); } return d.t - t0 >= dur; }); }
   d.stageBill('GLAZING');
-  d.sail = { sail, cage, roof, props: app.wallView.slabForm.tubeLo.count, box: box.length, fasc, glass: ops.length };
+  // ---- 8 · the finish, face after face (the analyst: the grey turning finished — the border between them in the frame): the white
+  // plaster on the pavilion (its brick piers left brick), the planks on the box, the sandstone on the spine's steps ----
+  const FT = W.facade, faces = FT.faces(), mm = (v) => Math.round(v / S);
+  const allCells = (F) => { const e = ext(F, OFF.fin), set = new Set(); for (let j = Math.floor(e[1] / CELL); j * CELL < e[3]; j++) for (let i = Math.floor(e[0] / CELL); i * CELL < e[2]; i++) { const a = (i + 0.5) * CELL, y = (j + 0.5) * CELL; if (a > e[0] && a < e[2] && y > e[1] && y < e[3] && cutPiece(F, [a - 1e-7, y - 1e-7, a + 1e-7, y + 1e-7], OFF.fin).length) set.add(ck(i, j)); } return runsOf(set); };
+  const slots = (F, layer) => { st.facLayer = layer; return FT._areaSlots(F, ext(F, 0)).slots; };
+  const save = (F, patch) => FT._save(F, patch, 'facade-film');
+  const top = (F) => mm(F.y0);
+  const width = (F) => { const e = ext(F, 0); return mm(e[2] - e[0]); };
+  const inner = (F) => F.key.split(':')[2] === '33';   // (the pavilion's inner wall's face to the left room)
+  const pavF = faces.filter((F) => top(F) >= 1330 && top(F) < 1360 && width(F) > 300 && !inner(F) && Math.abs(F.ux) + Math.abs(F.uz) > 0.5 && !(Math.abs(F.uz) > 0.9 && mm(ext(F, 0)[0]) < -5000));
+  const boxF = faces.filter((F) => top(F) > 4900 && top(F) < 5050 && width(F) > 1500 && mm(ext(F, 0)[0]) > -2400);
+  const spineF = faces.filter((F) => !pavF.includes(F) && !boxF.includes(F) && (mm(ext(F, 0)[0]) <= -5700 || mm(ext(F, 0)[0]) >= 5400 || mm(ext(F, 0)[0]) === 6005));
+  say(`faces pav ${pavF.length} box ${boxF.length} spine ${spineF.length} of ${faces.length}`);
+  const plaster = (F) => { const cells = allCells(F); save(F, { eps: slots(F, 'eps') }); save(F, { glue: cells, mesh: [ext(F, OFF.loose)], emb: cells, pl: { 'bark:white': cells } }); };
+  const panels = (F, key) => { st.facPanel = key; save(F, { eps: slots(F, 'eps') }); save(F, { pan: slots(F, 'pan').map((q) => [...q, key]) }); };
+  const faceBy = function* (list, fn, dur, snd) { const t0 = d.t; let i = 0; yield d.until(() => { const want = Math.min(list.length, Math.ceil(list.length * Math.min(1, (d.t - t0) / dur))); for (; i < want; i++) { fn(list[i]); app.sfx?.play?.(snd, { vol: 0.45, gap: 0.1 }); } return i >= list.length && d.t - t0 >= dur; }); };
+  hud(['Roof', 'Facade', 'Glass'], 1, ['*Plaster', 'Panels'], 'wall');
+  shots([[1.6, [-11500, 1800, -7000], [-2500, 2200, 0]], [9, [9000, 2400, 13500], [0, 2400, 1000]]]);
+  yield* faceBy(pavF, plaster, 2.6, 'plaster');
+  hud(['Roof', 'Facade', 'Glass'], 1, ['Plaster', '*Panels'], 'wall');
+  shots([[9, [-9500, 6800, 9500], [1200, 6200, 1200]]]);
+  yield* faceBy(boxF, (F) => panels(F, 'wood:walnut'), 2.0, 'nailgun');
+  shots([[9, [15500, 4300, 500], [6000, 4300, -500]]]);
+  yield* faceBy(spineF.sort((a, b) => a.y0 - b.y0), (F) => panels(F, 'stone:sandstone'), 2.6, 'stone');
+  d.stageBill('FACADE');
+  yield d.sec(1.0);
+  d.sail = { sail, cage, roof, props: app.wallView.slabForm.tubeLo.count, box: box.length, fasc, glass: ops.length, faces: [pavF.length, boxF.length, spineF.length], order: [ord[0], ord.at(-1)], roofGreen: (O.all('roof').find((r) => r.slab === roof)?.green || []).length };
   // ---- the hook (put first by the recorder): low under the sail's cantilever over the empty pool ----
   shotN++;
-  d.cut(look(PE(-1500, 700, -9000), P(-800, 3400, -3000)), { drift: 0.012, push: 0.03, hand: 0.25 });
+  d.cut(look(PE(-12500, 1300, -9000), P(-1500, 3900, -3600)), { drift: 0.012, push: 0.03, hand: 0.25 });
   yield d.sec(0.4);
   d.mark('hook');
   d.kick('WHAT HOLDS IT UP?', 2.2, 'top');
@@ -227,4 +256,4 @@ export function* sailFilm(d, app) {
 sailFilm.seconds = 55;
 sailFilm.place = 'beach';
 sailFilm.start = 'assets/films/ibiza-2.json.gz';
-sailFilm.sounds = ['block', 'trowel', 'trowel_tap', 'mallet', 'tap', 'till', 'cash', 'plank', 'hammer_nail', 'metal_hit', 'rebar', 'wire', 'pump', 'concrete', 'vibrator', 'screed', 'crowbar', 'fabric', 'waves', 'wind', 'birds'];
+sailFilm.sounds = ['plaster', 'nailgun', 'stone', 'glass', 'turf', 'block', 'trowel', 'trowel_tap', 'mallet', 'tap', 'till', 'cash', 'plank', 'hammer_nail', 'metal_hit', 'rebar', 'wire', 'pump', 'concrete', 'vibrator', 'screed', 'crowbar', 'fabric', 'waves', 'wind', 'birds'];

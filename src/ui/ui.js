@@ -163,6 +163,7 @@ export class UI {
     $('menu-close').addEventListener('click', () => this.openMenu(false));
     $('act-film').addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=found'; });
     $('act-film-stair')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=stair'; });
+    $('act-film-sail')?.addEventListener('click', async () => { await app.saveNow(true); location.href = location.pathname + '?film=sail'; });
     $('act-quiet').addEventListener('click', () => { this.setQuiet(true); this.openMenu(false); });
     for (const b of document.querySelectorAll('#budget-row button')) b.addEventListener('click', () => { const v = +b.dataset.b; if (v) app.budget.start(v); else app.budget.stop(); this.openMenu(false); this.refresh(); });
     $('act-export').addEventListener('click', () => app.exportProject());

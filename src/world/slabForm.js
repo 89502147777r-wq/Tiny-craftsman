@@ -83,6 +83,7 @@ export class SlabFormView {
         // the stack: off the slab, on clear ground — out past the side nearest the plot's middle
         strip = { u: now - b.stripAt, pile: this._pileSpot(b, items, terrain, floor), n: { deck: 0, beam: 0, prop: 0 } };
         items.forEach((it, i) => { it.t0 = i * STRIP.slot; });
+        this.order = items.map((it) => it.bay);   // (for the tests: from the cantilever's edge back)
         if (strip.u < items.length * STRIP.slot + STRIP.carry) this.stripping = true; else this.done.push(b.id);
       }
       // where a piece is now: in place, being carried (let down, lifted a little, walked over), or on the stack
