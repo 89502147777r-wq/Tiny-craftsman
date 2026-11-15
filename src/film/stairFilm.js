@@ -87,6 +87,12 @@ export function* stairFilm(d, app) {
   Object.assign(st, { dayHour: 9.5, pump: 1.25, rebarD: 12, cover: 40 }); app.sky.setHour(9.5);
   d.lock = true; d.hand = 0.3;
   d.logo();
+  // (the analyst and the owner, 2026-11-15: the stage's own pencil sketch pinned in the corner — the goal of this film, no more; at
+  // the end it grows to the frame over the same view and washes into the real thing: «the plan came true». Made from the film's own
+  // last frame (scratchpad sketch filter) — the lines fall on the real ones)
+  const sk = document.createElement('img'); sk.className = 'f-sketch'; sk.src = 'assets/films/ibiza-2-sketch-card.jpg'; sk.alt = ''; d.el.appendChild(sk);
+  const skFull = new Image(); skFull.src = 'assets/films/ibiza-2-sketch.jpg';
+  const bill = (label) => { d.stageBill(label); sk.style.opacity = '0.35'; const t1 = d.t + 1.4; d.each(() => { if (d.t < t1) return false; sk.style.opacity = ''; return true; }); };   // (under the bill's card: the sheet dimmed)
   d.money(true); d.byStages();
   // (stage 1's excavator parked at the plot's edge, past the fireplace's pad — out of the work's way, now and then in a wide shot (the
   // owner); it stood in two shots, a camera inside it)
@@ -164,8 +170,7 @@ export function* stairFilm(d, app) {
     app.sfx?.play?.('fabric', { vol: 0.5 });
   }
   app.budget._pay?.([{ usd: 6 * 0.4 * 47 + 1.3 * 11.8 * 9 }], P(0, 0, 0));
-  d.stageBill('DPC MEMBRANE');
-  yield d.sec(0.3);
+  bill('DPC MEMBRANE');
 
   // ---- 2 · the masonry: the first cinder block close (the game's job), the course along the spine; the first aerated block, its
   // course; a brick pier; then all of it rising together — to one level ----
@@ -215,8 +220,7 @@ export function* stairFilm(d, app) {
   { let i = 0; const n = all.length, dur = 3.4, t0 = d.t;
     yield d.until(() => { const want = Math.min(n, Math.ceil(n * Math.min(1, (d.t - t0) / dur))); if (want > i) { for (; i < want; i++) O.add(all[i]); tick(1); } return i >= n; }); }
   app.budget._pay?.([{ usd: (O.all('unit').filter((u) => u.kind === 'cinder').length * 2.2 + pav.length * 3.1) }], P(0, 0, 0));
-  d.stageBill('BLOCKS & BRICKS');
-  yield d.sec(0.4);
+  bill('BLOCKS & BRICKS');
   say('masonry ' + O.all('unit').length);
 
   // ---- 3 · the ring beam over both, at one level (a joint between them — they stand on two foundations): its boards, its cage,
@@ -333,12 +337,14 @@ export function* stairFilm(d, app) {
       for (const id of [pavId, ...lintels.map((l) => l.id)]) { const r = O.get(id); if (r && r.fill < 0.999) app.journal.act('belt-pour', {}, app.clock, () => O.update(id, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
     }
   }
-  d.stageBill('RING BEAM 3.4');
-  yield d.sec(1.3);   // (the bill read over the beam, not over the clock — the analyst: two words at once)
+  bill('RING BEAM 3.4');
   // ---- a week: the beam sets, its boards off ----
   d.hud(null);
   shots([[9, [-16000, 18000, 14000], [1500, 2000, 0]]]);
-  yield* d.lapse(7, 1.3, () => { app.clock += 9000 * d.dt / 1.3; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); });
+  // (the clock over work — the analyst: never over a still frame: the beams' boards come off board by board under it)
+  { const ids = [beltId, pavId, ...lintels.map((l) => l.id)].filter((id) => id != null);
+    yield* d.lapse(7, 1.3, (q) => { app.clock += 9000 * d.dt / 1.3; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); const n = ids.length, k = Math.min(n - 1, Math.floor(q * n)), u = 1 - (q * n - k); for (let i = 0; i < k; i++) if (!O.get(ids[i])?.stripped) O.update(ids[i], { stripped: true }); app.wallView.reveal = { id: ids[k], u: Math.max(0, u) }; app.wallView.dirty = true; if (Math.random() < 0.3) app.sfx?.play?.('plank', { vol: 0.35, gap: 0.15 }); });
+    app.wallView.reveal = null; }
   app.sky.setHour(9.5);
   app.journal.act('belt-strip', {}, app.clock, () => { for (const id of [beltId, pavId, ...lintels.map((l) => l.id)]) if (id != null) O.update(id, { stripped: true }); });
   d.kick('+7 DAYS', 1.2, 'top');
@@ -386,11 +392,22 @@ export function* stairFilm(d, app) {
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
   }
-  shots([[9, [15500, 5600, -9500], [6000, 4300, -1500]]]);
+  // (the sketch's own view: the camera set where the drawing was made from — still, no hand)
+  shotN++; d.cut(look(new V(MM(17500), MM(9000), MM(15500)), new V(MM(2600), MM(3200), MM(-1600))), { drift: 0, push: 0, hand: 0 });
   app.budget._pay?.([{ usd: rest.length * 2.2 + 900 }], P(0, 0, 0));
-  d.stageBill('STEPS & LANDING');
-  yield d.sec(2.1);   // (the bill's card gone before the seam of the loop — the analyst)
+  bill('STEPS & LANDING');
+  yield d.sec(0.9);
+  // (the sheet grows from its corner to its place in the frame — the card is the band 22 %…78 % of the full drawing — then washes away)
+  { const r0 = { l: 71, t: 16.5, w: 26 }, r1 = { l: 0, t: 21.9, w: 100 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
+    yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.5), e = u * u * (3 - 2 * u); sk.classList.add('grow'); sk.style.left = r0.l + (r1.l - r0.l) * e + '%'; sk.style.top = r0.t + (r1.t - r0.t) * e + '%'; sk.style.width = r0.w + (r1.w - r0.w) * e + '%'; return u >= 1; });
+    sk.src = skFull.src; sk.style.top = '0%'; sk.style.height = '100%';
+    yield d.sec(0.35);
+    const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 1.0); sk.style.opacity = String(1 - u); return u >= 1; });
+    sk.remove(); }
+  d.kick('?', 0.7, 'top');   // (where the next part goes — no shape of it: the analyst)
+  yield d.sec(0.4);
   d.next();
+  yield d.sec(1.2);
   // ---- the hook (put first by the recorder; the content analyst, 2026-11-15): low, three-quarters from the stair's foot, up along its
   // steps into the sky, the sea on the horizon past the top; motion from the first frame — a block laid on a high step by the mallet;
   // the question names the thing: «34 STEPS TO WHERE?»; the HUD — the masonry's; «TO BE CONTINUED» smaller and lower (the analyst's
