@@ -244,9 +244,9 @@ export function* stairFilm(d, app) {
     app.setTool('hose');
     const ev = (q) => ({ target: beltId, hit: q });
     st.pump = 1e-5; { const p0 = path(0); hose.down(p0, ev(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, ev(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
-    st.pump = 4;
+    st.pump = 8;   // (the pump's delivery buys the film's time — the hand stays at a hand's pace: the owner's lesson of stage 1)
     tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-    act([[1.2, [1800, 600, 1600], 1], [1.2, [-2200, 1100, -1800], 4], [9, [3000, 2000, -3500], 10]]);
+    act([[1.1, [1800, 600, 1600], 1], [1.1, [-2200, 1100, -1800], 4], [9, [3000, 2000, -3500], 8]]);
     // (the front of the pour: the spout led on to the first cell not yet full along the beam — at most a hand's pace)
     // (to the end and back, over what is still short — a pass a layer, as on site — till the beam is full)
     let u = 0, dir = 1; const t0 = d.t, share = (ch) => { let a = 0; for (const v of ch.h) a += Math.min(1, v / ch.cap); return a / ch.h.length; };
@@ -254,7 +254,7 @@ export function* stairFilm(d, app) {
       const ch = hose.ch;
       if (ch?.h) { for (let n = 0; n < 40; n++) { const q = path(u), k = ch.at(q.x, q.z); if (k >= 0 && ch.h[k] < ch.cap - 8) break; u += 0.004 * dir; if (u >= 1 || u <= 0) { u = Math.max(0, Math.min(1, u)); dir = -dir; break; } } }
       const q = path(u); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1500));
-      return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 12;
+      return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 7;
     });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
