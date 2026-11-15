@@ -513,6 +513,9 @@ export class WallView {
       if (g) ride(g, R.from + (R.to - R.from) * rideEase(u));
       if (u >= 1 || !g) { this._ride = null; if (this.objects.get(R.id)) this.objects.update(R.id, { at: R.to }); }
     }
+    // (a slab's formwork coming out piece by piece: drawn every frame; the last piece on the stack — the slab stripped)
+    if ((this.slabForm.stripping || this.reveal?.slab) && this.terrain) this.slabForm.build([...this.objects.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])], floorUnder(this.terrain, this.objects.all('belt')), this.clock ?? 0, this.terrain, this.reveal);
+    for (const id of this.slabForm.done.splice(0)) { const b = this.objects.get(id); if (b && !b.stripped) { const A = this.app; if (A?.journal) A.journal.act('belt-strip-done', {}, A.clock, () => this.objects.update(id, { stripped: true, set: true })); else this.objects.update(id, { stripped: true, set: true }); } }
     if (this.blindStream !== this._streamAt) { this._streamAt = this.blindStream; setStream(this.stream, this.blindStream?.r, this.blindStream); }
     // (blocks being laid one after another: the blocks themselves at once; what follows from them — the
     // facade over the walls, the roofs on them, the fill, the blind area — when the hand rests: each
@@ -673,6 +676,7 @@ export class WallView {
     // faces of the top course, studs every 600 mm outside
     for (const b of [...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])]) {
       if (b.stripped) continue;
+      if (b.kind === 'slab' && (b.sidesOff || b.stripAt != null)) continue;   // (a slab's edge boards off first — at a week, the props stay: the foreman)
       const th = BELT.board * S, over = (b.over ?? BELT.over) * S, h = over + b.H, yc = b.top - over + h / 2, yaw = Math.atan2(-b.u[1], b.u[0]);
       let seed = (b.id || 7) * 9301;
       const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -791,7 +795,7 @@ export class WallView {
         put({ p: P3.toArray(), q: pq.toArray(), s: Sv.toArray(), kind: s.kind, row: lay, i: j, off: 0 }, s.id);
       }
     }
-    if (this.terrain) this.slabForm.build([...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])], floorUnder(this.terrain, O.all('belt')));
+    if (this.terrain) this.slabForm.build([...O.all('belt'), ...(this.liveBelt ? [this.liveBelt] : [])], floorUnder(this.terrain, O.all('belt')), this.clock ?? 0, this.terrain, this.reveal);
     if (!walls.some((w) => w.id === this.focus)) this.cord.visible = false;
     if (this.live) put(this.live, null);
     this.hlMesh.visible = !!this.hl;

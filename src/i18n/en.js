@@ -1,5 +1,8 @@
 // English for every Russian line of the game (the key: the Russian, {n} — what a template puts in)
 export default {
+"Опалубку уже снимают — от края консоли к стенам": "The formwork is coming off already — from the cantilever's edge to the walls",
+"Снимают стойки, балки и фанеру — по одной, от края к стенам, в штабель": "Props, beams and plywood coming off — one by one, from the edge to the walls, onto the stack",
+"; консоль будет держаться сама": "; the cantilever will hold by itself",
 "🎥 Ролик: «Ибица» 2 — стена-лестница и павильон (ваш участок не тронется)": "🎥 Film: «Ibiza» 2 — the stair wall and the pavilion (your plot stays as it is)",
 "Бордовый": "Burgundy",
 "Серо-оливковый": "Grey-olive",
