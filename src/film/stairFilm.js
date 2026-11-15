@@ -269,7 +269,7 @@ export function* stairFilm(d, app) {
     yield d.until(() => {
       const ch = hose.ch;
       if (ch?.h) { for (let n = 0; n < 40; n++) { const q = path(u), k = ch.at(q.x, q.z); if (k >= 0 && ch.h[k] < ch.cap - 8) break; u += 0.004 * dir; if (u >= 1 || u <= 0) { u = Math.max(0, Math.min(1, u)); dir = -dir; break; } } }
-      const q = path(u); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1500));
+      const q = path(u); hose.move(q, ev(q));
       return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 6;
     });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
@@ -285,14 +285,14 @@ export function* stairFilm(d, app) {
       // (the cells by their angle round the pavilion: the hose goes round)
       const Pp = plan(pb), ang = Pp.cells.map(([i, j]) => { const [x, z] = toWorld(pb, (i + 0.5) * pb.c, (j + 0.5) * pb.c); return Math.atan2(z / S - ctr[1], x / S - ctr[0]); });
       const idx = [...Array(n).keys()].sort((a, b) => ang[a] - ang[b]), lv = pb.lv.slice(), cap = pb.H / S;
-      yield* d.lapse(0.25, 1.6, (q) => { const want = Math.floor(n * q); for (let i = 0; i < want; i++) lv[idx[i]] = cap; WV.beltLive = WV.beltLive || new Map(); WV.beltLive.set(pavId, { lv, sm: lv.map(() => 0.9) }); WV.fillDirty = true; app.sfx?.play?.('concrete', { vol: 0.35, gap: 0.3 }); });
+      yield* d.lapse(0.25, 1.2, (q) => { const want = Math.floor(n * q); for (let i = 0; i < want; i++) lv[idx[i]] = cap; WV.beltLive = WV.beltLive || new Map(); WV.beltLive.set(pavId, { lv, sm: lv.map(() => 0.9) }); WV.fillDirty = true; app.sfx?.play?.('concrete', { vol: 0.35, gap: 0.3 }); });
       WV.beltLive?.delete(pavId);
       app.journal.act('belt-pour', {}, app.clock, () => O.update(pavId, { lv: pb.lv.map(() => cap), sm: pb.lv.map(() => 0.9), fill: 1 }));
       app.sky.setHour(9.5 + 6);
     }
   }
   d.stageBill('RING BEAM 3.4');
-  yield d.sec(1.9);   // (the bill read over the beam, not over the clock — the analyst: two words at once)
+  yield d.sec(1.3);   // (the bill read over the beam, not over the clock — the analyst: two words at once)
   // ---- a week: the beam sets, its boards off ----
   d.hud(null);
   shots([[9, [-16000, 18000, 14000], [1500, 2000, 0]]]);
@@ -315,7 +315,7 @@ export function* stairFilm(d, app) {
   still();
   const rest = spineUp.flat().filter((r) => r !== u0 && !spineUp[0].slice(1, 6).includes(r));
   // (the analyst: the stair is the stage's «wow» — the most time: in profile against the sky, then on its axis from below)
-  shots([[2.4, [15500, 4300, 500], [6000, 4300, -500]], [1.8, [7400, 1400, 9000], [6000, 4500, -2000]], [9, [15500, 4300, 500], [6000, 4300, -500]]]);
+  shots([[2.4, [15500, 4300, 500], [6000, 4300, -500]], [1.0, [7400, 1400, 9000], [6000, 4500, -2000]], [9, [15500, 4300, 500], [6000, 4300, -500]]]);
   { let i = 0; const n = rest.length, dur = 5.0, t0 = d.t;
     yield d.until(() => { const want = Math.min(n, Math.ceil(n * Math.min(1, (d.t - t0) / dur))); if (want > i) { for (; i < want; i++) O.add(rest[i]); tick(1); } return i >= n; }); }
   // ---- 5 · the landing's beam on the 34th step: boards and cage at once, the concrete ----
@@ -334,7 +334,7 @@ export function* stairFilm(d, app) {
     st.pump = 1e-5; hose.down(a, ev(a)); { let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(a, ev(a)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - a.x, sp.z - a.z) < MM(250)); }); }
     st.pump = 2; tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
     act([[1.0, [-2200, 1400, -1600], 6]]);
-    let pt = 0; const t0 = d.t; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1200)); return !!hose.ch?.full || d.t - t0 > 1.0; });
+    let pt = 0; const t0 = d.t; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); return !!hose.ch?.full || d.t - t0 > 1.0; });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
