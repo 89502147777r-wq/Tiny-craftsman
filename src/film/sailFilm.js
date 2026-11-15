@@ -73,13 +73,30 @@ export function* sailFilm(d, app) {
   const still = () => { ++shotN; };
   const WV = app.wallView, RV = app.rebarView;
   const rise = function* (view, id, dur, snd, extra = {}) { const t0 = d.t; let k = 0; yield d.until(() => { const u = Math.min(1, (d.t - t0) / dur); view.reveal = { id, u, ...extra }; view.dirty = true; if (u * 10 > k) { k++; app.sfx?.play?.(snd[k % snd.length], { vol: 0.5 }); } if (u >= 1) { view.reveal = null; view.dirty = true; return true; } return false; }); };
-  // (a slab's cells filled under the clock in the order key(x, z) gives — the hose's way; what is full already stays)
-  const pourOn = function* (id, days, dur, key) {
-    const b = O.get(id); if (!b) return;
-    const Pp = plan(b), cap = b.H / S, lv = b.lv.slice(), ks = Pp.cells.map(([i, j]) => { const [x, z] = toWorld(b, (i + 0.5) * b.c, (j + 0.5) * b.c); return key(x, z); });
-    const idx = [...lv.keys()].filter((k) => lv[k] < cap - 5).sort((a, c) => ks[a] - ks[c]), n = idx.length;
-    yield* d.lapse(days, dur, (q) => { const want = Math.floor(n * q); for (let i = 0; i < want; i++) lv[idx[i]] = cap; WV.beltLive = WV.beltLive || new Map(); WV.beltLive.set(id, { lv, sm: lv.map(() => 0.9) }); WV.fillDirty = true; app.sfx?.play?.('concrete', { vol: 0.35, gap: 0.3 }); });
-    WV.beltLive?.delete(id); full(id);
+  // (a slab poured by the hose to the end — the owner: the build-up with the hose, never the clock: the hand along the snake at a
+  // steady walk of the game's clock, the shots ×1 → ×3 → ×6 → ×10; done — full, or no room under the spout for a moment: the hose
+  // comes away at once (no stream held over full concrete); what is short after it is levelled by the rule between shots)
+  const hosePour = function* (id, pts, acts, v = 1500) {
+    const hose = app.concreteTools.hose, b = O.get(id), yb = b.top + b.H, ev = (q) => ({ target: id, hit: q });
+    const sg = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1])), tl = sg.reduce((x, y) => x + y, 0);
+    const path = (u) => { let s2 = Math.max(0, Math.min(1, u)) * tl, i = 0; while (i < sg.length - 1 && s2 > sg[i]) { s2 -= sg[i]; i++; } const A = pts[i], Bq = pts[i + 1], f = Math.min(1, s2 / sg[i]); return new V(MM(A[0] + (Bq[0] - A[0]) * f), yb, MM(A[1] + (Bq[1] - A[1]) * f)); };
+    app.setTool('hose');
+    st.pump = 1e-5; { const p0 = path(0); hose.down(p0, ev(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, ev(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
+    // (the delivery from the slab's volume and the hand's walk: one pass fills it — a slab takes the pump's whole rate, ×1000 l/s)
+    { const vol = plan(b).cells.length * (b.c / S / 1000) ** 2 * (b.H / S / 1000); st.pump = Math.max(0.05, 1.5 * vol / (tl / v)); }
+    tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
+    act(acts);
+    let u = 0, wetE = 1; const t0 = d.t, share = (ch) => { let a = 0; for (const x of ch.h) a += Math.min(1, x / ch.cap); return a / ch.h.length; };
+    yield d.until(() => {
+      u += d.dt * d.speed * v / tl; const q = path(u); hose.move(q, ev(q));
+      wetE = wetE * 0.8 + (G.pump?.stream?.visible ? 0.2 : 0);   // (the share of frames with the stream lately: it flickers where there is no room)
+      const ch = hose.ch;
+      return (u >= 1 && (!ch?.h || share(ch) > 0.97 || wetE < 0.5)) || (d.t - t0 > 1 && wetE < 0.5 && ch?.h && share(ch) > 0.9) || d.t - t0 > 12;
+    });
+    hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
+    still();
+    say(`pour ${id} fill ${O.get(id)?.fill?.toFixed(3)} in ${(d.t - t0).toFixed(1)}`);
+    full(id);
   };
   const full = (id) => { const r = O.get(id); if (r && r.fill < 0.999) app.journal.act('belt-pour', {}, app.clock, () => O.update(id, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); };
 
@@ -112,22 +129,11 @@ export function* sailFilm(d, app) {
   d.stageBill('REBAR');
   // ---- 3 · the concrete: the hose from the cantilever's edge, the poker after it; the rule ----
   hud(['Ring beam', 'Slab', 'Rebar', 'Concrete'], 3, ['*Hose', 'Vibrator'], 'hose');
-  const hose = app.concreteTools.hose, sb = O.get(sail), yb = sb.top + sb.H, ev = (q) => ({ target: sail, hit: q });
+  const sb = O.get(sail);
   // (a snake over the slab, row after row from the sea's edge back — as a crew pours a slab)
-  const pts = []; { const xs = [SL.x0 - LEFT + 600, SL.x1 - 600]; for (let z = SL.z0 - FRONT + 500, k = 0; z < SL.z1 - 300; z += 1400, k++) { pts.push(k % 2 ? [xs[1], z] : [xs[0], z], k % 2 ? [xs[0], z] : [xs[1], z]); } }
-  const segs = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1])), tot = segs.reduce((a, b) => a + b, 0);
-  const path = (u) => { let s2 = u * tot, i = 0; while (i < segs.length - 1 && s2 > segs[i]) { s2 -= segs[i]; i++; } const a = pts[i], b = pts[i + 1], f = Math.min(1, s2 / segs[i]); return new V(MM(a[0] + (b[0] - a[0]) * f), yb, MM(a[1] + (b[1] - a[1]) * f)); };
-  app.setTool('hose');
-  st.pump = 1e-5; { const p0 = path(0); hose.down(p0, ev(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, ev(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
-  st.pump = 8;
-  tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-  act([[1.2, [1800, 700, 1600], 1], [1.2, [-2400, 1200, -1900], 3], [9, [3500, 2500, -4000], 6]]);
-  { let u = 0; const t0 = d.t; yield d.until(() => { u = Math.min(1, (d.t - t0) / 3.6) * 0.3; const q = path(u); hose.move(q, ev(q)); return d.t - t0 >= 3.6; }); }
-  hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
-  say('sail fill ' + O.get(sail)?.fill?.toFixed(3));
-  // (the rest of it under the clock, row after row as the hose went — seen whole from high and far: the scale (the owner))
-  shots([[9, [-15000, 13000, -14000], [-1000, 2500, -500]]]);
-  yield* pourOn(sail, 0.3, 1.6, (x, z) => { const r = Math.floor((z / S - (SL.z0 - FRONT)) / 1400); return r * 1e6 + (r % 2 ? -x : x) / S; });
+  const snake = (x0, x1, z0, z1, step) => { const pts = []; for (let z = z0, k = 0; z <= z1; z += step, k++) pts.push(k % 2 ? [x1, z] : [x0, z], k % 2 ? [x0, z] : [x1, z]); return pts; };
+  yield* hosePour(sail, snake(SL.x0 - LEFT + 500, SL.x1 - 500, SL.z0 - FRONT + 450, SL.z1 - 400, 1200),
+    [[1.2, [1800, 700, 1600], 1], [1.2, [-2400, 1200, -1900], 3], [1.6, [3500, 2500, -4000], 6], [9, [-9000, 7000, -9000], 10]]);
   d.stageBill('CONCRETE');
   // ---- a week: the sail sets on its props ----
   d.hud(null);
@@ -169,7 +175,8 @@ export function* sailFilm(d, app) {
     yield* rise(WV, roof, 1.6, ['metal_hit', 'plank'], { slab: true });
     app.journal.act('slab-cage', {}, app.clock, () => { roofCage = O.add(slabCage(O.get(roof))).id; });
     yield* rise(RV, roofCage, 1.0, ['rebar', 'wire']);
-    yield* pourOn(roof, 0.2, 1.2, (x, z) => z / S * 1e3 + x / S);
+    hud(['Gas block', 'Slab', 'Rebar', 'Concrete'], 3, ['*Hose', 'Vibrator'], 'hose');
+    yield* hosePour(roof, snake(IN - 150 + 400, SL.x1 - 400, SL.z0 + 400, SL.z1 - 400, 1200), [[1.0, [1800, 900, 1600], 3], [9, [-6500, 6500, -6000], 10]]);
   }
   // ---- 28 days: then the props out — the sail's from its cantilever's edge back to the walls; it hangs over the water ----
   d.hud(null);

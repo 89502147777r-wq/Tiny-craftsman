@@ -162,8 +162,9 @@ export function* foundFilm(d, app) {
     { const p0 = path(0); hose.down(p0, ev(p0)); let w = 0; d.speed = 4;
       yield d.until(() => { w += d.dt * d.speed; hose.move(p0, ev(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
     st.pump = o.pump ?? 2.5;
-    let pt = 0; d.speed = o.v ?? 6;
-    yield d.until(() => { pt += d.dt * d.speed; fresh(); o.each?.(pt); const q = path(o.wrap === false ? Math.min(1, pt / TP) : (pt / TP) % 1); hose.move(q, ev(q)); for (let n = 0; n < (o.poke || 0); n++) T.vibrate(q.x, q.z, MM(1700)); return full() || pt > max; });
+    let pt = 0, wetE = 1; d.speed = o.v ?? 6;
+    // (near its end, no stream for a moment — no room under the spout: the hose comes away at once, not held over full concrete (the owner))
+    yield d.until(() => { pt += d.dt * d.speed; fresh(); o.each?.(pt); const q = path(o.wrap === false ? Math.min(1, pt / TP) : (pt / TP) % 1); hose.move(q, ev(q)); for (let n = 0; n < (o.poke || 0); n++) T.vibrate(q.x, q.z, MM(1700)); wetE = wetE * 0.8 + (G.pump?.stream?.visible ? 0.2 : 0); return full() || pt > max || (pt > max * 0.8 && wetE < 0.5); });
     hose.up(); d.speed = 4;
     yield d.until(idle);
     d.speed = 1; G.set(null); st.pump = pump0;

@@ -116,6 +116,8 @@ export function* stairFilm(d, app) {
     if (x1 > x0 && x1 - x0 < (B0.x1 - B0.x0) + 600) SL = { ...B0, x0: Math.round(x0 - half + 5), x1: Math.round(x1 + half - 5), z0: Math.round(z0 - half + 5), z1: Math.round(z1 + half - 5) };
     (d.notes = d.notes || []).push([0, 'slab as cast ' + JSON.stringify([SL.x0, SL.x1, SL.z0, SL.z1])]);
     layout(); }   // (the strip's top and the slab's: stage 1's concrete)
+  // (the share of frames with the stream over the last ~half second — it flickers where the concrete runs out of room: on, off)
+  let wetE = 1; const dry = () => { wetE = wetE * 0.8 + (G.pump?.stream?.visible ? 0.2 : 0); return wetE < 0.5 ? 1 : 0; }, wet0 = () => { wetE = 1; };
   const say = (m) => { (d.notes = d.notes || []).push([+d.t.toFixed(1), m]); };
   const hud = (row1, i, row2, tool) => d.hud([row1.map((t, k) => (k === i ? '*' + t : t)), ...(row2 ? [row2] : [])], tool);
   loadPhysics().catch(() => {});
@@ -291,11 +293,13 @@ export function* stairFilm(d, app) {
       if (!loop && (un > 1 || un < 0)) { dv = -dv; setDir?.(dv); un = us + dv * 500 / len; }
       return pf(loop ? un : Math.max(0, Math.min(1, un)));
     };
+    // (the owner, 2026-11-15: when there is no room under the spout the hose comes away at once — never held over full concrete, no
+    // stream: dry() — seconds since the stream was last seen)
     let u = 0, dir = 1; const t0 = d.t, share = (ch) => { let a = 0; for (const v of ch.h) a += Math.min(1, v / ch.cap); return a / ch.h.length; };
     yield d.until(() => {
       const ch = hose.ch;
       const q = lead(ch, path, tot, false, (v) => { dir = v; }, dir) || path(u); hose.move(q, ev(q));
-      return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 6;
+      return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 6 || (d.t - t0 > 1 && dry() > 0.5);
     });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
@@ -317,11 +321,11 @@ export function* stairFilm(d, app) {
       act([[1.2, [-1500, 700, -1600], 1], [1.3, [2600, 1500, 2200], 3], [9, [-5200, 3800, -4800], 10]]);
       // (round it at a steady walk, ~1,2 m/s of the game's clock — the delivery set so that one round fills it: the stream always lands on
       // what is still to fill)
-      const t0 = d.t; let ur = 0;
+      const t0 = d.t; let ur = 0; wet0();
       yield d.until(() => {
         ur += d.dt * d.speed * MM(ur < 1 ? 750 : 1500) / MM(tl);
         const q = ring(ur); hose.move(q, evp(q));
-        return (ur >= 1 && hose.ch?.h && share(hose.ch) > 0.97 && hose.ch.b?.id === pavId) || d.t - t0 > 8.5;   // (a second, quicker round over what is short)
+        return (ur >= 1 && hose.ch?.h && share(hose.ch) > 0.97 && hose.ch.b?.id === pavId) || d.t - t0 > 8.5 || (d.t - t0 > 1 && dry() > 0.5);   // (a second, quicker round over what is short)
       });
       hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
       still();
@@ -375,7 +379,7 @@ export function* stairFilm(d, app) {
     st.pump = 4; tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
     act([[1.0, [-2200, 1400, -1600], 3], [9, [-3000, 2200, -2400], 6]]);
     // (till it is full, the camera on it — the owner: «the landing's beam did not fill in the frames»)
-    let pt = 0; const t0 = d.t; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); const ch = hose.ch; return !!ch?.full || (ch?.h && ch.h.every((v) => v >= ch.cap - 8)) || d.t - t0 > 3.5; });
+    let pt = 0; wet0(); const t0 = d.t, lDry = dry; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); const ch = hose.ch; return !!ch?.full || (ch?.h && ch.h.every((v) => v >= ch.cap - 8)) || d.t - t0 > 3.5 || (d.t - t0 > 0.6 && lDry() > 0.5); });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
