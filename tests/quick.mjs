@@ -1488,8 +1488,8 @@ console.log('—', sec());
     const cinder = tc.objects.all('unit').filter((u) => u.kind === 'cinder'), top = Math.max(...cinder.map((u) => u.p[1] + u.s[1] / 2)), base = Math.min(...cinder.map((u) => u.p[1] - u.s[1] / 2));
     return { stream, done: f.done, t: +f.t.toFixed(1), stair: f.stair, pools, stripped: strips, rise: Math.round((top - base) * 1000 * 10.4651), hook: f.marks?.hook != null && f.marks?.hookEnd > f.marks?.hook };
   });
-  check('film (stair): starts where stage 1 ended (its pool shell there), the DPC, the walls, the ring beam (stripped after a week), the steps to ~6,8, the landing; 30–60 s (the rolled DPC at its pace first — the owner), the hook marked',
-    o.done && o.pools >= 1 && o.stair?.dpc >= 6 && o.stair.beltId != null && o.stair.landId != null && o.stripped >= 1 && o.rise > 6300 && o.rise < 7200 && o.t > 30 && o.t < 60 && o.hook, JSON.stringify(o));
+  check('film (stair): starts where stage 1 ended (its pool shell there), the DPC, the walls, the ring beam (stripped after a week), the steps to ~6,8, the landing; 30–75 s (the owner: not cut — long films of the niche get millions), the hook marked',
+    o.done && o.pools >= 1 && o.stair?.dpc >= 6 && o.stair.beltId != null && o.stair.landId != null && o.stripped >= 1 && o.rise > 6300 && o.rise < 7200 && o.t > 30 && o.t < 75 && o.hook, JSON.stringify(o));
   check('film (stair): while the hose works the stream is seen (≥ 90 % of the time — the hose comes away when there is no room under it: the owner)', o.stream >= 0.9, JSON.stringify({ stream: o.stream }));
   check('film (stair): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
@@ -1518,8 +1518,8 @@ console.log('—', sec());
   });
   check('film (sail): the slab 300 with two cantilevers (3 m, 2,4 m), the olive\'s opening; its props over the pool on the shell\'s floor; stripped from the cantilever\'s edge back to the walls',
     o.done && o.H === 300 && o.cants?.length === 2 && o.holes === 1 && o.pool > 3 && o.sunk === 0 && o.stripped && o.s?.order?.[0] > o.s.order[1], JSON.stringify(o));
-  check('film (sail): the box on it, its roof green, white fascias, the glass, the finish on the pavilion, the box and the spine; 40–62 s, the hook marked',
-    o.s?.box > 300 && o.s.roofGreen > 100 && o.s.fasc >= 4 && o.windows >= 5 && o.s.faces?.[0] >= 4 && o.s.faces[1] >= 4 && o.s.faces[2] > 10 && o.facades > 20 && o.t > 40 && o.t < 62 && o.hook, JSON.stringify(o));
+  check('film (sail): the box on it, its roof green, white fascias, the glass, the finish on the pavilion, the box and the spine; 40–80 s, the hook marked',
+    o.s?.box > 300 && o.s.roofGreen > 100 && o.s.fasc >= 4 && o.windows >= 5 && o.s.faces?.[0] >= 4 && o.s.faces[1] >= 4 && o.s.faces[2] > 10 && o.facades > 20 && o.t > 40 && o.t < 80 && o.hook, JSON.stringify(o));
   check('film (sail): the slabs poured by the hose to the end, the stream seen while it works (≥ 90 %)', o.stream >= 0.9, JSON.stringify({ stream: o.stream }));
   check('film (sail): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
