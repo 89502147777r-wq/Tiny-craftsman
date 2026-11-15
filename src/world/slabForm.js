@@ -14,8 +14,14 @@ export class SlabFormView {
   constructor(group, tex) {
     this.group = group;
     this.max = { beams: 600, props: 400 };
-    const ply = tex ? variant(tex.ply.diff, 0.2, 0.5) : null;
-    this.deckMat = new THREE.MeshStandardMaterial({ map: ply, color: 0xb8714a, roughness: 0.55 });   // (the brown film of a shuttering plywood)
+    // (the brown film of a shuttering plywood — the owner: «as on a real site»: sheets 1220 × 2440 with their joints, each its own —
+    // worn lighter where boots and bars went, the grey of old pours dried on it, nail holes, darker edges; the release oil's sheen in
+    // patches. Four sheets in an atlas, each sheet of the deck one of them, turned or not)
+    const A = tex ? plyAtlas(tex.ply.diff.image) : null;
+    this.deckMat = new THREE.MeshStandardMaterial({ map: A?.map || null, roughnessMap: A?.rough || null, color: A ? 0xffffff : 0xb8714a, roughness: A ? 1 : 0.55 });
+    this.atlas = !!A;
+    // (the columns' forms keep the plain film photo, by the metre — their uvs are their own)
+    this.plyMat = new THREE.MeshStandardMaterial({ map: tex ? variant(tex.ply.diff, 0.2, 0.5) : null, color: 0xb8714a, roughness: 0.55 });
     this.decks = new THREE.Group(); group.add(this.decks);
     const box = new THREE.BoxGeometry(1, 1, 1), cyl = new THREE.CylinderGeometry(1, 1, 1, 12);
     this.beams = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xd9a632, roughness: 0.72 }), this.max.beams);
@@ -97,19 +103,28 @@ export class SlabFormView {
       };
       // the deck: plywood 18 mm, its top under the concrete
       const pos = [], uv = [], idx = [], sheet = MM(1220);
-      const quad = (a, bb, c2, d) => { const o = pos.length / 3; for (const v of [a, bb, c2, d]) { pos.push(...v); uv.push(v[0] / sheet, v[2] / sheet); } idx.push(o, o + 1, o + 2, o, o + 2, o + 3); };
-      const slabBox = (cs, yT, yB) => {
+      // (uvs: in the atlas — the sheet's own cell, the part of it a cut sheet is; without the atlas, the photo by the metre)
+      const quad = (a, bb, c2, d, uvs) => { const o = pos.length / 3; [a, bb, c2, d].forEach((v, k) => { pos.push(...v); if (uvs) uv.push(...uvs[k]); else uv.push(v[0] / sheet, v[2] / sheet); }); idx.push(o, o + 1, o + 2, o, o + 2, o + 3); };
+      const slabBox = (cs, yT, yB, top, edge) => {
         const v = (k, y) => [cs[k][0], y, cs[k][1]];
-        quad(v(0, yT), v(3, yT), v(2, yT), v(1, yT));   // top
-        quad(v(0, yB), v(1, yB), v(2, yB), v(3, yB));   // underside
-        for (let k = 0; k < 4; k++) { const k2 = (k + 1) % 4; quad(v(k, yB), v(k2, yB), v(k2, yT), v(k, yT)); }
+        quad(v(0, yT), v(3, yT), v(2, yT), v(1, yT), top && [top[0], top[3], top[2], top[1]]);   // top
+        quad(v(0, yB), v(1, yB), v(2, yB), v(3, yB), top && [edge, edge, edge, edge]);   // underside
+        for (let k = 0; k < 4; k++) { const k2 = (k + 1) % 4; quad(v(k, yB), v(k2, yB), v(k2, yT), v(k, yT), top && [edge, edge, edge, edge]); }
       };
       for (const it of items) {
         if (it.k !== 'deck') continue;
-        const [s0, t0, s1, t1] = it.r, cs = [[s0, t0], [s1, t0], [s1, t1], [s0, t1]].map(([s2, t2]) => toWorld(b, s2, t2)), ps = pose(it);
-        if (!ps) { slabBox(cs, b.top, F.yDeck); continue; }
+        // (each sheet 1 mm in from its neighbours: the joint between them, dark)
+        const g = MM(1), [s0, t0, s1, t1] = it.r, cs = [[s0 + g, t0 + g], [s1 - g, t0 + g], [s1 - g, t1 - g], [s0 + g, t1 - g]].map(([s2, t2]) => toWorld(b, s2, t2)), ps = pose(it);
+        let top = null, edge = null;
+        if (this.atlas) {
+          const h = Math.abs(Math.sin((Math.round(s0 / MM(10)) * 12.9898 + Math.round(t0 / MM(10)) * 78.233 + (b.id || 0) * 3.7)) * 43758.5453) % 1, cell = Math.floor(h * 4), flip = h * 8 % 2 > 1;
+          const cu = (cell % 2) * 0.5, cv = Math.floor(cell / 2) * 0.5, fu = (s1 - s0) / MM(1220), fv = (t1 - t0) / MM(2440);
+          const U = (a) => cu + (flip ? 1 - a : a) * 0.5, Vv = (a) => cv + (flip ? 1 - a : a) * 0.5;
+          top = [[U(0), Vv(0)], [U(fu), Vv(0)], [U(fu), Vv(fv)], [U(0), Vv(fv)]]; edge = [cu + 0.002, cv + 0.002];
+        }
+        if (!ps) { slabBox(cs, b.top, F.yDeck, top, edge); continue; }
         const dx = ps.p[0] - it.at[0], dz = ps.p[2] - it.at[2], dy = ps.p[1] - it.at[1];
-        slabBox(cs.map(([x, z]) => [x + dx, z + dz]), b.top + dy, F.yDeck + dy);
+        slabBox(cs.map(([x, z]) => [x + dx, z + dz]), b.top + dy, F.yDeck + dy, top, edge);
       }
       if (idx.length) {
         const g = new THREE.BufferGeometry();
@@ -176,6 +191,50 @@ export class SlabFormView {
     const row = k % 10, lay = (k / 10) | 0; return at(MM(2400), (row - 4.5) * MM(70), MM(16) + lay * MM(30));
   }
 }
+// Four sheets of a shuttering plywood that has done its turns (an atlas 2 × 2, a sheet 512 × 1024 a cell, its long side along v):
+// the photo of the film under; the film's own tone a sheet; lighter scuffs, the grey of old pours (splashes, dried runs of laitance
+// along the edges), nail holes, the edges darker; the roughness — the release oil's sheen in patches, rougher where worn
+let _atlas = null;
+function plyAtlas(img) {
+  if (_atlas) return _atlas;
+  if (!img || !img.width) return null;
+  const W = 1024, H = 2048, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d', { willReadFrequently: true }), rc = document.createElement('canvas'); rc.width = W / 2; rc.height = H / 2;
+  const r = rc.getContext('2d');
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  r.fillStyle = 'rgb(140,140,140)'; r.fillRect(0, 0, W / 2, H / 2);
+  for (let c = 0; c < 4; c++) {
+    const x0 = (c % 2) * 512, y0 = Math.floor(c / 2) * 1024, turns = 0.3 + 0.7 * rnd();
+    g.save(); g.beginPath(); g.rect(x0, y0, 512, 1024); g.clip();
+    // the photo, a different part of it each sheet, tinted to the film's red-brown
+    const sx = rnd() * Math.max(1, img.width - img.width * 0.5), sy = rnd() * Math.max(1, img.height - img.height * 0.5);
+    g.drawImage(img, sx, sy, img.width * 0.5, img.height * 0.5, x0, y0, 512, 1024);
+    g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${200 + 30 * rnd() | 0},${118 + 22 * rnd() | 0},${82 + 18 * rnd() | 0})`; g.fillRect(x0, y0, 512, 1024);
+    g.globalCompositeOperation = 'source-over';
+    // worn lighter: the boots, the bars dragged, the scraper — streaks and patches, more on an older sheet
+    for (let i = 0; i < 60 * turns; i++) { g.strokeStyle = `rgba(214,170,130,${0.05 + 0.12 * rnd()})`; g.lineWidth = 1 + 6 * rnd(); const x = x0 + rnd() * 512, y = y0 + rnd() * 1024, a = rnd() * Math.PI; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * (20 + 140 * rnd()), y + Math.sin(a) * (20 + 140 * rnd())); g.stroke(); }
+    for (let i = 0; i < 10 * turns; i++) { const x = x0 + rnd() * 512, y = y0 + rnd() * 1024, R = 20 + 70 * rnd(); const gr = g.createRadialGradient(x, y, 0, x, y, R); gr.addColorStop(0, `rgba(205,160,120,${0.18 * rnd()})`); gr.addColorStop(1, 'rgba(205,160,120,0)'); g.fillStyle = gr; g.fillRect(x - R, y - R, 2 * R, 2 * R); }
+    // the grey of old pours: splashes and a dried run of laitance along an edge
+    for (let i = 0; i < 26 * turns; i++) { const x = x0 + rnd() * 512, y = y0 + rnd() * 1024, R = 2 + 14 * rnd() ** 2; g.fillStyle = `rgba(${150 + 30 * rnd() | 0},${148 + 25 * rnd() | 0},${140 + 20 * rnd() | 0},${0.35 + 0.4 * rnd()})`; g.beginPath(); g.ellipse(x, y, R, R * (0.5 + 0.5 * rnd()), rnd() * 3, 0, Math.PI * 2); g.fill(); }
+    for (const side of [0, 1]) if (rnd() < 0.8 * turns) { const xx = side ? x0 + 512 - 6 - 22 * rnd() : x0 + 6 + 22 * rnd(); g.fillStyle = `rgba(165,162,152,${0.25 + 0.3 * rnd()})`; for (let y = y0; y < y0 + 1024; y += 6) { const w = 4 + 18 * Math.abs(Math.sin(y * 0.013 + c)) * rnd(); g.fillRect(side ? xx - w : xx, y, w, 7); } }
+    // nail holes from the edge boards and the old repairs; the sheet's edges darker (sealed, dirty)
+    for (let i = 0; i < 30 * turns; i++) { const x = x0 + rnd() * 512, y = y0 + rnd() * 1024; g.fillStyle = 'rgba(40,24,16,0.7)'; g.beginPath(); g.arc(x, y, 1.6, 0, Math.PI * 2); g.fill(); }
+    const eg = (gx0, gy0, gx1, gy1) => { const gr = g.createLinearGradient(gx0, gy0, gx1, gy1); gr.addColorStop(0, 'rgba(45,25,15,0.55)'); gr.addColorStop(1, 'rgba(45,25,15,0)'); return gr; };
+    g.fillStyle = eg(x0, 0, x0 + 14, 0); g.fillRect(x0, y0, 14, 1024); g.fillStyle = eg(x0 + 512, 0, x0 + 498, 0); g.fillRect(x0 + 498, y0, 14, 1024);
+    g.fillStyle = eg(0, y0, 0, y0 + 14); g.fillRect(x0, y0, 512, 14); g.fillStyle = eg(0, y0 + 1024, 0, y0 + 1010); g.fillRect(x0, y0 + 1010, 512, 14);
+    g.restore();
+    // roughness: the oil's sheen in soft patches (smoother), the worn and the grey rougher
+    const rx = x0 / 2, ry = y0 / 2;
+    for (let i = 0; i < 9; i++) { const x = rx + rnd() * 256, y = ry + rnd() * 512, R = 30 + 80 * rnd(); const gr = r.createRadialGradient(x, y, 0, x, y, R); gr.addColorStop(0, `rgba(70,70,70,${0.5 + 0.4 * rnd()})`); gr.addColorStop(1, 'rgba(70,70,70,0)'); r.fillStyle = gr; r.fillRect(x - R, y - R, 2 * R, 2 * R); }
+    for (let i = 0; i < 40 * turns; i++) { r.fillStyle = 'rgba(215,215,215,0.5)'; r.fillRect(rx + rnd() * 256, ry + rnd() * 512, 2 + 10 * rnd(), 2 + 10 * rnd()); }
+  }
+  const map = new THREE.CanvasTexture(cv), rough = new THREE.CanvasTexture(rc);
+  map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
+  for (const t of [map, rough]) t.needsUpdate = true;
+  _atlas = { map, rough };
+  return _atlas;
+}
+
 // the crew's pace (game seconds): a piece after another, each let down and carried over
 export const STRIP = { slot: 0.2, carry: 1.4 };
 
