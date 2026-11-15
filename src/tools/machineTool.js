@@ -27,6 +27,15 @@ const R = (m) => m / MODEL_SCALE;
 const LANGX = () => LANG === 'en';
 const SPEED = R(2.2), TURN = 1.4;                 // m/s, rad/s (a skid steer turns on the spot)
 const BUCKET = 0.45;                               // m³ the bucket holds
+// a falling bit of a load, by material: its radius (as the particles take it, model units) — dry sand a fine curtain of
+// 4–10 mm grains, crushed stone its own size (5–20, 20–40), clods of 30–150 mm only of soil and black topsoil; and how many
+// bits for the same stream (fine sand: many more)
+export function crumbR(m, r = Math.random) {
+  const u = r(), d = m === 1 ? 0.004 + r() * 0.006 : m === 2 ? 0.005 + r() * 0.015 : m === 3 ? 0.02 + r() * 0.02
+    : u < 0.65 ? 0.008 + r() * 0.022 : u < 0.93 ? 0.03 + r() * 0.05 : 0.08 + r() * 0.07;
+  return d / 2 / MODEL_SCALE;
+}
+export const CRUMB_N = [1, 6, 2, 1, 1];
 const BUCKET_COL = [0x6f5137, 0xc9a46a, 0xa3a29e, 0x86847f, 0x33271f].map((c) => new THREE.Color(c));   // soil, sand, gravels
 
 export class MachineTool {
@@ -563,7 +572,7 @@ export class MachineTool {
         T.pourLine(new THREE.Vector3(land.x, Math.max(land.y, e.y), land.z), new THREE.Vector3(Math.sin(L.yaw), 0, Math.cos(L.yaw)), hw, dv / TRUCK_LOAD);   // (from the lip's height: it heaps when it has fallen)
         const ly = land.clone(); ly.y = Math.max(T.surfaceAt(land), e.y - R(2));
         (this.streams ||= new Streams(app.scene)).set(1, e, ly, hw * 1.7, D.col, 1, new THREE.Vector3(-fz, 0, fx));
-        const mw = this._mixW(); for (let j = 0; j < 6; j++) { const w = (r() * 2 - 1) * hw * 0.9; let m = 0, u = r(); for (let q = 0; q < 5; q++) { u -= mw[q]; if (u <= 0) { m = q; break; } } app.particles.emit(new THREE.Vector3(e.x + fz * w, e.y, e.z - fx * w), new THREE.Vector3(fx * R(0.4) * r(), -R(0.3) * r(), fz * R(0.4) * r()), 0, R(0.03 + r() * 0.05), 0, 0, m); }
+        const mw = this._mixW(), nb = Math.round(6 * (1 + 5 * mw[1])); for (let j = 0; j < nb; j++) { const w = (r() * 2 - 1) * hw * 0.9; let m = 0, u = r(); for (let q = 0; q < 5; q++) { u -= mw[q]; if (u <= 0) { m = q; break; } } app.particles.emit(new THREE.Vector3(e.x + fz * w, e.y, e.z - fx * w), new THREE.Vector3(fx * R(0.4) * r(), -R(0.3) * r(), fz * R(0.4) * r()), 0, crumbR(m), 0, 0, m); }
       }
       if (this.wait <= 0) {
         // the bucketful is in the body: one action — the heap lower, the truck fuller
@@ -1183,7 +1192,9 @@ export class MachineTool {
           P.emit(lp, vel, share, sz[q] / 1.0, m === 1 ? 0 : 0.06, 0, m, true); }
       }
       // (into the truck: crumbs falling into its body, only for the look)
-      if (into) for (let j = 0; j < 10; j++) { const lp = E.lipWorld(new THREE.Vector3(), Math.random() * 2 - 1); app.particles?.emit(lp, new THREE.Vector3((Math.random() - 0.5) * R(0.15), -R(0.3 + Math.random() * 0.4), (Math.random() - 0.5) * R(0.15)), 0, R(0.02 + Math.random() * 0.04), 0, 0, 0, true); }
+      if (into) { const tw = take.reduce((a, b) => a + b, 0) || 1, nb = Math.round(10 * (1 + 5 * take[1] / tw));
+        for (let j = 0; j < nb; j++) { const lp = E.lipWorld(new THREE.Vector3(), Math.random() * 2 - 1); let m = 0, u = Math.random() * tw; for (; m < 4 && u > take[m]; m++) u -= take[m];
+          app.particles?.emit(lp, new THREE.Vector3((Math.random() - 0.5) * R(0.15), -R(0.3 + Math.random() * 0.4), (Math.random() - 0.5) * R(0.15)), 0, crumbR(m), 0, 0, m, true); } }
       if (g.load < cap * 0.01) g.carry.fill(0);
     }
     E.load = Math.min(1, g.load / cap);
@@ -1267,8 +1278,8 @@ export class MachineTool {
         const pos = new THREE.Vector3(e.x - f[1] * w - f[0] * back, e.y + R(0.25), e.z + f[0] * w - f[1] * back);
         const over = T?.root.visible && T.loaded ? T.root.worldToLocal(pos.clone()) : null, bb = T?.bodyBox;
         const inTruck = over && over.x > bb.min.x && over.x < bb.max.x && over.z > bb.min.z && over.z < bb.max.z;
-        if (inTruck) { T.addMix(m, vol / N / T.cap); T.pourAt(pos, vol / N / T.cap); app.particles.emit(pos, new THREE.Vector3(0, -R(0.2), 0), 0, R(0.03 + r() * 0.04), 0, 0, m); }
-        else app.particles.emit(pos, new THREE.Vector3((r() - 0.5) * R(0.2), -R(0.1), (r() - 0.5) * R(0.2)), vol / N, R(0.03 + r() * 0.04), m === 1 ? 0 : 0.05, 0, m);
+        if (inTruck) { T.addMix(m, vol / N / T.cap); T.pourAt(pos, vol / N / T.cap); app.particles.emit(pos, new THREE.Vector3(0, -R(0.2), 0), 0, crumbR(m), 0, 0, m); }
+        else app.particles.emit(pos, new THREE.Vector3((r() - 0.5) * R(0.2), -R(0.1), (r() - 0.5) * R(0.2)), vol / N, crumbR(m), m === 1 ? 0 : 0.05, 0, m);
       }
     }
   }
@@ -1448,10 +1459,10 @@ export class MachineTool {
       const w = (r() * 2 - 1) * R(0.45), u = (r() - 0.3) * R(0.3), dx = gx - fz * w - fx * u, dz = gz + fx * w - fz * u;
       if (t.inside(dx, dz)) t.deposit(dx, dz, a, R(0.3), 0, m);
       // (the stream: crumbs off the lip, across the tailgate's width, falling)
-      const n = Math.min(10, 2 + Math.round(a / (R(0.01) ** 3)));
+      const n = Math.min(10 * CRUMB_N[m], (2 + Math.round(a / (R(0.01) ** 3))) * CRUMB_N[m]);
       for (let j = 0; j < n; j++) {
         const w = (r() * 2 - 1) * T.hz * 0.45, pos = new THREE.Vector3(lip.x - fz * w, lip.y, lip.z + fx * w);
-        app.particles.emit(pos, new THREE.Vector3(-fx * R(0.5) * (0.4 + r()), -R(0.4) * r(), -fz * R(0.5) * (0.4 + r())), 0, R(0.03 + r() * 0.05), m === 1 ? 0 : 0.05, 0, m);
+        app.particles.emit(pos, new THREE.Vector3(-fx * R(0.5) * (0.4 + r()), -R(0.4) * r(), -fz * R(0.5) * (0.4 + r())), 0, crumbR(m), m === 1 ? 0 : 0.05, 0, m);
       }
     }
     this._slumpAt = [gx, gz]; this._roundHeap = true;
@@ -1478,10 +1489,11 @@ export class MachineTool {
       // (into the body as much as it takes; what it does not, runs over its side onto the ground)
       // (into the body all of it, a heap where it lands: what it does not hold at its angle runs over its sides)
       if (truck) { T.addMix(m, vol / T.cap); T.pourAt(e.clone().add(new THREE.Vector3(f[0] * R(0.3), 0, f[1] * R(0.3))), vol / T.cap); this._intoTruck = true; }
-      for (let j = 0; j < N; j++) {
+      const Nm = N * CRUMB_N[m];
+      for (let j = 0; j < Nm; j++) {
         const w = (r() * 2 - 1) * hw * 0.9, pos = new THREE.Vector3(e.x - f[1] * w + f[0] * R(0.05), e.y + R(0.05), e.z + f[0] * w + f[1] * R(0.05));
         const vel = new THREE.Vector3(f[0] * R(0.4) * (0.5 + r()), -R(0.3) * r(), f[1] * R(0.4) * (0.5 + r()));
-        app.particles.emit(pos, vel, truck ? 0 : vol / N, R(0.03 + r() * 0.05), m === 1 ? 0 : 0.05, 0, m);   // (a lump here and there; it rolls down)
+        app.particles.emit(pos, vel, truck ? 0 : vol / Nm, crumbR(m), m === 1 ? 0 : 0.05, 0, m);   // (a lump here and there; it rolls down)
       }
     }
     if (g.load < 1e-7) g.carry.fill(0);
@@ -1512,16 +1524,19 @@ export class MachineTool {
     const app = this.app, P = app.particles, w = T.mixW(), r = Math.random, sp = T.takeSpills();
     let tot = 0; for (const s of sp) tot += s.v;
     if (!(tot > 0)) return;
-    // (a few crumbs a frame however much: each spill a crumb or two, a big one more)
-    const per = Math.max(tot / 40, R(0.025) ** 3);
+    // (a few crumbs a frame however much: each spill a crumb or two, a big one more — fine sand as a curtain of many grains;
+    // no more than ~160 bits a frame)
+    const per = Math.max(tot / 40, R(0.025) ** 3), many = 1 + 5 * w[1];
+    let want = 0; for (const s of sp) want += Math.max(1, Math.min(4, Math.round(s.v / per))) * many;
+    const k = Math.min(1, 160 / Math.max(1, want));
     for (const s of sp) {
-      const n = Math.max(1, Math.min(4, Math.round(s.v / per)));
+      const n = Math.max(1, Math.round(Math.max(1, Math.min(4, Math.round(s.v / per))) * many * k));
       for (let j = 0; j < n; j++) {
         let m = 0, u = r(); for (let q = 0; q < 5; q++) { u -= w[q]; if (u <= 0) { m = q; break; } }
         const vel = s.n.clone().multiplyScalar(R(0.05 + r() * 0.2)).add(new THREE.Vector3((r() - 0.5) * R(0.15), -R(0.05), (r() - 0.5) * R(0.15)));
         // (along the side ±0,15 m from the edge's cell it came over: a ridge along the side, not a cone in one place)
         const a = (r() * 2 - 1) * R(0.15), p = s.p.clone().add(new THREE.Vector3(-s.n.z * a, 0, s.n.x * a));
-        P.emit(p, vel, s.v / n, R(0.025 + r() * 0.04), m === 1 ? 0 : 0.08, 0, m, true);
+        P.emit(p, vel, s.v / n, crumbR(m), m === 1 ? 0 : 0.08, 0, m, true);
       }
     }
   }

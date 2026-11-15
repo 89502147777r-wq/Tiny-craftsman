@@ -129,8 +129,8 @@ function cupTex() {
 const mats = {};
 const mat = (k, f) => mats[k] || (mats[k] = f());
 const M = {
-  top: () => mat('top', () => { const T = topTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.nor, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.42 }); }),
-  under: () => mat('under', () => { const T = underTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.nor, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.45 }); }),
+  top: () => mat('top', () => { const T = topTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.nor, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.74 }); }),   // (0.42 glared white at a grazing angle — the owner)
+  under: () => mat('under', () => { const T = underTex(); return new THREE.MeshStandardMaterial({ map: T.map, normalMap: T.nor, normalScale: new THREE.Vector2(0.55, 0.55), roughness: 0.74 }); }),
   edge: () => mat('edge', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.55 })),
   // the molten bitumen pressed out: black, wet glossy while hot; satin cooled
   hot: () => mat('hot', () => new THREE.MeshStandardMaterial({ color: 0x040405, roughness: 0.12 })),
@@ -252,7 +252,7 @@ function reducer() {
 
 // ---- the view -----------------------------------------------------------------------------------------------------------
 // a strip's place: its start, its way along, across; L mm long, w wide, off across the record's axis
-function stripFrame(r, st) {
+export function stripFrame(r, st) {
   const dx = r.b[0] - r.a[0], dz = r.b[1] - r.a[1], L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L;
   return { x: r.a[0] - uz * MM(st.off), z: r.a[1] + ux * MM(st.off), ux, uz, nx: -uz, nz: ux, L: L / S, w: st.w };
 }
@@ -296,7 +296,10 @@ export class DpcView {
     const F = stripFrame(r, st), g = new THREE.Group(), w = st.w;
     const na = Math.max(2, Math.ceil(s / 50) + 1), nc = Math.max(2, Math.ceil(w / 50) + 1), pos = [], uv = [], idx = [], P = (al, ac) => [F.x + MM(al) * F.ux + MM(ac) * F.nx, F.z + MM(al) * F.uz + MM(ac) * F.nz];
     const top = [];
-    for (let i = 0; i < na; i++) { const al = s * i / (na - 1); top.push([]); for (let j = 0; j < nc; j++) { const ac = -w / 2 + w * j / (nc - 1), [x, z] = P(al, ac), y = this._under(r.id, k, x, z) + MM(DPC.t); top[i].push([x, y, z]); pos.push(x, y, z); uv.push(al / 2000, 1 - (ac + w / 2) / DPC.roll); } }
+    // (past the edge of what it lies on — the slab's edge, a course's face — the film sticks out stiff, a few mm of droop: never
+    // draped down the side to the ground — that read as a black band down the slab's face, the owner)
+    const on = (al, ac) => { const [x, z] = P(al, ac), [cx, cz] = P(al, 0); return Math.max(this._under(r.id, k, x, z), this._under(r.id, k, cx, cz) - MM(6)); };
+    for (let i = 0; i < na; i++) { const al = s * i / (na - 1); top.push([]); for (let j = 0; j < nc; j++) { const ac = -w / 2 + w * j / (nc - 1), [x, z] = P(al, ac), y = on(al, ac) + MM(DPC.t); top[i].push([x, y, z]); pos.push(x, y, z); uv.push(al / 2000, 1 - (ac + w / 2) / DPC.roll); } }
     for (let i = 0; i < na - 1; i++) for (let j = 0; j < nc - 1; j++) { const a = i * nc + j, b = a + nc; idx.push(a, a + 1, b, a + 1, b + 1, b); }
     const gt = new THREE.BufferGeometry(); gt.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gt.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); gt.setIndex(idx); gt.computeVertexNormals();
     // (the normals up: the winding is the grid's — the top must face the sky)
@@ -312,10 +315,10 @@ export class DpcView {
     const bead = (pts) => {
       const bp = [], bi = []; let ring0 = -1;
       const hash = (v) => { const q = Math.sin(v * 12.9898 + r.id * 78.233 + k * 3.1) * 43758.5453; return q - Math.floor(q); };
-      pts.forEach(([x, z, t], i) => {
+      pts.forEach(([x, z, t, al, ac], i) => {
         const gap = hash(Math.floor(t / 90)) < 0.12, rr = DPC.bead / 2 * (0.5 + 1.5 * hash(t * 0.37 + 1.7) ** 1.6);
         if (gap) { ring0 = -1; return; }
-        const y = this._under(r.id, k, x, z), base = bp.length / 3, i1 = Math.min(i + 1, pts.length - 1), i0 = Math.max(i - 1, 0), ex = pts[i1][0] - pts[i0][0], ez = pts[i1][1] - pts[i0][1], el = Math.hypot(ex, ez) || 1, nx = -ez / el, nz = ex / el;
+        const y = on(al, ac), base = bp.length / 3, i1 = Math.min(i + 1, pts.length - 1), i0 = Math.max(i - 1, 0), ex = pts[i1][0] - pts[i0][0], ez = pts[i1][1] - pts[i0][1], el = Math.hypot(ex, ez) || 1, nx = -ez / el, nz = ex / el;
         for (let q = 0; q <= 6; q++) { const a = Math.PI * q / 6; bp.push(x + nx * MM(rr) * Math.cos(a), y + MM(rr) * Math.sin(a) * 0.55, z + nz * MM(rr) * Math.cos(a)); }
         if (ring0 >= 0) for (let q = 0; q < 6; q++) bi.push(ring0 + q, base + q, ring0 + q + 1, ring0 + q + 1, base + q, base + q + 1);
         ring0 = base;
@@ -324,9 +327,9 @@ export class DpcView {
       const gb = new THREE.BufferGeometry(); gb.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); gb.setIndex(bi); gb.computeVertexNormals();
       const mb = new THREE.Mesh(gb, hot ? M.hot() : M.cool()); mb.material.side = THREE.DoubleSide; g.add(mb);
     };
-    for (const sd of [-1, 1]) { const pts = []; for (let al = 0; al <= s; al += 25) { const [x, z] = P(al, sd * (w / 2 + 2)); pts.push([x, z, al + (sd > 0 ? 50000 : 0)]); } bead(pts); }
-    { const pts = []; for (let ac = -w / 2; ac <= w / 2; ac += 25) { const [x, z] = P(-2, ac); pts.push([x, z, ac + 90000]); } bead(pts); }
-    if (s >= F.L - 1) { const pts = []; for (let ac = -w / 2; ac <= w / 2; ac += 25) { const [x, z] = P(s + 2, ac); pts.push([x, z, ac + 120000]); } bead(pts); }
+    for (const sd of [-1, 1]) { const pts = []; for (let al = 0; al <= s; al += 25) { const [x, z] = P(al, sd * (w / 2 + 2)); pts.push([x, z, al + (sd > 0 ? 50000 : 0), al, sd * (w / 2 + 2)]); } bead(pts); }
+    { const pts = []; for (let ac = -w / 2; ac <= w / 2; ac += 25) { const [x, z] = P(-2, ac); pts.push([x, z, ac + 90000, -2, ac]); } bead(pts); }
+    if (s >= F.L - 1) { const pts = []; for (let ac = -w / 2; ac <= w / 2; ac += 25) { const [x, z] = P(s + 2, ac); pts.push([x, z, ac + 120000, s + 2, ac]); } bead(pts); }
     return g;
   }
   _build(id) {
@@ -370,16 +373,70 @@ export class DpcView {
     x = Math.max(-T.halfX * 0.97, Math.min(T.halfX * 0.97, x)); z = Math.max(-T.halfZ * 0.97, Math.min(T.halfZ * 0.97, z));
     return [x, T.heightAt(x, z), z];
   }
-  _hose(Wk, from, to, ground) {
-    // (from the reducer down to the ground, along it in loose loops, up into the torch's grip with a sag)
+  // the top of whatever is at (x, z): the ground / concrete, and the things standing on it — masonry, the pallets, the site's things
+  // (a ray down at them; cached per 40 mm cell until the records change) — the hose lies on them, never through (the owner)
+  // the top of whatever is at (x, z): the ground / concrete, and the things standing on it — the masonry's units (boxes from their
+  // records) and the site's things (their models' boxes) — the hose lies on them, never through (the owner). The boxes in a grid
+  // of 0,5 m, rebuilt when the records change or a model comes in (rays at the models cost a second a hose — the film stalled)
+  _floor(x, z, exact = false) {
+    const app = this.app, ver = (app.objects.ver || 0) + ':' + (app.siteProps?.rev || 0);
+    if (this._fVer !== ver) {
+      this._fVer = ver; this._fCache = new Map(); const G = this._fGrid = new Map(), C = MM(500);
+      const put = (x0, x1, z0, z1, top) => { for (let i = Math.floor(x0 / C); i <= Math.floor(x1 / C); i++) for (let j = Math.floor(z0 / C); j <= Math.floor(z1 / C); j++) { const k = i + ',' + j; let l = G.get(k); if (!l) G.set(k, l = []); l.push([x0, x1, z0, z1, top]); } };
+      for (const u of app.objects.all('unit')) {
+        if (!u.p || !u.s) continue;
+        const q = u.q || [0, 0, 0, 1], yaw = 2 * Math.atan2(q[1], q[3]), c = Math.abs(Math.cos(yaw)), sn = Math.abs(Math.sin(yaw)), hx = (c * u.s[0] + sn * u.s[2]) / 2, hz = (sn * u.s[0] + c * u.s[2]) / 2;
+        put(u.p[0] - hx, u.p[0] + hx, u.p[2] - hz, u.p[2] + hz, u.p[1] + u.s[1] / 2);
+      }
+      const B = new THREE.Box3();
+      for (const m of app.siteProps?.meshes?.values?.() || []) { if (!m.visible) continue; B.setFromObject(m); if (!B.isEmpty()) put(B.min.x, B.max.x, B.min.z, B.max.z, B.max.y); }
+    }
+    const c = MM(40), key = Math.round(x / c) + ',' + Math.round(z / c); let y = this._fCache.get(key);
+    if (y !== undefined && !exact) return y;
+    y = app.terrain.heightAt(x, z);
+    const C = MM(500);
+    for (const [x0, x1, z0, z1, top] of this._fGrid.get(Math.floor(x / C) + ',' + Math.floor(z / C)) || []) if (x >= x0 && x <= x1 && z >= z0 && z <= z1 && top > y) y = top;
+    if (!exact) this._fCache.set(key, y); return y;
+  }
+  _hose(Wk, from, to) {
+    // (from the reducer down to the ground, along it in loose loops, up into the torch's grip with a sag — round what stands
+    // high in its way (a pallet, a stack: > 0,25 m), over what is low (the slab's edge, a course): lying on it, not through it)
     const key = [from, to].map((v) => v.toArray().map((q) => Math.round(q / MM(20))).join(',')).join('|'); if (key === Wk.hoseKey) return; Wk.hoseKey = key;
-    const dx = to.x - from.x, dz = to.z - from.z, L = Math.hypot(dx, dz) || 1, nx = -dz / L, nz = dx / L, n = Math.max(4, Math.ceil(L / MM(350)));
-    const pts = [from.clone(), new THREE.Vector3(from.x + dx / L * MM(150), ground(from.x + dx / L * MM(150), from.z + dz / L * MM(150)) + MM(9), from.z + dz / L * MM(150))];
-    const tEnd = Math.max(0.2, 1 - MM(900) / L); for (let i = 1; i < n; i++) { const t = i / n * tEnd, sw = Math.sin(t * Math.PI * 2.2) * MM(450) * Math.sin(t * Math.PI), x = from.x + dx * t + nx * sw, z = from.z + dz * t + nz * sw; pts.push(new THREE.Vector3(x, ground(x, z) + MM(9), z)); }
-    const near = new THREE.Vector3(to.x - dx / L * MM(650), 0, to.z - dz / L * MM(650)); near.y = ground(near.x, near.z) + MM(9);
-    const sag = new THREE.Vector3(to.x - dx / L * MM(230), 0, to.z - dz / L * MM(230)); sag.y = (ground(sag.x, sag.z) + to.y) * 0.5 - MM(80);
-    pts.push(near, sag, to.clone());
-    Wk.hose.geometry.dispose(); Wk.hose.geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 6, MM(9), 8, false);
+    const T = this.app.terrain, fl = (x, z) => this._floor(x, z);
+    const dx = to.x - from.x, dz = to.z - from.z, L = Math.hypot(dx, dz) || 1, ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
+    const tEnd = Math.max(0.2, 1 - MM(650) / L), n = Math.max(8, Math.ceil(L * tEnd / MM(100)));
+    // (tall: anything over 0,25 m within 150 mm of the hose — it keeps that clear of a pallet's side)
+    const tall = (x, z) => [[0, 0], [150, 0], [-150, 0], [0, 150], [0, -150]].some(([a, b]) => { const px = x + MM(a), pz = z + MM(b); return fl(px, pz) - T.heightAt(px, pz) > MM(250); });
+    // the loops' line, then pushed sideways off what is tall, the push smoothed
+    const base = [], off = [];
+    for (let i = 0; i <= n; i++) {
+      const t = MM(150) / L + (tEnd - MM(150) / L) * i / n, sw = Math.sin(t * Math.PI * 2.2) * MM(450) * Math.sin(t * Math.PI);
+      base.push([from.x + dx * t + nx * sw, from.z + dz * t + nz * sw]);
+      let o = 0; if (tall(base[i][0], base[i][1])) for (let q = 1; q <= 10; q++) { const d = MM(250 * q); if (!tall(base[i][0] + nx * d, base[i][1] + nz * d)) { o = d; break; } if (!tall(base[i][0] - nx * d, base[i][1] - nz * d)) { o = -d; break; } }
+      off.push(o);
+    }
+    for (let pass = 0; pass < 2; pass++) for (let i = 0; i <= n; i++) { let m = off[i]; for (let j = Math.max(0, i - 8); j <= Math.min(n, i + 8); j++) if (Math.abs(off[j]) > Math.abs(m)) m = off[j] * (1 - Math.abs(j - i) / 9); off[i] = m; }
+    const xz = base.map(([x, z], i) => [x + nx * off[i], z + nz * off[i]]);
+    // (its height: the highest top within ±60 mm along and across — up onto an edge before it, down after: no corner cut)
+    const hy = xz.map(([x, z]) => { let y = -Infinity; for (const [a, b] of [[0, 0], [60, 0], [-60, 0], [0, 25], [0, -25]]) y = Math.max(y, fl(x + MM(a) * ux + MM(b) * nx, z + MM(a) * uz + MM(b) * nz)); return y + MM(9); });
+    // (between two points nothing above the line: a point put on the top of what sticks up — the hose hangs over an edge, a
+    // 0,6 m strip footing's corner not cut through)
+    const sx = to.x - ux * MM(230), sz = to.z - uz * MM(230);   // (the sag before the grip: refined with the rest)
+    let line = [...xz.map(([x, z], i) => [x, hy[i], z]), [sx, Math.max(fl(sx, sz) + MM(12), (hy.at(-1) + to.y) * 0.5 - MM(60)), sz]];
+    for (let pass = 0; pass < 4; pass++) {
+      const out = [line[0]]; let added = 0;
+      for (let i = 1; i < line.length; i++) {
+        const A = line[i - 1], B = line[i], d = Math.hypot(B[0] - A[0], B[2] - A[2]), m = Math.max(2, Math.ceil(d / MM(10)));
+        let worst = 0, at = null;
+        for (let q = 1; q < m; q++) { const t = q / m, x = A[0] + (B[0] - A[0]) * t, z = A[2] + (B[2] - A[2]) * t, f = fl(x, z) + MM(9) - (A[1] + (B[1] - A[1]) * t); if (f > worst) worst = f, at = [x, fl(x, z) + MM(10), z]; }
+        if (at && worst > MM(3)) { out.push(at); added++; }
+        out.push(B);
+      }
+      line = out; if (!added) break;
+    }
+    const pts = [from.clone(), ...line.map(([x, y, z]) => new THREE.Vector3(x, y, z))];
+    pts.push(to.clone());
+    Wk.hose.geometry.dispose(); Wk.hose.geometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.1), pts.length * 3, MM(9), 8, false);
   }
   update(dt = 1 / 60) {
     if (this.dirty) {
@@ -439,7 +496,7 @@ export class DpcView {
     this.group.updateMatrixWorld(true);
     const hand = T0.userData.hand.clone(); T0.userData.body.localToWorld(hand); this.group.worldToLocal(hand);
     const out = Wk.red.userData.out.clone(); Wk.red.localToWorld(out); this.group.worldToLocal(out);
-    this._hose(Wk, out, hand, ground);
+    this._hose(Wk, out, hand);
     // the smoke where the bitumen burns
     this._smoke(dt, working ? (() => { const [x, z] = P(s + 20, 0); return new THREE.Vector3(x, this._under(R0.id, live.k, x, z) + MM(60), z); })() : null, st.w);
   }

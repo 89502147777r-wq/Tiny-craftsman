@@ -496,7 +496,7 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
           vec3 paste = vec3(0.062, 0.062, 0.06) * mix(0.92, 1.05, big) * mix(1.0, 0.82, smoothstep(0.2, 1.0, sm));
           vec3 rock = vec3(0.092, 0.09, 0.086) * mix(0.8, 1.25, shade);
           vec4 ph = tcPhoto(p);
-          vec3 fresh = mix(paste, rock, stone * 0.5) * mix(1.0, ph.x, 0.85);
+          vec3 fresh = mix(paste, rock, stone * 0.5) * mix(1.0, ph.x, 0.35);   // (fresh: a dark wet paste, its grain soft — the realist saw a «white glittering heap»: the photo's bright grains)
           vec3 setC = vec3(0.19, 0.187, 0.178) * mix(0.94, 1.03, mix(big, 0.6, sm * 0.6)) * mix(1.0, ph.x, 0.9) * mix(vec3(1.0), ph.yzw, 0.3);
           float pore = step(0.982, tcHash(floor(cq * 1100.0))) * (1.0 - 0.7 * sm);
           setC *= 1.0 - pore * 0.35;
@@ -541,7 +541,7 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
           normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz);
         }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(mix(0.8, 0.32, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));   // (as the foundation)`);
+        roughnessFactor = mix(mix(0.88, 0.5, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));   // (fresh and heaped: matt — no sky in it; worked: a satin sheen)`);
   };
   m.customProgramCacheKey = () => 'tc-cast-concrete' + (steel ? '-steel' : '');
   return m;

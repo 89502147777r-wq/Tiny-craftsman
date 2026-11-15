@@ -1164,10 +1164,27 @@ console.log('—', sec());
       for (let a = 0; a < N; a++) for (let b = 0; b < N; b++, k++) { const u = (a / (N - 1) - 0.5) * 2 * span, v = (b / (N - 1) - 0.5) * 2 * span;
         if (at(u, v) - base[k] > 0.01 * M && Math.abs(v) > 0.6 * M) { const q = v > 0 ? sd.R : sd.L; q[0] = Math.min(q[0], u); q[1] = Math.max(q[1], u); q[2] = Math.min(q[2], v); q[3] = Math.max(q[3], v); } }
       o.ridge = Object.values(sd).map((q) => (q[1] > q[0] ? +((q[1] - q[0]) / Math.max(1e-9, q[3] - q[2])).toFixed(2) : 0)); }
+    // (5) its face: lumps and runs over the shape the slope holds — the face round the smoothed heap 5–20 mm (where it lies)
+    { let s2 = 0, n = 0; for (let iz = 1; iz < NZ - 1; iz++) for (let ix = 1; ix < NX - 1; ix++) { const i = iz * NX + ix; if (T.hf[i] < 0.06 * M) continue;
+        let a = 0; for (let dz = -1; dz <= 1; dz++) for (let dx2 = -1; dx2 <= 1; dx2++) a += T.hf[i + dz * NX + dx2]; s2 += (T.surf(i) - a / 9) ** 2; n++; }
+      o.faceMm = +(Math.sqrt(s2 / Math.max(1, n)) / M * 1000).toFixed(1); }
+    // (6) the bits that fall over a side, by material: sand a fine curtain (≤ 12 mm, 5–10 × as many), crushed stone 20–40 its size
+    { const P = tc.particles, sizes = (mix) => { T.setMix(mix); T._mixShown = null; const n0 = P.items.length; const q = T.bedCentre(new V()); q.y += 0.2 * M;
+        T.spills.push({ p: q.clone().add(new V(Math.sin(T.yaw), 0, Math.cos(T.yaw)).multiplyScalar(1 * M)), n: new V(Math.sin(T.yaw), 0, Math.cos(T.yaw)), v: 0.02 * T.cap }); mt._overTop();
+        const it = P.items.slice(n0); return [it.length, it.reduce((a, b) => a + b.size * 2, 0) / Math.max(1, it.length) / M * 1000]; };
+      const [nS, dS] = sizes([0, 1, 0, 0, 0]), [nG, dG] = sizes([0, 0, 0, 1, 0]), [nSo] = sizes([1, 0, 0, 0, 0]); rest();
+      o.sandMm = +dS.toFixed(1); o.g20Mm = +dG.toFixed(1); o.sandMany = +(nS / Math.max(1, nSo)).toFixed(1); }
+    // (7) on its springs: full, the body sits down over the rear axle 60 mm (the wheels where they are), empty — as it was
+    { T.hf.fill(0); T.load = 0; for (let i = 0; i < 60; i++) T.update(1 / 30);
+      const at = () => [T.root.localToWorld(new V(T.axB, 1 * M, 0)).y, T.root.localToWorld(new V(T.axF, 1 * M, 0)).y, T.wheels.map((w) => w.g.getWorldPosition(new V()).y)];
+      const e0 = at(); T.load = 1; for (let i = 0; i < 60; i++) T.update(1 / 30); o.readBack = +T.load.toFixed(3); T.load = 1; T._sq = 1; T._pose(); const e1 = at(); T.load = 0; for (let i = 0; i < 60; i++) T.update(1 / 30); const e2 = at();
+      o.squatRear = +((e0[0] - e1[0]) / M * 1000).toFixed(1); o.squatFront = +((e0[1] - e1[1]) / M * 1000).toFixed(1); o.squatBack = +(Math.abs(e0[0] - e2[0]) / M * 1000).toFixed(1);
+      o.wheelsMoved = +(Math.max(...e1[2].map((y, k) => Math.abs(y - e0[2][k]))) / M * 1000).toFixed(1); }
     return o;
   });
   check('truck: heaped over its sides it keeps only what its angle holds — at the sides no higher than their tops, the rest on the ground by them (not under it), nothing lost', o.overCone <= 2 && o.sideTop <= 2 && o.peak > 200 && o.ground > 0.3 && o.kept > 0.98 && o.kept < 1.02 && Math.min(...o.byMm) > 20 && Math.abs(o.underMm) <= 5 && o.sand === 1, JSON.stringify(o));
   check('truck (the realist): the heap no steeper than its angle any way (+1,5°); loaded to «full» by buckets ≤ 10 % over the sides; what runs over lies along each side (length ≥ 2 × width) against the tyres, not under them — the truck stands as it stood (≤ 5 mm, ≤ 0,2°)', o.slopeSand <= 34.5 && o.slopeSoil <= 38.5 && o.spillFull <= 0.1 && o.spilt >= 0.45 && o.dyMm <= 5 && o.dTilt <= 0.2 && o.tyreMm <= 10 && Math.min(...o.ridge) >= 2, JSON.stringify(o));
+  check('truck (the realist, 2): the bits by material (sand ≤ 12 mm and 5–10 × as many, crushed stone 20–40 at 20–45 mm); full, it sits down 50–80 mm over the rear axle, the wheels where they are, empty as it was; a full one read back (a record) keeps its load; the face of the heap lumpy 5–20 mm round its shape', o.readBack >= 0.98 && o.sandMm <= 12 && o.g20Mm >= 20 && o.g20Mm <= 45 && o.sandMany >= 5 && o.sandMany <= 10.5 && o.squatRear >= 50 && o.squatRear <= 80 && o.squatFront < o.squatRear && o.squatBack <= 1 && o.wheelsMoved <= 1 && o.faceMm >= 5 && o.faceMm <= 20, JSON.stringify(o));
   check('truck: loaded by a shovel (the finger on its body) and by the excavator (black topsoil — in its record too)', o.shovel > 0.85 && Math.abs(o.shovelUnder) <= 5 && o.exc > 0.95 && o.exc < 1.05 && o.black > 0.99 && o.recBlack > 0.99, JSON.stringify(o));
   check('truck: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
@@ -1409,18 +1426,23 @@ console.log('—', sec());
   await page.waitForFunction(() => window.__tc?.dpcView, null, { timeout: 120000 });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, T = tc.terrain, MM = (v) => v / 1000 / 10.4651;
-    for (let iz = 0; iz < T.nz; iz++) for (let ix = 0; ix < T.nx; ix++) { const x = T.toWorldX(ix), z = T.toWorldZ(iz); if (Math.abs(z) < MM(900) && Math.abs(x) < MM(2600)) { const i = iz * T.nx + ix; T._concAdd(i, MM(150), 0.5); T.cTime[i] = tc.clock - 1e6; } }
+    for (let iz = 0; iz < T.nz; iz++) for (let ix = 0; ix < T.nx; ix++) { const x = T.toWorldX(ix), z = T.toWorldZ(iz); if (Math.abs(z) < MM(900) && Math.abs(x) < MM(2600)) { const i = iz * T.nx + ix; T._concAdd(i, MM(600), 0.5); T.cTime[i] = tc.clock - 1e6; /* (0,6 m — a strip footing's height: the hose over its edge, the owner) */ } }
     T._concTouch?.(0, 0, T.rx, T.rz); T._touch(0, 0, T.rx, T.rz);
     const W = tc.wallTool.dpc, V = tc.dpcView, y = T.heightAt(0, 0), D = await import('/src/world/dpc.js');
     tc.settings.dpcW = 1300;
+    // (a pallet of blocks between the bottle and the torch: the hose goes round it, and over the slab's edge — never through — the owner)
+    { const F = D.stripFrame({ a: [MM(-2000), 0], b: [MM(2000), 0], w: 1300 }, { off: 0, w: 1300 }), [bx, , bz] = V._bottleAt(F);
+      const pr = tc.objects.add({ type: 'siteprop', kind: 'pallet', x: +((bx + MM(-500)) / 2).toFixed(5), z: +(bz / 2).toFixed(5), yaw: 0 });
+      tc.siteProps.update?.(0); await tc.siteProps.meshes.get(pr.id)?.userData.ready; await new Promise((res) => setTimeout(res, 300)); tc.siteProps.update?.(0); }
     W.down({ x: MM(-2000), y, z: 0 }); W.move({ x: MM(2000), y, z: MM(40) }); W.up();
     const r = tc.objects.all('dpc')[0];
-    let mid = null, mid2 = null, steps = 0, r0 = null, r1 = null;
+    let mid = null, mid2 = null, steps = 0, r0 = null, r1 = null, hose = null, hose0 = null;
     for (; W.jobs.length && steps < 20000; steps++) {
       W.update(1 / 30); V.update(1 / 30);
       const J = W.jobs[0], Wk = V.work;
       if (J && J.k === 0 && J.s > 100 && r0 == null) r0 = Wk.body.scale.x / MM(1);
       if (J && J.k === 0 && J.s > 3600 && r1 == null) r1 = Wk.body.scale.x / MM(1);
+      if (!mid && J?.k === 0 && J.s > 1500) { const P = Wk.hose.geometry.attributes.position; let through = 0, n = 0; for (let i = 0; i < P.count; i++) { n++; const dd = V._floor(P.getX(i), P.getZ(i), true) - P.getY(i); if (dd > MM(30)) { through++; (hose0 ||= []).push([i, +(dd / MM(1)).toFixed(0)]); } } hose = { through, n, at: hose0?.slice(0, 6) }; }
       if (!mid && J?.k === 0 && J.s > 1500) mid = { roll: Wk.rollG.visible, flame: Wk.T.userData.flame.visible, tongues: Wk.tongues.filter((m) => m.visible).length, smoke: V.smoke.length, melt: Wk.melt.visible };
       if (!mid2 && J?.k === 1 && J.s > 1500) {
         // (the second strip: on the first in the lap — 3 mm up; on the concrete beyond — not)
@@ -1437,7 +1459,7 @@ console.log('—', sec());
     // (on any base — the owner: on the ground too, not only on concrete)
     const yg = T.heightAt(MM(3500), MM(3000)); tc.settings.dpcW = 400; W.down({ x: MM(3500), y: yg, z: MM(3000) }); W.move({ x: MM(3500), y: yg, z: MM(1500) }); W.up();
     const onGround = tc.objects.all('dpc').length; for (let i = 0; i < 2000 && W.jobs.length; i++) { W.update(1 / 30); V.update(1 / 30); }
-    return { onGround, strips: D.dpcStrips(r).length, snapped: Math.abs(r.b[1] - r.a[1]) < 1e-9, mid, mid2, r0: Math.round(r0), r1: Math.round(r1), secs: +secs.toFixed(1), done, meshes, bottleOff, bottleDist, undone, left };
+    return { hose, onGround, strips: D.dpcStrips(r).length, snapped: Math.abs(r.b[1] - r.a[1]) < 1e-9, mid, mid2, r0: Math.round(r0), r1: Math.round(r1), secs: +secs.toFixed(1), done, meshes, bottleOff, bottleDist, undone, left };
   });
   check('damp-proof course: snapped along the axis, 1300 = two strips; while laid — the roll, the jet, the burning at the nip, the melt, the smoke',
     o.snapped && o.strips === 2 && o.mid?.roll && o.mid.flame && o.mid.tongues === 3 && o.mid.melt && o.mid.smoke > 0, JSON.stringify(o));
@@ -1446,6 +1468,7 @@ console.log('—', sec());
   check('damp-proof course: at the pace of its width (2 × 4 m × 700 at 0,06 m²/s ≈ 93 s); done — no roll, the torch out on its stand on the ground; a top, sides and 4 beads a strip; the bottle on the ground ≥ 3 m off; undo takes it off',
     o.secs > 80 && o.secs < 105 && !o.done.roll && !o.done.flame && o.done.torchY < 120 && o.meshes === 12 && Math.abs(o.bottleOff) < 10 && o.bottleDist >= 3 && o.undone === 0 && o.left === 0, JSON.stringify(o));
   check('damp-proof course: on any base — drawn on the bare ground it is laid too (the owner)', o.onGround === 1, JSON.stringify(o));
+  check('damp-proof course: the torch\'s hose lies on what is under it — over the slab\'s edge, round a pallet, never through (the owner)', o.hose?.n > 50 && o.hose.through === 0, JSON.stringify(o.hose));
   check('damp-proof course: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
@@ -1463,8 +1486,8 @@ console.log('—', sec());
     const cinder = tc.objects.all('unit').filter((u) => u.kind === 'cinder'), top = Math.max(...cinder.map((u) => u.p[1] + u.s[1] / 2)), base = Math.min(...cinder.map((u) => u.p[1] - u.s[1] / 2));
     return { done: f.done, t: +f.t.toFixed(1), stair: f.stair, pools, stripped: strips, rise: Math.round((top - base) * 1000 * 10.4651), hook: f.marks?.hook != null && f.marks?.hookEnd > f.marks?.hook };
   });
-  check('film (stair): starts where stage 1 ended (its pool shell there), the DPC, the walls, the ring beam (stripped after a week), the steps to ~6,8, the landing; 30–50 s, the hook marked',
-    o.done && o.pools >= 1 && o.stair?.dpc >= 6 && o.stair.beltId != null && o.stair.landId != null && o.stripped >= 1 && o.rise > 6300 && o.rise < 7200 && o.t > 30 && o.t < 50 && o.hook, JSON.stringify(o));
+  check('film (stair): starts where stage 1 ended (its pool shell there), the DPC, the walls, the ring beam (stripped after a week), the steps to ~6,8, the landing; 30–60 s (the rolled DPC at its pace first — the owner), the hook marked',
+    o.done && o.pools >= 1 && o.stair?.dpc >= 6 && o.stair.beltId != null && o.stair.landId != null && o.stripped >= 1 && o.rise > 6300 && o.rise < 7200 && o.t > 30 && o.t < 60 && o.hook, JSON.stringify(o));
   check('film (stair): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

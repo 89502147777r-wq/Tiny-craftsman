@@ -1616,6 +1616,12 @@ class LayJob {
     this.ep.staticBox(new THREE.Vector3(p.x, bedBot + bedH / 2, p.z), target.q, s.x / 2, bedH / 2, s.z / 2);
     const way = onBed && onBed.dir ? onBed.dir : null;
     this.sq = brick ? new Squeeze(app, null, target, bedT, bedBot, way && onBed.more ? [way.x, way.z] : null, !!fast) : null;
+    // (a block, a cinder block: its bed of mortar seen under it while it is set down — the owner saw blocks laid «in the air»: the
+    // mortar shows only once laid, a gap of 12–20 mm under the block meanwhile; a brick has its own pressed bed — Squeeze)
+    if (!brick && bedT > 0 && !unit.lintel && unit.kind !== 'prop') {
+      const wv = app.wallView, m = new THREE.Mesh(new THREE.BoxGeometry(s.x * 1.012, bedT, s.z * 1.012), wv.spreadMat);
+      m.position.set(p.x, bedBot + bedT / 2, p.z); m.quaternion.copy(target.q); m.receiveShadow = true; wv.group.add(m); this.bedMesh = m;
+    }
     // the hand puts it down a few mm off and slightly askew, 2 cm above
     const j = (m) => (Math.random() - 0.5) * m;
     const q0 = target.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(j(0.03), j(0.05), j(0.03))));
@@ -1719,6 +1725,7 @@ class LayJob {
   _dispose() {
     this.done = true;
     if (this.sq) { const v = this.app.wallView; v.squeeze.visible = false; this.sq = null; }
+    if (this.bedMesh) { this.bedMesh.removeFromParent(); this.bedMesh.geometry.dispose(); this.bedMesh = null; }
     this.ep?.dispose(); this.ep = null;
     this.app.wallView.live = null; this.app.wallView.dirty = true;
     if (this.app.physJob === this) this.app.physJob = null;
