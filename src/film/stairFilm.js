@@ -95,7 +95,12 @@ export function* stairFilm(d, app) {
     let ok = false; mt.ensureExc?.().then(() => { ok = true; }).catch(() => { ok = true; }); yield d.until(() => ok);
     const E = mt.exc; if (E) { E.place(T, x, z, yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = 0; E.boom = E.boomGoal = 0.15; E.update(0); } }
   const g = T.heightAt(MM(-9000), MM(9000)), P = (x, y, z) => new V(MM(x), g + MM(y), MM(z)), idle = () => !app.busy();
-  const sTop = T.heightAt(MM(X0), MM(0)), pTop = T.heightAt(MM(0), MM(1000));
+  // (the walls set out level from the HIGHEST point of the concrete under them — the owner saw a brick and a block «in the air»: the
+  // slab and the strip are not cast dead flat, a course set from one point in the middle stood over the lower edge; as on site the
+  // first bed takes up the difference — thicker where the concrete is lower)
+  const hi = (pts) => Math.max(...pts.map(([x, z]) => T.heightAt(MM(x), MM(z))));
+  const sTop = hi([...Array(25).keys()].flatMap((i) => [[X0 - 500, ZB - i * 480], [X0, ZB - i * 480], [X0 + 500, ZB - i * 480]]));
+  const pTop = hi([...Array(21).keys()].flatMap((i) => { const x = IBIZA.slab.x0 + 100 + i * 470, z = IBIZA.slab.z0 + 100 + i * 315; return [[x, IBIZA.slab.z0 + 150], [x, IBIZA.slab.z1 - 150], [IBIZA.slab.x0 + 150, z], [IBIZA.slab.x1 - 150, z]]; }));
   { const B0 = IBIZA.slab; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; const half = T.cell / S / 2 || 15;
     for (let i = 0; i < T.conc.length; i++) { if (T.conc[i] < MM(150)) continue; const x = T.toWorldX(i % T.nx) / S, z = T.toWorldZ(Math.floor(i / T.nx)) / S;
       if (x < B0.x0 - 400 || x > B0.x1 + 400 || z < B0.z0 - 400 || z > B0.z1 + 400) continue; x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
@@ -152,12 +157,15 @@ export function* stairFilm(d, app) {
   // course; a brick pier; then all of it rising together — to one level ----
   const spineLow = [...Array(NLOW).keys()].map((k) => spineCourse(sTop + MM(3), k, k));
   const pav = pavilion(pTop + MM(3), sTop + MM(3 + CB.BED + (NLOW - 1) * (CB.H + CB.J) + CB.H));
+  // (the first course's bed down to the concrete and the membrane under each unit: what the slab lacks there, the mortar takes up)
+  const fit = (r) => { const bot = r.p[1] - r.s[1] / 2, under = T.heightAt(r.p[0], r.p[2]) + MM(3.4), bed = bot - under; if (bed < MM(60) && bed > MM(4)) r.bedT = +bed.toFixed(6); };
+  for (const r of [...spineLow[0], ...pav.filter((q) => q.p[1] - q.s[1] / 2 - pTop < MM(40))]) fit(r);
   hud(['DPC', 'Cinder', 'Gas block', 'Brick'], 1, ['*By hand', 'Course'], 'wall');
   st.wallKind = 'cinder';
   yield d.until(() => physicsReady());
   const first = spineLow[0].find((r) => r.p[0] > MM(X0 + 400)) || spineLow[0][0];
   let laidN = 0;
-  const job = (rec, fast) => { if (app.physJob) return false; if (W.layUnit(rec, fast, rec.kind === 'block' ? 20 : 12)) {   /* (the first course of blocks on 20 of mortar) */ laidN++; tool = () => new V().fromArray(rec.p); return true; } return false; };
+  const job = (rec, fast) => { if (app.physJob) return false; if (W.layUnit(rec, fast, rec.bedT ? rec.bedT / S : rec.kind === 'block' ? 20 : 12)) {   /* (the first course of blocks on 20 of mortar) */ laidN++; tool = () => new V().fromArray(rec.p); return true; } return false; };
   tool = () => new V().fromArray(first.p);
   act([[2.4, [1200, 500, 1400], 1]]);
   yield d.until(() => job(first, false));
