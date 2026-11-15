@@ -1486,8 +1486,9 @@ export class WallTool {
       }
       const k = uStrength(b, app.clock);
       if (!(b.fill >= 0.95) || k < 1) { app.ui.toast(!(b.fill >= 0.95) ? (sl ? 'Перекрытие залито не доверху — долейте бетон' : 'Пояс залит не доверху — долейте бетон') : `Бетон набирает прочность: ${Math.round(k * 100)} % — ${sl ? (b.cant ? 'стойки рано убирать: консоль без них просядет' : 'стойки рано убирать: плита прогнётся') : 'опалубку рано снимать'}`); return; }
-      app.sfx?.seq?.(['crowbar','plank','plank']); app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, { stripped: true, set: true }));
-      app.ui.toast(sl ? 'Стойки, балки и фанеру сняли — перекрытие готово' + (b.cant || b.cants ? ', консоль держится сама' : '') : b.lform ? 'Стойки, днище и доски сняли — монолитная перемычка готова, на неё можно класть дальше' : 'Опалубку сняли — армопояс готов');
+      if (sl && b.stripAt != null) { app.ui.toast('Опалубку уже снимают — от края консоли к стенам'); return; }
+      app.sfx?.seq?.(['crowbar','plank','plank']); app.journal.act('belt-strip', {}, app.clock, () => app.objects.update(b.id, sl ? { stripAt: +app.clock.toFixed(3) } : { stripped: true, set: true }));   // (a slab's: piece by piece — slabForm.js)
+      app.ui.toast(sl ? 'Снимают стойки, балки и фанеру — по одной, от края к стенам, в штабель' + (b.cant || b.cants ? '; консоль будет держаться сама' : '') : b.lform ? 'Стойки, днище и доски сняли — монолитная перемычка готова, на неё можно класть дальше' : 'Опалубку сняли — армопояс готов');
       return;
     }
     if (id) {

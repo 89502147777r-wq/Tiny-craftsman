@@ -28,7 +28,11 @@ export const isSlab = (b) => b?.kind === 'slab';
 
 // The slab over the walls under the finger: { rec, n, area (m²), exists } or null.
 // cantMm: the cantilever, on the side of the house nearest the finger
-export function findSlab(app, p, screen, finger, cantMm = 0) {
+// opts (a project's slab — the «sail» of a villa): { H (mm, the slab's depth: 300 for a 3 m cantilever — the foreman), cants:
+// [[dx, dz, mm], …] — cantilevers on given sides (a world direction each: past the walls that way, the whole side; two that meet
+// — the corner filled too), within: [x0, z0, x1, z1] — only the walls in it carry it (a ring cast over two buildings at once: the
+// slab on one of them, the other — a joint off), bridge: the widest gap (mm) in the walls under it still closed over }
+export function findSlab(app, p, screen, finger, cantMm = 0, opts = {}) {
   const belts = app.objects.all('belt');
   // on cast columns / piles (no walls under it): the slab over the group of them
   const P = findPileSlab(app, p, screen, finger, belts, cantMm);
@@ -44,13 +48,15 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
     // a ring beam already on these walls: the slab goes on it, not under it
     if (belts.some((b) => !isSlab(b) && Math.abs(b.top - T) < MM(20) && beltContains(b, p.x, p.z))) return null;
   }
-  const c = MM(SLAB.cell), R = Math.round(MM(1600) / c), pad = Math.ceil(MM(cantMm) / c) + 1;   // (R: openings up to 3,2 m in the top course are bridged)
+  const cmax = Math.max(cantMm, ...(opts.cants || []).map((q) => q[2]));
+  const c = MM(SLAB.cell), R = Math.round(MM(opts.bridge ? opts.bridge / 2 : 1600) / c), pad = Math.ceil(MM(cmax) / c) + 1;   // (opts.bridge: the widest gap in the walls the slab closes over — a ring beam bridging glass 2 × 2,5 m round a pier)   // (R: openings up to 3,2 m in the top course are bridged)
   const W = Math.ceil(base.ni * base.c / c), Hh = Math.ceil(base.nj * base.c / c), ni = W + 2 * pad, nj = Hh + 2 * pad;
   const at = (i, j) => toWorld(base, (i - pad + 0.5) * c, (j - pad + 0.5) * c);
   // the supports: the cells over the walls (the ring under them)
   const sup = new Uint8Array(ni * nj);
   let i0 = Infinity, i1 = -1, j0 = Infinity, j1 = -1;
-  for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) if (beltContains(base, ...at(i, j))) { sup[j * ni + i] = 1; i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); }
+  const wIn = opts.within ? (x, z) => x >= opts.within[0] && x <= opts.within[2] && z >= opts.within[1] && z <= opts.within[3] : () => true;
+  for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) if (beltContains(base, ...at(i, j)) && wIn(...at(i, j))) { sup[j * ni + i] = 1; i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); }
   if (i1 < 0) return null;
   // inside: all that the walls close round (what is not reached from outside). An opening
   // in the top course (a window up to the slab, a door) does not let the outside in: gaps
@@ -102,6 +108,25 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
     }
     cant = [ds, dt, cantMm];
   }
+  let cants = null;
+  if (opts.cants?.length) {
+    // (each given way in the frame of the walls: the side it points to most)
+    const fr = opts.cants.map(([dx, dz, mm]) => { const [a, b] = toFrame(base, base.o[0] + dx, base.o[1] + dz), [a0, b0] = toFrame(base, base.o[0], base.o[1]), s1 = a - a0, t1 = b - b0; return Math.abs(s1) >= Math.abs(t1) ? [Math.sign(s1), 0, mm] : [0, Math.sign(t1), mm]; });
+    for (const [ds, dt, mm] of fr) {
+      const n = Math.round(MM(mm) / c);
+      for (let k = 1; k <= n; k++) {
+        if (ds) { const i = ds > 0 ? i1 + k : i0 - k; for (let j = j0; j <= j1; j++) m[j * ni + i] = 1; }
+        else { const j = dt > 0 ? j1 + k : j0 - k; for (let i = i0; i <= i1; i++) m[j * ni + i] = 1; }
+      }
+    }
+    // (two that meet: the corner between them filled — the slab goes on round it, diagonal top bars there — slabCage)
+    for (const A of fr) for (const B of fr) {
+      if (!A[0] || !B[1]) continue;
+      const na = Math.round(MM(A[2]) / c), nb = Math.round(MM(B[2]) / c);
+      for (let a = 1; a <= na; a++) for (let b2 = 1; b2 <= nb; b2++) { const i = A[0] > 0 ? i1 + a : i0 - a, j = B[1] > 0 ? j1 + b2 : j0 - b2; m[j * ni + i] = 1; }
+    }
+    cants = fr; cant = null;
+  }
   // cropped to what is in it
   let a0 = ni, a1 = -1, b0 = nj, b1 = -1;
   for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) if (m[j * ni + i]) { a0 = Math.min(a0, i); a1 = Math.max(a1, i); b0 = Math.min(b0, j); b1 = Math.max(b1, j); }
@@ -116,8 +141,8 @@ export function findSlab(app, p, screen, finger, cantMm = 0) {
   const [ox, oz] = toWorld(base, (a0 - pad) * c, (b0 - pad) * c);
   const rec = {
     type: 'belt', kind: 'slab', o: [+ox.toFixed(6), +oz.toFixed(6)], u: base.u.slice(), c: +c.toFixed(7), ni: NI, nj: NJ,
-    mask: rle(mask), deck: rle(deck), top: +T.toFixed(6), H: +MM(SLAB.H).toFixed(6), lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0, segs: [],
-    cant,
+    mask: rle(mask), deck: rle(deck), top: +T.toFixed(6), H: +MM(opts.H || SLAB.H).toFixed(6), lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0, segs: [],
+    cant, ...(cants ? { cants } : {}),
   };
   rec.clip = slabClip(rec, app.objects.all('unit'), belts);
   liftHoles(app, rec);
@@ -365,7 +390,9 @@ export function slabCage(b) {
 // and it gets its own bars round it. Only the cells over the open go (over a wall the
 // slab stays). (x0, z0)–(x1, z1): two corners. → { patch, rect: [i0, j0, i1, j1], w, l (mm) }
 // or { why }
-export function slabHole(b, x0, z0, x1, z1) {
+// notch: a cut out of the slab's edge (round a neighbour standing through it — a fireplace's tower with its own foundation, a joint
+// 30 mm round): any width, its sides the slab's own edges (no ring of bars, no box: the edge boards and the edge's U-bars there)
+export function slabHole(b, x0, z0, x1, z1, notch = false) {
   const [sa, ta] = toFrame(b, x0, z0), [sb, tb] = toFrame(b, x1, z1), c = b.c;
   const i0 = Math.max(0, Math.round(Math.min(sa, sb) / c)), i1 = Math.min(b.ni, Math.round(Math.max(sa, sb) / c));
   const j0 = Math.max(0, Math.round(Math.min(ta, tb) / c)), j1 = Math.min(b.nj, Math.round(Math.max(ta, tb) / c));
@@ -378,12 +405,12 @@ export function slabHole(b, x0, z0, x1, z1) {
     a0 = Math.min(a0, i); a1 = Math.max(a1, i + 1); b0 = Math.min(b0, j); b1 = Math.max(b1, j + 1);
   }
   const w = (a1 - a0) * SLAB.cell, l = (b1 - b0) * SLAB.cell;
-  if (!gone || Math.min(w, l) < 600) return { why: 'Проём меньше 600 мм — протяните шире' };
+  if (!gone || (!notch && Math.min(w, l) < 600)) return { why: 'Проём меньше 600 мм — протяните шире' };
   const lv = [], sm = [];
   P.cells.forEach(([i, j], k) => { if (mask[j * b.ni + i]) { lv.push(b.lv[k]); sm.push(b.sm[k]); } });
   const rect = [a0, b0, a1, b1];
-  return { patch: { mask: rle(mask), deck: rle(deck), lv, sm, holes: [...(b.holes || []), rect] }, rect, w, l };
+  return { patch: { mask: rle(mask), deck: rle(deck), lv, sm, ...(notch ? {} : { holes: [...(b.holes || []), rect] }) }, rect, w, l };
 }
 
 // the cantilever as words: «консоль 1,5 м»
-export const cantText = (b) => (b?.cants ? `консоль ${(b.cants[0][2] / 1000).toFixed(1).replace('.', ',')} м кругом` : b?.cant ? `консоль ${(b.cant[2] / 1000).toFixed(1).replace('.', ',')} м` : 'без консоли');
+export const cantText = (b) => (b?.cants ? (b.cants.length === 4 && b.cants.every((q) => q[2] === b.cants[0][2]) ? `консоль ${(b.cants[0][2] / 1000).toFixed(1).replace('.', ',')} м кругом` : `консоли ${b.cants.map((q) => (q[2] / 1000).toFixed(1).replace('.', ',')).join(' и ')} м`) : b?.cant ? `консоль ${(b.cant[2] / 1000).toFixed(1).replace('.', ',')} м` : 'без консоли');
