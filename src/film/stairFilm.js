@@ -248,12 +248,13 @@ export function* stairFilm(d, app) {
     tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
     act([[1.2, [1800, 600, 1600], 1], [1.2, [-2200, 1100, -1800], 4], [9, [3000, 2000, -3500], 10]]);
     // (the front of the pour: the spout led on to the first cell not yet full along the beam — at most a hand's pace)
-    let u = 0; const t0 = d.t;
+    // (to the end and back, over what is still short — a pass a layer, as on site — till the beam is full)
+    let u = 0, dir = 1; const t0 = d.t, share = (ch) => { let a = 0; for (const v of ch.h) a += Math.min(1, v / ch.cap); return a / ch.h.length; };
     yield d.until(() => {
       const ch = hose.ch;
-      if (ch?.h) { for (let n = 0; n < 40 && u < 1; n++) { const q = path(u), k = ch.at(q.x, q.z); if (k >= 0 && ch.h[k] < ch.cap - 8) break; u = Math.min(1, u + 0.004); } }
+      if (ch?.h) { for (let n = 0; n < 40; n++) { const q = path(u), k = ch.at(q.x, q.z); if (k >= 0 && ch.h[k] < ch.cap - 8) break; u += 0.004 * dir; if (u >= 1 || u <= 0) { u = Math.max(0, Math.min(1, u)); dir = -dir; break; } } }
       const q = path(u); hose.move(q, ev(q)); T.vibrate?.(q.x, q.z, MM(1500));
-      return !!ch?.full || u >= 1 || d.t - t0 > 14;
+      return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 12;
     });
     hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
     still();
