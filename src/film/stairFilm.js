@@ -101,11 +101,19 @@ export function* stairFilm(d, app) {
   const hi = (pts) => Math.max(...pts.map(([x, z]) => T.heightAt(MM(x), MM(z))));
   const sTop = hi([...Array(25).keys()].flatMap((i) => [[X0 - 500, ZB - i * 480], [X0, ZB - i * 480], [X0 + 500, ZB - i * 480]]));
   const pTop = hi([...Array(21).keys()].flatMap((i) => { const x = IBIZA.slab.x0 + 100 + i * 470, z = IBIZA.slab.z0 + 100 + i * 315; return [[x, IBIZA.slab.z0 + 150], [x, IBIZA.slab.z1 - 150], [IBIZA.slab.x0 + 150, z], [IBIZA.slab.x1 - 150, z]]; }));
+  // (the slab measured by its own concrete: the cells joined to its middle — flood fill — not all thick concrete near its outline:
+  // the pool's shell lies 0,4 m off its front and was taken in, the walls set out in the gap between the two (the owner: «the brick
+  // is between the foundations»))
   { const B0 = IBIZA.slab; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; const half = T.cell / S / 2 || 15;
-    for (let i = 0; i < T.conc.length; i++) { if (T.conc[i] < MM(150)) continue; const x = T.toWorldX(i % T.nx) / S, z = T.toWorldZ(Math.floor(i / T.nx)) / S;
-      if (x < B0.x0 - 400 || x > B0.x1 + 400 || z < B0.z0 - 400 || z > B0.z1 + 400) continue; x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    const start = T.index(MM((B0.x0 + B0.x1) / 2), MM((B0.z0 + B0.z1) / 2)), seen = new Uint8Array(T.conc.length), st = [start]; seen[start] = 1;
+    while (st.length) {
+      const i = st.pop(), ix = i % T.nx, iz = Math.floor(i / T.nx), x = T.toWorldX(ix) / S, z = T.toWorldZ(iz) / S;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const jx = ix + dx, jz = iz + dz; if (jx < 0 || jz < 0 || jx >= T.nx || jz >= T.nz) continue; const j = jz * T.nx + jx; if (!seen[j] && T.conc[j] > MM(150)) { seen[j] = 1; st.push(j); } }
+    }
     // (the outermost cells' middles → their edges, less a hair: the block's face flush with the slab's)
-    if (x1 > x0) SL = { ...B0, x0: Math.round(x0 - half + 5), x1: Math.round(x1 + half - 5), z0: Math.round(z0 - half + 5), z1: Math.round(z1 + half - 5) };
+    if (x1 > x0 && x1 - x0 < (B0.x1 - B0.x0) + 600) SL = { ...B0, x0: Math.round(x0 - half + 5), x1: Math.round(x1 + half - 5), z0: Math.round(z0 - half + 5), z1: Math.round(z1 + half - 5) };
+    (d.notes = d.notes || []).push([0, 'slab as cast ' + JSON.stringify([SL.x0, SL.x1, SL.z0, SL.z1])]);
     layout(); }   // (the strip's top and the slab's: stage 1's concrete)
   const say = (m) => { (d.notes = d.notes || []).push([+d.t.toFixed(1), m]); };
   const hud = (row1, i, row2, tool) => d.hud([row1.map((t, k) => (k === i ? '*' + t : t)), ...(row2 ? [row2] : [])], tool);
