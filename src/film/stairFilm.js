@@ -366,7 +366,9 @@ export function* stairFilm(d, app) {
   // (the analyst: the stair is the stage's «wow» — the most time: in profile against the sky, then on its axis from below)
   // (three different: the profile against the sky; low from the sea's corner up to the top; high from behind along it — the owner:
   // 35–40 s were one profile twice with a view along the steps between)
-  shots([[2.0, [15500, 4300, 500], [6000, 4300, -500]], [1.5, [11000, 1300, -11500], [6000, 4800, -3500]], [9, [13500, 9500, 9500], [5000, 3500, -1500]]]);
+  // (the steps seen rising first — from high behind, along them; then low from the sea's corner; the profile on the sky last, when they
+  // are all there: the side of a half-laid wall is a grey band — a dead frame)
+  shots([[1.9, [13500, 9500, 9500], [5000, 3500, -1500]], [1.5, [11000, 1300, -11500], [6000, 4800, -3500]], [9, [15500, 4300, 500], [6000, 4300, -500]]]);
   { let i = 0; const n = rest.length, dur = 5.0, t0 = d.t;
     yield d.until(() => { const want = Math.min(n, Math.ceil(n * Math.min(1, (d.t - t0) / dur))); if (want > i) { for (; i < want; i++) O.add(rest[i]); tick(1); } return i >= n; }); }
   // ---- 5 · the landing's beam on the 34th step: boards and cage at once, the concrete ----
@@ -416,7 +418,7 @@ export function* stairFilm(d, app) {
   hud(['Cinder', 'Formwork', 'Concrete'], 0, ['*By hand', 'Course'], 'wall');
   st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
   d.nextEl?.classList.add('small');
-  d.cut(look(P(9600, 700, 9800), P(6000, 4900, -2600)), { drift: 0.01, push: 0.025, hand: 0.25 });
+  d.cut(look(P(8200, 2100, 12500), P(5900, 4700, -2600)), { drift: 0.01, push: 0.025, hand: 0.25 });   // (from behind the foot, a little to the side: the treads climbing away — not the wall's flat side)
   yield d.sec(0.2);
   d.mark('hook');
   d.kick('34 STEPS TO WHERE?', 2.2, 'top');
