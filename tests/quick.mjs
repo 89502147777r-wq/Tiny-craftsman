@@ -1164,10 +1164,27 @@ console.log('—', sec());
       for (let a = 0; a < N; a++) for (let b = 0; b < N; b++, k++) { const u = (a / (N - 1) - 0.5) * 2 * span, v = (b / (N - 1) - 0.5) * 2 * span;
         if (at(u, v) - base[k] > 0.01 * M && Math.abs(v) > 0.6 * M) { const q = v > 0 ? sd.R : sd.L; q[0] = Math.min(q[0], u); q[1] = Math.max(q[1], u); q[2] = Math.min(q[2], v); q[3] = Math.max(q[3], v); } }
       o.ridge = Object.values(sd).map((q) => (q[1] > q[0] ? +((q[1] - q[0]) / Math.max(1e-9, q[3] - q[2])).toFixed(2) : 0)); }
+    // (5) its face: lumps and runs over the shape the slope holds — the face round the smoothed heap 5–20 mm (where it lies)
+    { let s2 = 0, n = 0; for (let iz = 1; iz < NZ - 1; iz++) for (let ix = 1; ix < NX - 1; ix++) { const i = iz * NX + ix; if (T.hf[i] < 0.06 * M) continue;
+        let a = 0; for (let dz = -1; dz <= 1; dz++) for (let dx2 = -1; dx2 <= 1; dx2++) a += T.hf[i + dz * NX + dx2]; s2 += (T.surf(i) - a / 9) ** 2; n++; }
+      o.faceMm = +(Math.sqrt(s2 / Math.max(1, n)) / M * 1000).toFixed(1); }
+    // (6) the bits that fall over a side, by material: sand a fine curtain (≤ 12 mm, 5–10 × as many), crushed stone 20–40 its size
+    { const P = tc.particles, sizes = (mix) => { T.setMix(mix); T._mixShown = null; const n0 = P.items.length; const q = T.bedCentre(new V()); q.y += 0.2 * M;
+        T.spills.push({ p: q.clone().add(new V(Math.sin(T.yaw), 0, Math.cos(T.yaw)).multiplyScalar(1 * M)), n: new V(Math.sin(T.yaw), 0, Math.cos(T.yaw)), v: 0.02 * T.cap }); mt._overTop();
+        const it = P.items.slice(n0); return [it.length, it.reduce((a, b) => a + b.size * 2, 0) / Math.max(1, it.length) / M * 1000]; };
+      const [nS, dS] = sizes([0, 1, 0, 0, 0]), [nG, dG] = sizes([0, 0, 0, 1, 0]), [nSo] = sizes([1, 0, 0, 0, 0]); rest();
+      o.sandMm = +dS.toFixed(1); o.g20Mm = +dG.toFixed(1); o.sandMany = +(nS / Math.max(1, nSo)).toFixed(1); }
+    // (7) on its springs: full, the body sits down over the rear axle 60 mm (the wheels where they are), empty — as it was
+    { T.hf.fill(0); T.load = 0; for (let i = 0; i < 60; i++) T.update(1 / 30);
+      const at = () => [T.root.localToWorld(new V(T.axB, 1 * M, 0)).y, T.root.localToWorld(new V(T.axF, 1 * M, 0)).y, T.wheels.map((w) => w.g.getWorldPosition(new V()).y)];
+      const e0 = at(); T.load = 1; for (let i = 0; i < 60; i++) T.update(1 / 30); o.readBack = +T.load.toFixed(3); T.load = 1; T._sq = 1; T._pose(); const e1 = at(); T.load = 0; for (let i = 0; i < 60; i++) T.update(1 / 30); const e2 = at();
+      o.squatRear = +((e0[0] - e1[0]) / M * 1000).toFixed(1); o.squatFront = +((e0[1] - e1[1]) / M * 1000).toFixed(1); o.squatBack = +(Math.abs(e0[0] - e2[0]) / M * 1000).toFixed(1);
+      o.wheelsMoved = +(Math.max(...e1[2].map((y, k) => Math.abs(y - e0[2][k]))) / M * 1000).toFixed(1); }
     return o;
   });
   check('truck: heaped over its sides it keeps only what its angle holds — at the sides no higher than their tops, the rest on the ground by them (not under it), nothing lost', o.overCone <= 2 && o.sideTop <= 2 && o.peak > 200 && o.ground > 0.3 && o.kept > 0.98 && o.kept < 1.02 && Math.min(...o.byMm) > 20 && Math.abs(o.underMm) <= 5 && o.sand === 1, JSON.stringify(o));
   check('truck (the realist): the heap no steeper than its angle any way (+1,5°); loaded to «full» by buckets ≤ 10 % over the sides; what runs over lies along each side (length ≥ 2 × width) against the tyres, not under them — the truck stands as it stood (≤ 5 mm, ≤ 0,2°)', o.slopeSand <= 34.5 && o.slopeSoil <= 38.5 && o.spillFull <= 0.1 && o.spilt >= 0.45 && o.dyMm <= 5 && o.dTilt <= 0.2 && o.tyreMm <= 10 && Math.min(...o.ridge) >= 2, JSON.stringify(o));
+  check('truck (the realist, 2): the bits by material (sand ≤ 12 mm and 5–10 × as many, crushed stone 20–40 at 20–45 mm); full, it sits down 50–80 mm over the rear axle, the wheels where they are, empty as it was; a full one read back (a record) keeps its load; the face of the heap lumpy 5–20 mm round its shape', o.readBack >= 0.98 && o.sandMm <= 12 && o.g20Mm >= 20 && o.g20Mm <= 45 && o.sandMany >= 5 && o.sandMany <= 10.5 && o.squatRear >= 50 && o.squatRear <= 80 && o.squatFront < o.squatRear && o.squatBack <= 1 && o.wheelsMoved <= 1 && o.faceMm >= 5 && o.faceMm <= 20, JSON.stringify(o));
   check('truck: loaded by a shovel (the finger on its body) and by the excavator (black topsoil — in its record too)', o.shovel > 0.85 && Math.abs(o.shovelUnder) <= 5 && o.exc > 0.95 && o.exc < 1.05 && o.black > 0.99 && o.recBlack > 0.99, JSON.stringify(o));
   check('truck: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
