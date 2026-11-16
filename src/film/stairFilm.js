@@ -272,8 +272,8 @@ export function* stairFilm(d, app) {
     const WV = app.wallView, RV = app.rebarView;
     // the formwork going up board by board (the owner: «no process of the formwork» — the game's own reveal, as the pool's boards)
     const HN = new V(1, 0, 0), HU = new V(0, 1, 0);
-    const rise = function* (view, id, dur, snd, at = null) { const t0 = d.t; let k = 0; yield d.until(() => { const u = Math.min(1, (d.t - t0) / dur); view.reveal = { id, u }; view.dirty = true; if (u * 8 > k) { k++; app.sfx?.play?.(snd[k % snd.length], { vol: 0.5 }); }
-      if (at) { const f = (u * 8) % 1, sw = f < 0.7 ? Math.sin(f / 0.7 * Math.PI / 2) : Math.cos((f - 0.7) / 0.3 * Math.PI / 2); app.handTools?.set('hammer', at(u), HN, HU, u >= 1 ? 0 : sw * 0.6); }   // (the hammer at the boards being nailed — never boards coming up by themselves under a bill: the analyst)
+    const rise = function* (view, id, dur, snd, at = null, an = HN) { const t0 = d.t; let k = 0; yield d.until(() => { const u = Math.min(1, (d.t - t0) / dur); view.reveal = { id, u }; view.dirty = true; if (u * 8 > k) { k++; app.sfx?.play?.(snd[k % snd.length], { vol: 0.5 }); }
+      if (at) { const f = (u * 8) % 1, sw = f < 0.7 ? Math.sin(f / 0.7 * Math.PI / 2) : Math.cos((f - 0.7) / 0.3 * Math.PI / 2); app.handTools?.set('hammer', at(u), an, HU, u >= 1 ? 0 : sw * 0.6); }   // (the hammer at the boards being nailed — never boards coming up by themselves under a bill: the analyst)
       if (u >= 1) { view.reveal = null; view.dirty = true; if (at) app.handTools?.hide(); return true; } return false; }); };
     app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; });
     WV.reveal = { id: beltId, u: 0 }; WV.dirty = true;
@@ -288,7 +288,8 @@ export function* stairFilm(d, app) {
       BP.rec.H = MM(200);
       app.journal.act('belt', {}, app.clock, () => { pavId = O.add(BP.rec).id; });
       WV.reveal = { id: pavId, u: 0 }; WV.dirty = true;
-      yield* rise(WV, pavId, 0.6, ['plank', 'hammer_nail']);   // (its boards with the spine's, in the same shot — no far view of it)
+      yield* rise(WV, pavId, 0.9, ['plank', 'hammer_nail'], (u) => new V(MM(SL.x0 + 400 + (SL.x1 - SL.x0 - 800) * u), topP + MM(140), MM(SL.z0 - 190)), new V(0, 0, -1));   // (the hammer on along the pavilion's front board: never boards coming up by themselves — the analyst)
+        // (its boards with the spine's, in the same shot — no far view of it)
       // (over the front's three glass openings the ring is a lintel cast in place — its soffit on props, boards each side, 250 onto the
       // piers: the game's «lintel formwork»; the ring had no concrete over the openings at all (the owner saw it «not filling»))
       for (const x of [(FRONT[0][1] + FRONT[1][0]) / 2, (FRONT[1][1] + FRONT[2][0]) / 2, (FRONT[2][1] + FRONT[3][0]) / 2]) {
@@ -306,7 +307,7 @@ export function* stairFilm(d, app) {
     let cageA = null, cageB = null;
     app.journal.act('belt-cage', {}, app.clock, () => { cageA = O.add(beltCage(O.get(beltId))).id; if (pavId != null) cageB = O.add(beltCage(O.get(pavId))).id; for (const l of lintels) O.add(beltCage(O.get(l.id))); });
     if (cageB != null) { RV.reveal = { id: cageB, u: 1 }; }
-    yield* rise(RV, cageA, 1.4, ['rebar', 'wire']);
+    yield* rise(RV, cageA, 0.8, ['rebar', 'wire']);   // (≤ 1 s without a tool in the frame: the analyst)
     // the concrete: the hose along the spine's beam, always over the place still to fill — the stream seen the whole pour, the beam
     // filling under it (the owner: «no stream, the pour stops and at once the beam is full»); the poker after it
     hud(['Formwork', 'Rebar', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
@@ -319,7 +320,7 @@ export function* stairFilm(d, app) {
     st.pump = 1e-5; { const p0 = path(0); hose.down(p0, ev(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, ev(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
     st.pump = 12;   // (the pump's delivery buys the film's time — the hand stays at a hand's pace: the owner's lesson of stage 1)
     tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-    act([[1.1, [1800, 600, 1600], 1], [1.1, [-2200, 1100, -1800], 4], [9, [3000, 2000, -3500], 8]]);
+    act([[1.1, [1800, 600, 1600], 1], [9, [-2200, 1100, -1800], 6]]);   // (two shots — the third came 0,7 s: check-film)
     // (the front of the pour: the spout led on to the first cell not yet full along the beam — at most a hand's pace)
     // (to the end and back, over what is still short — a pass a layer, as on site — till the beam is full)
     // (the hand led from where the SPOUT is: while there is room under it the hand stays and the stream pours; when it is full there —
@@ -342,7 +343,7 @@ export function* stairFilm(d, app) {
       const q = lead(ch, path, tot, false, (v) => { dir = v; }, dir) || path(u); hose.move(q, ev(q));
       return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 2.6 || (d.t - t0 > 1 && dry() > 0.5);
     });
-    hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
+    hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
     still();
     say('belt fill ' + O.get(beltId)?.fill + ' u ' + u.toFixed(2) + ' in ' + (d.t - t0).toFixed(1));
     // (the last tenth topped up and worked level between two shots — the poker's round: no step in the frame)
@@ -359,7 +360,7 @@ export function* stairFilm(d, app) {
       st.pump = 1e-5; { const p0 = ring(0); hose.down(p0, evp(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, evp(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
       st.pump = 1;   // (a ring's hose — 60 l/s at most: the hand walks at 0,75 m/s; the ring is long and narrow: the delivery up, the hand at its pace)
       tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-      act([[0.9, [-1500, 700, -1600], 4], [9, [1600, 900, 1500], 8]]);
+      act([[9, [-1500, 700, -1600], 6]]);   // (one shot, the nozzle close — its second was 0,5 s: check-film)
       // (round it at a steady walk, ~1,2 m/s of the game's clock — the delivery set so that one round fills it: the stream always lands on
       // what is still to fill)
       const t0 = d.t; let ur = 0; wet0();
@@ -368,7 +369,7 @@ export function* stairFilm(d, app) {
         const q = ring(ur); hose.move(q, evp(q));
         return (ur >= 1 && hose.ch?.h && share(hose.ch) > 0.97 && hose.ch.b?.id === pavId) || d.t - t0 > 1.1 || (d.t - t0 > 0.8 && dry() > 0.5);   // (a second, quicker round over what is short)
       });
-      hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
+      hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
       still();
       say('pavilion fill ' + O.get(pavId)?.fill + ' lintels ' + lintels.map((l) => O.get(l.id)?.fill?.toFixed(2)).join(',') + ' in ' + (d.t - t0).toFixed(1));
       for (const id of [pavId, ...lintels.map((l) => l.id)]) { const r = O.get(id); if (r && r.fill < 0.999) app.journal.act('belt-pour', {}, app.clock, () => O.update(id, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
@@ -456,6 +457,7 @@ export function* stairFilm(d, app) {
   cnt.remove();
   // (the sketch's own view: the camera set where the drawing was made from — still, no hand)
   d.hud(null);   // (from here on nothing the hook has not: the analyst)
+  d.mark('finale');   // (the sketch's finale: the sheet, not a tool — check-film lets it be)
   shotN++; d.cut(look(new V(MM(17500), MM(9000), MM(15500)), new V(MM(2600), MM(3200), MM(-1600))), { drift: 0, push: 0, hand: 0 });
   yield d.sec(0.4);
   // (the sheet grows from its corner to its place in the frame — its drawing is the band 36 %…92 % of the frame from the sketch's view,
