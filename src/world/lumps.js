@@ -5,34 +5,31 @@ import { mortarPhoto } from './terrainMaterial.js';
 
 // A lump of set concrete (the owner, 2026-11-16: «a drop of concrete on the ground is a dab — not a pillar down to the bottom
 // when the ground round it is dug; a bucket picks it up whole and carries it, into the truck too»).
-// Concrete spilt on the bare ground, small (≤ LUMP.area m², ≤ LUMP.thick m) and apart from any other concrete, is taken out of the
-// ground's concrete once it is firm and becomes a thing of its own: a record { type: 'lump', x, z, y, yaw, cells: [[dx, dz, h] mm…],
+// Concrete spilt on the bare ground (thin, on the ground's level — see scanLumps) is taken out of the ground's concrete once it is
+// firm and becomes a thing (pieces of ≤ LUMP.piece m): a record { type: 'lump', x, z, y, yaw, cells: [[dx, dz, h] mm…],
 // at: 'ground' | 'truck', tx, tz (in the truck's bed, its frame, model units) }. On the ground it rests on what is under it — dug
 // round or under, it goes down with it; a bucket (excavator, loader) that scoops through it takes it whole (machineTool.js);
 // tipped out, it falls (g) onto the ground or into a truck's body; the truck tips it out with its load; driven off to the tip —
 // gone with the load.
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S, G = 9.81 / MODEL_SCALE;
-export const LUMP = { area: 1.0, thick: 0.25 };
+export const LUMP = { thick: 0.12, piece: 0.9, grade: 0.03 };
 
-// the ground's firm spills → lumps (called now and then: machineTool.js)
+// the ground's firm spills → lumps (called now and then: main.js). A spill: firm concrete no thicker than LUMP.thick lying on the
+// ground at its own level (not in a pit — a blinding is poured there — nor in a house), whatever its size and whatever it touches
+// (an overflow along a slab's boards as well): what the bucket breaks off and takes. A big one in pieces of LUMP.piece m — as the
+// bucket breaks it. A slab, a pad, a foundation (thicker) stay the ground's own: the soil under them is left, its face soil (the
+// shader shows the concrete only its own thickness).
 export function scanLumps(app) {
-  const t = app.terrain, { nx, conc } = t, N = conc.length, seen = new Uint8Array(N);
-  const cellM2 = t.cellArea * MODEL_SCALE * MODEL_SCALE, maxN = Math.ceil(LUMP.area / cellM2), firm = CONCRETE.stiff * 1.05;
+  const t = app.terrain, { nx, conc } = t, N = conc.length, firm = CONCRETE.stiff * 1.05, thin = MM(LUMP.thick * 1000), grade = MM(LUMP.grade * 1000);
+  const spill = (i) => conc[i] > 1e-5 && conc[i] <= thin && t.curedAt(i) >= firm && t.nat[i] >= t.orig[i] - grade && t.zone?.[i] !== 1;
+  const groups = new Map(), P = MM(LUMP.piece * 1000);
+  for (let i = 0; i < N; i++) {
+    if (conc[i] <= 1e-5 || !spill(i)) continue;
+    const x = t.toWorldX(i % nx), z = t.toWorldZ((i / nx) | 0), k = Math.floor(x / P) * 65536 + Math.floor(z / P);
+    let g = groups.get(k); if (!g) groups.set(k, (g = [])); g.push(i);
+  }
   const made = [];
-  for (let s = 0; s < N; s++) {
-    if (seen[s] || conc[s] <= 1e-5) continue;
-    // (one piece: the cells of concrete touching, corners too)
-    const list = [s], stack = [s]; seen[s] = 1; let big = false;
-    while (stack.length) {
-      const i = stack.pop(), ix = i % nx, iz = (i / nx) | 0;
-      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
-        if (!dx && !dz) continue; const jx = ix + dx, jz = iz + dz; if (jx < 0 || jz < 0 || jx > t.rx || jz > t.rz) continue;
-        const j = jz * nx + jx; if (seen[j] || conc[j] <= 1e-5) continue;
-        seen[j] = 1; stack.push(j); if (list.length <= maxN) list.push(j); else big = true;
-      }
-    }
-    if (big || list.length > maxN) continue;   // (a slab, a pad, a blind area: the ground's own concrete)
-    if (list.some((i) => t.curedAt(i) < firm || conc[i] > MM(LUMP.thick * 1000) || t.zone?.[i] === 1)) continue;   // (still soft: the shovel's; in a house: not a spill)
+  for (const list of groups.values()) {
     let cx = 0, cz = 0, bot = Infinity;
     for (const i of list) { const x = t.toWorldX(i % nx), z = t.toWorldZ((i / nx) | 0); cx += x; cz += z; bot = Math.min(bot, t.nat[i] + t.loose[i]); }
     cx /= list.length; cz /= list.length;

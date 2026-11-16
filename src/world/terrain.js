@@ -721,7 +721,7 @@ export class Terrain {
   buildMesh(material) {
     const { nx: n, nz } = this;
     const N = n * nz;
-    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4), mats = new Float32Array(N * 4), cc = new Float32Array(N * 3);
+    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4), mats = new Float32Array(N * 4), cc = new Float32Array(N * 4);
     for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < n; ix++) {
       const i = iz * n + ix;
       pos[i * 3] = this.toWorldX(ix); pos[i * 3 + 2] = this.toWorldZ(iz);
@@ -751,7 +751,7 @@ export class Terrain {
     // share of sand / crushed stone 5–20 / 20–40 / black topsoil in the top 2 mm (the rest is soil)
     this.aMat = new THREE.BufferAttribute(mats, 4).setUsage(THREE.DynamicDrawUsage);
     // concrete: thickness, pour time, smoothness (the shader cures it with the clock)
-    this.aConc = new THREE.BufferAttribute(cc, 3).setUsage(THREE.DynamicDrawUsage);
+    this.aConc = new THREE.BufferAttribute(cc, 4).setUsage(THREE.DynamicDrawUsage);   // (+ the height of its bottom: below it a face is the soil under it — the owner: no concrete down to the bottom)
     // bitumen coat, compaction
     this.aExtra = new THREE.BufferAttribute(new Float32Array(N * 2), 2).setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('position', this.aPos);
@@ -905,14 +905,14 @@ export class Terrain {
       mats[i * 4] = f1 * 500; mats[i * 4 + 1] = f2 * 500; mats[i * 4 + 2] = f3 * 500; mats[i * 4 + 3] = f4 * 500;
       // under a cover of sand / stone the concrete fades out (gone at ~1.3 mm of the model)
       const cover = top[i] > 0 ? Math.pow(Math.max(0, 1 - top[i] / 0.0013), 3) : 1;
-      cc[i * 3] = conc[i] * cover; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
+      cc[i * 4] = conc[i] * cover; cc[i * 4 + 1] = cTime[i]; cc[i * 4 + 2] = cSm[i]; cc[i * 4 + 3] = conc[i] > 1e-6 ? nat[i] + loose[i] : -1000;
       ex[i * 2] = bit[i]; ex[i * 2 + 1] = conc[i] > 1e-6 ? 0 : comp[i];
       // the foot of a concrete face (e.g. after the boards are stripped): the face
       // belongs to the concrete, not to the soil below it
       if (conc[i] <= 1e-6 && ix > 0 && ix < rx && iz > 0 && iz < rz) {
         let j = -1, hj = h + 0.002;
         for (const k of [i - 1, i + 1, i - n, i + n]) { const hk = nat[k] + loose[k] + conc[k] + top[k]; if (conc[k] > 1e-5 && hk > hj) { hj = hk; j = k; } }
-        if (j >= 0) { cc[i * 3] = conc[j]; cc[i * 3 + 1] = cTime[j]; cc[i * 3 + 2] = cSm[j]; ex[i * 2] = Math.max(bit[i], bit[j]); }
+        if (j >= 0) { cc[i * 4] = conc[j]; cc[i * 4 + 1] = cTime[j]; cc[i * 4 + 2] = cSm[j]; cc[i * 4 + 3] = nat[j] + loose[j]; ex[i * 2] = Math.max(bit[i], bit[j]); }
       }
     }
     return { x0: ox0, z0: oz0, x1: ox1, z1: oz1 };

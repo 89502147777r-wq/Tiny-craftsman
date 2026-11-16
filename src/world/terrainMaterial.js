@@ -137,18 +137,19 @@ function baseUniforms(tex) {
 const VERT_COMMON = `#include <common>
         attribute vec4 aSoil;
         attribute vec4 aMat;
-        attribute vec3 aConc;
+        attribute vec4 aConc;
         attribute vec2 aExtra;
         varying vec4 vSoil;
         varying vec4 vMat;
-        varying vec3 vConc;
+        varying vec4 vConcV;
+        varying float vLY;
         varying vec2 vExtra;
         varying vec3 vWPos;
         varying vec3 vWNrm;`;
 const VERT_PROJECT = `#include <project_vertex>
         vSoil = aSoil;
         vMat = aMat;
-        vConc = aConc;
+        vConcV = aConc; vLY = transformed.y;   // (the concrete's bottom and this point's height, in the mesh's own frame)
         vExtra = aExtra;
         vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
         vWNrm = normalize(mat3(modelMatrix) * objectNormal);`;
@@ -164,7 +165,9 @@ const FRAG_DECL = `
         uniform highp sampler2DArray tMat;
         uniform vec3 uMatScale;
         varying vec4 vMat;
-        varying vec3 vConc;
+        varying vec4 vConcV;
+        varying float vLY;
+        vec3 vConc;   // (the concrete here — none below its bottom: a face dug round a slab or a spill is the soil under it, not concrete to the bottom)
         varying vec2 vExtra;
         uniform float uClock;
         uniform float uCure;
@@ -344,6 +347,7 @@ export function makeTerrainMaterial(tex) {
     shader.vertexShader = shader.vertexShader.replace('#include <common>', VERT_COMMON).replace('#include <project_vertex>', VERT_PROJECT);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>${FRAG_DECL}\n        uniform highp sampler2DArray tMatN;${STOCHASTIC_GLSL}${STRATA_GLSL}`)
+      .replace('void main() {', 'void main() {\n        vConc = vec3(vConcV.x * smoothstep(vConcV.w - 0.00025, vConcV.w + 0.00002, vLY), vConcV.yz);')
       .replace('#include <map_fragment>', `
         tcStochSetup(vMapUv);
         vec3 wn = normalize(vWNrm);
@@ -441,6 +445,7 @@ export function makeLightTerrainMaterial(tex) {
     shader.vertexShader = shader.vertexShader.replace('#include <common>', VERT_COMMON).replace('#include <project_vertex>', VERT_PROJECT);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>${FRAG_DECL}${STRATA_GLSL}`)
+      .replace('void main() {', 'void main() {\n        vConc = vec3(vConcV.x * smoothstep(vConcV.w - 0.00025, vConcV.w + 0.00002, vLY), vConcV.yz);')
       .replace('#include <map_fragment>', `
         vec4 topC = texture2D(map, vMapUv);
         vec3 wallTopC = mix(uWallMean.rgb, texture2D(tWall, vWPos.xz * uWallScale).rgb, 0.6);
