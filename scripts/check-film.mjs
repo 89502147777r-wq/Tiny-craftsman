@@ -96,6 +96,25 @@ console.log('ROWS ' + rows.filter((r, i) => i % 15 === 0).map((r) => `${r.t.toFi
 // (the timeline for the analyst, in the video's order — the hook first: each 0.5 s — the shot, work on / the tool on screen, the words)
 { const tl = rows.filter((r, i) => i % 15 === 0).map((r) => ({ v: vt(r.t), r })).sort((a, b) => a.v - b.v);
   console.log('\nTIMELINE (video s | shot | work | tool on screen | words):\n' + tl.map(({ v, r }) => `${v.toFixed(1).padStart(5)} | ${String(r.n).padStart(2)} | ${r.job ? 'work' : r.act ? 'moves' : 'STILL'} | ${r.ts ? 'tool' : '-'} | ${r.b.filter((b) => b.k !== 'f-sketch').map((b) => b.txt).join(' / ')}`).join('\n')); }
+// (a cut is a jump of the eye or the aim, not a new shot object: two shots that look the same are one)
+const cuts = [rows[0].t]; for (let i = 1; i < rows.length; i++) { const p = rows[i - 1], r = rows[i]; if (len(sub(r.e, p.e)) / r.d > 0.04 || len(sub(r.a, p.a)) / r.d > 0.08) cuts.push(r.t); }
+cuts.push(rows.at(-1).t);
+const shortCut = []; for (let i = 0; i < cuts.length - 1; i++) { const t0 = cuts[i], t1 = cuts[i + 1]; if (t1 - t0 < 0.8 - 1e-6 && !inHook(t0) && !inHook(t1 - 0.01) && i < cuts.length - 2) shortCut.push(`video ${vt(t0).toFixed(1)} s: a shot of ${(t1 - t0).toFixed(2)} s < 0.8`); }
+// (one meaning text at a time — a bill, a kick, a title; the counter, «to be continued», the sketch do not count)
+const MEAN = ['f-stage', 'f-kick', 'f-head', 'f-card', 'f-bill', 'f-rcpt'];
+const two = uniq(rows.filter((r) => !inHook(r.t) && r.b.filter((b) => MEAN.includes(b.k)).length > 1).map((r) => `${r.t.toFixed(2)} s two texts: ${r.b.filter((b) => MEAN.includes(b.k)).map((b) => '«' + b.txt + '»').join(' + ')}`));
+// (a text over the work: the tool on screen ≥ 70 % of the time it is up, never > 1 s without it)
+const txt = (r) => !inHook(r.t) && r.b.some((b) => b.k === 'f-stage' || b.k === 'f-kick'), txtRows = rows.filter(txt);
+const txtTool = txtRows.length ? txtRows.filter((r) => r.ts).length / txtRows.length : 1;
+const txtOff = fmt(runs((r) => txt(r) && !r.ts, 1.0), 'a text up without the tool on screen');
+if (txtTool < 0.7) txtOff.unshift(`the tool on screen under texts ${(txtTool * 100).toFixed(0)} % < 70 %`);
+// («TO BE CONTINUED» 2.5–3.5 s before the seam)
+const nx = rows.find((r) => r.t < H0 && r.b.some((b) => b.k === 'f-next')), nxt = [];
+if (Number.isFinite(H0)) { if (!nx) nxt.push('no «TO BE CONTINUED» before the seam'); else if (H0 - nx.t < 2.5 || H0 - nx.t > 3.5) nxt.push(`«TO BE CONTINUED» ${(H0 - nx.t).toFixed(1)} s before the seam (2.5–3.5)`); }
+console.log(`\nSHORT CUTS (< 0.8 s, outside the hook):\n` + shortCut.join('\n'));
+console.log(`\nTWO TEXTS AT ONCE:\n` + two.slice(0, 20).join('\n'));
+console.log(`\nTEXT WITHOUT THE TOOL:\n` + txtOff.join('\n'));
+console.log(`\nTO BE CONTINUED:\n` + nxt.join('\n'));
 console.log(`\nSTILL (> 1.5 s):\n` + still.join('\n'));
 console.log(`\nTOOL OFF SCREEN (> 1 s):\n` + off.join('\n'));
 console.log(`\nCOUNTER STANDS (> 2 s):\n` + cnt.join('\n'));
@@ -103,7 +122,7 @@ console.log(`\nBILL OVER STILL:\n` + billStill.slice(0, 20).join('\n'));
 console.log(`\nFIRST 10 S WITHOUT WORK:\n` + first10.join('\n'));
 console.log(`\nHOOK / SEAM:\n` + hook.join('\n'));
 console.log(`\nSILENCE (> 1 s):\n` + sil.slice(0, 20).join('\n'));
-const fails = still.length + off.length + cnt.length + billStill.length + first10.length + hook.length;
+const fails = still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length;
 console.log(`\nRULES: ${fails ? fails + ' problems' : 'all pass'}`);
 console.log('LOG ' + JSON.stringify(rows.reduce((a, r) => { if (!a.length || a.at(-1)[0] !== r.n) a.push([r.n, r.t, r.title]); return a; }, [])));
 console.log(`frames ${rows.length}, ${(rows.at(-1).t).toFixed(1)} s, shots ${shots.length}`);
