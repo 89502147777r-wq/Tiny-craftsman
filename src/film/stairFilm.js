@@ -417,7 +417,7 @@ export function* stairFilm(d, app) {
   shotN++;
   hud(['Cinder', 'Formwork', 'Concrete'], 0, ['*By hand', 'Course'], 'wall');
   st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
-  d.cut(look(P(7600, 1500, 9800), P(6000, 2700, 1500)), { drift: 0.01, push: 0.02, hand: 0.25 });   // (from behind the foot: the block close, the treads climbing away into the sky)
+  d.cut(look(P(8200, 2100, 12500), P(5900, 4700, -2600)), { drift: 0.01, push: 0.02, hand: 0.25 });   // (from behind the foot, a little to the side: the risers climbing away into the sky — closer and lower it read as the wall's flat side)
   d.kick('?', 0.7, 'top');   // (where the next part goes — no shape of it: the analyst)
   yield d.sec(0.4);
   d.next(); d.nextEl?.classList.add('small');
@@ -430,7 +430,7 @@ export function* stairFilm(d, app) {
   hud(['Cinder', 'Formwork', 'Concrete'], 0, ['*By hand', 'Course'], 'wall');
   st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
   d.nextEl?.classList.add('small');
-  d.cut(look(P(7600, 1500, 9800), P(6000, 2700, 1500)), { drift: 0.01, push: 0.07, hand: 0.25 });   // (from behind the foot: the block close, the treads climbing away into the sky)
+  d.cut(look(P(8200, 2100, 12500), P(5900, 4700, -2600)), { drift: 0.01, push: 0.07, hand: 0.25 });   // (from behind the foot, a little to the side: the risers climbing away into the sky — closer and lower it read as the wall's flat side)
   yield d.sec(0.2);
   d.mark('hook');
   d.kick('34 STEPS TO WHERE?', 2.2, 'top');
