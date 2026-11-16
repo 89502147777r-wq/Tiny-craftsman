@@ -237,7 +237,7 @@ export function* stairFilm(d, app) {
   const pier = pav.filter((r) => r.kind === 'brick' && r.p[0] < MM(-1000));   // (the pier the inner wall stands against)
   tool = () => new V().fromArray(pier[0].p);
   act([[1.4, [-900, 900, -1100], 1], [1.2, [1500, 1300, -1800], 4]]);
-  bill('DPC MEMBRANE');   // (over the first brick on the membrane — the stage's thing in the frame, past the video's 10th second: the analyst)
+  bill('');   // (over the first brick on the membrane — the stage's thing in the frame, past the video's 10th second: the analyst)
   for (const r of pier.slice(0, 4)) { yield d.until(() => job(r, r !== pier[0])); }
   yield d.until(idle);
   yield d.sec(0.4);   // (its second shot ≥ 0.8 s: check-film)
@@ -259,7 +259,8 @@ export function* stairFilm(d, app) {
   const topS = Math.max(...O.all('unit').filter((u) => u.kind === 'cinder').map((u) => u.p[1] + u.s[1] / 2));
   const B = findBelt(app, new V(MM(X0), topS, MM(-3000)));
   say('belt ' + (B ? `${B.rec.ni}×${B.rec.nj}` : 'none'));
-  { const tk = d.t + 1.95; d.each(() => { if (d.t < tk) return false; kick('THE STEPS NEED THIS FIRST', 1.2); return true; }); }   // (why we wait for the stair — the analyst's re-hook; past the bill, over the boards)
+  // (no re-hook words: the owner, 2026-11-16 — the words on the screen are numbers and signs only)
+  //   // (why we wait for the stair — the analyst's re-hook; past the bill, over the boards)
   // (the pavilion's walls: a ring of their own — they stand apart from the spine (a gap between the two foundations): the beam found
   // from the spine's top does not reach them (the realist: the pavilion stood bare under a bill «RING BEAM»); over its openings the
   // beam is a lintel on props)
@@ -281,7 +282,7 @@ export function* stairFilm(d, app) {
     const hAt = (u) => new V(MM(X0 + 640), topS + MM(140), MM(-5400 + 6300 * u));
     tool = () => (app.handTools?.cur === 'hammer' ? app.handTools.tools.hammer.g.getWorldPosition(new V()) : hAt(0));
     act([[1.3, [1300, 450, 1100], 1], [9, [2600, 1200, 2600], 1]]);
-    bill('BLOCKS & BRICKS');   // (over the boards going up — never over a still grey wall: the analyst)
+    bill('');   // (over the boards going up — never over a still grey wall: the analyst)
     d.speed = 1; yield* rise(WV, beltId, 3.2, ['plank', 'hammer_nail', 'hammer_nail'], hAt);
     // the pavilion's ring: boards round it, seen whole from far (its openings bridged — a lintel on props)
     if (BP && !beltsOverlap(BP.rec, B.rec)) {   // (one ring over both when the tops meet: not twice)
@@ -375,7 +376,7 @@ export function* stairFilm(d, app) {
       for (const id of [pavId, ...lintels.map((l) => l.id)]) { const r = O.get(id); if (r && r.fill < 0.999) app.journal.act('belt-pour', {}, app.clock, () => O.update(id, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
     }
   }
-  bill('RING BEAM 3.4');
+  bill('');
   // ---- a week: the beam sets, its boards off ----
   d.hud(null);
   shots([[9, [-7000, 7500, 6500], [0, 3000, -1500]]]);
@@ -408,7 +409,7 @@ export function* stairFilm(d, app) {
   // (the counter to the promised number holds the middle — the analyst: «STEP n / 34»)
   const cnt = document.createElement('div'); cnt.className = 'f-steps'; cnt.setAttribute('data-notr', ''); d.el.appendChild(cnt);
   const last = rest.at(-1), climb = rest.slice(0, -1), courseOf = new Map(); spineUp.forEach((c, j) => c.forEach((r) => courseOf.set(r, j)));
-  const shown = (j) => { cnt.textContent = `STEP ${NLOW + 1 + j} / ${NLOW + NUP + 1}`; };
+  const shown = (j) => { cnt.textContent = `${NLOW + 1 + j} / ${NLOW + NUP + 1}`; };
   shown(0);
   { let i = 0; const n = climb.length, dur = 9.5, t0 = d.t;
     // (slow, then quicker and quicker, slow again at the top — ×1 → ×3 → ×8 → ×1)
@@ -452,7 +453,7 @@ export function* stairFilm(d, app) {
   cnt.style.opacity = ''; shown(NUP); cnt.classList.add('done');   // (34 when the landing is cast)
   { const L0 = [P(X0 + 2200, 7000, -1500), P(X0, 6900, -5000)], L1 = [P(X0 + 5200, 6200, 2500), P(X0, 5600, -3500)]; still(); d.fly([L0, L1], 1.5, { ease: 'both', hand: 0.2 }); }   // (the reward over a move back down the stair — never a still frame: the analyst)
   app.budget._pay?.([{ usd: rest.length * 2.2 + 900 }], P(0, 0, 0));
-  bill('STEPS & LANDING');   // (with «34 / 34» — after the last «wow» only the reward and the loop: the analyst)
+  bill('');   // (with «34 / 34» — after the last «wow» only the reward and the loop: the analyst)
   yield d.sec(1.5);
   cnt.remove();
   // (the sketch's own view: the camera set where the drawing was made from — still, no hand)
@@ -492,10 +493,11 @@ export function* stairFilm(d, app) {
   { let laid = false; yield d.until(() => (laid = laid || job(hold, false))); }
   yield d.sec(0.4);
   d.mark('hook');
+  // (its words: «34 → ?» — no English: the first viewers may not read it (the owner, 2026-11-16))
   { const t0 = d.t; let flown = false, asked = false;
     yield d.until(() => {
       if (!flown && d.t - t0 > 0.35) { flown = true; d.fly([near, far], 1.4, { ease: 'both', hand: 0.2 }); }
-      if (!asked && d.t - t0 > 0.45) { asked = true; d.kick('34 STEPS TO WHERE?', 1.6, 'top'); }
+      if (!asked && d.t - t0 > 0.45) { asked = true; d.kick('34 → ?', 1.6, 'top'); }
       return d.t - t0 >= 2.0;
     }); }
   if (!O.all('unit').some((u) => Math.abs(u.p[0] - hold.p[0]) < 1e-6 && Math.abs(u.p[1] - hold.p[1]) < 1e-6 && Math.abs(u.p[2] - hold.p[2]) < 1e-6)) O.add(hold);
