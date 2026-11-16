@@ -86,6 +86,7 @@ export function* stairFilm(d, app) {
   const V = THREE.Vector3, O = app.objects, T = app.terrain, st = app.settings, W = app.wallTool, G = app.concreteGear;
   Object.assign(st, { dayHour: 9.5, pump: 1.25, rebarD: 12, cover: 40 }); app.sky.setHour(9.5);
   d.lock = true; d.hand = 0.3;
+  const startIds = new Set(O.all().map((r) => r.id));   // (what stood before this film: the hook's rewind takes away all the rest)
   d.logo();
   { const r0 = new V(MM(X0), T.heightAt(MM(X0), MM(ZB)) + MM(100), MM(ZB)); d.cut(look(r0.clone().add(new V(MM(550), MM(650), MM(750))), r0), { drift: 0, push: 0, hand: 0.2 }); }   // (the 1st frame after the hook: the work, close — the analyst)
   // (the analyst and the owner, 2026-11-15: the stage's own pencil sketch pinned in the corner — the goal of this film, no more; at
@@ -472,47 +473,54 @@ export function* stairFilm(d, app) {
     yield d.sec(0.35);
     const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 1.0); sk.style.opacity = String(1 - u); return u >= 1; });
     sk.remove(); }
-  d.next(); d.nextEl?.classList.add('small');   // (~3 s before the seam: the analyst)
-  // (the loop: the end comes down the steps to the hook's first frame — the lowest step close, the block still to be laid; the hook
-  // starts there: the mallet's blow, then up and back along the steps to the sky (the analyst's 10/10 plan); no HUD rows either side)
-  const hp = new V().fromArray(hold.p), near = [new V(hp.x + MM(1300), hp.y + MM(420), hp.z + MM(1500)), hp.clone()], far = [P(8200, 2100, 12500), P(5900, 4700, -2600)];
-  shotN++;
+  // ---- the end: the stair's last block by the mallet, close; then back to the stair in profile on the sky, still — the frame the
+  // video starts on (the owner, 2026-11-16: the hook IS the rewind from this frame) ----
+  const hp = new V().fromArray(hold.p), near = [new V(hp.x + MM(1300), hp.y + MM(420), hp.z + MM(1500)), hp.clone()], prof = [P(15500, 4300, 500), P(6000, 4300, -500)];
   d.hud(null);
   st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
-  d.cut(look(far[0], far[1]), { drift: 0, push: 0, hand: 0.2 });
-   // (where the next part goes — no shape of it: the analyst)
-  yield d.sec(0.8);
-  d.fly([far, near], 1.4, { ease: 'both', hand: 0.15 });
-  yield d.sec(1.6);
-  // ---- the hook (put first by the recorder): the lowest step close — the block laid by the mallet, crumbs; then fast up and back along
-  // the steps: the whole stair into the sky, the mountains and the sea; the question on that move ----
-  shotN++;
-  d.cut(look(near[0], near[1]), { drift: 0, push: 0, hand: 0.15 });
-  // (the block's job started 0,4 s before the hook's mark: the video's last frames are the block coming in, its first — the mallet's
-  // blow (the recorder puts the hook first and ends the video at the mark: the loop runs on through the seam — the analyst)
+  shotN++; d.cut(look(near[0], near[1]), { drift: 0, push: 0, hand: 0.15 });
+  d.next(); d.nextEl?.classList.add('small');   // (~3 s before the seam: the analyst)
   { let laid = false; yield d.until(() => (laid = laid || job(hold, false))); }
-  yield d.sec(0.4);
+  yield d.sec(0.7);   // (its blow)
+  d.fly([near, prof], 1.3, { ease: 'both', hand: 0.15 });
+  yield d.sec(1.3);
+  shotN++; d.cut(look(prof[0], prof[1]), { drift: 0, push: 0, hand: 0 });
+  yield d.sec(0.5);
+  d.stair = { pavId, units: O.all('unit').length, cinder: O.all('unit').filter((u) => u.kind === 'cinder').length, belts: O.all('belt').length, dpc: O.all('dpc').length, beltId, landId, laidN };
+  // ---- the hook (put first by the recorder; the video ends at its mark — the loop: the stair stands, then comes apart): the rewind
+  // (the owner's idea, the analyst's timings): the camera still in profile; course by course from the top down, in order — no falling,
+  // no dust (not a collapse) — «◀◀» in the corner and the count 34 → 0 on the top step; a rising whoosh, a dull stop; the bare
+  // foundation; then the torch lit, the roll moving: the film's first work, the same view ----
   d.mark('hook');
-  // (its words: «34 → ?» — no English: the first viewers may not read it (the owner, 2026-11-16))
-  // (the analyst: a bare «34» reads as a number, not 34 steps — so the count runs 1 → 34 as the camera goes up and back along them,
-  // then «?» stands at the stair's top, on it in the frame: the stair itself is the arrow)
-  { const t0 = d.t, top = new V(MM(X0), topU + MM(500), MM(-5000)); let flown = false, hc = null, q = null;
+  { const topOf = (r) => (r.type === 'unit' ? r.p[1] + r.s[1] / 2 : r.type === 'dpc' ? -1e9 : r.top ?? r.p?.[1] ?? 0);
+    const back = O.all().filter((r) => !startIds.has(r.id) && r.type !== 'siteprop' && r.type !== 'vehicle').sort((p, q) => topOf(q) - topOf(p));
+    const gone = [], top = new V(MM(X0), topU + MM(500), MM(-5000)), t0 = d.t;
+    let rw = null, hc = null, stopped = false, n = 0;
     const at = (el) => { const v = top.clone().project(app.camera); el.style.left = ((v.x + 1) / 2 * 100).toFixed(2) + '%'; el.style.top = ((1 - v.y) / 2 * 100).toFixed(2) + '%'; };
     yield d.until(() => {
-      if (!flown && d.t - t0 > 0.35) { flown = true; d.fly([near, far], 1.4, { ease: 'both', hand: 0.2 }); }
-      const u = (d.t - t0 - 0.45) / 1.0;
-      if (u >= 0 && u < 1) { if (!hc) { hc = document.createElement('div'); hc.className = 'f-steps'; hc.setAttribute('data-notr', ''); d.el.appendChild(hc); } hc.textContent = String(Math.max(1, Math.ceil(34 * u))); }
-      if (u >= 1 && !q) { hc?.remove(); hc = null; q = document.createElement('div'); q.className = 'f-kick f-ask'; q.textContent = '?'; d.el.appendChild(q); app.sfx?.play?.('tap', { vol: 0.5 }); }
-      if (q) at(q);
-      if (d.t - t0 >= 2.0) { hc?.remove(); q?.remove(); return true; }
-      return false;
-    }); }
-  if (!O.all('unit').some((u) => Math.abs(u.p[0] - hold.p[0]) < 1e-6 && Math.abs(u.p[1] - hold.p[1]) < 1e-6 && Math.abs(u.p[2] - hold.p[2]) < 1e-6)) O.add(hold);
-  d.mark('hookEnd');
-  d.stair = { pavId, units: O.all('unit').length, cinder: O.all('unit').filter((u) => u.kind === 'cinder').length, belts: O.all('belt').length, dpc: O.all('dpc').length, beltId, landId, laidN };
+      const u = Math.min(1, Math.max(0, (d.t - t0 - 0.1) / 0.8)), e = u ** 1.6;   // (the top slow, the bottom quicker)
+      if (!rw && d.t - t0 > 0.04) {   // (just past the seam: the words either side of it the same)
+        rw = document.createElement('div'); rw.className = 'f-rew'; rw.setAttribute('data-notr', ''); rw.textContent = '◀◀'; d.el.appendChild(rw);
+        hc = document.createElement('div'); hc.className = 'f-steps'; hc.setAttribute('data-notr', ''); d.el.appendChild(hc);
+        app.sfx?.play?.('rewind', { vol: 0.8 });
+      }
+      for (const want = Math.ceil(back.length * e); n < want; n++) { const r = back[n]; if (O.get(r.id)) { gone.push(r); O.remove(r.id); } }
+      if (hc) { hc.textContent = String(Math.round(34 * (1 - e))); at(hc); }
+      if (u >= 1 && !stopped) { stopped = true; app.sfx?.play?.('thud', { vol: 0.9 }); rw?.remove(); hc?.remove(); rw = hc = null; }
+      return d.t - t0 >= 1.0;
+    });
+    // (the first work in the same view: the torch lit, the roll moving — the cut into the film's own first shot, close)
+    st.wallKind = 'dpc'; app.setTool('wall'); W.setMode('lay');
+    const n0 = O.all('dpc').length; lay([X0, ZB + 150], [X0, ZS - 150], 1300);
+    yield d.sec(0.4);
+    d.mark('hookEnd');
+    // (after the video's end: the plot as it was at the end of the film — the game and the tests go on from there)
+    for (const r of O.all('dpc').slice(n0)) O.remove(r.id);
+    dpc.jobs.length = 0;
+    for (const r of gone.reverse()) O.add(r); }
   yield d.sec(0.1);
 }
 stairFilm.seconds = 62;
 stairFilm.place = 'beach';
 stairFilm.start = 'assets/films/ibiza-1.json.gz';
-stairFilm.sounds = ['block', 'brick', 'trowel', 'trowel_tap', 'mallet', 'tap', 'paper', 'pin', 'till', 'cash', 'torch', 'fabric', 'plank', 'hammer_nail', 'rebar', 'wire', 'pump', 'concrete', 'vibrator', 'screed', 'waves', 'wind', 'birds'];
+stairFilm.sounds = ['block', 'brick', 'trowel', 'trowel_tap', 'mallet', 'tap', 'paper', 'pin', 'rewind', 'thud', 'till', 'cash', 'torch', 'fabric', 'plank', 'hammer_nail', 'rebar', 'wire', 'pump', 'concrete', 'vibrator', 'screed', 'waves', 'wind', 'birds'];
