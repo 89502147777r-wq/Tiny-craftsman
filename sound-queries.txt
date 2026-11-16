@@ -1,4 +1,6 @@
-paper|paper sheet rustle handling
-paper2|paper flutter whoosh
-pin|push pin thumbtack cork board
-pin2|thumbtack pin press click
+pin|thumbtack
+pin2|push pin
+pin3|pushpin
+pin4|drawing pin
+paper2|paper whoosh
+paper3|paper sheet flip
