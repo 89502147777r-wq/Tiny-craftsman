@@ -375,7 +375,7 @@ export function* stairFilm(d, app) {
   // are all there: the side of a half-laid wall is a grey band — a dead frame)
   shots([[4.2, [13500, 9500, 9500], [5000, 3500, -1500]], [3.0, [11000, 1300, -11500], [6000, 4800, -3500]], [9, [15500, 4300, 500], [6000, 4300, -500], 0.05]]);
   // (the counter to the promised number holds the middle — the analyst: «STEP n / 34»)
-  const cnt = document.createElement('div'); cnt.className = 'f-count'; cnt.setAttribute('data-notr', ''); d.el.appendChild(cnt);
+  const cnt = document.createElement('div'); cnt.className = 'f-steps'; cnt.setAttribute('data-notr', ''); d.el.appendChild(cnt);
   const last = rest.at(-1), climb = rest.slice(0, -1), courseOf = new Map(); spineUp.forEach((c, j) => c.forEach((r) => courseOf.set(r, j)));
   const shown = (j) => { cnt.textContent = `STEP ${NLOW + 1 + j} / ${NLOW + NUP + 1}`; };
   shown(0);

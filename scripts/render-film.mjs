@@ -48,12 +48,12 @@ const fr = FPS / EVERY;
 // the cut: the hook (marked «hook» … «hookEnd» at the end of the film) first, then the film up to it
 let src = path.join(out, 'frames', 'f%05d.jpg');
 if (marks.hook != null && marks.hookEnd != null) {
-  const fi = (t) => Math.ceil(t * fr) + 1, cut = path.join(out, 'cut'), nf = fs.readdirSync(path.join(out, 'frames')).length;
+  const fi = (t) => Math.ceil(t * fr - 1e-6), cut = path.join(out, 'cut'), nf = fs.readdirSync(path.join(out, 'frames')).length;
   const all = Array.from({ length: nf }, (_, i) => `f${String(i).padStart(5, '0')}.jpg`);
   const miss = all.filter((f) => !fs.existsSync(path.join(out, 'frames', f)));
   if (miss.length) { console.log('frames missing:', miss.length, miss.slice(0, 5)); process.exit(1); }
   fs.rmSync(cut, { recursive: true, force: true }); fs.mkdirSync(cut);
-  const order = [...all.slice(fi(marks.hook), fi(marks.hookEnd)), ...all.slice(0, fi(marks.hook) - 1)];
+  const order = [...all.slice(fi(marks.hook), fi(marks.hookEnd)), ...all.slice(0, fi(marks.hook))];
   order.forEach((f, i) => fs.copyFileSync(path.join(out, 'frames', f), path.join(cut, `c${String(i).padStart(5, '0')}.jpg`)));
   src = path.join(cut, 'c%05d.jpg');
 }
