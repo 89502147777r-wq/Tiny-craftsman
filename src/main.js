@@ -14,6 +14,7 @@ import { OutlineView, contains, gradeY } from './world/outlines.js';
 import { FormworkView } from './world/formwork.js';
 import { RebarView } from './world/rebar.js';
 import { SitePropView } from './world/siteProps.js';
+import { LumpView, scanLumps } from './world/lumps.js';
 import { DpcView } from './world/dpc.js';
 import { WallView } from './world/walls.js';
 import { kitsPending, onKits } from './world/openingKits.js';
@@ -128,6 +129,7 @@ async function main() {
   app.formView = new FormworkView(tex, app.objects, terrain); scene.add(app.formView.group);
   app.rebarView = new RebarView(app.objects); scene.add(app.rebarView.group);
   app.dpcView = new DpcView(app);   // (the damp-proof course on the foundations — world/dpc.js)
+  app.lumpView = new LumpView(app);   // (lumps of set concrete spilt on the ground — world/lumps.js)
   app.siteProps = new SitePropView(app);   // (the site's things: the office, the mixer, the pallets … — world/siteProps.js)
   app.wallView = new WallView(app.objects, tex); scene.add(app.wallView.group); app.wallView.app = app;
   app.wallView.terrain = terrain;   // (what the props of a slab stand on)
@@ -364,6 +366,7 @@ function step(dt, time, render = true) {
   app.outlineView.update();
   app.formView.update();
   app.rebarView.update(); app.rebarView.lod(app.rig.dist); app.siteProps.update(); app.dpcView.update(dt);
+  app.lumpView.update(dt); if ((app._lumpT = (app._lumpT || 0) + dt) > 2) { app._lumpT = 0; scanLumps(app); }   // (a firm spill becomes a lump — now and then)
   app.wallView.clock = app.clock; app.wallView.update();
   app.poolView.update(dt, app);
   app.gardenView.update(dt, app);

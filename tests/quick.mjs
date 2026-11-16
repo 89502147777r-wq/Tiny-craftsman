@@ -1067,6 +1067,19 @@ console.log('—', sec());
       const a0 = near(A), b0 = near(B), s0 = E.swing;
       go(45, [1, 0], [0, 0]); const s1 = E.swing; go(90, [-1, 0], [0, 0]); const s2 = E.swing;
       o.push = { a: +(near(A) / Math.max(1e-12, a0)).toFixed(2), b: +(near(B) / Math.max(1e-12, b0)).toFixed(2), sw1: +(s1 - s0).toFixed(2), sw2: +(s2 - s1).toFixed(2) }; }
+    // (the owner: a drop of concrete on the ground stays a dab — not a pillar down when dug round; a bucket takes it whole)
+    { const LV = tc.lumpView, mod = await import('./src/world/lumps.js'), b = E.teethWorld(new V()), i0 = t.index(b.x + 1.2 * M, b.z), nx = t.nx, ids = [];
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const i = i0 + dz * nx + dx; t.conc[i] = 0.05 * M; t.cTime[i] = (tc.clock || 0) - 400; ids.push(i); }
+      t._concTouch(0, 0, t.rx, t.rz);
+      const made = mod.scanLumps(tc), r = made.length && tc.objects.get(made[0]);
+      o.lump = { made: made.length, concLeft: ids.filter((i) => t.conc[i] > 1e-6).length };
+      if (r) { LV.update(1 / 30); const y0 = LV.meshes.get(r.id).position.y;
+        for (const i of ids) t.nat[i] -= 0.5 * M; t._touch(0, 0, t.rx, t.rz); for (let k = 0; k < 40; k++) LV.update(1 / 30);
+        o.lump.fell = +((y0 - LV.meshes.get(r.id).position.y) / M).toFixed(2);
+        // (the bucket's lip at it, scooping: taken; opened: let go, it falls)
+        tc.objects.update(r.id, { x: b.x, z: b.z }); for (let k = 0; k < 40; k++) LV.update(1 / 30); const m = LV.meshes.get(r.id); m.position.y = b.y - 0.05 * M;
+        mt._excCut = true; const kc = E.curl; E.curl = 0.3; mt._lumps(); o.lump.held = LV.held?.id === r.id;
+        E.curl = -1.0; E.curlGoal = -1.0; mt._lumps(); o.lump.dropped = !LV.held && tc.objects.get(r.id)?.at === 'ground'; E.curl = E.curlGoal = kc; mt._excCut = false; tc.objects.remove(r.id); } }
 
     mt.setExcMode('drive'); const x0 = E.x, z0 = E.z; mt.joystick('l', 0, -1); frames(45); mt.joystick('l', 0, 0); frames(5); o.drove = Math.hypot(E.x - x0, E.z - z0) > 0.3 * M;
     // (the owner: it drove through the loader with the truck about — every other machine stops it)
@@ -1096,6 +1109,7 @@ console.log('—', sec());
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator\'s bucket shoves loose heaps with its back and sides, slewed each way (the owner)', o.push && o.push.a < 0.7 && o.push.b < 0.7 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
+  check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made === 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped, JSON.stringify(o.lump));
   check('machines: the excavator stops at a site thing (a pallet) in its way, not through it (the owner)', o.prop && o.prop.clear && o.prop.moved < 2.6, JSON.stringify(o.prop));
   check('machines: the excavator stops at the loader in its way, not through it (the owner)', !o.block || (o.block.clear && o.block.moved < 2.2), JSON.stringify(o.block));
   check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), lifted it keeps it (crowned, lumpy), opened it is empty, the crumbs fall at g; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove && o.carried >= 0.95 && o.crown > 0.15 && o.fallAt04 && o.fallAt12, JSON.stringify(o));

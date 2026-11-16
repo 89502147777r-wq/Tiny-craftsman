@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PROPS } from '../world/siteProps.js';
+import { lumpSize } from '../world/lumps.js';
 import { MODEL_SCALE } from '../config.js';
 import { Loader } from '../world/loader.js';
 import { Truck, TRUCK_LOAD } from '../world/truck.js';
@@ -252,6 +253,7 @@ export class MachineTool {
     if (!this.truck && this.recOf('truck')) this.ensureTruck();
     if (!this.exc && this.recOf('excavator')) this.ensureExc();
     if (this.exc?.loaded && !(this.state === 'drive' && this.drv === 'excavator')) this.exc.update(dt);
+    this._lumps();   // (a lump of set concrete in a bucket, let go, in the truck — world/lumps.js)
     const L = this.loader;
     // (the truck with no loader on the plot — loaded by the excavator, by shovels — lives too)
     if (!L?.loaded) { if (this.truck?.loaded) { this.truck.update(dt); this._overTop(); } return; }
@@ -477,7 +479,7 @@ export class MachineTool {
         else {
           // (away on the road: it tips at the tip, out of sight, and comes back empty a little later)
           const r = this.recOf('truck'), got = T.load * TRUCK_LOAD, total = (r?.hauled || 0) + got;
-          app.journal.act('truck-out', {}, app.clock, () => this._saveTruck({ load: 0, hauled: +total.toFixed(3), away: true }));
+          app.journal.act('truck-out', {}, app.clock, () => { this._saveTruck({ load: 0, hauled: +total.toFixed(3), away: true }); for (const l of app.objects.all('lump')) if (l.at === 'truck') app.objects.remove(l.id); });
           this.got = T.load;
           app.ui?.toast(`Самосвал вывез ${got.toFixed(1).replace('.', ',')} м³ — всего вывезено ${total.toFixed(1).replace('.', ',')} м³`);
           this.wait = 6; this.phase = 'away';
@@ -1131,7 +1133,7 @@ export class MachineTool {
     const hp0 = E.hardPoints();
     E.update(dt);
     const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
-    this._excPush(hp0, E.hardPoints(), p);   // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews)
+    this._excPush(hp0, E.hardPoints(), p); this._excCut = cutting;   // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews)
     // (digging: the teeth leading — the way they go as it curls in — not full, not tipped)
     // (full, it still cuts while it is in no deeper than 85 % of its depth: what does not fit runs out over its lip —
     // a driver drags a full bucket on so; deeper, the ground holds it)
@@ -1245,6 +1247,7 @@ export class MachineTool {
     if (out < R(3) || T.load < 0.02 || this._tipT) return;
     const r = this.recOf('truck'), got = T.load * TRUCK_LOAD, total = (r?.hauled || 0) + got;
     this._tipT = 1;
+    for (const l of app.objects.all('lump')) if (l.at === 'truck') app.objects.remove(l.id);   // (a lump in the body: gone to the tip with the load)
     T.load = 0; T.tip = T.tipGoal = 0; T.setMix([1, 0, 0, 0, 0]);
     app.sfx.play('truck_tip', { vol: 0.5 });
     if (app.journal.pending?.type === 'drive') this._commitDrive();
@@ -1443,6 +1446,43 @@ export class MachineTool {
     this._flushPush();
   }
   // what stands over the edge across the bucket, moved on ahead of it
+  // a lump of set concrete (world/lumps.js) and the buckets: scooped through — taken whole, in the bucket's frame; the bucket
+  // opened / tipped — let go there: into the truck's body when it is over it, else it falls to the ground; the truck tipping —
+  // out over its tailgate
+  _lumps() {
+    const app = this.app, LV = app.lumpView; if (!LV) return;
+    const E = this.exc, L = this.loader, T = this.truck, O = app.objects;
+    let by = null, node = null, edge = null, inside = null, w = 0, open = false, scoop = false;
+    if (this.state === 'drive' && this.drv === 'excavator' && E?.loaded) { by = 'exc'; node = E.bucketP; edge = E.teethWorld(new THREE.Vector3()); inside = E.mouthWorld(new THREE.Vector3()); w = E.bucketW; open = E.open; scoop = !!this._excCut; }
+    else if (L?.loaded && L.bucketP && (this.state !== 'drive' || this.drv === 'loader')) { by = 'loader'; node = L.bucketP; edge = L.edgeWorld(new THREE.Vector3()); node.updateMatrixWorld(true); inside = edge.clone().lerp(node.getWorldPosition(new THREE.Vector3()), 0.45); w = L.bucketW || R(2); open = L.tilt < -0.3; scoop = L.tilt > -0.45 && L.tilt < 0.45 && (this.state !== 'drive' || (this.v || 0) > 0); }   // (its middle: between the lip and the hinge)
+    const H = LV.held;
+    if (H && (H.by !== by || !O.get(H.id))) { if (O.get(H.id)) LV.drop(H.id); LV.held = null; return; }
+    if (H) {
+      const m = LV.meshes.get(H.id); if (!m) { LV.held = null; return; }
+      node.updateMatrixWorld(true); new THREE.Matrix4().multiplyMatrices(node.matrixWorld, H.local).decompose(m.position, m.quaternion, m.scale);
+      if (!open) return;
+      LV.held = null;
+      const q = T?.bed && T.root.visible && T.tip < 0.05 ? T.bed.worldToLocal(m.position.clone()) : null;
+      if (q && q.x > T.x0 && q.x < T.x0 + T.hx && Math.abs(q.z) < T.hz / 2 && q.y > T.floor - R(0.3)) {
+        O.update(H.id, { at: 'truck', tx: +q.x.toFixed(6), ty: +(T.floor + (T._hAt?.(q.x, q.z) || 0)).toFixed(6), tz: +q.z.toFixed(6), yaw: 0 }); app.sfx?.play?.('stone', { at: m.position, vol: 0.5 });
+      } else { const e = new THREE.Euler().setFromQuaternion(m.quaternion, 'YXZ'); O.update(H.id, { at: 'ground', x: +m.position.x.toFixed(6), z: +m.position.z.toFixed(6), yaw: +e.y.toFixed(4) }); m.rotation.set(0, e.y, 0); LV.drop(H.id); }
+      return;
+    }
+    // (in the truck, the body tipping: out over the tailgate onto the ground)
+    if (T?.bed && T.tip > 0.5) for (const r of O.all('lump')) if (r.at === 'truck') { const p = T.tailLip(new THREE.Vector3()), fx = Math.cos(T.yaw), fz = -Math.sin(T.yaw); O.update(r.id, { at: 'ground', x: +(p.x - fx * R(0.4)).toFixed(6), z: +(p.z - fz * R(0.4)).toFixed(6) }); const m = LV.meshes.get(r.id); if (m) { m.position.y = p.y; LV.drop(r.id); } }
+    if (!by || open || !scoop) return;
+    for (const r of O.all('lump')) {
+      if (r.at === 'truck') continue;
+      const m = LV.meshes.get(r.id); if (!m) continue;
+      const sz = lumpSize(r), d = Math.hypot(m.position.x - edge.x, m.position.z - edge.z);
+      if (d > w / 2 + sz.r * 0.5 || edge.y > m.position.y + sz.h + R(0.12) || edge.y < m.position.y - R(0.3)) continue;
+      if (sz.r > w * 0.8) continue;   // (wider than the bucket: it does not go in)
+      node.updateMatrixWorld(true); m.position.copy(inside); m.updateMatrixWorld(true);
+      LV.held = { id: r.id, by, local: new THREE.Matrix4().copy(node.matrixWorld).invert().multiply(m.matrixWorld) };
+      app.sfx?.play?.('stone', { at: m.position, vol: 0.5 });
+      break;
+    }
+  }
   // the excavator's bucket — its back, its bottom, its sides as the house slews — shoves what is LOOSE in its way (a heap, spoil,
   // sand tipped there) on ahead of it, the way that part moves; pressed straight down into it, out to the sides. Firm ground still
   // holds it (the check after). Only the loose above the part's point moves: its own ground stays.
