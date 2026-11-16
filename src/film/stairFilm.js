@@ -227,13 +227,13 @@ export function* stairFilm(d, app) {
   bill('BLOCKS & BRICKS');
   say('masonry ' + O.all('unit').length);
 
-  d.kick('THE STEPS NEED THIS FIRST', 1.6, 'top');   // (why we wait for the stair — the analyst's re-hook)
   // ---- 3 · the ring beam over both, at one level (a joint between them — they stand on two foundations): its boards, its cage,
   // the concrete by the hose, the poker ----
   hud(['Formwork', 'Rebar', 'Concrete'], 0, null, 'wall');
   const topS = Math.max(...O.all('unit').filter((u) => u.kind === 'cinder').map((u) => u.p[1] + u.s[1] / 2));
   const B = findBelt(app, new V(MM(X0), topS, MM(-3000)));
   say('belt ' + (B ? `${B.rec.ni}×${B.rec.nj}` : 'none'));
+  { const tk = d.t + 1.5; d.each(() => { if (d.t < tk) return false; d.kick('THE STEPS NEED THIS FIRST', 1.6, 'top'); return true; }); }   // (why we wait for the stair — the analyst's re-hook; past the bill, over the boards)
   // (the pavilion's walls: a ring of their own — they stand apart from the spine (a gap between the two foundations): the beam found
   // from the spine's top does not reach them (the realist: the pavilion stood bare under a bill «RING BEAM»); over its openings the
   // beam is a lintel on props)
@@ -377,7 +377,7 @@ export function* stairFilm(d, app) {
   // (the counter to the promised number holds the middle — the analyst: «STEP n / 34»)
   const cnt = document.createElement('div'); cnt.className = 'f-count'; cnt.setAttribute('data-notr', ''); d.el.appendChild(cnt);
   const last = rest.at(-1), climb = rest.slice(0, -1), courseOf = new Map(); spineUp.forEach((c, j) => c.forEach((r) => courseOf.set(r, j)));
-  const shown = (j) => { cnt.textContent = `STEP ${NLOW + 1 + j} / ${NLOW + NUP}`; };
+  const shown = (j) => { cnt.textContent = `STEP ${NLOW + 1 + j} / ${NLOW + NUP + 1}`; };
   shown(0);
   { let i = 0; const n = climb.length, dur = 9.5, t0 = d.t;
     // (slow, then quicker and quicker, slow again at the top — ×1 → ×3 → ×8 → ×1)
@@ -388,11 +388,10 @@ export function* stairFilm(d, app) {
   tool = () => new V().fromArray(last.p);
   act([[9, [1500, 700, 1500], 1]]);
   yield d.until(() => job(last, false)); yield d.until(idle);
-  shown(NUP - 1); cnt.classList.add('done'); app.sfx?.play?.('till', { vol: 0.5 });
+  shown(NUP - 1);
   still();
   shots([[9, [15500, 4300, 500], [6000, 4300, -500]]]);
   yield d.sec(1.6);   // (held in profile on the sky — the cover's frame)
-  cnt.remove();
   // ---- 5 · the landing's beam on the 34th step: boards and cage at once, the concrete ----
   const topU = Math.max(...O.all('unit').filter((u) => u.kind === 'cinder').map((u) => u.p[1] + u.s[1] / 2));
   const B2 = findBelt(app, new V(MM(X0), topU, MM(-5200)));
@@ -415,6 +414,10 @@ export function* stairFilm(d, app) {
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
   }
+  // (the landing is the 34th step: the count done)
+  shown(NUP); cnt.classList.add('done'); app.sfx?.play?.('till', { vol: 0.5 });
+  yield d.sec(0.8);
+  cnt.remove();
   // (the sketch's own view: the camera set where the drawing was made from — still, no hand)
   shotN++; d.cut(look(new V(MM(17500), MM(9000), MM(15500)), new V(MM(2600), MM(3200), MM(-1600))), { drift: 0, push: 0, hand: 0 });
   app.budget._pay?.([{ usd: rest.length * 2.2 + 900 }], P(0, 0, 0));
