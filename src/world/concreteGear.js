@@ -293,8 +293,9 @@ export class ConcreteGear {
     this.ktrowel.visible = w === 'ktrowel';
     if (w !== 'pail') this.pailFlow.visible = false;
     if (w === 'hose') {
-        // (the spout ~0,5 m over the concrete, the hand above it at the coupling; the hose lags behind the hand)
-      this.pump.aim(this.goal.clone().add(new THREE.Vector3(0, (0.5 + 0.15 * 1.35) / MODEL_SCALE, 0)), camPos, this._snapHose);
+        // (the spout held 0,6–0,7 m over the concrete — the hose's weight lets it hang ~0,4 m under where the hand aims: aimed at 0,5 it
+        // hung 0,3 m over the beam and its stream hid behind the boards — the owner: «no concrete seen flowing from the hose»)
+      this.pump.aim(this.goal.clone().add(new THREE.Vector3(0, (0.85 + 0.15 * 1.35) / MODEL_SCALE, 0)), camPos, this._snapHose);
       this._snapHose = false;
       this.pump.update(dt);
     } else if (w === 'screed') {
