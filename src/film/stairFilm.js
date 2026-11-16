@@ -91,7 +91,7 @@ export function* stairFilm(d, app) {
   // the end it grows to the frame over the same view and washes into the real thing: «the plan came true». Made from the film's own
   // last frame (scratchpad sketch filter) — the lines fall on the real ones)
   const sk = document.createElement('img'); sk.className = 'f-sketch'; sk.src = 'assets/films/ibiza-2-sketch-card.png'; sk.alt = ''; d.el.appendChild(sk);
-  const pin = document.createElement('img'); pin.className = 'f-pin'; pin.src = 'assets/films/sketch-pin.png'; pin.alt = ''; d.el.appendChild(pin);   // (its own picture: taken out first at the end — the realist)
+  const pin = document.createElement('img'); pin.className = 'f-tack'; pin.src = 'assets/films/sketch-pin.png'; pin.alt = ''; d.el.appendChild(pin);   // (its own picture: taken out first at the end — the realist)
   const bill = (label) => { d.stageBill(label); sk.style.opacity = pin.style.opacity = '0.35'; const t1 = d.t + 1.4; d.each(() => { if (d.t < t1) return false; sk.style.opacity = pin.style.opacity = ''; return true; }); };   // (under the bill's card: the sheet dimmed)
   d.money(true); d.byStages();
   // (stage 1's excavator parked at the plot's edge, past the fireplace's pad — out of the work's way, now and then in a wide shot (the
@@ -407,8 +407,9 @@ export function* stairFilm(d, app) {
   // the stair's top off its edge (the analyst: the answer to the hook's «where?» never on the sheet) — then washes away into the real
   // view, which shows the top: the answer)
   // (the pin out first, up and away — else its red head hung on the sky after the sheet had washed off: the realist)
-  { const tp = d.t; pin.style.opacity = ''; app.sfx?.play?.('tap', { vol: 0.4 }); yield d.until(() => { const u = Math.min(1, (d.t - tp) / 0.2); pin.style.top = 16.8 - 2 * u + '%'; pin.style.opacity = String(1 - u); return u >= 1; }); pin.remove(); }
-  { const r0 = { l: 71, t: 16.5, w: 26 }, r1 = { l: -4.81, t: 31.2, w: 109.63 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
+  { const tp = d.t; pin.style.opacity = ''; app.sfx?.play?.('tap', { vol: 0.4 }); yield d.until(() => { const u = Math.min(1, (d.t - tp) / 0.2); pin.style.top = 23.35 - 2 * u + '%'; pin.style.opacity = String(1 - u); return u >= 1; }); pin.remove(); }
+  { sk.src = 'assets/films/ibiza-2-sketch-flat.png';   // (straightened as it is taken down — the frame's own view to fall on)
+    const r0 = { l: 68.3, t: 22.5, w: 31.3 }, r1 = { l: -15.19, t: 27.46, w: 130.37 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
     yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.5), e = u * u * (3 - 2 * u); sk.classList.add('grow'); sk.style.left = r0.l + (r1.l - r0.l) * e + '%'; sk.style.top = r0.t + (r1.t - r0.t) * e + '%'; sk.style.width = r0.w + (r1.w - r0.w) * e + '%'; return u >= 1; });
     yield d.sec(0.35);
     const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 1.0); sk.style.opacity = String(1 - u); return u >= 1; });
