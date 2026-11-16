@@ -371,6 +371,7 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-tack { position: absolute; left: 82.2%; top: 23.35%; width: 4.27%; height: auto; pointer-events: none; }
 #film .f-next.small { top: 82%; font-size: clamp(11px, 3.6vw, 27px); }   /* (on the hook: under the question, not over the thing — the analyst) */
 #film .f-kick.top { top: 26%; font-size: clamp(24px, 9vw, 70px); }   /* (the hook's question: in the upper third, clear of the Shorts UI) */
+#film .f-kick.f-ask { width: auto; transform: translate(-50%, -110%); font-size: clamp(40px, 16vw, 120px); }   /* (the hook's «?» on the stair's top, in the frame) */
 /* the game's face over a film: the chips' rows at the top, the round tool button at the bottom (as the quiet mode's) */
 #film .f-hud { position: absolute; inset: 0; pointer-events: none; }
 #film .f-row { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 0.5em; white-space: nowrap; font-size: clamp(11px, 3.3vw, 25px); }

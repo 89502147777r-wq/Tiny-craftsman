@@ -386,7 +386,7 @@ export function* stairFilm(d, app) {
     app.wallView.reveal = null; }
   app.sky.setHour(9.5);
   app.journal.act('belt-strip', {}, app.clock, () => { for (const [i, id] of [beltId, pavId, ...lintels.map((l) => l.id)].entries()) if (id != null) O.update(id, { pile: O.get(id)?.pile || [+MM(-3200 + i * 1300).toFixed(6), +MM(7600).toFixed(6)], stripped: true }); });
-  kick('+7 DAYS', 1.2);
+  kick('+7 DAYS', 0.8);   // (off before the steps' counter: the analyst)
 
   // ---- 4 · the steps on up: the first block over the beam close, its course; then the courses one by one in profile ----
   const bTop = beltId != null ? O.get(beltId).top + O.get(beltId).H : topS + MM(200);
@@ -494,11 +494,18 @@ export function* stairFilm(d, app) {
   yield d.sec(0.4);
   d.mark('hook');
   // (its words: «34 → ?» — no English: the first viewers may not read it (the owner, 2026-11-16))
-  { const t0 = d.t; let flown = false, asked = false;
+  // (the analyst: a bare «34» reads as a number, not 34 steps — so the count runs 1 → 34 as the camera goes up and back along them,
+  // then «?» stands at the stair's top, on it in the frame: the stair itself is the arrow)
+  { const t0 = d.t, top = new V(MM(X0), topU + MM(500), MM(-5000)); let flown = false, hc = null, q = null;
+    const at = (el) => { const v = top.clone().project(app.camera); el.style.left = ((v.x + 1) / 2 * 100).toFixed(2) + '%'; el.style.top = ((1 - v.y) / 2 * 100).toFixed(2) + '%'; };
     yield d.until(() => {
       if (!flown && d.t - t0 > 0.35) { flown = true; d.fly([near, far], 1.4, { ease: 'both', hand: 0.2 }); }
-      if (!asked && d.t - t0 > 0.45) { asked = true; d.kick('34 → ?', 1.6, 'top'); }
-      return d.t - t0 >= 2.0;
+      const u = (d.t - t0 - 0.45) / 1.0;
+      if (u >= 0 && u < 1) { if (!hc) { hc = document.createElement('div'); hc.className = 'f-steps'; hc.setAttribute('data-notr', ''); d.el.appendChild(hc); } hc.textContent = String(Math.max(1, Math.ceil(34 * u))); }
+      if (u >= 1 && !q) { hc?.remove(); hc = null; q = document.createElement('div'); q.className = 'f-kick f-ask'; q.textContent = '?'; d.el.appendChild(q); app.sfx?.play?.('tap', { vol: 0.5 }); }
+      if (q) at(q);
+      if (d.t - t0 >= 2.0) { hc?.remove(); q?.remove(); return true; }
+      return false;
     }); }
   if (!O.all('unit').some((u) => Math.abs(u.p[0] - hold.p[0]) < 1e-6 && Math.abs(u.p[1] - hold.p[1]) < 1e-6 && Math.abs(u.p[2] - hold.p[2]) < 1e-6)) O.add(hold);
   d.mark('hookEnd');
