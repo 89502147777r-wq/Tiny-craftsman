@@ -1,6 +1,5 @@
-pin|thumbtack
-pin2|push pin
-pin3|pushpin
-pin4|drawing pin
-paper2|paper whoosh
-paper3|paper sheet flip
+rewind|tape rewind
+rewind2|reverse whoosh rising
+rewind3|rewind fast forward sound
+thud|deep thud impact
+thud2|heavy stop thump
