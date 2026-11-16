@@ -112,7 +112,10 @@ export function* stairFilm(d, app) {
       }
       return false;
     }); }
-  const bill = (label) => { d.stageBill(label); sk.style.opacity = pin.style.opacity = '0.35'; const t1 = d.t + 1.4; d.each(() => { if (d.t < t1) return false; sk.style.opacity = pin.style.opacity = ''; return true; }); };   // (under the bill's card: the sheet dimmed)
+  const bill = (label) => { d.stageBill(label); dim(1.9); };   // (under the bill's card: the sheet dimmed)
+  // (a big word over the frame: the sheet dimmed under it, as under a bill — check-film: words never over each other)
+  let dimN = 0; const dim = (dur) => { dimN++; sk.style.opacity = pin.style.opacity = '0.3'; const t1 = d.t + dur; d.each(() => { if (d.t < t1) return false; if (--dimN === 0) sk.style.opacity = pin.style.opacity = ''; return true; }); };
+  const kick = (txt, dur) => { d.kick(txt, dur, 'top'); dim(dur); };
   d.money(true); d.byStages();
   // (stage 1's excavator parked at the plot's edge, past the fireplace's pad — out of the work's way, now and then in a wide shot (the
   // owner); it stood in two shots, a camera inside it)
@@ -255,7 +258,7 @@ export function* stairFilm(d, app) {
   const topS = Math.max(...O.all('unit').filter((u) => u.kind === 'cinder').map((u) => u.p[1] + u.s[1] / 2));
   const B = findBelt(app, new V(MM(X0), topS, MM(-3000)));
   say('belt ' + (B ? `${B.rec.ni}×${B.rec.nj}` : 'none'));
-  { const tk = d.t + 2.0; d.each(() => { if (d.t < tk) return false; d.kick('THE STEPS NEED THIS FIRST', 1.6, 'top'); return true; }); }   // (why we wait for the stair — the analyst's re-hook; past the bill, over the boards)
+  { const tk = d.t + 2.0; d.each(() => { if (d.t < tk) return false; kick('THE STEPS NEED THIS FIRST', 1.6); return true; }); }   // (why we wait for the stair — the analyst's re-hook; past the bill, over the boards)
   // (the pavilion's walls: a ring of their own — they stand apart from the spine (a gap between the two foundations): the beam found
   // from the spine's top does not reach them (the realist: the pavilion stood bare under a bill «RING BEAM»); over its openings the
   // beam is a lintel on props)
@@ -270,7 +273,7 @@ export function* stairFilm(d, app) {
     const rise = function* (view, id, dur, snd) { const t0 = d.t; let k = 0; yield d.until(() => { const u = Math.min(1, (d.t - t0) / dur); view.reveal = { id, u }; view.dirty = true; if (u * 8 > k) { k++; app.sfx?.play?.(snd[k % snd.length], { vol: 0.5 }); } if (u >= 1) { view.reveal = null; view.dirty = true; return true; } return false; }); };
     app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; });
     WV.reveal = { id: beltId, u: 0 }; WV.dirty = true;
-    shots([[1.3, [7600, 3900, -2400], [6000, 3300, -5000]], [1.1, [-1800, 4300, -6900], [6000, 3300, -3000]]]);
+    shots([[1.4, [7600, 3900, -2400], [6000, 3300, -5000]], [9, [-1800, 4300, -6900], [6000, 3300, -3000]]]);
     bill('BLOCKS & BRICKS');   // (over the boards going up — never over a still grey wall: the analyst)
     d.speed = 1; yield* rise(WV, beltId, 2.0, ['plank', 'hammer_nail', 'hammer_nail']);
     // the pavilion's ring: boards round it, seen whole from far (its openings bridged — a lintel on props)
@@ -292,7 +295,7 @@ export function* stairFilm(d, app) {
     }
     // the cages lowered in: the chairs, then bar after bar, the ties (the game's reveal of a cage)
     hud(['Formwork', 'Rebar', 'Concrete'], 1, null, 'wall');
-    shots([[1.2, [7200, 4200, -4000], [6000, 3300, -5200]]]);
+    shots([[9, [7200, 4200, -4000], [6000, 3300, -5200]]]);
     let cageA = null, cageB = null;
     app.journal.act('belt-cage', {}, app.clock, () => { cageA = O.add(beltCage(O.get(beltId))).id; if (pavId != null) cageB = O.add(beltCage(O.get(pavId))).id; for (const l of lintels) O.add(beltCage(O.get(l.id))); });
     if (cageB != null) { RV.reveal = { id: cageB, u: 1 }; }
@@ -374,7 +377,7 @@ export function* stairFilm(d, app) {
     app.wallView.reveal = null; }
   app.sky.setHour(9.5);
   app.journal.act('belt-strip', {}, app.clock, () => { for (const [i, id] of [beltId, pavId, ...lintels.map((l) => l.id)].entries()) if (id != null) O.update(id, { pile: O.get(id)?.pile || [+MM(-3200 + i * 1300).toFixed(6), +MM(7600).toFixed(6)], stripped: true }); });
-  d.kick('+7 DAYS', 1.2, 'top');
+  kick('+7 DAYS', 1.2);
 
   // ---- 4 · the steps on up: the first block over the beam close, its course; then the courses one by one in profile ----
   const bTop = beltId != null ? O.get(beltId).top + O.get(beltId).H : topS + MM(200);
@@ -409,7 +412,7 @@ export function* stairFilm(d, app) {
   act([[9, [1500, 700, 1500], 1]]);
   yield d.until(() => job(last, false));
   { const tb = d.t + 0.25; d.each(() => { if (d.t < tb) return false; shown(NUP - 1); return true; }); }   // (33 at the mallet's blow, not before it: the analyst)
-  yield d.sec(0.5);
+  yield d.sec(0.3);
   still();
   // (no 4 s on «33 / 34»: straight on to the landing — the counter never stands > 2 s: the analyst)
   // ---- 5 · the landing's beam on the 34th step: boards and cage at once, the concrete ----
@@ -418,32 +421,36 @@ export function* stairFilm(d, app) {
   let landId = null;
   if (B2) {
     B2.rec.H = MM(200);
-    shots([[1.2, [X0 + 3200, 5400, -500], [X0, 6900, -5000]]]);   // (from the stair up to its top — the landing is the stair's: the analyst)
+    shown(NUP);   // (the landing is the 34th step: its boards up — the count on it)
     app.sfx?.seq?.(['plank', 'hammer_nail', 'rebar']);
     app.journal.act('belt', {}, app.clock, () => { landId = O.add(B2.rec).id; O.add(beltCage(O.get(landId))); });
-    { const WV = app.wallView, t0 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.5); WV.reveal = { id: landId, u }; WV.dirty = true; if (u >= 1) { WV.reveal = null; return true; } return false; }); }   // (its boards going up too)
     const hose = app.concreteTools.hose, yb = topU + MM(200), ev = (q) => ({ target: landId, hit: q });
     app.setTool('hose'); hud(['Cinder', 'Formwork', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
     const a = new V(MM(X0), yb, MM(-4300)), b = new V(MM(X0), yb, MM(-5600));
-    st.pump = 1e-5; hose.down(a, ev(a)); { let w = 0; d.speed = 8; yield d.until(() => { w += d.dt * d.speed; hose.move(a, ev(a)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - a.x, sp.z - a.z) < MM(250)); }); }
-    st.pump = 4; tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-    act([[0.8, [1800, 500, 2600], 3], [9, [2600, 1100, 3600], 6]]);
+    tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : a.clone());
+    act([[9, [2200, 800, 3100], 5]]);   // (the hose followed from its way in — from the stair up to its top, the landing is the stair's: the analyst)
+    // (the pump called first — it gets ready while the boards go up, the camera already on the landing: no 2 s of nothing — check-film)
+    st.pump = 1e-5; hose.down(a, ev(a));
+    { const WV = app.wallView, t0 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t0) / 1.0); WV.reveal = { id: landId, u }; WV.dirty = true; hose.move(a, ev(a)); if (u >= 1 && G.pump?.ready) { WV.reveal = null; return true; } return false; }); }   // (its boards going up too)
+    { let w = 0; d.speed = 8; yield d.until(() => { w += d.dt * d.speed; hose.move(a, ev(a)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - a.x, sp.z - a.z) < MM(250)); }); }
+    st.pump = 4;
     // (till it is full, the camera on it — the owner: «the landing's beam did not fill in the frames»)
     let pt = 0; wet0(); const t0 = d.t, lDry = dry; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); const ch = hose.ch; return !!ch?.full || (ch?.h && ch.h.every((v) => v >= ch.cap - 8)) || d.t - t0 > 1.0 || (d.t - t0 > 0.6 && lDry() > 0.5); });
-    hose.up(); d.speed = 4; yield d.until(idle); d.speed = 1; G.set?.(null);
+    hose.up(); d.speed = 12; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } d.speed = 1; G.set?.(null);   // (no 2 s waiting for it to settle, the frame still — check-film; the record tops it up)
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
   }
   // (the landing is the 34th step: the count done)
   shown(NUP); cnt.classList.add('done');
+  { const L0 = [P(X0 + 2200, 7000, -1500), P(X0, 6900, -5000)], L1 = [P(X0 + 5200, 6200, 2500), P(X0, 5600, -3500)]; still(); d.fly([L0, L1], 1.5, { ease: 'both', hand: 0.2 }); }   // (the reward over a move back down the stair — never a still frame: the analyst)
   app.budget._pay?.([{ usd: rest.length * 2.2 + 900 }], P(0, 0, 0));
   bill('STEPS & LANDING');   // (with «34 / 34» — after the last «wow» only the reward and the loop: the analyst)
-  yield d.sec(1.0);
+  yield d.sec(1.5);
   cnt.remove();
   // (the sketch's own view: the camera set where the drawing was made from — still, no hand)
   d.hud(null);   // (from here on nothing the hook has not: the analyst)
   shotN++; d.cut(look(new V(MM(17500), MM(9000), MM(15500)), new V(MM(2600), MM(3200), MM(-1600))), { drift: 0, push: 0, hand: 0 });
-  yield d.sec(0.5);
+  yield d.sec(0.4);
   // (the sheet grows from its corner to its place in the frame — its drawing is the band 36 %…92 % of the frame from the sketch's view,
   // the stair's top off its edge (the analyst: the answer to the hook's «where?» never on the sheet) — then washes away into the real
   // view, which shows the top: the answer)
