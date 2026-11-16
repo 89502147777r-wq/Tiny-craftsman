@@ -506,6 +506,7 @@ export function* stairFilm(d, app) {
       }
       for (const want = Math.ceil(back.length * e); n < want; n++) { const r = back[n]; if (O.get(r.id)) { gone.push(r); O.remove(r.id); } }
       if (hc) { hc.textContent = String(Math.round(34 * (1 - e))); at(hc); }
+      if (d.nextEl) d.nextEl.style.opacity = String(Math.max(0, 1 - Math.max(0, d.t - t0 - 0.05) / 0.25));   // (its plate gone 0,3 s past the seam: ≤ 2 signs in the first 0,5 s — the analyst)
       if (u >= 1 && !stopped) { stopped = true; app.sfx?.play?.('thud', { vol: 0.9 }); rw?.remove(); hc?.remove(); rw = hc = null; }
       return d.t - t0 >= 1.0;
     });
