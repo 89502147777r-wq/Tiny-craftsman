@@ -723,21 +723,24 @@ export class MachineTool {
     // its middle line. The loader's bucket and the arms' ends, its front 1 m, are stopped by what stands higher than its
     // bottom — lifted over the truck's side or a low wall it goes over it)
     const t = this.app.terrain, fx = Math.cos(yaw), fz = -Math.sin(yaw);
-    const ET = this.exc?.track, [a0, a1, hb] = kind === 'truck' ? [-2.35, 2.35, 0.9] : kind === 'excavator' ? (ET ? [ET.x0 * MODEL_SCALE, ET.x1 * MODEL_SCALE, ET.w * MODEL_SCALE / 2] : [-2.3, 0.4, 0.8]) : [-1.5, 2.0, 1.0], st = 0.2, pts = [];
+    const ET = this.exc?.track, dims = (k) => (k === 'truck' ? [-2.35, 2.35, 0.9] : k === 'excavator' ? (ET ? [ET.x0 * MODEL_SCALE, ET.x1 * MODEL_SCALE, ET.w * MODEL_SCALE / 2] : [-2.3, 0.4, 0.8]) : [-1.5, 2.0, 1.0]);
+    const [a0, a1, hb] = dims(kind), st = 0.2, pts = [];
     for (let a = a0; a <= a1 + 1e-6; a += st) pts.push([a, hb], [a, -hb], [a, 0]);
     for (let b = -hb + st; b < hb - 1e-6; b += st) pts.push([a0, b], [a1, b]);
-    const other = noOther ? null : kind === 'truck' ? this.loader : kind === 'excavator' ? (this.truck?.root.visible ? this.truck : this.loader) : this.truck?.root.visible ? this.truck : null, oh = kind === 'truck' ? [1.6, 1.0] : [2.4, (other?.width ? other.width * MODEL_SCALE / 2 : 0.85) + 0.05];   // (the loader comes right up to the body's side: its front tyres end 0,8 m ahead of it, what is further on is the arms and the bucket)
+    // (every other machine on the plot, each its own outline — the owner: the excavator drove through the loader while the
+    // truck was there, for only one other was looked at)
+    const others = noOther ? [] : [['loader', this.loader], ['truck', this.truck], ['excavator', this.exc]].filter(([k, m]) => k !== kind && m?.loaded && m.root?.visible !== false)
+      .map(([k, m]) => { const [o0, o1, ob] = dims(k); return { m, o0: o0 - 0.05, o1: o1 + 0.05, ob: (k === 'truck' && m.width ? m.width * MODEL_SCALE / 2 : ob) + 0.05, top: k === 'truck' && kind === 'loader' && m.bodyBox ? m.y + m.bodyBox.max.y : Infinity }; });   // (the loader comes right up to the body's side; its bucket lifted over the body's side goes over it)
     const bucketY = kind === 'loader' && this.loader?.loaded ? this.loader.lowWorld(new THREE.Vector3()).y : null;
-    const otherTop = other?.loaded && kind === 'loader' ? other.y + other.bodyBox.max.y : Infinity;
     for (const [a, b] of pts) {
       const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b), bucket = bucketY != null && a > 0.95;
       if (kind === 'truck' ? Math.abs(px) > t.halfX + R(6) || Math.abs(pz) > t.halfZ + R(6) : !t.inside(px, pz)) return false;
       if (!bucket && this.out && this.out(px, pz) !== true) return false;
       const top = this._obstTop(px, pz);
       if (bucket ? top > bucketY : top > -Infinity) return false;
-      if (other?.loaded) {
-        const dx = px - other.x, dz = pz - other.z, ox = Math.cos(other.yaw), oz = -Math.sin(other.yaw);
-        if (Math.abs(dx * ox + dz * oz) < R(oh[0]) && Math.abs(-dx * oz + dz * ox) < R(oh[1]) && (!bucket || bucketY < otherTop)) return false;
+      for (const O of others) {
+        const dx = px - O.m.x, dz = pz - O.m.z, ox = Math.cos(O.m.yaw), oz = -Math.sin(O.m.yaw), u = dx * ox + dz * oz, w = -dx * oz + dz * ox;
+        if (u > R(O.o0) && u < R(O.o1) && Math.abs(w) < R(O.ob) && (!bucket || bucketY < O.top)) return false;
       }
     }
     return true;
@@ -1097,8 +1100,10 @@ export class MachineTool {
     // the ground under what goes into it: how deep the deepest of the points is in it
     const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, t.heightAt(q.x, q.z) - q.y); return w; };
     const pose0 = E.pose(), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
+    const hp0 = E.hardPoints();
     E.update(dt);
     const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
+    this._excPush(hp0, E.hardPoints(), p);   // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews)
     // (digging: the teeth leading — the way they go as it curls in — not full, not tipped)
     // (full, it still cuts while it is in no deeper than 85 % of its depth: what does not fit runs out over its lip —
     // a driver drags a full bucket on so; deeper, the ground holds it)
@@ -1410,6 +1415,25 @@ export class MachineTool {
     this._flushPush();
   }
   // what stands over the edge across the bucket, moved on ahead of it
+  // the excavator's bucket — its back, its bottom, its sides as the house slews — shoves what is LOOSE in its way (a heap, spoil,
+  // sand tipped there) on ahead of it, the way that part moves; pressed straight down into it, out to the sides. Firm ground still
+  // holds it (the check after). Only the loose above the part's point moves: its own ground stays.
+  _excPush(P0, P1, teeth) {
+    const t = this.app.terrain, g = this.grader; let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1, moved = 0;
+    for (let k = 0; k < P1.length; k++) {
+      const a = P0[k], b = P1[k]; if (!a || !b || !t.inside(b.x, b.z)) continue;
+      const i = t.index(b.x, b.z); if (!g.free(i, b.x, b.z)) continue;
+      const over = Math.min(t.nat[i] + t.loose[i] - b.y, t.loose[i]); if (!(over > 1e-7)) continue;
+      let dx = b.x - a.x, dz = b.z - a.z, h = Math.hypot(dx, dz);
+      if (h < t.cell * 0.02) { dx = b.x - teeth.x; dz = b.z - teeth.z; h = Math.hypot(dx, dz); if (h < 1e-9) continue; }   // (pressed down: squeezed out sideways)
+      const jx = b.x + dx / h * t.cell * 1.2, jz = b.z + dz / h * t.cell * 1.2; if (!t.inside(jx, jz)) continue;
+      const j = t.index(jx, jz); if (j === i || !g.free(j, jx, jz)) continue;
+      t._move(i, j, over); moved += over;
+      for (const c of [i, j]) { const ix = c % t.nx, iz = (c / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
+    }
+    if (moved > 0) { t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); this.app.sfx.play('soil_dump', { gap: 0.6, at: P1[0], vol: 0.35 }); }
+    return moved;
+  }
   _bulldoze(x, z, f, hw, y, back = 0, looseOnly = false) {
     this._slumpAt = [x + f[0] * (R(0.35) + back), z + f[1] * (R(0.35) + back)];
     const t = this.app.terrain, g = this.grader, push = (this._pushC ||= new Float64Array(4));

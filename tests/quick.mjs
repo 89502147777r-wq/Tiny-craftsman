@@ -1059,8 +1059,20 @@ console.log('—', sec());
       for (let i = 0; i < 12; i++) tc.simulate(1 / 30); o.fallAt04 = P.items.includes(it); for (let i = 0; i < 24; i++) tc.simulate(1 / 30); o.fallAt12 = !P.items.includes(it); }
     { let deepest = 0; mt.joystick('r', 0, 1); for (let i = 0; i < 60; i++) { tc.simulate(1 / 30); for (const q of E.hardPoints()) if (t.inside(q.x, q.z)) deepest = Math.max(deepest, t.heightAt(q.x, q.z) - q.y); }
       o.heave = +E.heave.toFixed(3); mt.joystick('r', 0, 0); frames(5); o.deepest = +(deepest / M * 1000).toFixed(0); }
+    // (the owner, 2026-11-16: the bucket's back, bottom and sides shove loose heaps — slewed into one each way, it moves it)
+    { const b = E.teethWorld(new V()), c = E.root.position, rx = b.x - c.x, rz = b.z - c.z, rl = Math.hypot(rx, rz) || 1, tx = -rz / rl, tz = rx / rl;
+      const hp = (s) => ({ x: b.x + tx * s * 1.1 * M, z: b.z + tz * s * 1.1 * M });
+      const near = (q) => { let v = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - q.x, z - q.z) < 0.35 * M) v += t.loose[iz * t.nx + ix]; } return v; };
+      const A = hp(1), B = hp(-1); t.deposit(A.x, A.z, 0.25 * M * M * M, 0.35 * M, 0); t.deposit(B.x, B.z, 0.25 * M * M * M, 0.35 * M, 0); frames(5);
+      const a0 = near(A), b0 = near(B), s0 = E.swing;
+      go(45, [1, 0], [0, 0]); const s1 = E.swing; go(90, [-1, 0], [0, 0]); const s2 = E.swing;
+      o.push = { a: +(near(A) / Math.max(1e-12, a0)).toFixed(2), b: +(near(B) / Math.max(1e-12, b0)).toFixed(2), sw1: +(s1 - s0).toFixed(2), sw2: +(s2 - s1).toFixed(2) }; }
 
     mt.setExcMode('drive'); const x0 = E.x, z0 = E.z; mt.joystick('l', 0, -1); frames(45); mt.joystick('l', 0, 0); frames(5); o.drove = Math.hypot(E.x - x0, E.z - z0) > 0.3 * M;
+    // (the owner: it drove through the loader with the truck about — every other machine stops it)
+    if (mt.loader?.loaded) { const dx = (E.x - x0), dz = (E.z - z0), l = Math.hypot(dx, dz) || 1, L = mt.loader; L.root.visible = true;
+      L.place(t, E.x + dx / l * 4.6 * M, E.z + dz / l * 4.6 * M, E.yaw); const e0 = [E.x, E.z]; mt.joystick('l', 0, -1); frames(150); mt.joystick('l', 0, 0); frames(3);
+      o.block = { moved: +(Math.hypot(E.x - e0[0], E.z - e0[1]) / M).toFixed(2), clear: mt._fits('excavator', E.x, E.z, E.yaw), truckOn: !!mt.truck?.root.visible }; }
     mt.exit(); frames(5);
     // the truck: loaded, driven out past the plot's edge — to the tip, back empty
     mt.enter('truck'); for (let i = 0; i < 200 && !(mt.driving && mt.drv === 'truck'); i++) await new Promise((r) => setTimeout(r, 50));
@@ -1076,6 +1088,8 @@ console.log('—', sec());
   });
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
+  check('machines: the excavator\'s bucket shoves loose heaps with its back and sides, slewed each way (the owner)', o.push && o.push.a < 0.7 && o.push.b < 0.7 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
+  check('machines: the excavator stops at the loader in its way, not through it (the owner)', !o.block || (o.block.clear && o.block.moved < 2.2), JSON.stringify(o.block));
   check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), lifted it keeps it (crowned, lumpy), opened it is empty, the crumbs fall at g; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove && o.carried >= 0.95 && o.crown > 0.15 && o.fallAt04 && o.fallAt12, JSON.stringify(o));
   check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty; what is tipped into it heaps when it lands', o.signs && o.tip && o.inAir && o.landed, JSON.stringify(o));
   check('machines: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
