@@ -1,0 +1,40 @@
+
+ OVERVIEW
+ ────────────────────────────────────────────
+┌────────────────────┬─────────────────────┐
+│ key                │ value               │
+├────────────────────┼─────────────────────┤
+│ version            │ 2.0                 │
+├────────────────────┼─────────────────────┤
+│ generator          │ Sketchfab-17.26.0   │
+├────────────────────┼─────────────────────┤
+│ extensionsUsed     │ KHR_materials_unlit │
+├────────────────────┼─────────────────────┤
+│ extensionsRequired │ none                │
+└────────────────────┴─────────────────────┘
+
+
+
+ SCENES
+ ────────────────────────────────────────────
+┌───┬─────────────────┬─────────────────┬─────────────────────────────┬───────────────────────────┬────────────────────┬───────────────────┬────────────────────────┐
+│ # │ name            │ rootName        │ bboxMin                     │ bboxMax                   │ renderVertexCount¹ │ uploadVertexCount │ uploadNaiveVertexCount │
+├───┼─────────────────┼─────────────────┼─────────────────────────────┼───────────────────────────┼────────────────────┼───────────────────┼────────────────────────┤
+│ 0 │ Sketchfab_Scene │ Sketchfab_model │ -6.72303, 0.56985, -6.17737 │ 6.32746, 8.85624, 7.54203 │ 5,250,093          │ 1,333,408         │ 1,333,408              │
+└───┴─────────────────┴─────────────────┴─────────────────────────────┴───────────────────────────┴────────────────────┴───────────────────┴────────────────────────┘
+
+¹ Expected number of vertices processed by the vertex shader for one render
+  pass, without considering the vertex cache.
+
+² Expected number of vertices uploaded to GPU, assuming each Accessor
+  is uploaded only once. Actual number uploaded may be higher, 
+  dependent on the implementation and vertex buffer layout.
+
+³ Expected number of vertices uploaded to GPU, assuming each Primitive
+  is uploaded once, duplicating vertex attributes shared among Primitives.
+
+
+
+ MESHES
+ ────────────────────────────────────────────
+┌────┬───────────────────┬───────────┬────────────────┬──────────────┬──────────┬─────────┬──────────────────────────────────────────┬───────────┬───────────┐
