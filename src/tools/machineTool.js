@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { PROPS } from '../world/siteProps.js';
 import { MODEL_SCALE } from '../config.js';
 import { Loader } from '../world/loader.js';
 import { Truck, TRUCK_LOAD } from '../world/truck.js';
@@ -770,13 +771,40 @@ export class MachineTool {
       for (const u of us) if (u.p && u.s && u.q && u.kind !== 'prop') add(boxOf(u));
       // (a pallet: 1200 × 800 mm, its stack of blocks ≈1,3 m high)
       for (const w of ws) if (w.pallet) { const [px, pz, py] = w.pallet, g = t.heightAt(px, pz); add({ x: px, z: pz, ux: Math.cos(py), uz: -Math.sin(py), hl: R(0.6), hw: R(0.4), bot: g, top: g + R(1.3) }); }
+
     }
-    const l = this._wg.get(Math.floor(x / C) * 65536 + Math.floor(z / C));
-    if (!l) return -Infinity;
+    const l = [...(this._wg.get(Math.floor(x / C) * 65536 + Math.floor(z / C)) || []), ...this._propBoxes()];
+    if (!l.length) return -Infinity;
     const m = R(0.05), g = t.heightAt(x, z);
     let top = -Infinity;
     for (const b of l) { const dx = x - b.x, dz = z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl + m && Math.abs(-dx * b.uz + dz * b.ux) < b.hw + m && b.bot < g + R(2.5) && b.top > top) top = b.top; }
     return top;
+  }
+  // the site's things (the cabin, the pallets, the timber, the skip…) as boxes: the machines and the bucket stop at them (the owner,
+  // 2026-11-16); each its footprint turned with it, as high as its model stands — a few, each cached by where it stands
+  _propBoxes() {
+    const t = this.app.terrain, SP = this.app.siteProps, out = [], C = (this._pbc ||= new Map());
+    for (const r of this.app.objects.all('siteprop')) {
+      const P = PROPS[r.kind]; if (!P) continue;
+      const m = SP?.meshes.get(r.id), key = `${r.x},${r.z},${r.yaw},${m?.position.y ?? ''},${m?.children.length ?? 0}`;
+      let b = C.get(r.id);
+      if (!b || b.key !== key) {
+        const g = t.heightAt(r.x, r.z); let top = g + R(1.0);
+        if (m && m.children.length) { const bb = new THREE.Box3().setFromObject(m); if (Number.isFinite(bb.max.y)) top = bb.max.y; }
+        b = { key, x: r.x, z: r.z, ux: Math.cos(r.yaw || 0), uz: -Math.sin(r.yaw || 0), hl: R(P.foot[0] / 2000), hw: R(P.foot[1] / 2000), bot: g - R(0.05), top };
+        C.set(r.id, b);
+      }
+      out.push(b);
+    }
+    return out;
+  }
+  // how deep a point is inside something standing on the plot (masonry, a pallet, a site thing) — 0 if it is not
+  _inObst(q) {
+    this._obstTop(q.x, q.z);   // (the grid fresh)
+    const l = [...(this._wg?.get(Math.floor(q.x / R(2)) * 65536 + Math.floor(q.z / R(2))) || []), ...this._propBoxes()]; if (!l.length) return 0;
+    let w = 0;
+    for (const b of l) { const dx = q.x - b.x, dz = q.z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl && Math.abs(-dx * b.uz + dz * b.ux) < b.hw && q.y < b.top && q.y > b.bot) w = Math.max(w, Math.min(b.top - q.y, R(0.3))); }
+    return w;
   }
   _driveStep(dt) {
     const app = this.app, t = app.terrain, g = this.grader, L = this.loader, T = this.truck;
@@ -1098,7 +1126,7 @@ export class MachineTool {
     E.boomGoal -= ry * 0.55 * dt;
     E.curlGoal -= rx * 1.2 * dt;
     // the ground under what goes into it: how deep the deepest of the points is in it
-    const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, t.heightAt(q.x, q.z) - q.y); return w; };
+    const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, t.heightAt(q.x, q.z) - q.y, this._inObst(q)); return w; };   // (the ground — and what stands on it: masonry, the site's things — holds the bucket)
     const pose0 = E.pose(), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
     const hp0 = E.hardPoints();
     E.update(dt);

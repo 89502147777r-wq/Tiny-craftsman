@@ -1073,6 +1073,13 @@ console.log('—', sec());
     if (mt.loader?.loaded) { const dx = (E.x - x0), dz = (E.z - z0), l = Math.hypot(dx, dz) || 1, L = mt.loader; L.root.visible = true;
       L.place(t, E.x + dx / l * 4.6 * M, E.z + dz / l * 4.6 * M, E.yaw); const e0 = [E.x, E.z]; mt.joystick('l', 0, -1); frames(150); mt.joystick('l', 0, 0); frames(3);
       o.block = { moved: +(Math.hypot(E.x - e0[0], E.z - e0[1]) / M).toFixed(2), clear: mt._fits('excavator', E.x, E.z, E.yaw), truckOn: !!mt.truck?.root.visible }; }
+    // (a site thing in its way — a pallet of blocks: it stops at it too, the owner)
+    { const dx = Math.cos(E.yaw), dz = -Math.sin(E.yaw), sg = o.block ? 1 : 1; if (mt.loader?.loaded) mt.loader.place(t, E.x - dx * 9 * M, E.z - dz * 9 * M, E.yaw);
+      mt.joystick('l', 0, -1); frames(4); mt.joystick('l', 0, 0); frames(2); const d0 = [E.x, E.z]; frames(1);
+      const fx = E.x - x0, fz = E.z - z0, fl = Math.hypot(fx, fz) || 1;
+      const pr = tc.objects.add({ type: 'siteprop', kind: 'pallet', x: +(E.x + fx / fl * 4.2 * M).toFixed(5), z: +(E.z + fz / fl * 4.2 * M).toFixed(5), yaw: 0 }); tc.siteProps?.update?.(0); frames(2);
+      const e1 = [E.x, E.z]; mt.joystick('l', 0, -1); frames(150); mt.joystick('l', 0, 0); frames(3);
+      o.prop = { moved: +(Math.hypot(E.x - e1[0], E.z - e1[1]) / M).toFixed(2), clear: mt._fits('excavator', E.x, E.z, E.yaw) }; tc.objects.remove(pr.id); }
     mt.exit(); frames(5);
     // the truck: loaded, driven out past the plot's edge — to the tip, back empty
     mt.enter('truck'); for (let i = 0; i < 200 && !(mt.driving && mt.drv === 'truck'); i++) await new Promise((r) => setTimeout(r, 50));
@@ -1089,6 +1096,7 @@ console.log('—', sec());
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator\'s bucket shoves loose heaps with its back and sides, slewed each way (the owner)', o.push && o.push.a < 0.7 && o.push.b < 0.7 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
+  check('machines: the excavator stops at a site thing (a pallet) in its way, not through it (the owner)', o.prop && o.prop.clear && o.prop.moved < 2.6, JSON.stringify(o.prop));
   check('machines: the excavator stops at the loader in its way, not through it (the owner)', !o.block || (o.block.clear && o.block.moved < 2.2), JSON.stringify(o.block));
   check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), lifted it keeps it (crowned, lumpy), opened it is empty, the crumbs fall at g; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove && o.carried >= 0.95 && o.crown > 0.15 && o.fallAt04 && o.fallAt12, JSON.stringify(o));
   check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty; what is tipped into it heaps when it lands', o.signs && o.tip && o.inAir && o.landed, JSON.stringify(o));
