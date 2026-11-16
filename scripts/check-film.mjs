@@ -93,6 +93,9 @@ if (seam && seam[0] !== seam[1]) hook.push(`the loop's seam: before «${seam[0]}
 const sil = []; { const ts = [...snd].sort((a, b) => a - b); for (let i = 1; i < ts.length; i++) if (ts[i] - ts[i - 1] > 1.0) sil.push(`video ${vt(ts[i - 1]).toFixed(1)} s: no new sound for ${(ts[i] - ts[i - 1]).toFixed(1)} s`); }
 if (process.env.CHK_AT) { const [x, y] = process.env.CHK_AT.split(',').map(Number); for (const r of rows) if (r.t >= x && r.t <= y) console.log('AT', r.t.toFixed(2), r.n, r.act ? 'A' : '-', r.job ? 'J' : '-', r.ts ? 'S' : '-', r.tp ? r.tp.map((v) => v.toFixed(3)).join(',') : 'no-tp', r.on, r.e.map((v) => v.toFixed(3)).join(','), JSON.stringify(r.b.map((b) => [b.k, b.txt, Math.round(b.x0), Math.round(b.y0), +(b.o ?? 1).toFixed(2)]))); }
 console.log('ROWS ' + rows.filter((r, i) => i % 15 === 0).map((r) => `${r.t.toFixed(1)}:${r.job ? 'J' : '-'}${r.ts ? 'S' : '-'}${r.act ? 'A' : '-'}${r.on}`).join(' '));
+// (the timeline for the analyst, in the video's order — the hook first: each 0.5 s — the shot, work on / the tool on screen, the words)
+{ const tl = rows.filter((r, i) => i % 15 === 0).map((r) => ({ v: vt(r.t), r })).sort((a, b) => a.v - b.v);
+  console.log('\nTIMELINE (video s | shot | work | tool on screen | words):\n' + tl.map(({ v, r }) => `${v.toFixed(1).padStart(5)} | ${String(r.n).padStart(2)} | ${r.job ? 'work' : r.act ? 'moves' : 'STILL'} | ${r.ts ? 'tool' : '-'} | ${r.b.filter((b) => b.k !== 'f-sketch').map((b) => b.txt).join(' / ')}`).join('\n')); }
 console.log(`\nSTILL (> 1.5 s):\n` + still.join('\n'));
 console.log(`\nTOOL OFF SCREEN (> 1 s):\n` + off.join('\n'));
 console.log(`\nCOUNTER STANDS (> 2 s):\n` + cnt.join('\n'));
