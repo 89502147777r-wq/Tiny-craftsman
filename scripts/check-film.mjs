@@ -3,6 +3,7 @@
 // words over each other (bills, titles, counters, big words, pins). Usage:
 //   node scripts/check-film.mjs found
 import { createRequire } from 'node:module';
+import { mark as gateMark, filmHash } from './film-gate.mjs';
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 const require = createRequire(import.meta.url);
 let pw; try { pw = require('playwright'); } catch { pw = require('/opt/node22/lib/node_modules/playwright'); }
@@ -97,7 +98,10 @@ console.log('ROWS ' + rows.filter((r, i) => i % 15 === 0).map((r) => `${r.t.toFi
 { const tl = rows.filter((r, i) => i % 15 === 0).map((r) => ({ v: vt(r.t), r })).sort((a, b) => a.v - b.v);
   console.log('\nTIMELINE (video s | shot | work | tool on screen | words):\n' + tl.map(({ v, r }) => `${v.toFixed(1).padStart(5)} | ${String(r.n).padStart(2)} | ${r.job ? 'work' : r.act ? 'moves' : 'STILL'} | ${r.ts ? 'tool' : '-'} | ${r.b.filter((b) => b.k !== 'f-sketch').map((b) => b.txt).join(' / ')}`).join('\n')); }
 // (a cut is a jump of the eye or the aim, not a new shot object: two shots that look the same are one)
-const cuts = [rows[0].t]; for (let i = 1; i < rows.length; i++) { const p = rows[i - 1], r = rows[i]; if (len(sub(r.e, p.e)) / r.d > 0.04 || len(sub(r.a, p.a)) / r.d > 0.08) cuts.push(r.t); }
+const stepE = rows.map((r, i) => (i ? len(sub(r.e, rows[i - 1].e)) / r.d : 0)), stepA = rows.map((r, i) => (i ? len(sub(r.a, rows[i - 1].a)) / r.d : 0));
+const near = (arr, i) => { const v = []; for (let j = i - 4; j <= i + 4; j++) if (j !== i && j > 0 && j < arr.length) v.push(arr[j]); v.sort((a, b) => a - b); return v[v.length >> 1] || 0; };
+// (a jump far above the camera's own pace either side — a fly or a fast follow moves every frame, a cut once)
+const cuts = [rows[0].t]; for (let i = 1; i < rows.length; i++) { const jE = stepE[i] > 0.04 && stepE[i] > 5 * near(stepE, i), jA = stepA[i] > 0.08 && stepA[i] > 5 * near(stepA, i); if (jE || jA) cuts.push(rows[i].t); }
 cuts.push(rows.at(-1).t);
 const shortCut = []; for (let i = 0; i < cuts.length - 1; i++) { const t0 = cuts[i], t1 = cuts[i + 1]; if (t1 - t0 < 0.8 - 1e-6 && !inHook(t0) && !inHook(t1 - 0.01) && i < cuts.length - 2) shortCut.push(`video ${vt(t0).toFixed(1)} s: a shot of ${(t1 - t0).toFixed(2)} s < 0.8`); }
 // (one meaning text at a time — a bill, a kick, a title; the counter, «to be continued», the sketch do not count)
@@ -124,6 +128,7 @@ console.log(`\nHOOK / SEAM:\n` + hook.join('\n'));
 console.log(`\nSILENCE (> 1 s):\n` + sil.slice(0, 20).join('\n'));
 const fails = still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length;
 console.log(`\nRULES: ${fails ? fails + ' problems' : 'all pass'}`);
+if (!fails) console.log('gate: rules passed for version ' + gateMark(film, 'rules')); else console.log('gate: version ' + filmHash(film) + ' NOT passed — no render');
 console.log('LOG ' + JSON.stringify(rows.reduce((a, r) => { if (!a.length || a.at(-1)[0] !== r.n) a.push([r.n, r.t, r.title]); return a; }, [])));
 console.log(`frames ${rows.length}, ${(rows.at(-1).t).toFixed(1)} s, shots ${shots.length}`);
 console.log(`\nJERKS (${bad.length} frames):\n` + uniq(bad).slice(0, 40).join('\n'));

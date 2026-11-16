@@ -220,15 +220,15 @@ export function* stairFilm(d, app) {
   // (the course on along the outer face toward the sea: ×3)
   const row = spineLow[0].filter((r) => Math.abs(r.p[0] - first.p[0]) < MM(5) && r !== first).sort((p, q) => q.p[2] - p.p[2]).slice(0, 5);
   act([[2.2, [2400, 900, -600], 3]]);
-  for (const r of row) { yield d.until(() => job(r, true)); }
-  yield d.until(idle);
+  { const tr = d.t; for (const r of row) { yield d.until(() => job(r, true)); }
+    yield d.until(idle); yield d.until(() => d.t - tr >= 0.9); }   // (the course's shot ≥ 0.8 s: check-film)
   // the first aerated block — the pavilion's front corner, from inside the slab toward the sea
   hud(['DPC', 'Cinder', 'Gas block', 'Brick'], 2, ['*By hand', 'Course'], 'wall');
   yield d.until(() => !dpc.jobs.length);
   const pBlocks = pav.filter((r) => r.kind === 'block'), b0 = pBlocks.filter((r) => Math.abs(r.p[1] - pBlocks[0].p[1]) < MM(5)).sort((p, q) => (q.p[0] - p.p[0]) || (p.p[2] - q.p[2]));
   const fb = b0.filter((r) => Math.abs(r.p[2] - MM(SL.z0 + 150)) < MM(5));
   tool = () => new V().fromArray(fb[0].p);
-  act([[1.6, [-1300, 700, 1200], 1], [1.4, [600, 1000, -2600], 3]]);
+  act([[9, [-1300, 700, 1200], 1]]);   // (one shot with the block and its course — no 0.7 s cut: check-film)
   yield d.until(() => job(fb[0], false)); yield d.until(idle);
   for (const r of fb.slice(1, 4)) { yield d.until(() => job(r, true)); }
   yield d.until(idle);
@@ -240,6 +240,7 @@ export function* stairFilm(d, app) {
   bill('DPC MEMBRANE');   // (over the first brick on the membrane — the stage's thing in the frame, past the video's 10th second: the analyst)
   for (const r of pier.slice(0, 4)) { yield d.until(() => job(r, r !== pier[0])); }
   yield d.until(idle);
+  yield d.sec(0.4);   // (its second shot ≥ 0.8 s: check-film)
   still();
   // all of it rising together, by the share of the height (the director: else the bricks — 41 courses — look faster than the blocks)
   const done = new Set([first, ...row, ...fb.slice(0, 4), ...pier.slice(0, 4)]);
@@ -358,7 +359,7 @@ export function* stairFilm(d, app) {
       st.pump = 1e-5; { const p0 = ring(0); hose.down(p0, evp(p0)); let w = 0; d.speed = 4; yield d.until(() => { w += d.dt * d.speed; hose.move(p0, evp(p0)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - p0.x, sp.z - p0.z) < MM(250)); }); }
       st.pump = 1;   // (a ring's hose — 60 l/s at most: the hand walks at 0,75 m/s; the ring is long and narrow: the delivery up, the hand at its pace)
       tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : null);
-      act([[0.6, [-1500, 700, -1600], 4], [9, [1600, 900, 1500], 8]]);
+      act([[0.9, [-1500, 700, -1600], 4], [9, [1600, 900, 1500], 8]]);
       // (round it at a steady walk, ~1,2 m/s of the game's clock — the delivery set so that one round fills it: the stream always lands on
       // what is still to fill)
       const t0 = d.t; let ur = 0; wet0();

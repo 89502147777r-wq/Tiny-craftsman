@@ -11,6 +11,8 @@ const require = createRequire(import.meta.url);
 let pw; try { pw = require('playwright'); } catch { pw = require('/opt/node22/lib/node_modules/playwright'); }
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; };
 const film = argv[0] || 'found', out = path.resolve(argv[1] || 'film-out');
+// (the pipeline's gate: no render of a version without its rules passed and the analyst's ok — scripts/film-gate.mjs)
+{ const { gate } = await import('./film-gate.mjs'); const g = gate(film); if (g.miss.length && !argv.includes('--assemble')) { console.log(`render refused (${film} ${g.hash}):\n- ` + g.miss.join('\n- ')); process.exit(2); } }
 const [PI, PN] = (opt('part', '0/1')).split('/').map(Number), ASSEMBLE = argv.includes('--assemble');
 const W = +opt('w', 540), H = +opt('h', 960), DSF = +opt('dsf', 2), FPS = +opt('fps', 30), Q = opt('quality', 'high'), EVERY = +opt('every', 1), MAX = +opt('max', 90);
 fs.mkdirSync(path.join(out, 'frames'), { recursive: true });
