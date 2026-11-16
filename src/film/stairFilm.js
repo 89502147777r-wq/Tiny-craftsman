@@ -152,16 +152,18 @@ export function* stairFilm(d, app) {
   st.wallKind = 'dpc'; app.setTool('wall'); W.setMode('lay');
   const dpc = W.dpc, lay = (a, b, w) => { st.dpcW = w; const y = T.heightAt(MM(a[0]), MM(a[1])); dpc.down({ x: MM(a[0]), y, z: MM(a[1]) }); dpc.move({ x: MM(b[0]), y, z: MM(b[1]) }); dpc.up(); };
   lay([X0, ZB + 150], [X0, ZS - 150], 1300);
-  tool = () => { const Tt = app.dpcView?.work?.T; return Tt?.visible !== false && Tt ? Tt.position.clone() : null; };
+  const s0 = new V(MM(X0), T.heightAt(MM(X0), MM(ZB)) + MM(100), MM(ZB));   // (the roll's start: the camera there from the first frame)
+  tool = () => { const Tt = app.dpcView?.work?.T; return Tt?.visible !== false && Tt ? Tt.position.clone() : s0.clone(); };
   // (the owner's rule for rolled materials, 2026-11-15: the first shot — the work itself at its pace; the next ones — the roll unrolling
   // faster and faster, smoothly — never a jump to it done)
   const roll = function* (t1, k, vmax) { const t0 = d.t; yield d.until(() => { const v = d.t - t0 < t1 ? 1 : Math.min(vmax, Math.exp(k * (d.t - t0 - t1))); for (const J of dpc.jobs) J.speed = v; return !dpc.jobs.length; }); };
-  act([[1.3, [900, 350, 1100], 1], [1.4, [-1700, 1000, -2200], 1], [1.6, [3200, 2200, 3000], 1], [9, [6000, 4200, 7000], 1]]);
+  // (the 2–10 s after the hook: the work close, the tool in the frame — never a wide grey frame: the first film lost 30 % there)
+  act([[1.3, [900, 350, 1100], 1], [1.4, [-1700, 1000, -2200], 1], [1.6, [2200, 1400, 2000], 1], [9, [-1600, 1300, 2400], 1]]);
   yield* roll(1.2, 1.9, 420);
   still();
   // the pavilion's strips: one after another, unrolling fast, seen from far and high — the whole footprint (the owner: from above, far,
   // for the scale)
-  shots([[9, [-14000, 13000, -12000], [500, 0, 1000]]]);
+  act([[9, [2600, 2300, 2800], 1]]);   // (the torch followed over the pavilion's strips, near — not the whole site from high)
   // (the ends 60 in from the slab's edge: a line ending on its very edge is «off the concrete»)
   // (under the front 480 — its brick piers are 380; the rest 400; 25 mm out past the slab's edge — the realist)
   const z0 = SL.z0 + 215, z1 = SL.z1 - 175, xa = SL.x0 + 175, xb = SL.x1 - 175, e0 = SL.x0 + 60, e1 = SL.x1 - 60;
@@ -170,7 +172,6 @@ export function* stairFilm(d, app) {
     app.sfx?.play?.('fabric', { vol: 0.5 });
   }
   app.budget._pay?.([{ usd: 6 * 0.4 * 47 + 1.3 * 11.8 * 9 }], P(0, 0, 0));
-  bill('DPC MEMBRANE');
 
   // ---- 2 · the masonry: the first cinder block close (the game's job), the course along the spine; the first aerated block, its
   // course; a brick pier; then all of it rising together — to one level ----
@@ -182,12 +183,16 @@ export function* stairFilm(d, app) {
   hud(['DPC', 'Cinder', 'Gas block', 'Brick'], 1, ['*By hand', 'Course'], 'wall');
   st.wallKind = 'cinder';
   yield d.until(() => physicsReady());
+  // (one block of a low step held back: the hook's action — laid there by the mallet, close in the foreground (the analyst: the hook
+  // must move))
+  const hold = spineLow[3][0];
   const first = spineLow[0].find((r) => r.p[0] > MM(X0 + 400)) || spineLow[0][0];
   let laidN = 0;
   const job = (rec, fast) => { if (app.physJob) return false; if (W.layUnit(rec, fast, rec.bedT ? rec.bedT / S : rec.kind === 'block' ? 20 : 12)) {   /* (the first course of blocks on 20 of mortar) */ laidN++; tool = () => new V().fromArray(rec.p); return true; } return false; };
   tool = () => new V().fromArray(first.p);
   act([[2.4, [1200, 500, 1400], 1]]);
   yield d.until(() => job(first, false));
+  bill('DPC MEMBRANE');   // (over the first block's laying, past the 10th second — the analyst)
   yield d.until(idle);
   // (the course on along the outer face toward the sea: ×3)
   const row = spineLow[0].filter((r) => Math.abs(r.p[0] - first.p[0]) < MM(5) && r !== first).sort((p, q) => q.p[2] - p.p[2]).slice(0, 5);
@@ -213,7 +218,7 @@ export function* stairFilm(d, app) {
   still();
   // all of it rising together, by the share of the height (the director: else the bricks — 41 courses — look faster than the blocks)
   const done = new Set([first, ...row, ...fb.slice(0, 4), ...pier.slice(0, 4)]);
-  const all = [...spineLow.flat(), ...pav].filter((r) => !done.has(r));
+  const all = [...spineLow.flat(), ...pav].filter((r) => !done.has(r) && r !== hold);
   const lvl = (r) => (r.p[1] - (r.kind === 'cinder' ? sTop : pTop)) / MM(3170);
   all.sort((p, q) => lvl(p) - lvl(q));
   shots([[2.0, [-9000, 3000, -8500], [1500, 1200, 1500]], [1.6, [16000, 15000, 12000], [1000, 1500, 0]]]);
@@ -362,7 +367,6 @@ export function* stairFilm(d, app) {
   yield d.until(idle);
   still();
   // (one block of a high step held back: the hook's action — laid there by the mallet (the analyst: motion from the 0th frame))
-  const hold = spineUp[NUP - 4][0];
   const rest = spineUp.flat().filter((r) => r !== u0 && r !== hold && !spineUp[0].slice(1, 6).includes(r));
   // (the analyst: the stair is the stage's «wow» — the most time: in profile against the sky, then on its axis from below)
   // (three different: the profile against the sky; low from the sea's corner up to the top; high from behind along it — the owner:
@@ -409,9 +413,14 @@ export function* stairFilm(d, app) {
     yield d.sec(0.35);
     const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 1.0); sk.style.opacity = String(1 - u); return u >= 1; });
     sk.remove(); }
+  // (the loop: the end on the hook's own view — the same frame both sides of the seam, the block still to be laid: the analyst)
+  shotN++;
+  hud(['Cinder', 'Formwork', 'Concrete'], 0, ['*By hand', 'Course'], 'wall');
+  st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
+  d.cut(look(P(7600, 1500, 9800), P(6000, 2700, 1500)), { drift: 0.01, push: 0.02, hand: 0.25 });   // (from behind the foot: the block close, the treads climbing away into the sky)
   d.kick('?', 0.7, 'top');   // (where the next part goes — no shape of it: the analyst)
   yield d.sec(0.4);
-  d.next();
+  d.next(); d.nextEl?.classList.add('small');
   yield d.sec(1.2);
   // ---- the hook (put first by the recorder; the content analyst, 2026-11-15): low, three-quarters from the stair's foot, up along its
   // steps into the sky, the sea on the horizon past the top; motion from the first frame — a block laid on a high step by the mallet;
@@ -421,7 +430,7 @@ export function* stairFilm(d, app) {
   hud(['Cinder', 'Formwork', 'Concrete'], 0, ['*By hand', 'Course'], 'wall');
   st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
   d.nextEl?.classList.add('small');
-  d.cut(look(P(8200, 2100, 12500), P(5900, 4700, -2600)), { drift: 0.01, push: 0.025, hand: 0.25 });   // (from behind the foot, a little to the side: the treads climbing away — not the wall's flat side)
+  d.cut(look(P(7600, 1500, 9800), P(6000, 2700, 1500)), { drift: 0.01, push: 0.07, hand: 0.25 });   // (from behind the foot: the block close, the treads climbing away into the sky)
   yield d.sec(0.2);
   d.mark('hook');
   d.kick('34 STEPS TO WHERE?', 2.2, 'top');
