@@ -1,3 +1,4 @@
-torch|propane torch roofing burner
-torch2|gas burner blowtorch roar
-roll|roofing felt roll unroll
+paper|paper sheet rustle handling
+paper2|paper flutter whoosh
+pin|push pin thumbtack cork board
+pin2|thumbtack pin press click
