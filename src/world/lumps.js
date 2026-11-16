@@ -85,11 +85,14 @@ export class LumpView {
       if (r.at === 'truck' && T?.bed && T.root.visible) {
         const p = T.bed.localToWorld(new THREE.Vector3(r.tx, r.ty, r.tz)); m.position.copy(p); m.rotation.set(0, T.yaw + (r.yaw || 0), 0); continue;
       }
-      // (on the ground: down to what is under it — at g when it is higher)
+      // (on the ground: down to what is under it — at g when it is higher. Never up: what is tipped or pushed over it buries it, as a
+      // stone is buried in a heap — the owner: covered, it is not seen; its height kept in its record, so a saved game keeps it so)
       const rest = this.restY(r), F = this.fall.get(r.id);
-      let y = F ? F.y : m.userData.placed ? m.position.y : rest;
-      if (y > rest + MM(5)) { const v = (F?.v || 0) + G * dt; y = Math.max(rest, y - v * dt); if (y > rest) this.fall.set(r.id, { y, v }); else { this.fall.delete(r.id); if ((F?.v || 0) > G * 0.15) this.app.sfx?.play?.('stone', { at: m.position, vol: 0.4 }); } }
-      else { y = rest; this.fall.delete(r.id); }
+      let y = F ? F.y : m.userData.placed ? m.position.y : Math.min(r.y ?? rest, rest);
+      if (!F && !m.userData.placed && r.y != null && r.y > rest + MM(5)) { this.fall.set(r.id, { y: r.y, v: 0 }); y = r.y; }
+      if (y > rest + MM(5)) { const v = (this.fall.get(r.id)?.v || 0) + G * dt; y = Math.max(rest, y - v * dt); if (y > rest) this.fall.set(r.id, { y, v }); else { this.fall.delete(r.id); if (v > G * 0.15) this.app.sfx?.play?.('stone', { at: m.position, vol: 0.4 }); } }
+      else this.fall.delete(r.id);   // (on it, or under what lies over it: it stays)
+      if (!this.fall.has(r.id) && Math.abs((r.y ?? -1e9) - y) > MM(5)) r.y = +y.toFixed(6);   // (kept quietly: not a change of its own)
       m.position.set(r.x, y, r.z); m.rotation.set(0, r.yaw || 0, 0); m.userData.placed = true;
     }
     for (const [id, m] of this.meshes) if (!seen.has(id)) { this.group.remove(m); m.geometry.dispose(); this.meshes.delete(id); this.fall.delete(id); }

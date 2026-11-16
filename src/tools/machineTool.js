@@ -1464,7 +1464,7 @@ export class MachineTool {
       LV.held = null;
       const q = T?.bed && T.root.visible && T.tip < 0.05 ? T.bed.worldToLocal(m.position.clone()) : null;
       if (q && q.x > T.x0 && q.x < T.x0 + T.hx && Math.abs(q.z) < T.hz / 2 && q.y > T.floor - R(0.3)) {
-        O.update(H.id, { at: 'truck', tx: +q.x.toFixed(6), ty: +(T.floor + (T._hAt?.(q.x, q.z) || 0)).toFixed(6), tz: +q.z.toFixed(6), yaw: 0 }); app.sfx?.play?.('stone', { at: m.position, vol: 0.5 });
+        O.update(H.id, { at: 'truck', tx: +q.x.toFixed(6), ty: +(T.floor + Math.max(0, (T._hAt?.(q.x, q.z) || 0) - lumpSize(O.get(H.id)).h * 0.35)).toFixed(6), tz: +q.z.toFixed(6), yaw: 0 });   // (a little sunk into what is in it; what is tipped on after covers it) app.sfx?.play?.('stone', { at: m.position, vol: 0.5 });
       } else { const e = new THREE.Euler().setFromQuaternion(m.quaternion, 'YXZ'); O.update(H.id, { at: 'ground', x: +m.position.x.toFixed(6), z: +m.position.z.toFixed(6), yaw: +e.y.toFixed(4) }); m.rotation.set(0, e.y, 0); LV.drop(H.id); }
       return;
     }
@@ -1500,6 +1500,20 @@ export class MachineTool {
       for (const c of [i, j]) { const ix = c % t.nx, iz = (c / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
     }
     if (moved > 0) { t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); this.app.sfx.play('soil_dump', { gap: 0.6, at: P1[0], vol: 0.35 }); }
+    // (a lump of concrete in the way of its back or side — on the ground or in a heap: shoved on with it, the way the bucket goes)
+    const LV = this.app.lumpView, O = this.app.objects;
+    if (LV) for (const r of O.all('lump')) {
+      if (r.at === 'truck' || LV.held?.id === r.id) continue;
+      const m = LV.meshes.get(r.id); if (!m) continue;
+      const sz = lumpSize(r);
+      for (let k = 0; k < P1.length; k++) {
+        const a = P0[k], b = P1[k]; if (!a || !b) continue;
+        if (Math.hypot(b.x - m.position.x, b.z - m.position.z) > sz.r || b.y > m.position.y + sz.h || b.y < m.position.y - R(0.05)) continue;
+        const dx = b.x - a.x, dz = b.z - a.z; if (Math.hypot(dx, dz) < R(0.001)) continue;
+        O.update(r.id, { x: +(r.x + dx * 1.1).toFixed(6), z: +(r.z + dz * 1.1).toFixed(6) }); this.app.sfx.play('stone', { gap: 0.5, at: m.position, vol: 0.3 });
+        break;
+      }
+    }
     return moved;
   }
   _bulldoze(x, z, f, hw, y, back = 0, looseOnly = false) {
