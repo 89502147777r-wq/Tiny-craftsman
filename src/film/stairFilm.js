@@ -93,6 +93,25 @@ export function* stairFilm(d, app) {
   // last frame (scratchpad sketch filter) — the lines fall on the real ones)
   const sk = document.createElement('img'); sk.className = 'f-sketch'; sk.src = 'assets/films/ibiza-2-sketch-card.png'; sk.alt = ''; d.el.appendChild(sk);
   const pin = document.createElement('img'); pin.className = 'f-tack'; pin.src = 'assets/films/sketch-pin.png'; pin.alt = ''; d.el.appendChild(pin);   // (its own picture: taken out first at the end — the realist)
+  // (the owner and the analyst, 2026-11-16: the sheet is pinned in, not there from the start — over the torch's close work, just after
+  // the hook (never in it: ≤ 2 motions there), 0.5 s: in from the top right turning, a small bounce, then the pin pressed in 0.1 s;
+  // real recordings — paper, the pin into cork)
+  { const t0 = d.t + 0.15; sk.style.opacity = pin.style.opacity = '0'; let rustled = false, pressed = false;
+    const back = (u) => { const c = 1.9; return 1 + (c + 1) * (u - 1) ** 3 + c * (u - 1) ** 2; };   // (ease-out with an overshoot: the bounce)
+    d.each(() => {
+      const u = (d.t - t0) / 0.45; if (u < 0) return false;
+      if (!rustled) { rustled = true; app.sfx?.play?.('paper', { vol: 0.5 }); }
+      const v = Math.min(1, u), e = back(v);
+      sk.style.opacity = String(Math.min(1, v * 4));
+      sk.style.transform = v < 1 ? `translate(${(1 - e) * 60}%, ${-(1 - e) * 55}%) rotate(${(1 - e) * 16}deg) scale(${1 + (1 - e) * 0.12})` : '';
+      const p = (d.t - t0 - 0.45) / 0.1;   // (the pin: from above, larger — pressed down into the sheet)
+      if (p >= 0) {
+        if (!pressed) { pressed = true; app.sfx?.play?.('pin', { vol: 0.6 }); }
+        const w = Math.min(1, p); pin.style.opacity = String(Math.min(1, w * 3)); pin.style.transform = w < 1 ? `translateY(${-(1 - w) * 70}%) scale(${1 + (1 - w) * 0.6})` : '';
+        if (w >= 1) { pin.style.opacity = sk.style.opacity = ''; return true; }
+      }
+      return false;
+    }); }
   const bill = (label) => { d.stageBill(label); sk.style.opacity = pin.style.opacity = '0.35'; const t1 = d.t + 1.4; d.each(() => { if (d.t < t1) return false; sk.style.opacity = pin.style.opacity = ''; return true; }); };   // (under the bill's card: the sheet dimmed)
   d.money(true); d.byStages();
   // (stage 1's excavator parked at the plot's edge, past the fireplace's pad — out of the work's way, now and then in a wide shot (the
@@ -469,4 +488,4 @@ export function* stairFilm(d, app) {
 stairFilm.seconds = 62;
 stairFilm.place = 'beach';
 stairFilm.start = 'assets/films/ibiza-1.json.gz';
-stairFilm.sounds = ['block', 'brick', 'trowel', 'trowel_tap', 'mallet', 'tap', 'till', 'cash', 'torch', 'fabric', 'plank', 'hammer_nail', 'rebar', 'wire', 'pump', 'concrete', 'vibrator', 'screed', 'waves', 'wind', 'birds'];
+stairFilm.sounds = ['block', 'brick', 'trowel', 'trowel_tap', 'mallet', 'tap', 'paper', 'pin', 'till', 'cash', 'torch', 'fabric', 'plank', 'hammer_nail', 'rebar', 'wire', 'pump', 'concrete', 'vibrator', 'screed', 'waves', 'wind', 'birds'];

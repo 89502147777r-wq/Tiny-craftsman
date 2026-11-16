@@ -455,6 +455,8 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | `assets/sounds/` — shovel_dig | Shovel_hitting_dirt_2.wav | Glen_Dorner | CC BY 4.0 | https://freesound.org/people/Glen_Dorner/sounds/654114/ |
 | `assets/sounds/` — rake, rake_loop | Rake tool on my garden | frenkfurth | CC0 | https://freesound.org/people/frenkfurth/sounds/654571/ |
 | `assets/sounds/` — tap | Low Click 1 | CJspellsfish | CC0 | https://freesound.org/people/CJspellsfish/sounds/669468/ |
+| `assets/sounds/` — paper | paper-slide | brokenmachinery | CC0 | https://freesound.org/people/brokenmachinery/sounds/730078/ |
+| `assets/sounds/` — pin | Pushing pin through cardboard.wav | hnieminen | CC BY 4.0 | https://freesound.org/people/hnieminen/sounds/663310/ |
 | `assets/sounds/` — wire | 230104-018_normalized_and_low_pass_twist_wire.wav | mmmtoop | CC0 | https://freesound.org/people/mmmtoop/sounds/674023/ |
 | `assets/sounds/` — pipe | Metal pipe drop | gamer500 | CC0 | https://freesound.org/people/gamer500/sounds/680841/ |
 | `assets/sounds/` — pipe | Metal Pipe Drop 2 | gamer500 | CC0 | https://freesound.org/people/gamer500/sounds/682736/ |

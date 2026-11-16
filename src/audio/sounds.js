@@ -78,6 +78,8 @@ export const SOUNDS = {
   cash: {"f": ["cash-0"], "vol": 0.6, "range": 99},
   till: {"f": ["till-0"], "vol": 0.75, "range": 99},   // (a cash register's bell: a stage's bill in the films)
   tap: {"f": ["tap-0"], "vol": 0.35, "range": 99},
+  paper: {"f": ["paper-0"], "vol": 0.5, "range": 99},   // (a sheet slid through the air: the films' sketch flying in)
+  pin: {"f": ["pin-0"], "vol": 0.6, "range": 99},   // (a push pin pressed through card: the sketch pinned)
   car_door: {"f": ["car_door-0"]},
   collapse: {"f": ["collapse-0", "collapse-1"], "vol": 1.0, "range": 4},
   debris: {"f": ["debris-0", "debris-1", "debris-2", "debris-3"], "vol": 0.9, "range": 3},
