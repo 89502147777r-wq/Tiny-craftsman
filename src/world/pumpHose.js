@@ -60,7 +60,9 @@ export class PumpHose {
     const clamp = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.2, R * 1.2, 0.08 * G, 20), steel);
     this.tip.add(pipe, elbow, clamp);
     // the concrete coming out: a tube along the falling pieces, remade every frame
-    this.wet = new THREE.MeshStandardMaterial({ color: 0x55534f, roughness: 0.25, metalness: 0 });   // wet, fresh: dark and shining
+    // (wet fresh concrete: dark grey, a soft sheen — at 0,25 it mirrored the sky and read as water or steel, light blue: the owner saw no
+    // concrete flowing; the sky's light on it held down)
+    this.wet = new THREE.MeshStandardMaterial({ color: 0x4d4a45, roughness: 0.55, metalness: 0, envMapIntensity: 0.35 });
     this.stream = new THREE.Mesh(new THREE.BufferGeometry(), this.wet);
     this.stream.visible = false; this.stream.frustumCulled = false;
     this.group.add(this.mesh, this.end, this.tip, this.stream);
