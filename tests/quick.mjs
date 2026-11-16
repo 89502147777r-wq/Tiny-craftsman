@@ -1470,6 +1470,19 @@ console.log('—', sec());
   check('damp-proof course: on any base — drawn on the bare ground it is laid too (the owner)', o.onGround === 1, JSON.stringify(o));
   check('damp-proof course: the torch\'s hose lies on what is under it — over the slab\'s edge, round a pallet, never through (the owner)', o.hose?.n > 50 && o.hose.through === 0, JSON.stringify(o.hose));
   check('damp-proof course: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  // («Площадка»: things never stand on one another — the owner, 2026-11-16)
+  const sp = await page.evaluate(() => {
+    const tc = window.__tc, W = tc.wallTool.works.siteprop, st = tc.settings, MM = (v) => v / 1000 / 10.4651;
+    const rect = (r) => { const P = { cabin: [5950, 2460], timber: [2460, 4500], pallet: [1200, 1090] }[r.kind] || [800, 800]; return P; };
+    for (const r of tc.objects.all('siteprop')) tc.objects.remove(r.id);
+    st.propMode = 'pallet'; W.down({ x: 0, y: 0, z: 0 }); W.down({ x: 0, y: 0, z: 0 }); st.propMode = 'timber'; W.down({ x: MM(300), y: 0, z: 0 });
+    const ps = tc.objects.all('siteprop'), d01 = Math.hypot(ps[0].x - ps[1].x, ps[0].z - ps[1].z) / MM(1), d02 = Math.hypot(ps[0].x - ps[2].x, ps[0].z - ps[2].z) / MM(1);
+    // (carried onto another one: let go — it stands clear)
+    st.propMode = 'move'; W.down({ x: ps[1].x, y: 0, z: ps[1].z }); W.move({ x: ps[0].x, y: 0, z: ps[0].z }); W.up();
+    const q = tc.objects.get(ps[1].id), dm = Math.hypot(ps[0].x - q.x, ps[0].z - q.z) / MM(1);
+    return { n: ps.length, d01: Math.round(d01), d02: Math.round(d02), dm: Math.round(dm) };
+  });
+  check('site: things never stand on one another — put twice on one spot, or carried onto another, it stands clear (the owner)', sp.n === 3 && sp.d01 >= 1200 && sp.d02 >= 1800 && sp.dm >= 1200, JSON.stringify(sp));
   await browser.close();
 }
 
