@@ -57,7 +57,7 @@ const mat = () => _mat || (_mat = mortarPhoto(new THREE.MeshStandardMaterial({ c
 export class LumpView {
   constructor(app) {
     this.app = app; this.group = new THREE.Group(); this.group.name = 'lumps'; app.scene.add(this.group);
-    this.meshes = new Map(); this.fall = new Map(); this.held = null; this.dirty = true;
+    this.meshes = new Map(); this.fall = new Map(); this.slide = new Map(); this.held = null; this.dirty = true;
     app.objects.on((id, rec) => { if (!rec || rec.type === 'lump' || this.meshes.has(id)) this.dirty = true; });
   }
   _geo(r) {
@@ -87,8 +87,22 @@ export class LumpView {
       }
       // (on the ground: down to what is under it — at g when it is higher. Never up: what is tipped or pushed over it buries it, as a
       // stone is buried in a heap — the owner: covered, it is not seen; its height kept in its record, so a saved game keeps it so)
-      const rest = this.restY(r), F = this.fall.get(r.id);
+      let rest = this.restY(r), F = this.fall.get(r.id);
       let y = F ? F.y : m.userData.placed ? m.position.y : Math.min(r.y ?? rest, rest);
+      // (on the surface, not under it: shoved up a heap's side it rides up on it; on a side steeper than concrete holds on sand
+      // (~35°) it slides down, faster and faster, and stops where it is gentler (≤ 30°) — the owner)
+      const t = this.app.terrain, sz = lumpSize(r), onTop = !F && y + sz.h * 0.5 >= t.heightAt(r.x, r.z) - MM(10);
+      if (onTop && m.userData.placed) {
+        if (rest > y) y = rest;   // (shoved onto higher ground: on it)
+        const e = Math.max(sz.r, MM(150)), gx = (t.heightAt(r.x + e, r.z) - t.heightAt(r.x - e, r.z)) / (2 * e), gz = (t.heightAt(r.x, r.z + e) - t.heightAt(r.x, r.z - e)) / (2 * e);
+        const sl = Math.hypot(gx, gz), ang = Math.atan(sl), S0 = this.slide.get(r.id);
+        if (ang > (S0 ? 0.52 : 0.61) && sl > 1e-6) {
+          const a = G * (Math.sin(ang) - 0.62 * Math.cos(ang)), v = Math.max(0, (S0?.v || 0) + Math.max(a, G * 0.05) * dt), dx = -gx / sl, dz = -gz / sl;
+          const nx = r.x + dx * v * dt * Math.cos(ang), nz = r.z + dz * v * dt * Math.cos(ang);
+          if (t.inside(nx, nz)) { r.x = +nx.toFixed(6); r.z = +nz.toFixed(6); rest = this.restY(r); y = rest; }
+          this.slide.set(r.id, { v });
+        } else if (S0) { this.slide.delete(r.id); this.app.sfx?.play?.('stone', { at: m.position, vol: 0.3 }); }
+      } else this.slide.delete(r.id);
       if (!F && !m.userData.placed && r.y != null && r.y > rest + MM(5)) { this.fall.set(r.id, { y: r.y, v: 0 }); y = r.y; }
       if (y > rest + MM(5)) { const v = (this.fall.get(r.id)?.v || 0) + G * dt; y = Math.max(rest, y - v * dt); if (y > rest) this.fall.set(r.id, { y, v }); else { this.fall.delete(r.id); if (v > G * 0.15) this.app.sfx?.play?.('stone', { at: m.position, vol: 0.4 }); } }
       else this.fall.delete(r.id);   // (on it, or under what lies over it: it stays)

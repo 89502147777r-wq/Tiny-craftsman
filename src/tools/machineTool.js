@@ -1133,12 +1133,13 @@ export class MachineTool {
     const hp0 = E.hardPoints();
     E.update(dt);
     const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
-    this._excPush(hp0, E.hardPoints(), p); this._excCut = cutting;   // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews)
+    this._excPush(hp0, E.hardPoints(), p);   // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews)
     // (digging: the teeth leading — the way they go as it curls in — not full, not tipped)
     // (full, it still cuts while it is in no deeper than 85 % of its depth: what does not fit runs out over its lip —
     // a driver drags a full bucket on so; deeper, the ground holds it)
     const hold = cap * E.holdShare(), bucketDeep = R(1.0) * 0.8, full = g.load >= hold * 0.98;
     const edge = E.cutDir(new THREE.Vector3()), cutting = moving && !E.open && (!full || tDeep0 < bucketDeep * 0.85) && mv.dot(edge) > mv.length() * 0.2;   // (the teeth going where they point — as the bucket curls in; its back first only pushes)
+    this._excCut = cutting;   // (for a lump of concrete in its way: world/lumps.js)
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
