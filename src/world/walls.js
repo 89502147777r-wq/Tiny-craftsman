@@ -1059,6 +1059,16 @@ export class WallView {
   takeSpread(it) { if (it?.mesh.parent) { it.mesh.geometry.dispose(); this.spreadG.remove(it.mesh); } }
   // the board a formwork going up (this.reveal) has just put up at u — for the film's hammer, worked out at once from the same
   // order the boards go up in (read off the drawn frame it lagged a frame: metres, where the next face starts elsewhere)
+  // the formwork's faces in the order they go up (closed lintel ends out): [{ x0, z0, x1, z1, ox, oz, y }] — the bottom board's line on
+  // its outer side, its outward step (60 mm) — for the film's hammer and for check-film (is the hammer at a board that is up)
+  boardFaces(b) {
+    if (!b) return [];
+    const th = BELT.board * S, over = (b.over ?? BELT.over) * S, cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0, bh = 150 * S;
+    return inOrder(boardsOf(b)).filter(([, , , , ns]) => !((ns < 0 && cl[0]) || (ns > 0 && cl[1]))).map(([s0, t0, s1, t1, ns, nt]) => {
+      const off = ns === 0 ? (c0 - c1) * th / 2 : 0, [x0, z0] = toWorld(b, s0 + ns * th / 2 + off, t0 + nt * th / 2), [x1, z1] = toWorld(b, s1 + ns * th / 2 + off, t1 + nt * th / 2), [xo, zo] = toWorld(b, s0 + ns * (th / 2 + MM(60)) + off, t0 + nt * (th / 2 + MM(60)));
+      return { x0, z0, x1, z1, ox: xo - x0, oz: zo - z0, y: b.top - over + Math.min(bh, b.top + b.H - (b.top - over)) / 2 };
+    });
+  }
   revealTip(b, u) {
     if (!b) return null;
     const th = BELT.board * S, over = (b.over ?? BELT.over) * S, cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0, bh = 150 * S;

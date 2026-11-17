@@ -274,15 +274,23 @@ export function* stairFilm(d, app) {
     const WV = app.wallView, RV = app.rebarView;
     // the formwork going up board by board (the owner: «no process of the formwork» — the game's own reveal, as the pool's boards)
     const HN = new V(1, 0, 0), HU = new V(0, 1, 0);
-    const rise = function* (view, id, dur, snd, at = null, an = HN) { const t0 = d.t; let k = 0; yield d.until(() => { const u = Math.min(1, (d.t - t0) / dur); view.reveal = { id, u }; view.dirty = true; if (u * 8 > k) { k++; app.sfx?.play?.(snd[k % snd.length], { vol: 0.5 }); }
-      if (at) { const f = (u * 8) % 1, sw = f < 0.7 ? Math.sin(f / 0.7 * Math.PI / 2) : Math.cos((f - 0.7) / 0.3 * Math.PI / 2); const ra = view.revealTip ? view.revealTip(O.get(id), u) : null; view.revealAt = ra; const hp = ra ? new V(ra.x + ra.ox, ra.y, ra.z + ra.oz) : null, hn = ra && Math.hypot(ra.ox, ra.oz) > 1e-9 ? new V(ra.ox, 0, ra.oz).normalize() : an; if (hp) app.handTools?.set('hammer', hp, hn, HU, u >= 1 ? 0 : sw * 0.6); }   // (on the board just put up, from outside — the owner: the hammer beat the air while the boards went up on the far side)   // (the hammer at the boards being nailed — never boards coming up by themselves under a bill: the analyst)
+    const rise = function* (view, id, dur, snd, at = null, an = HN) { const t0 = d.t; let k = 0; view._blow = -1; yield d.until(() => { const u = Math.min(1, (d.t - t0) / dur); view.reveal = { id, u }; view.dirty = true; if (u * 8 > k) { k++; app.sfx?.play?.(snd[k % snd.length], { vol: 0.5 }); }
+      // (the realist and the owner: a hammer nails standing — at a stud (every 0,6 m), two blows a nail, then on to the next; the
+      // formwork going up fast after that has no hammer in it: one beating the air on the move read as idle)
+      if (at) { const tn = d.t - t0, NAIL = Math.min(1.2, dur * 0.45), F = view.boardFaces?.(O.get(id))?.[0];
+        if (tn < NAIL && F) { const L = Math.hypot(F.x1 - F.x0, F.z1 - F.z0), j = Math.floor(tn / 0.6), p = (tn % 0.6) / 0.6, fz = (p * 2) % 1;
+          const al = Math.min(1, MM(300 + 600 * j) / Math.max(1e-6, L)), hp = new V(F.x0 + (F.x1 - F.x0) * al + F.ox, F.y, F.z0 + (F.z1 - F.z0) * al + F.oz), hn = new V(F.ox, 0, F.oz).normalize();
+          const sw = fz < 0.7 ? Math.sin(fz / 0.7 * Math.PI / 2) : Math.cos((fz - 0.7) / 0.3 * Math.PI / 2), blow = Math.floor(tn / 0.3); if (blow !== (view._blow ?? -1)) { view._blow = blow; if (blow > 0) app.sfx?.play?.('hammer_nail', { vol: 0.55 }); }
+          app.handTools?.set('hammer', hp, hn, HU, sw * 0.6); view.revealAt = { x: hp.x - F.ox, y: hp.y, z: hp.z - F.oz, ox: F.ox, oz: F.oz }; }
+        else if (app.handTools?.cur === 'hammer' && app.handTools.tools.hammer.g.visible) { app.handTools.hide(); view.revealAt = null; } }
       if (u >= 1) { view.reveal = null; view.dirty = true; if (at) app.handTools?.hide(); return true; } return false; }); };
     app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; });
     WV.reveal = { id: beltId, u: 0 }; WV.dirty = true;
     // (the hammer along the spine's beam, its outer board: the camera with it — close, then a step back)
     const hAt = (u) => new V(MM(X0 + 640), topS + MM(140), MM(-5400 + 6300 * u));
     // (before the hammer is up: the first board's place — the camera is there already, no swing to it)
-    tool = () => { if (app.handTools?.cur === 'hammer' && app.handTools.tools.hammer.g.visible) return app.handTools.tools.hammer.g.getWorldPosition(new V()); const f = WV.revealTip?.(O.get(beltId), 1e-3); return f ? new V(f.x + f.ox, f.y, f.z + f.oz) : hAt(0); };
+    let lastH = null, hideShot = null;   // (the hammer put away: the camera stays on where it was till its next shot — no swing to the boards running on)
+    tool = () => { if (app.handTools?.cur === 'hammer' && app.handTools.tools.hammer.g.visible) { lastH = app.handTools.tools.hammer.g.getWorldPosition(new V()); hideShot = d.shot?.n; return lastH; } if (lastH && d.shot?.n === hideShot) return lastH; const rv = WV.reveal?.id === beltId ? WV.reveal.u : 1e-3, f = WV.revealTip?.(O.get(beltId), rv); return f ? new V(f.x + f.ox, f.y, f.z + f.oz) : hAt(0); };
     act([[1.3, [1300, 450, 1100], 1], [9, [2600, 1200, 2600], 1]]);
     bill('');   // (over the boards going up — never over a still grey wall: the analyst)
     d.speed = 1; yield* rise(WV, beltId, 3.2, ['plank', 'hammer_nail', 'hammer_nail'], hAt);
