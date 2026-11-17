@@ -16,7 +16,8 @@ export const PROPS = {
   pallet: { name: 'Поддон с блоками', model: 'cinderpallet', r: 800, foot: [1200, 1090] },
   bricks: { name: 'Поддон кирпича', model: 'brickpallet', r: 800, foot: [830, 1100] },
   bags: { name: 'Цемент в мешках', model: 'bags', r: 800, foot: [1250, 1180] },
-  timber: { name: 'Штабель досок', model: 'timber', r: 2400, foot: [2460, 4500] },
+  timber: { name: 'Штабель досок', model: 'timber_a', r: 2400, foot: [4400, 2100] },   // (a photoscan: a bundle of planks strapped on its bearers — the owner: «the drawn one is not real»)
+  beams: { name: 'Штабель бруса', model: 'timber_b', r: 1800, foot: [2470, 2600] },   // (a photoscan: square timber, cross-laid)
   barrow: { name: 'Тачка', model: 'barrow', r: 800, foot: [1500, 660] },
   cones: { name: 'Конусы', model: 'cones', r: 900, foot: [1500, 1430] },
   skip: { name: 'Контейнер для мусора', model: 'skip', r: 2100, foot: [3900, 1800] },
@@ -27,6 +28,51 @@ export const PROP_SEED = [
   ['pallet', 6.2, 10.7, 0], ['bricks', 7.7, 10.7, 0], ['bags', 9.2, 10.7, 0.05], ['timber', -11.0, 9.6, 1.5708],
   ['mixer', 3.6, 8.6, 0.6], ['barrow', 4.9, 7.0, -0.9], ['cones', 0, 11.4, 0],
 ];
+
+// (the owner, 2026-11-16: things on the site never stand on one another — each its footprint, turned with it, 150 mm clear of the
+// others; put or carried onto another one, it is moved to the nearest free ground)
+const GAP = 150;
+function corners(kind, x, z, yaw = 0, gap = 0) {
+  const [fw, fd] = (PROPS[kind]?.foot || [800, 800]).map((v) => MM(v + gap) / 2), c = Math.cos(yaw || 0), sn = Math.sin(yaw || 0);
+  return [[fw, fd], [-fw, fd], [-fw, -fd], [fw, -fd]].map(([a, b]) => [x + a * c + b * sn, z - a * sn + b * c]);
+}
+function apart(P, Q) {   // (two turned rectangles: a line between them along one of their sides' normals)
+  for (const R of [P, Q]) for (let i = 0; i < 4; i++) {
+    const [x0, z0] = R[i], [x1, z1] = R[(i + 1) % 4], nx = z1 - z0, nz = x0 - x1;
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const [x, z] of P) { const v = x * nx + z * nz; a0 = Math.min(a0, v); a1 = Math.max(a1, v); }
+    for (const [x, z] of Q) { const v = x * nx + z * nz; b0 = Math.min(b0, v); b1 = Math.max(b1, v); }
+    if (a1 < b0 || b1 < a0) return true;
+  }
+  return false;
+}
+export function propClear(app, kind, x, z, yaw, skip = null) {
+  const me = corners(kind, x, z, yaw, GAP), T = app.terrain, MT = app.machineTool;
+  // (what it stands on — the realist: not on a slab, on masonry, over a pit's edge, under a machine: the bare ground, level
+  // enough — its corners within 150 mm of one another)
+  const foot = corners(kind, x, z, yaw, 0), pts = [...foot, [x, z], ...foot.map(([a, b]) => [(a + x) / 2, (b + z) / 2])];
+  let lo = Infinity, hi = -Infinity;
+  for (const [a, b] of pts) {
+    if (!T.inside(a, b)) return false;
+    const i = T.index(a, b); if (T.conc[i] > 1e-6 || T.zone?.[i] === 1) return false;
+    if (MT?._obstTop && MT._obstTop(a, b) > -Infinity && !MT._propBoxes?.().some((q) => Math.abs((a - q.x) * q.ux + (b - q.z) * q.uz) < q.hl && Math.abs(-(a - q.x) * q.uz + (b - q.z) * q.ux) < q.hw)) return false;   // (masonry under it)
+    const h = T.heightAt(a, b); lo = Math.min(lo, h); hi = Math.max(hi, h);
+  }
+  if (hi - lo > MM(150)) return false;
+  for (const m of [MT?.loader, MT?.truck, MT?.exc]) if (m?.loaded && m.root?.visible !== false && Math.hypot(m.x - x, m.z - z) < MM(3000) + MM(Math.hypot(...(PROPS[kind]?.foot || [800, 800])) / 2)) return false;   // (not under a machine)
+  for (const r of app.objects.all('siteprop')) { if (r.id === skip || !PROPS[r.kind]) continue; if (!apart(me, corners(r.kind, r.x, r.z, r.yaw))) return false; }
+  return true;
+}
+// the nearest place to (x, z) where it stands clear of the rest, on the plot (rings out to 12 m), or null
+export function freeSpot(app, kind, x, z, yaw = 0, skip = null) {
+  const T = app.terrain, inPlot = (X, Z) => Math.abs(X) <= T.halfX && Math.abs(Z) <= T.halfZ;
+  if (inPlot(x, z) && propClear(app, kind, x, z, yaw, skip)) return { x, z };
+  for (let r = MM(250); r <= MM(12000); r += MM(250)) {
+    const n = Math.max(12, Math.round(2 * Math.PI * r / MM(300)));
+    for (let k = 0; k < n; k++) { const t = k / n * Math.PI * 2, X = x + r * Math.cos(t), Z = z + r * Math.sin(t); if (inPlot(X, Z) && propClear(app, kind, X, Z, yaw, skip)) return { x: X, z: Z }; }
+  }
+  return null;
+}
 
 const PIER_GEO = new THREE.BoxGeometry(0.4, 1, 0.2), PIER_MAT = new THREE.MeshStandardMaterial({ color: 0x9b9890, roughness: 0.95 });
 // a thing: its model, coming in when it has loaded (the group stands at once — moved, turned, picked as it is)

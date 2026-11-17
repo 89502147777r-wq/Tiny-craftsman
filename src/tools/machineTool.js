@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { PROPS } from '../world/siteProps.js';
+import { lumpSize, breakLump, LUMP } from '../world/lumps.js';
+const UP3 = new THREE.Vector3(0, 1, 0);
 import { MODEL_SCALE } from '../config.js';
 import { Loader } from '../world/loader.js';
 import { Truck, TRUCK_LOAD } from '../world/truck.js';
@@ -63,6 +66,7 @@ export class MachineTool {
 
   // the loader on the plot: where it was left, else parked at the near left corner
   ensure() {
+    this.app.trace?.('техника: погрузчик');
     if (this.loader) return this.loader.ready;
     const app = this.app, t = app.terrain, L = (this.loader = new Loader());
     return L.ready.then(() => {
@@ -74,6 +78,7 @@ export class MachineTool {
     });
   }
   ensureTruck() {
+    this.app.trace?.('техника: самосвал');
     if (this.truck) return this.truck.ready;
     const app = this.app, T = (this.truck = new Truck());
     return T.ready.then(() => {
@@ -87,6 +92,7 @@ export class MachineTool {
   }
   // the mini excavator: where it was left, else at the far right corner, facing into the plot
   ensureExc() {
+    this.app.trace?.('техника: экскаватор');
     if (this.exc) return this.exc.ready;
     const app = this.app, t = app.terrain, E = (this.exc = new Excavator());
     return E.ready.then(() => {
@@ -224,6 +230,15 @@ export class MachineTool {
   // → { step (model m), d (left to go), blocked }
   _drive(dt, tx, tz, slow = 1) {
     const app = this.app, t = app.terrain, L = this.loader;
+    // (far off: round what stands in the way — the site's things, masonry, the other machines (the owner: they stop at them now);
+    // the way found once for a goal, its corners driven one by one; the last 2 m straight at it, as before)
+    { const D = Math.hypot(tx - L.x, tz - L.z), W = this._way;
+      if (D > R(2.5)) {
+        if (!W || Math.hypot(W.tx - tx, W.tz - tz) > R(0.3)) this._way = { tx, tz, pts: this._plan(L.x, L.z, tx, tz) };
+        const pts = this._way.pts;
+        while (pts?.length > 1 && Math.hypot(pts[0][0] - L.x, pts[0][1] - L.z) < R(0.5)) pts.shift();
+        if (pts?.length > 1) { tx = pts[0][0]; tz = pts[0][1]; }
+      } else this._way = null; }
     const dx = tx - L.x, dz = tz - L.z, d = Math.hypot(dx, dz);
     if (d < R(0.12)) return { step: 0, d, blocked: false };
     let err = Math.atan2(-dz, dx) - L.yaw;
@@ -236,6 +251,46 @@ export class MachineTool {
     L.place(t, L.x + fx * step, L.z + fz * step, yaw);
     if (step) this._tracks('loader', step);
     return { step, d: d - step, blocked, fx, fz };
+  }
+  // a way for the loader from (x0, z0) to (x1, z1) round what stands on the plot: a grid of 0,4 m, a cell shut when something stands
+  // within the loader's reach of it (its half-length 2 m and a margin), A* over it, then straightened where the line is clear.
+  // → [[x, z]…] ending at the goal, or null (no way: driven straight, stopped by what is there — as before)
+  _plan(x0, z0, x1, z1) {
+    const t = this.app.terrain, c = R(0.4), nx = Math.ceil(2 * t.halfX / c) + 1, nz = Math.ceil(2 * t.halfZ / c) + 1, N = nx * nz;
+    const X = (i) => -t.halfX + (i % nx) * c, Z = (i) => -t.halfZ + ((i / nx) | 0) * c, cellOf = (x, z) => Math.max(0, Math.min(nz - 1, Math.round((z + t.halfZ) / c))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x + t.halfX) / c)));
+    const others = [this.truck, this.exc].filter((m) => m?.loaded && m.root?.visible !== false);
+    const ring = [[0, 0]]; for (let k = 0; k < 8; k++) ring.push([Math.cos(k * Math.PI / 4) * R(1.7), Math.sin(k * Math.PI / 4) * R(1.7)]);
+    const shut = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      const x = X(i), z = Z(i);
+      if (!t.inside(x, z) || (this.out && this.out(x, z) !== true)) { shut[i] = 1; continue; }
+      for (const [a, b] of ring) { const px = x + a, pz = z + b; if (t.inside(px, pz) && this._obstTop(px, pz) > -Infinity) { shut[i] = 1; break; } }
+      if (!shut[i]) for (const m of others) if (Math.hypot(x - m.x, z - m.z) < R(3.6)) { shut[i] = 1; break; }
+    }
+    const s0 = cellOf(x0, z0), g = cellOf(x1, z1); shut[s0] = 0; shut[g] = 0;
+    const cost = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), open = [[0, s0]]; cost[s0] = 0;
+    const H = (i) => Math.hypot(X(i) - X(g), Z(i) - Z(g));
+    let found = false, it = 0;
+    while (open.length && it++ < 60000) {
+      let bi = 0; for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k;
+      const [, i] = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+      if (i === g) { found = true; break; }
+      const ix = i % nx, iz = (i / nx) | 0;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dz) continue; const jx = ix + dx, jz = iz + dz; if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
+        const j = jz * nx + jx; if (shut[j]) continue;
+        const nc = cost[i] + (dx && dz ? 1.4142 : 1) * c; if (nc >= cost[j]) continue;
+        cost[j] = nc; from[j] = i; open.push([nc + H(j), j]);
+      }
+    }
+    if (!found) return null;
+    const cells = []; for (let i = g; i >= 0; i = from[i]) cells.unshift(i);
+    // (straightened: from each corner on to the farthest one in a clear line)
+    const clear = (a, b) => { const n = Math.ceil(Math.hypot(X(a) - X(b), Z(a) - Z(b)) / (c * 0.5)); for (let k = 0; k <= n; k++) { const q = cellOf(X(a) + (X(b) - X(a)) * k / n, Z(a) + (Z(b) - Z(a)) * k / n); if (shut[q]) return false; } return true; };
+    const out = []; let k = 0;
+    while (k < cells.length - 1) { let j = cells.length - 1; while (j > k + 1 && !clear(cells[k], cells[j])) j--; out.push([X(cells[j]), Z(cells[j])]); k = j; }
+    out[out.length - 1] = [x1, z1];
+    return out;
   }
   // turn on the spot to face (tx, tz) → true when it does
   _face(dt, tx, tz) {
@@ -251,6 +306,7 @@ export class MachineTool {
     if (!this.truck && this.recOf('truck')) this.ensureTruck();
     if (!this.exc && this.recOf('excavator')) this.ensureExc();
     if (this.exc?.loaded && !(this.state === 'drive' && this.drv === 'excavator')) this.exc.update(dt);
+    this._lumps();   // (a lump of set concrete in a bucket, let go, in the truck — world/lumps.js)
     const L = this.loader;
     // (the truck with no loader on the plot — loaded by the excavator, by shovels — lives too)
     if (!L?.loaded) { if (this.truck?.loaded) { this.truck.update(dt); this._overTop(); } return; }
@@ -476,7 +532,7 @@ export class MachineTool {
         else {
           // (away on the road: it tips at the tip, out of sight, and comes back empty a little later)
           const r = this.recOf('truck'), got = T.load * TRUCK_LOAD, total = (r?.hauled || 0) + got;
-          app.journal.act('truck-out', {}, app.clock, () => this._saveTruck({ load: 0, hauled: +total.toFixed(3), away: true }));
+          app.journal.act('truck-out', {}, app.clock, () => { this._saveTruck({ load: 0, hauled: +total.toFixed(3), away: true }); for (const l of app.objects.all('lump')) if (l.at === 'truck') app.objects.remove(l.id); });
           this.got = T.load;
           app.ui?.toast(`Самосвал вывез ${got.toFixed(1).replace('.', ',')} м³ — всего вывезено ${total.toFixed(1).replace('.', ',')} м³`);
           this.wait = 6; this.phase = 'away';
@@ -723,21 +779,24 @@ export class MachineTool {
     // its middle line. The loader's bucket and the arms' ends, its front 1 m, are stopped by what stands higher than its
     // bottom — lifted over the truck's side or a low wall it goes over it)
     const t = this.app.terrain, fx = Math.cos(yaw), fz = -Math.sin(yaw);
-    const ET = this.exc?.track, [a0, a1, hb] = kind === 'truck' ? [-2.35, 2.35, 0.9] : kind === 'excavator' ? (ET ? [ET.x0 * MODEL_SCALE, ET.x1 * MODEL_SCALE, ET.w * MODEL_SCALE / 2] : [-2.3, 0.4, 0.8]) : [-1.5, 2.0, 1.0], st = 0.2, pts = [];
+    const ET = this.exc?.track, dims = (k) => (k === 'truck' ? [-2.35, 2.35, 0.9] : k === 'excavator' ? (ET ? [ET.x0 * MODEL_SCALE, ET.x1 * MODEL_SCALE, ET.w * MODEL_SCALE / 2] : [-2.3, 0.4, 0.8]) : [-1.5, 2.0, 1.0]);
+    const [a0, a1, hb] = dims(kind), st = 0.2, pts = [];
     for (let a = a0; a <= a1 + 1e-6; a += st) pts.push([a, hb], [a, -hb], [a, 0]);
     for (let b = -hb + st; b < hb - 1e-6; b += st) pts.push([a0, b], [a1, b]);
-    const other = noOther ? null : kind === 'truck' ? this.loader : kind === 'excavator' ? (this.truck?.root.visible ? this.truck : this.loader) : this.truck?.root.visible ? this.truck : null, oh = kind === 'truck' ? [1.6, 1.0] : [2.4, (other?.width ? other.width * MODEL_SCALE / 2 : 0.85) + 0.05];   // (the loader comes right up to the body's side: its front tyres end 0,8 m ahead of it, what is further on is the arms and the bucket)
+    // (every other machine on the plot, each its own outline — the owner: the excavator drove through the loader while the
+    // truck was there, for only one other was looked at)
+    const others = noOther ? [] : [['loader', this.loader], ['truck', this.truck], ['excavator', this.exc]].filter(([k, m]) => k !== kind && m?.loaded && m.root?.visible !== false)
+      .map(([k, m]) => { const [o0, o1, ob] = kind === 'truck' && k === 'loader' ? [-1.6, 1.6, 1.0] : dims(k); return { m, o0: o0 - 0.05, o1: o1 + 0.05, ob: (k === 'truck' && m.width ? m.width * MODEL_SCALE / 2 : ob) + 0.05, top: k === 'truck' && kind === 'loader' && m.bodyBox ? m.y + m.bodyBox.max.y : Infinity }; });   // (the loader comes right up to the body's side; its bucket lifted over the body's side goes over it)
     const bucketY = kind === 'loader' && this.loader?.loaded ? this.loader.lowWorld(new THREE.Vector3()).y : null;
-    const otherTop = other?.loaded && kind === 'loader' ? other.y + other.bodyBox.max.y : Infinity;
     for (const [a, b] of pts) {
       const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b), bucket = bucketY != null && a > 0.95;
       if (kind === 'truck' ? Math.abs(px) > t.halfX + R(6) || Math.abs(pz) > t.halfZ + R(6) : !t.inside(px, pz)) return false;
       if (!bucket && this.out && this.out(px, pz) !== true) return false;
       const top = this._obstTop(px, pz);
       if (bucket ? top > bucketY : top > -Infinity) return false;
-      if (other?.loaded) {
-        const dx = px - other.x, dz = pz - other.z, ox = Math.cos(other.yaw), oz = -Math.sin(other.yaw);
-        if (Math.abs(dx * ox + dz * oz) < R(oh[0]) && Math.abs(-dx * oz + dz * ox) < R(oh[1]) && (!bucket || bucketY < otherTop)) return false;
+      for (const O of others) {
+        const dx = px - O.m.x, dz = pz - O.m.z, ox = Math.cos(O.m.yaw), oz = -Math.sin(O.m.yaw), u = dx * ox + dz * oz, w = -dx * oz + dz * ox;
+        if (u > R(O.o0) && u < R(O.o1) && Math.abs(w) < R(O.ob) && (!bucket || bucketY < O.top)) return false;
       }
     }
     return true;
@@ -767,13 +826,40 @@ export class MachineTool {
       for (const u of us) if (u.p && u.s && u.q && u.kind !== 'prop') add(boxOf(u));
       // (a pallet: 1200 × 800 mm, its stack of blocks ≈1,3 m high)
       for (const w of ws) if (w.pallet) { const [px, pz, py] = w.pallet, g = t.heightAt(px, pz); add({ x: px, z: pz, ux: Math.cos(py), uz: -Math.sin(py), hl: R(0.6), hw: R(0.4), bot: g, top: g + R(1.3) }); }
+
     }
-    const l = this._wg.get(Math.floor(x / C) * 65536 + Math.floor(z / C));
-    if (!l) return -Infinity;
+    const l = [...(this._wg.get(Math.floor(x / C) * 65536 + Math.floor(z / C)) || []), ...this._propBoxes()];
+    if (!l.length) return -Infinity;
     const m = R(0.05), g = t.heightAt(x, z);
     let top = -Infinity;
     for (const b of l) { const dx = x - b.x, dz = z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl + m && Math.abs(-dx * b.uz + dz * b.ux) < b.hw + m && b.bot < g + R(2.5) && b.top > top) top = b.top; }
     return top;
+  }
+  // the site's things (the cabin, the pallets, the timber, the skip…) as boxes: the machines and the bucket stop at them (the owner,
+  // 2026-11-16); each its footprint turned with it, as high as its model stands — a few, each cached by where it stands
+  _propBoxes() {
+    const t = this.app.terrain, SP = this.app.siteProps, out = [], C = (this._pbc ||= new Map());
+    for (const r of this.app.objects.all('siteprop')) {
+      const P = PROPS[r.kind]; if (!P) continue;
+      const m = SP?.meshes.get(r.id), key = `${r.x},${r.z},${r.yaw},${m?.position.y ?? ''},${m?.children.length ?? 0}`;
+      let b = C.get(r.id);
+      if (!b || b.key !== key) {
+        const g = t.heightAt(r.x, r.z); let top = g + R(1.0);
+        if (m && m.children.length) { const bb = new THREE.Box3().setFromObject(m); if (Number.isFinite(bb.max.y)) top = bb.max.y; }
+        b = { key, x: r.x, z: r.z, ux: Math.cos(r.yaw || 0), uz: -Math.sin(r.yaw || 0), hl: R(P.foot[0] / 2000), hw: R(P.foot[1] / 2000), bot: g - R(0.05), top };
+        C.set(r.id, b);
+      }
+      out.push(b);
+    }
+    return out;
+  }
+  // how deep a point is inside something standing on the plot (masonry, a pallet, a site thing) — 0 if it is not
+  _inObst(q) {
+    this._obstTop(q.x, q.z);   // (the grid fresh)
+    const l = [...(this._wg?.get(Math.floor(q.x / R(2)) * 65536 + Math.floor(q.z / R(2))) || []), ...this._propBoxes()]; if (!l.length) return 0;
+    let w = 0;
+    for (const b of l) { const dx = q.x - b.x, dz = q.z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl && Math.abs(-dx * b.uz + dz * b.ux) < b.hw && q.y < b.top && q.y > b.bot) w = Math.max(w, Math.min(b.top - q.y, R(0.3))); }
+    return w;
   }
   _driveStep(dt) {
     const app = this.app, t = app.terrain, g = this.grader, L = this.loader, T = this.truck;
@@ -1089,14 +1175,22 @@ export class MachineTool {
         else this._tracks('excavator', Math.hypot(nx - keep[0], nz - keep[1]) + Math.abs(yaw - keep[2]) * R(1));   // (the tracks press the ground)
       } else this.v = 0;
     } else {
-      E.swingGoal -= lx * 1.0 * dt;   // (1 rad/s: a 13–20 t machine's slew — the realist)
-      E.stickGoal += ly * 0.7 * dt;
+      const bog = Math.max(0.2, 1 - (this._pushLoad || 0) / 1.0);   // (shoving a heap: slower, down to a fifth at 1 m³ before it — the realist)
+      this._pushLoad = (this._pushLoad || 0) * Math.exp(-dt * 1.2);
+      E.swingGoal -= lx * 1.0 * dt * bog;   // (1 rad/s: a 13–20 t machine's slew — the realist)
+      E.stickGoal += ly * 0.7 * dt * bog;
     }
     E.boomGoal -= ry * 0.55 * dt;
     E.curlGoal -= rx * 1.2 * dt;
     // the ground under what goes into it: how deep the deepest of the points is in it
-    const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, t.heightAt(q.x, q.z) - q.y); return w; };
-    const pose0 = E.pose(), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
+    // (the FIRM ground holds the bucket — its own soil, concrete — not what is loose on it: a heap is shoved, not leant on)
+    const firm = (x, z) => t.firmAt(x, z);   // (its own ground and concrete, as smooth as the surface — no heap in it)
+    const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, firm(q.x, q.z) - q.y); return w; };
+    const inO = (P) => { let w = 0; for (const q of P) w = Math.max(w, this._inObst(q)); return w; };   // (what stands on it — masonry, the site's things: held from below as from above)   // (the ground — and what stands on it: masonry, the site's things — holds the bucket)
+    const pose0 = E.pose(), obst0 = inO([...E.hardPoints(), E.teethWorld(new THREE.Vector3())]), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
+    // (the line of its teeth across its width, before and after the move: what leads a sideways slew through a heap)
+    const lip = () => { const tp = E.teethWorld(new THREE.Vector3()), hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, out = []; for (let k = -4; k <= 4; k++) out.push(new THREE.Vector3(tp.x + ux * hw * k / 4, tp.y, tp.z + uz * hw * k / 4)); return out; };
+    const hp0 = E.hardPoints(), lip0 = lip();
     E.update(dt);
     const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
     // (digging: the teeth leading — the way they go as it curls in — not full, not tipped)
@@ -1104,6 +1198,10 @@ export class MachineTool {
     // a driver drags a full bucket on so; deeper, the ground holds it)
     const hold = cap * E.holdShare(), bucketDeep = R(1.0) * 0.8, full = g.load >= hold * 0.98;
     const edge = E.cutDir(new THREE.Vector3()), cutting = moving && !E.open && (!full || tDeep0 < bucketDeep * 0.85) && mv.dot(edge) > mv.length() * 0.2;   // (the teeth going where they point — as the bucket curls in; its back first only pushes)
+    this._excCut = cutting;   // (for a lump of concrete in its way: world/lumps.js)
+    // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews; not cutting, its teeth too:
+    // swung sideways through a heap, they go first)
+    if (!cutting) this._excPush([...hp0, ...lip0], [...E.hardPoints(), ...lip()], p); else this._excPush(hp0, E.hardPoints(), p);
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
@@ -1142,8 +1240,12 @@ export class MachineTool {
     {
       // (on the stroke the bucket is the cut: only the stick's end is held then)
       const tol = R(0.03), deep = cutting ? under(E.stickPoints()) : under(E.hardPoints()), tDeep = cutting ? 0 : under([p]);
-      const bad = (deep > tol && deep > (cutting ? deepS0 : deep0) + 1e-6) || (tDeep > tol && tDeep > tDeep0 + 1e-6);
+      // (a move that lifts the bucket is never held: pressed in, its front up, the boom raised must get it out — the front coming
+      // down first would put the teeth deeper for a frame, and the machine would stay stuck)
+      const lift = p.y > before.y + R(0.0003) && ry < 0;
+      const obst = inO([...E.hardPoints(), p]), bad = (obst > tol && obst > obst0 + 1e-6) || (!lift && ((deep > tol && deep > (cutting ? deepS0 : deep0) + 1e-6) || (tDeep > tol && tDeep > tDeep0 + 1e-6)));
       if (bad) {
+        this._bad = { deep: +(deep / R(0.001)).toFixed(0), tDeep: +(tDeep / R(0.001)).toFixed(0), deep0: +(deep0 / R(0.001)).toFixed(0), obst: +(Math.max(0, ...E.hardPoints().map((q) => this._inObst(q))) / R(0.001)).toFixed(0), cutting };   // (what held it last: for the tests)
         let ok = false;
         if (!cutting && ry > 0 && E.boom < pose0[1]) for (let h = E.heave + 0.01; h <= 0.18 && !ok; h += 0.01) { E.heave = h; E._apply(); ok = under(E.hardPoints()) <= Math.max(tol, deep0) && (cutting || under([E.teethWorld(new THREE.Vector3())]) <= Math.max(tol, tDeep0)); }
         if (!ok) { E.setPose(pose0); if (!this._thudT || performance.now() - this._thudT > 900) { this._thudT = performance.now(); app.sfx.play('metal_hit', { at: p, vol: 0.45 }); } }
@@ -1212,6 +1314,7 @@ export class MachineTool {
     if (out < R(3) || T.load < 0.02 || this._tipT) return;
     const r = this.recOf('truck'), got = T.load * TRUCK_LOAD, total = (r?.hauled || 0) + got;
     this._tipT = 1;
+    for (const l of app.objects.all('lump')) if (l.at === 'truck') app.objects.remove(l.id);   // (a lump in the body: gone to the tip with the load)
     T.load = 0; T.tip = T.tipGoal = 0; T.setMix([1, 0, 0, 0, 0]);
     app.sfx.play('truck_tip', { vol: 0.5 });
     if (app.journal.pending?.type === 'drive') this._commitDrive();
@@ -1410,6 +1513,100 @@ export class MachineTool {
     this._flushPush();
   }
   // what stands over the edge across the bucket, moved on ahead of it
+  // a lump of set concrete (world/lumps.js) and the buckets: scooped through — taken whole, in the bucket's frame; the bucket
+  // opened / tipped — let go there: into the truck's body when it is over it, else it falls to the ground; the truck tipping —
+  // out over its tailgate
+  _lumps() {
+    const app = this.app, LV = app.lumpView; if (!LV) return;
+    const E = this.exc, L = this.loader, T = this.truck, O = app.objects;
+    let by = null, node = null, edge = null, inside = null, w = 0, open = false, scoop = false;
+    if (this.state === 'drive' && this.drv === 'excavator' && E?.loaded) { by = 'exc'; node = E.bucketP; edge = E.teethWorld(new THREE.Vector3()); inside = E.mouthWorld(new THREE.Vector3()); w = E.bucketW; open = E.open; scoop = !!this._excCut; }
+    else if (L?.loaded && L.bucketP && (this.state !== 'drive' || this.drv === 'loader')) { by = 'loader'; node = L.bucketP; edge = L.edgeWorld(new THREE.Vector3()); node.updateMatrixWorld(true); inside = edge.clone().lerp(node.getWorldPosition(new THREE.Vector3()), 0.45); w = L.bucketW || R(2); open = L.tilt < -0.3; scoop = L.tilt > -0.45 && L.tilt < 0.45 && (this.state !== 'drive' || (this.v || 0) > 0); }   // (its middle: between the lip and the hinge)
+    // (what another bucket held — the machine left: it falls)
+    for (const h of [...LV.holds]) if (h.by !== by) { LV.holds.splice(LV.holds.indexOf(h), 1); if (O.get(h.id)) LV.drop(h.id); }
+    const now = performance.now() / 1000;
+    if (LV.holds.length) {
+      node.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(node.matrixWorld).invert(), inL = inside.clone().applyMatrix4(inv);
+      for (const h of LV.holds) {
+        const m = LV.meshes.get(h.id); if (!m) continue;
+        // (taken on its teeth where it lay, it slides in as the bucket curls — no jump: 0,3 s to its place in the hollow)
+        const u = Math.min(1, (now - h.t0) / 0.3), M = h.local.clone(), p = new THREE.Vector3().setFromMatrixPosition(h.local).lerp(h.to, u * u * (3 - 2 * u)); M.setPosition(p);
+        new THREE.Matrix4().multiplyMatrices(node.matrixWorld, M).decompose(m.position, m.quaternion, m.scale);
+      }
+      if (open) {
+        for (const h of LV.holds.splice(0)) {
+          const m = LV.meshes.get(h.id), r = O.get(h.id); if (!m || !r) continue;
+          const q = T?.bed && T.root.visible && T.tip < 0.05 ? T.bed.worldToLocal(m.position.clone()) : null;
+          if (q && q.x > T.x0 && q.x < T.x0 + T.hx && Math.abs(q.z) < T.hz / 2 && q.y > T.floor - R(0.3)) {
+            const sz = lumpSize(r);
+            O.update(h.id, { at: 'truck', tx: +q.x.toFixed(6), ty: +(T.floor + Math.max(0, (T._hAt?.(q.x, q.z) || 0) - sz.h * 0.35)).toFixed(6), tz: +q.z.toFixed(6), yaw: 0 });   // (a little sunk into what is in it; what is tipped on after covers it)
+            app.sfx?.play?.('stone', { at: m.position, vol: 0.5 });
+            T.load = (T.load || 0) + sz.vol / MODEL_SCALE ** 3 / (T.cap || 1);   // (it fills the body as much as it is: ~90 kg a 0,6 × 0,6 × 0,1 m dab)
+          } else { const e = new THREE.Euler().setFromQuaternion(m.quaternion, 'YXZ'); O.update(h.id, { at: 'ground', x: +m.position.x.toFixed(6), z: +m.position.z.toFixed(6), yaw: +e.y.toFixed(4) }); LV.drop(h.id); }
+        }
+        return;
+      }
+    }
+    if (!by || open || !scoop || LV.holds.length >= 4) return;
+    for (const r of O.all('lump')) {
+      if (r.at === 'truck' || LV.isHeld(r.id)) continue;
+      const m = LV.meshes.get(r.id); if (!m) continue;
+      const sz = lumpSize(r), d = Math.hypot(m.position.x - edge.x, m.position.z - edge.z);
+      if (d > w / 2 + sz.r * 0.6 || edge.y > m.position.y + sz.h + R(0.12) || edge.y < m.position.y - R(0.3)) continue;
+      // (a big one the teeth hit breaks — uneven pieces 0,2–0,7 m, none wider than the bucket takes; a small one stays whole)
+      if (sz.r > Math.min(R(LUMP.whole), w * 0.4)) { breakLump(app, r.id, Math.min(R(0.35), w * 0.4)); return; }
+      node.updateMatrixWorld(true); m.updateMatrixWorld(true);
+      const inv = new THREE.Matrix4().copy(node.matrixWorld).invert(), local = inv.clone().multiply(m.matrixWorld), n = LV.holds.length;
+      const side = new THREE.Vector3(edge.x - inside.x, 0, edge.z - inside.z).normalize().cross(UP3), to = inside.clone().addScaledVector(side, (n % 2 ? 1 : -1) * R(0.14) * Math.ceil(n / 2)).add(new THREE.Vector3(0, R(0.05) * n, 0)).applyMatrix4(inv);   // (several: side by side in it)
+      LV.holds.push({ id: r.id, by, local, to, t0: now });
+      app.sfx?.play?.('stone', { at: m.position, vol: 0.5 });
+      if (LV.holds.length >= 4) break;
+    }
+  }
+  // the excavator's bucket — its back, its bottom, its sides as the house slews — shoves what is LOOSE in its way (a heap, spoil,
+  // sand tipped there) on ahead of it, the way that part moves; pressed straight down into it, out to the sides. Firm ground still
+  // holds it (the check after). Only the loose above the part's point moves: its own ground stays.
+  _excPush(P0, P1, teeth) {
+    const t = this.app.terrain, g = this.grader; let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1, moved = 0;
+    const touch = (c) => { const ix = c % t.nx, iz = (c / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); };
+    // (each part's whole way this frame swept — a fast slew goes 0,2 m a frame — a band ±1,5 cells about it; what is loose over the
+    // part's height there is carried on ahead of where the part is now)
+    for (let k = 0; k < P1.length; k++) {
+      const a = P0[k], b = P1[k]; if (!a || !b || !t.inside(b.x, b.z)) continue;
+      let dx = b.x - a.x, dz = b.z - a.z, h = Math.hypot(dx, dz), y = Math.min(a.y, b.y);
+      if (h < t.cell * 0.02) { dx = b.x - teeth.x; dz = b.z - teeth.z; h = Math.hypot(dx, dz); if (h < 1e-9) continue; }   // (pressed down: squeezed out sideways)
+      const ux = dx / h, uz = dz / h, n = Math.max(1, Math.ceil(Math.min(h, R(0.5)) / (t.cell * 0.7)));
+      const jx = b.x + ux * t.cell * 1.6, jz = b.z + uz * t.cell * 1.6; if (!t.inside(jx, jz)) continue;
+      const j = t.index(jx, jz); if (!g.free(j, jx, jz)) continue;
+      for (let s = 0; s <= n; s++) for (let q = -1.5; q <= 1.5; q += 1) {
+        const f = s / n, px = a.x + (b.x - a.x) * f - uz * q * t.cell, pz = a.z + (b.z - a.z) * f + ux * q * t.cell; if (!t.inside(px, pz)) continue;
+        const i = t.index(px, pz); if (i === j || !g.free(i, px, pz) || t.comp[i] >= 0.9) continue;   // (a pressed base is not shoved)
+        const over = Math.min(t.nat[i] + t.loose[i] - y, t.loose[i]); if (!(over > 1e-7)) continue;
+        // (the windrow before it loses a quarter to the sides as it goes — two low ridges along its way)
+        const sx = -uz * t.cell * 2.5, sz = ux * t.cell * 2.5, kL = t.inside(jx + sx, jz + sz) ? t.index(jx + sx, jz + sz) : j, kR = t.inside(jx - sx, jz - sz) ? t.index(jx - sx, jz - sz) : j;
+        t._move(i, j, over * 0.75); if (t.loose[i] > 0) { const rest = Math.min(t.loose[i], over * 0.25); t._move(i, kL, rest / 2); t._move(i, kR, rest / 2); touch(kL); touch(kR); }
+        moved += over; touch(i); touch(j);
+      }
+    }
+    this._pushStat = (this._pushStat || 0) + moved;   // (for the tests)
+    this._pushLoad = (this._pushLoad || 0) + moved * t.cellArea * MODEL_SCALE ** 3;   // (m³ shoved lately: the windrow it is driving — the slew slows under it)
+    if (moved > 0) { t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); this.app.sfx.play('soil_dump', { gap: 0.6, at: P1[0], vol: 0.35 }); }
+    // (a lump of concrete in the way of its back or side — on the ground or in a heap: shoved on with it, the way the bucket goes)
+    const LV = this.app.lumpView, O = this.app.objects;
+    if (LV) for (const r of O.all('lump')) {
+      if (r.at === 'truck' || LV.isHeld(r.id)) continue;
+      const m = LV.meshes.get(r.id); if (!m) continue;
+      const sz = lumpSize(r);
+      for (let k = 0; k < P1.length; k++) {
+        const a = P0[k], b = P1[k]; if (!a || !b) continue;
+        if (Math.hypot(b.x - m.position.x, b.z - m.position.z) > sz.r || b.y > m.position.y + sz.h || b.y < m.position.y - R(0.05)) continue;
+        const dx = b.x - a.x, dz = b.z - a.z; if (Math.hypot(dx, dz) < R(0.001)) continue;
+        O.update(r.id, { x: +(r.x + dx * 1.1).toFixed(6), z: +(r.z + dz * 1.1).toFixed(6) }); LV.shoved.add(r.id); this.app.sfx.play('stone', { gap: 0.5, at: m.position, vol: 0.3 });
+        break;
+      }
+    }
+    return moved;
+  }
   _bulldoze(x, z, f, hw, y, back = 0, looseOnly = false) {
     this._slumpAt = [x + f[0] * (R(0.35) + back), z + f[1] * (R(0.35) + back)];
     const t = this.app.terrain, g = this.grader, push = (this._pushC ||= new Float64Array(4));

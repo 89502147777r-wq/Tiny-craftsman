@@ -11,6 +11,8 @@ const require = createRequire(import.meta.url);
 let pw; try { pw = require('playwright'); } catch { pw = require('/opt/node22/lib/node_modules/playwright'); }
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; };
 const film = argv[0] || 'found', out = path.resolve(argv[1] || 'film-out');
+// (the pipeline's gate: no render of a version without its rules passed and the analyst's ok — scripts/film-gate.mjs)
+{ const { gate } = await import('./film-gate.mjs'); const g = gate(film); if (g.miss.length && !argv.includes('--assemble')) { console.log(`render refused (${film} ${g.hash}):\n- ` + g.miss.join('\n- ')); process.exit(2); } }
 const [PI, PN] = (opt('part', '0/1')).split('/').map(Number), ASSEMBLE = argv.includes('--assemble');
 const W = +opt('w', 540), H = +opt('h', 960), DSF = +opt('dsf', 2), FPS = +opt('fps', 30), Q = opt('quality', 'high'), EVERY = +opt('every', 1), MAX = +opt('max', 90);
 fs.mkdirSync(path.join(out, 'frames'), { recursive: true });
@@ -48,12 +50,12 @@ const fr = FPS / EVERY;
 // the cut: the hook (marked «hook» … «hookEnd» at the end of the film) first, then the film up to it
 let src = path.join(out, 'frames', 'f%05d.jpg');
 if (marks.hook != null && marks.hookEnd != null) {
-  const fi = (t) => Math.ceil(t * fr) + 1, cut = path.join(out, 'cut'), nf = fs.readdirSync(path.join(out, 'frames')).length;
+  const fi = (t) => Math.ceil(t * fr - 1e-6), cut = path.join(out, 'cut'), nf = fs.readdirSync(path.join(out, 'frames')).length;
   const all = Array.from({ length: nf }, (_, i) => `f${String(i).padStart(5, '0')}.jpg`);
   const miss = all.filter((f) => !fs.existsSync(path.join(out, 'frames', f)));
   if (miss.length) { console.log('frames missing:', miss.length, miss.slice(0, 5)); process.exit(1); }
   fs.rmSync(cut, { recursive: true, force: true }); fs.mkdirSync(cut);
-  const order = [...all.slice(fi(marks.hook), fi(marks.hookEnd)), ...all.slice(0, fi(marks.hook) - 1)];
+  const order = [...all.slice(fi(marks.hook), fi(marks.hookEnd)), ...all.slice(0, fi(marks.hook))];
   order.forEach((f, i) => fs.copyFileSync(path.join(out, 'frames', f), path.join(cut, `c${String(i).padStart(5, '0')}.jpg`)));
   src = path.join(cut, 'c%05d.jpg');
 }

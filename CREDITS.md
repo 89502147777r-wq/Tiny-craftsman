@@ -27,7 +27,8 @@
 | `assets/models/site/skip.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Skip Bin (Scaniverse) | JFN | CC BY 4.0 | https://sketchfab.com/3d-models/skip-bin-scaniverse-f3cf49ea7ad54573a6f5526de75a13d6 |
 | `assets/models/site/cinderpallet.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Construction Pallet - Photoscan (Optimized) | Coozy | CC BY 4.0 | https://sketchfab.com/3d-models/construction-pallet-photoscan-optimized-ee1dc525a33d499bbad75c4e110050cd |
 | `assets/models/site/bags.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Concrete bags and pallet | neverfollow81 | CC BY 4.0 | https://sketchfab.com/3d-models/concrete-bags-and-pallet-3c66c95bfbf4469186696b133e930f48 |
-| `assets/models/site/timber.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | Construction Site Asset Pack | vmatthew | CC BY 4.0 | https://sketchfab.com/3d-models/construction-site-asset-pack-a6cccf5af6514f2f9289beeead38fe1b |
+| `assets/models/site/timber_a.glb` — штабель досок (фотоскан; ужато: simplify, текстуры 1024 webp, meshopt) | Stack of Wooden Planks I. | orphanrtg | CC BY 4.0 | https://sketchfab.com/3d-models/stack-of-wooden-planks-i-3be56e8955e24a848a457845f26461e4 |
+| `assets/models/site/timber_b.glb` — штабель бруса (фотоскан; ужато так же) | Stack of Wooden Planks II. | orphanrtg | CC BY 4.0 | https://sketchfab.com/3d-models/stack-of-wooden-planks-ii-90b1d493d2484a32915e1a688f92d1a8 |
 | `assets/models/site/brickpallet.glb` — обстановка площадки (вырезано, к реальному размеру, текстуры 512 webp, meshopt) | red bricks on pallet | vicente betoret ferrero | CC BY 4.0 | https://sketchfab.com/3d-models/red-bricks-on-pallet-1f32da1a103b4949963cbe09099eb0ca |
 | `assets/textures/forest_leaves_04/` (diff, nor_gl 1k) — лесная подстилка вокруг участка на фоне «В лесу» | Forest Leaves 04 | Rob Tuytel | CC0 | https://polyhaven.com/a/forest_leaves_04 |
 
@@ -455,6 +456,10 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 | `assets/sounds/` — shovel_dig | Shovel_hitting_dirt_2.wav | Glen_Dorner | CC BY 4.0 | https://freesound.org/people/Glen_Dorner/sounds/654114/ |
 | `assets/sounds/` — rake, rake_loop | Rake tool on my garden | frenkfurth | CC0 | https://freesound.org/people/frenkfurth/sounds/654571/ |
 | `assets/sounds/` — tap | Low Click 1 | CJspellsfish | CC0 | https://freesound.org/people/CJspellsfish/sounds/669468/ |
+| `assets/sounds/` — paper | paper-slide | brokenmachinery | CC0 | https://freesound.org/people/brokenmachinery/sounds/730078/ |
+| `assets/sounds/` — pin | Pushing pin through cardboard.wav | hnieminen | CC BY 4.0 | https://freesound.org/people/hnieminen/sounds/663310/ |
+| `assets/sounds/` — rewind | Tape audio rewinding 2 | LukaCafuka | CC0 | https://freesound.org/people/LukaCafuka/sounds/815689/ |
+| `assets/sounds/` — thud | Sound Design Elements SFX PS 0015 | AudioPapkin | CC0 | https://freesound.org/people/AudioPapkin/sounds/750941/ |
 | `assets/sounds/` — wire | 230104-018_normalized_and_low_pass_twist_wire.wav | mmmtoop | CC0 | https://freesound.org/people/mmmtoop/sounds/674023/ |
 | `assets/sounds/` — pipe | Metal pipe drop | gamer500 | CC0 | https://freesound.org/people/gamer500/sounds/680841/ |
 | `assets/sounds/` — pipe | Metal Pipe Drop 2 | gamer500 | CC0 | https://freesound.org/people/gamer500/sounds/682736/ |

@@ -331,7 +331,8 @@ console.log('—', sec());
     {
       const o = tc.objects.all('outline').find((x) => x.kind === 'rect');
       const mine = () => tc.objects.all('form').filter((f) => f.outlineId === o.id).length;
-      const n0 = mine(), cv = t.concVolume();
+      const lumpV = () => tc.objects.all('lump').reduce((a, r) => a + r.cells.reduce((b, c) => b + c[2] / 1000, 0) * Math.pow((r.cell || 30) / 1000, 2), 0) / Math.pow(10.4651, 3), concAll = () => t.concVolume() + lumpV();   // (what ran over the boards becomes lumps as it sets: still concrete)
+      const n0 = mine(), cv = concAll();
       tc.setTool('form'); tc.formTool.setMode('strip');
       tc.formTool.down(new V((o.x0 + o.x1) / 2, 0.1, (o.z0 + o.z1) / 2), e);
       const warned = mine() === n0;
@@ -349,7 +350,7 @@ console.log('—', sec());
       const stripped = mine() === 0 && !!pile && pile.boards.length >= n0;
       tc.undo(); const back = mine() === n0 && !tc.objects.all('formpile').length; tc.redo();
       const bl = (pile?.items || []).filter((it) => it.k === 'board').sort((a, b) => a.p[1] - b.p[1]), layered = bl.every((it, k) => !k || it.s[0] <= bl[k - 1].s[0] + 1e-4 || it.p[1] - bl[k - 1].p[1] < 1e-4);
-      out.strip = { trips, tilt: +tilt.toFixed(1), layered, bearers: (pile?.items || []).filter((it) => it.bear).length, n0, warned, running, stripped, items: pile?.items?.length, still: !!pile?.items?.every((it) => it.p.every(Number.isFinite)), boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(t.concVolume() - cv) < 1e-12 };
+      out.strip = { trips, tilt: +tilt.toFixed(1), layered, bearers: (pile?.items || []).filter((it) => it.bear).length, n0, warned, running, stripped, items: pile?.items?.length, still: !!pile?.items?.every((it) => it.p.every(Number.isFinite)), boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(concAll() - cv) < Math.max(1e-12, cv * 0.03) };
     }
     tc.setTool('camera');
     await tc.saveNow();
@@ -1057,10 +1058,64 @@ console.log('—', sec());
     // (a crumb off the lip falls as things fall: 2 m in ~0,65 s — not in a frame or two, seen hanging still)
     { const P = tc.particles; P.emit(new V(0, t.heightAt(0, 0) + 2 * M, 0), new V(0, 0, 0), 0, 0.003, 0, 0, 0, true); const it = P.items[P.items.length - 1];
       for (let i = 0; i < 12; i++) tc.simulate(1 / 30); o.fallAt04 = P.items.includes(it); for (let i = 0; i < 24; i++) tc.simulate(1 / 30); o.fallAt12 = !P.items.includes(it); }
-    { let deepest = 0; mt.joystick('r', 0, 1); for (let i = 0; i < 60; i++) { tc.simulate(1 / 30); for (const q of E.hardPoints()) if (t.inside(q.x, q.z)) deepest = Math.max(deepest, t.heightAt(q.x, q.z) - q.y); }
+    { let deepest = 0; mt.joystick('r', 0, 1); for (let i = 0; i < 60; i++) { tc.simulate(1 / 30); for (const q of E.hardPoints()) if (t.inside(q.x, q.z)) deepest = Math.max(deepest, t.firmAt(q.x, q.z) - q.y); }   /* (into the firm ground: a loose layer on it is pushed aside) */
       o.heave = +E.heave.toFixed(3); mt.joystick('r', 0, 0); frames(5); o.deepest = +(deepest / M * 1000).toFixed(0); }
+    // (the owner, 2026-11-16: the bucket's back, bottom and sides shove loose heaps — slewed into one each way, it moves it)
+    go(8, [0, 0], [0, -1]);   // (the bucket lifted off the ground a little: pressed down on it, it would not slew — it bears on the firm ground)
+    { // (lifted just clear of the firm ground along its way — in a dug hole its sides would hold it, as they should)
+      const low = () => Math.min(E.teethWorld(new V()).y, ...E.hardPoints().map((q) => q.y));
+      const ring = () => { const b = E.teethWorld(new V()), c = E.root.position, rx = b.x - c.x, rz = b.z - c.z, rl = Math.hypot(rx, rz) || 1; return [b, -rz / rl, rx / rl]; };
+      const rim = () => { const [b, tx, tz] = ring(); let m = -Infinity; for (let s = -1.4; s <= 1.4; s += 0.2) m = Math.max(m, t.firmAt(b.x + tx * s * M, b.z + tz * s * M)); return m; };
+      for (let k = 0; k < 120 && low() < rim() + 0.04 * M; k++) { mt.joystick("r", 0, -0.3); frames(1); } mt.joystick("r", 0, 0); frames(3);
+      const [b, tx, tz] = ring(), hp = (s) => ({ x: b.x + tx * s * 1.1 * M, z: b.z + tz * s * 1.1 * M });
+      const near = (q) => { let v = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - q.x, z - q.z) < 0.35 * M) v += t.loose[iz * t.nx + ix]; } return v; };
+      const A = hp(1), B = hp(-1);
+      for (const H of [A, B]) { const r = 0.4 * M, ht = low() - t.firmAt(H.x, H.z) + 0.2 * M; t.deposit(H.x, H.z, ht * 2 * Math.PI * r * r, r, 0); }   // (each heap 0,2 m higher than the bucket's bottom: it goes through them)
+      frames(5);
+      o.pushLift = +((low() - rim()) / M).toFixed(2);
+      mt._pushStat = 0; o.heapTop = +((t.heightAt(A.x, A.z) - t.firmAt(A.x, A.z)) / M).toFixed(2); o.lowRel = +((low() - t.firmAt(A.x, A.z)) / M).toFixed(2);
+      const top = (H) => (t.heightAt(H.x, H.z) - t.firmAt(H.x, H.z)) / M, lowA = (low() - t.firmAt(A.x, A.z)) / M, lowB = (low() - t.firmAt(B.x, B.z)) / M, tA0 = top(A), tB0 = top(B);
+      const a0 = near(A), b0 = near(B), s0 = E.swing;
+      go(45, [1, 0], [0, 0]); const s1 = E.swing; go(90, [-1, 0], [0, 0]); const s2 = E.swing;
+      o.push = { tA: [+tA0.toFixed(2), +top(A).toFixed(2), +lowA.toFixed(2)], tB: [+tB0.toFixed(2), +top(B).toFixed(2), +lowB.toFixed(2)], pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(A.x, A.z)) / M).toFixed(2), top: +((t.heightAt(A.x, A.z) - t.firmAt(A.x, A.z)) / M).toFixed(2), bad: mt._bad, a: +(near(A) / Math.max(1e-12, a0)).toFixed(2), b: +(near(B) / Math.max(1e-12, b0)).toFixed(2), sw1: +(s1 - s0).toFixed(2), sw2: +(s2 - s1).toFixed(2) }; }
+    // (the owner: a drop of concrete on the ground stays a dab — not a pillar down when dug round; a bucket takes it whole)
+    { const LV = tc.lumpView, mod = await import('./src/world/lumps.js'), b = E.teethWorld(new V()), i0 = t.index(b.x + 1.2 * M, b.z), nx = t.nx, ids = [];
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const i = i0 + dz * nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = 0.05 * M; t.cTime[i] = (tc.clock || 0) - 400; ids.push(i); }   /* (a spill on the ground's own level) */
+      t._concTouch(0, 0, t.rx, t.rz);
+      const made = mod.scanLumps(tc), r = made.length && tc.objects.get(made[0]);
+      o.lump = { made: made.length, concLeft: ids.filter((i) => t.conc[i] > 1e-6).length };
+      if (r) { LV.update(1 / 30); const y0 = LV.meshes.get(r.id).position.y;
+        for (const i of ids) t.nat[i] -= 0.5 * M; t._touch(0, 0, t.rx, t.rz); for (let k = 0; k < 40; k++) LV.update(1 / 30);
+        o.lump.fell = +((y0 - LV.meshes.get(r.id).position.y) / M).toFixed(2);
+        // (the bucket's lip at it, scooping: taken; opened: let go, it falls)
+        tc.objects.update(r.id, { x: b.x, z: b.z }); for (let k = 0; k < 40; k++) LV.update(1 / 30); const m = LV.meshes.get(r.id); m.position.y = b.y - 0.05 * M;
+        mt._excCut = true; const kc = E.curl; E.curl = 0.3; mt._lumps(); o.lump.held = LV.held?.id === r.id;
+        E.curl = -1.0; E.curlGoal = -1.0; mt._lumps(); o.lump.dropped = !LV.held && tc.objects.get(r.id)?.at === 'ground'; E.curl = E.curlGoal = kc; mt._excCut = false;
+        // (sand tipped over it: it stays under it, unseen — not floated up onto the heap's top)
+        for (let k = 0; k < 90; k++) LV.update(1 / 30); const q = tc.objects.get(r.id), ly = LV.meshes.get(r.id).position.y, h = mod.lumpSize(q).h;
+        t.deposit(q.x, q.z, 0.4 * M * M * M, 0.5 * M, 0, 1); for (let k = 0; k < 20; k++) LV.update(1 / 30);
+        o.lump.buried = LV.meshes.get(r.id).position.y <= ly + 0.002 * M && ly + h < t.heightAt(q.x, q.z);
+        tc.objects.remove(r.id); }
+      // (a big dab — 1 × 1 m: one piece till the teeth hit it; then uneven pieces, none wider than the bucket takes — the realist)
+      { const ids2 = []; for (let dz = -16; dz <= 16; dz++) for (let dx = -16; dx <= 16; dx++) { const i = i0 + 40 + dz * nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = 0.06 * M; t.cTime[i] = (tc.clock || 0) - 400; ids2.push(i); }
+        const big = mod.scanLumps(tc); o.lump.big = big.length;
+        if (big.length === 1) { const ps = mod.breakLump(tc, big[0], 0.35 * M), sz = ps.map((id) => mod.lumpSize(tc.objects.get(id)));
+          o.lump.pieces = ps.length; o.lump.maxR = +(Math.max(...sz.map((q) => q.r)) / M).toFixed(2); o.lump.spread = +(Math.max(...sz.map((q) => q.area)) / Math.min(...sz.map((q) => q.area))).toFixed(1); for (const id of ps) tc.objects.remove(id); } } }
 
     mt.setExcMode('drive'); const x0 = E.x, z0 = E.z; mt.joystick('l', 0, -1); frames(45); mt.joystick('l', 0, 0); frames(5); o.drove = Math.hypot(E.x - x0, E.z - z0) > 0.3 * M;
+    // (the owner: it drove through the loader with the truck about — every other machine stops it)
+    if (mt.loader?.loaded) { const dx = (E.x - x0), dz = (E.z - z0), l = Math.hypot(dx, dz) || 1, L = mt.loader; L.root.visible = true;
+      L.place(t, E.x + dx / l * 4.6 * M, E.z + dz / l * 4.6 * M, E.yaw); const e0 = [E.x, E.z]; mt.joystick('l', 0, -1); frames(150); mt.joystick('l', 0, 0); frames(3);
+      o.block = { moved: +(Math.hypot(E.x - e0[0], E.z - e0[1]) / M).toFixed(2), clear: mt._fits('excavator', E.x, E.z, E.yaw), truckOn: !!mt.truck?.root.visible }; }
+    // (a site thing in its way — a pallet of blocks: it stops at it too, the owner)
+    { const dx = Math.cos(E.yaw), dz = -Math.sin(E.yaw), sg = o.block ? 1 : 1; if (mt.loader?.loaded) mt.loader.place(t, E.x - dx * 9 * M, E.z - dz * 9 * M, E.yaw);
+      mt.joystick('l', 0, -1); frames(4); mt.joystick('l', 0, 0); frames(2); const d0 = [E.x, E.z]; frames(1);
+      const fx = E.x - x0, fz = E.z - z0, fl = Math.hypot(fx, fz) || 1;
+      const pr = tc.objects.add({ type: 'siteprop', kind: 'pallet', x: +(E.x + fx / fl * 4.2 * M).toFixed(5), z: +(E.z + fz / fl * 4.2 * M).toFixed(5), yaw: 0 }); tc.siteProps?.update?.(0); frames(2);
+      const e1 = [E.x, E.z]; mt.joystick('l', 0, -1); frames(150); mt.joystick('l', 0, 0); frames(3);
+      o.prop = { moved: +(Math.hypot(E.x - e1[0], E.z - e1[1]) / M).toFixed(2), clear: mt._fits('excavator', E.x, E.z, E.yaw) }; tc.objects.remove(pr.id); }
+    E.place(t, 2 * M, -t.halfZ + 3 * M, 0);   // (parked out of the truck's way: the machines stop at one another now)
+    for (const r of tc.objects.all('siteprop')) tc.objects.remove(r.id); tc.siteProps?.update?.(0);   // (the site's things off its way out too: this is the drive off the plot, not a detour)
     mt.exit(); frames(5);
     // the truck: loaded, driven out past the plot's edge — to the tip, back empty
     mt.enter('truck'); for (let i = 0; i < 200 && !(mt.driving && mt.drv === 'truck'); i++) await new Promise((r) => setTimeout(r, 50));
@@ -1076,6 +1131,10 @@ console.log('—', sec());
   });
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
+  check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.push.tA[2] + 0.12 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.push.tB[2] + 0.12 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
+  check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 3 && o.lump.pieces <= 20 && o.lump.maxR <= 0.5 && o.lump.spread >= 1.5, JSON.stringify(o.lump));
+  check('machines: the excavator stops at a site thing (a pallet) in its way, not through it (the owner)', o.prop && o.prop.clear && o.prop.moved < 2.6, JSON.stringify(o.prop));
+  check('machines: the excavator stops at the loader in its way, not through it (the owner)', !o.block || (o.block.clear && o.block.moved < 2.2), JSON.stringify(o.block));
   check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), lifted it keeps it (crowned, lumpy), opened it is empty, the crumbs fall at g; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove && o.carried >= 0.95 && o.crown > 0.15 && o.fallAt04 && o.fallAt12, JSON.stringify(o));
   check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty; what is tipped into it heaps when it lands', o.signs && o.tip && o.inAir && o.landed, JSON.stringify(o));
   check('machines: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
@@ -1470,6 +1529,19 @@ console.log('—', sec());
   check('damp-proof course: on any base — drawn on the bare ground it is laid too (the owner)', o.onGround === 1, JSON.stringify(o));
   check('damp-proof course: the torch\'s hose lies on what is under it — over the slab\'s edge, round a pallet, never through (the owner)', o.hose?.n > 50 && o.hose.through === 0, JSON.stringify(o.hose));
   check('damp-proof course: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  // («Площадка»: things never stand on one another — the owner, 2026-11-16)
+  const sp = await page.evaluate(() => {
+    const tc = window.__tc, W = tc.wallTool.works.siteprop, st = tc.settings, MM = (v) => v / 1000 / 10.4651;
+    const rect = (r) => { const P = { cabin: [5950, 2460], timber: [2460, 4500], pallet: [1200, 1090] }[r.kind] || [800, 800]; return P; };
+    for (const r of tc.objects.all('siteprop')) tc.objects.remove(r.id);
+    st.propMode = 'pallet'; W.down({ x: 0, y: 0, z: 0 }); W.down({ x: 0, y: 0, z: 0 }); st.propMode = 'timber'; W.down({ x: MM(300), y: 0, z: 0 });
+    const ps = tc.objects.all('siteprop'), d01 = Math.hypot(ps[0].x - ps[1].x, ps[0].z - ps[1].z) / MM(1), d02 = Math.hypot(ps[0].x - ps[2].x, ps[0].z - ps[2].z) / MM(1);
+    // (carried onto another one: let go — it stands clear)
+    st.propMode = 'move'; W.down({ x: ps[1].x, y: 0, z: ps[1].z }); W.move({ x: ps[0].x, y: 0, z: ps[0].z }); W.up();
+    const q = tc.objects.get(ps[1].id), dm = Math.hypot(ps[0].x - q.x, ps[0].z - q.z) / MM(1);
+    return { n: ps.length, d01: Math.round(d01), d02: Math.round(d02), dm: Math.round(dm) };
+  });
+  check('site: things never stand on one another — put twice on one spot, or carried onto another, it stands clear (the owner)', sp.n === 3 && sp.d01 >= 1200 && sp.d02 >= 1650 && sp.dm >= 1200, JSON.stringify(sp));
   await browser.close();
 }
 

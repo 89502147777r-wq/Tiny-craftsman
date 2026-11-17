@@ -42,6 +42,7 @@ export class Terrain {
     // how smooth its surface was finished (0 as poured … 1 trowelled)
     this.conc = new Float32Array(N);
     this.cTime = new Float32Array(N);
+    this.cSpill = new Uint8Array(N);   // (1: concrete that came off the formwork, onto the open ground — a spill: world/lumps.js)
     this.cSm = new Float32Array(N);
     // extra stiffness (slope) of concrete that fell off as a lump: it stays a lump
     // (only affects flow inside one action; not kept in the journal)
@@ -138,6 +139,13 @@ export class Terrain {
   hAt(i) { return this.nat[i] + this.loose[i] + this.conc[i] + this.top[i]; }
   base(i) { return this.nat[i] + this.loose[i]; }
 
+  // the firm ground's height (its own soil and the concrete — not what is loose on it), as smooth as heightAt
+  firmAt(x, z) {
+    const n = this.nx; let cx = this.toCellX(x), cz = this.toCellZ(z);
+    cx = Math.min(Math.max(cx, 0), this.rx - 1e-4); cz = Math.min(Math.max(cz, 0), this.rz - 1e-4);
+    const ix = Math.floor(cx), iz = Math.floor(cz), fx = cx - ix, fz = cz - iz, i = iz * n + ix, f = (j) => this.nat[j] + this.conc[j] + (this.comp[j] >= 0.9 ? this.loose[j] : 0);   // (a base pressed by the plate holds as the native ground: only the teeth cut it)
+    return (f(i) * (1 - fx) + f(i + 1) * fx) * (1 - fz) + (f(i + n) * (1 - fx) + f(i + n + 1) * fx) * fz;
+  }
   heightAt(x, z) {
     const n = this.nx;
     let cx = this.toCellX(x), cz = this.toCellZ(z);
@@ -721,7 +729,7 @@ export class Terrain {
   buildMesh(material) {
     const { nx: n, nz } = this;
     const N = n * nz;
-    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4), mats = new Float32Array(N * 4), cc = new Float32Array(N * 3);
+    const pos = new Float32Array(N * 3), nor = new Float32Array(N * 3), uv = new Float32Array(N * 2), soil = new Float32Array(N * 4), mats = new Float32Array(N * 4), cc = new Float32Array(N * 4);
     for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < n; ix++) {
       const i = iz * n + ix;
       pos[i * 3] = this.toWorldX(ix); pos[i * 3 + 2] = this.toWorldZ(iz);
@@ -751,7 +759,7 @@ export class Terrain {
     // share of sand / crushed stone 5–20 / 20–40 / black topsoil in the top 2 mm (the rest is soil)
     this.aMat = new THREE.BufferAttribute(mats, 4).setUsage(THREE.DynamicDrawUsage);
     // concrete: thickness, pour time, smoothness (the shader cures it with the clock)
-    this.aConc = new THREE.BufferAttribute(cc, 3).setUsage(THREE.DynamicDrawUsage);
+    this.aConc = new THREE.BufferAttribute(cc, 4).setUsage(THREE.DynamicDrawUsage);   // (+ the height of its bottom: below it a face is the soil under it — the owner: no concrete down to the bottom)
     // bitumen coat, compaction
     this.aExtra = new THREE.BufferAttribute(new Float32Array(N * 2), 2).setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('position', this.aPos);
@@ -905,14 +913,14 @@ export class Terrain {
       mats[i * 4] = f1 * 500; mats[i * 4 + 1] = f2 * 500; mats[i * 4 + 2] = f3 * 500; mats[i * 4 + 3] = f4 * 500;
       // under a cover of sand / stone the concrete fades out (gone at ~1.3 mm of the model)
       const cover = top[i] > 0 ? Math.pow(Math.max(0, 1 - top[i] / 0.0013), 3) : 1;
-      cc[i * 3] = conc[i] * cover; cc[i * 3 + 1] = cTime[i]; cc[i * 3 + 2] = cSm[i];
+      cc[i * 4] = conc[i] * cover; cc[i * 4 + 1] = cTime[i]; cc[i * 4 + 2] = cSm[i]; cc[i * 4 + 3] = conc[i] > 1e-6 ? nat[i] + loose[i] : -1000;
       ex[i * 2] = bit[i]; ex[i * 2 + 1] = conc[i] > 1e-6 ? 0 : comp[i];
       // the foot of a concrete face (e.g. after the boards are stripped): the face
       // belongs to the concrete, not to the soil below it
       if (conc[i] <= 1e-6 && ix > 0 && ix < rx && iz > 0 && iz < rz) {
         let j = -1, hj = h + 0.002;
         for (const k of [i - 1, i + 1, i - n, i + n]) { const hk = nat[k] + loose[k] + conc[k] + top[k]; if (conc[k] > 1e-5 && hk > hj) { hj = hk; j = k; } }
-        if (j >= 0) { cc[i * 3] = conc[j]; cc[i * 3 + 1] = cTime[j]; cc[i * 3 + 2] = cSm[j]; ex[i * 2] = Math.max(bit[i], bit[j]); }
+        if (j >= 0) { cc[i * 4] = conc[j]; cc[i * 4 + 1] = cTime[j]; cc[i * 4 + 2] = cSm[j]; cc[i * 4 + 3] = nat[j] + loose[j]; ex[i * 2] = Math.max(bit[i], bit[j]); }
       }
     }
     return { x0: ox0, z0: oz0, x1: ox1, z1: oz1 };
@@ -940,7 +948,24 @@ export class Terrain {
         if (u >= -over && u <= L + over && v >= -pad && v <= w.t + pad) { const i = iz * n + ix; wall[i] = Math.max(wall[i], w.top); }
       }
     }
+    this._outside = null;   // (what the boards enclose: worked out again when it is asked)
   }
+  // the cells not enclosed by formwork: reached from the plot's edge without crossing a board
+  _outsideMask() {
+    if (this._outside) return this._outside;
+    const { wall, nx: n, rx, rz } = this, N = wall.length, out = (this._outside = new Uint8Array(N)), st = [];
+    for (let ix = 0; ix <= rx; ix++) for (const iz of [0, rz]) st.push(iz * n + ix);
+    for (let iz = 0; iz <= rz; iz++) for (const ix of [0, rx]) st.push(iz * n + ix);
+    while (st.length) { const i = st.pop(); if (out[i] || wall[i] > 0) continue; out[i] = 1; const ix = i % n, iz = (i / n) | 0; if (ix > 0) st.push(i - 1); if (ix < rx) st.push(i + 1); if (iz > 0) st.push(i - n); if (iz < rz) st.push(i + n); }
+    // (and inside a setting-out with its formwork — even where its boards do not close at a corner: cast, never a spill)
+    for (const z of this.castZones || []) {
+      const ix0 = Math.max(0, Math.floor(this.toCellX(z.x0))), ix1 = Math.min(rx, Math.ceil(this.toCellX(z.x1))), iz0 = Math.max(0, Math.floor(this.toCellZ(z.z0))), iz1 = Math.min(rz, Math.ceil(this.toCellZ(z.z1)));
+      for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) if (z.in(this.toWorldX(ix), this.toWorldZ(iz))) out[iz * n + ix] = 0;
+    }
+    return out;
+  }
+  // concrete arriving in an empty cell: a spill when it is off the formwork and on the open ground (not in a pit: a blinding)
+  _spillAt(i) { return this._outsideMask()[i] && this.nat[i] >= this.orig[i] - 0.03 / MODEL_SCALE && this.loose[i] < 0.02 / MODEL_SCALE ? 1 : 0; }   // (on a laid base — stone, sand: poured there on purpose, cast)
 
   // the zones: inside(x, z) → 1 over the box [x0, z0, x1, z1] (the rest of the plot 0)
   setZone(inside, box, topAt = null) {
@@ -1052,7 +1077,7 @@ export class Terrain {
 
   _concAdd(i, add, smooth = 0, stiff = 0) {
     const c = this.conc[i], t = c + add, now = this.clock || 0;
-    if (c <= 0) this.cBase[i] = 0;
+    if (c <= 0) { this.cBase[i] = 0; this.cSpill[i] = this._spillAt(i); }
     else if (this.cTime[i] < now - CONCRETE.stiff * CONCRETE.cure) {
       // fresh concrete on set concrete: a new layer on a firm base
       this.cBase[i] = c; this.cY[i] = stiff; this.cTime[i] = now; this.cSm[i] = smooth; this.conc[i] = t;
@@ -1172,7 +1197,7 @@ export class Terrain {
                 // onto set concrete: a fresh layer on it
                 cBase[dst] = c; cTime[dst] = ts; cSm[dst] = ss * 0.8; cY[dst] = ys;
               } else {
-                if (c <= 0) cBase[dst] = 0;
+                if (c <= 0) { cBase[dst] = 0; this.cSpill[dst] = this._spillAt(dst); }   // (run over the boards onto the ground: a spill)
                 cTime[dst] = c > 0 ? (cTime[dst] * c + ts * m) / tt : ts;
                 cSm[dst] = c > 0 ? (cSm[dst] * c + ss * 0.8 * m) / tt : ss * 0.8;
                 cY[dst] = c > 0 ? (cY[dst] * c + ys * m) / tt : ys;
