@@ -711,6 +711,8 @@ export class WallView {
           if (shown++ >= lim) break;
           const hh = Math.min(bh, b.top + b.H - y0);
           this.beltBoards.setMatrixAt(nbb, m.compose(P.set(x, y0 + hh / 2, z), Q, Sv.set(L, hh, th)));
+          // (the board just put up while the formwork goes up: where the film's hammer nails it — on its outer face)
+          if (rv < 1) { const [ox, oz] = toWorld(b, cs + ns * MM(60), ct + nt * MM(60)); this.revealAt = { x, y: y0 + hh / 2, z, ox: ox - x, oz: oz - z }; }
           aB.setXYZ(nbb, rnd(), Math.floor(rnd() * 8) / 8, (L * MODEL_SCALE) / 1.87);
           this.owner.beltBoards[nbb++] = b.id ?? null;
         }

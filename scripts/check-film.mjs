@@ -43,7 +43,7 @@ const rowsRaw = await page.evaluate(async (FPS) => {
     const c = tc.camera.position, q = tc.rig.target;
     const tp = f.toolAt?.(), wv = tc.wallView?.reveal, rv = tc.rebarView?.reveal;
     out.push({ t: +f.t.toFixed(3), n: f.shot?.n || 0, fx: f.fx.some((e) => e.kind !== 'shake'), title: f.stepName || '', e: [c.x, c.y, c.z], a: [q.x, q.y, q.z], d: tc.rig.dist, b: boxes(),
-      tp: tp ? [tp.x, tp.y, tp.z] : null, ts: scr(tp), sub: subj(), on: objN() + (wv ? wv.u : 0) + (rv ? rv.u : 0), job: !!(tc.physJob || tc.wallTool?.dpc?.busy || tc.concreteTools?.hose?.state === 'work') });
+      tp: tp ? [tp.x, tp.y, tp.z] : null, ts: scr(tp), sub: subj(), sv: !!tc.concreteGear?.pump?.stream?.visible, hw: tc.concreteTools?.hose?.state === 'work' && !!tc.concreteGear?.pump?.ready, hm: (() => { const H = tc.handTools; if (H?.cur !== 'hammer' || !H.tools.hammer?.g.visible || !wv) return null; const p = H.tools.hammer.g.getWorldPosition(tc.camera.position.clone()), ra = tc.wallView.revealAt; return ra ? Math.hypot(p.x - ra.x, p.z - ra.z) * 10.4651 : null; })(), on: objN() + (wv ? wv.u : 0) + (rv ? rv.u : 0), job: !!(tc.physJob || tc.wallTool?.dpc?.busy || tc.concreteTools?.hose?.state === 'work') });
   }
   return { out, snd, marks: f.marks || {}, typed: f.hudTyped || [], notes: (f.notes || []).map((n) => String(n[1])) };
 }, FPS);
@@ -170,6 +170,10 @@ if (Number.isFinite(H0)) {
   const sk = rows.flatMap((r) => r.b.filter((b) => b.k === 'f-sketch' && !inFin(r.t)).map((b) => (b.x1 - b.x0) / (r.sub?.fw || 1) / 1.117)).filter((w) => w < 0.6);
   if (rows.some((r) => r.sub) && sk.length) { const m = [...sk].sort((p, q) => p - q)[sk.length >> 1]; if (m > 0.255 || m < 0.215) list.push(`the sketch's paper ${(m * 100).toFixed(1)} % of the width (22–25)`); }   // (its usual size: the median — it flies in small)
 }
+// (the hammer nails the board being put up — the owner: it beat the air on one side while the boards went up on the other)
+{ const far = rows.filter((r) => r.hm != null && r.hm > 0.6); if (far.length > 3) list.push(`the hammer ${Math.max(...far.map((r) => r.hm)).toFixed(1)} m from the board going up (${far.length} frames, from ${far[0].t.toFixed(1)} s)`); }
+// (the stream seen while the hose pours — the owner: the formwork filled with no stream)
+{ const w = rows.filter((r) => r.hw), v = w.filter((r) => r.sv); if (w.length > 20 && v.length < w.length * 0.9) list.push(`the stream seen ${(100 * v.length / w.length).toFixed(0)} % of the hose's pouring (≥ 90)`); }
 console.log(`\nTHE RELEASE LIST (numbers):\n` + list.join('\n'));
 const menu = [...new Set(typed)].map((r) => `menu typed by the film, not the game's: ${r}`).concat(notes.filter((n) => /FAILED/.test(n)));
 console.log(`\nMENU / NOTES:\n` + menu.join('\n'));

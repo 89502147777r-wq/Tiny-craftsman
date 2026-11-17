@@ -274,8 +274,8 @@ export function* stairFilm(d, app) {
     const WV = app.wallView, RV = app.rebarView;
     // the formwork going up board by board (the owner: «no process of the formwork» — the game's own reveal, as the pool's boards)
     const HN = new V(1, 0, 0), HU = new V(0, 1, 0);
-    const rise = function* (view, id, dur, snd, at = null, an = HN) { const t0 = d.t; let k = 0; yield d.until(() => { const u = Math.min(1, (d.t - t0) / dur); view.reveal = { id, u }; view.dirty = true; if (u * 8 > k) { k++; app.sfx?.play?.(snd[k % snd.length], { vol: 0.5 }); }
-      if (at) { const f = (u * 8) % 1, sw = f < 0.7 ? Math.sin(f / 0.7 * Math.PI / 2) : Math.cos((f - 0.7) / 0.3 * Math.PI / 2); app.handTools?.set('hammer', at(u), an, HU, u >= 1 ? 0 : sw * 0.6); }   // (the hammer at the boards being nailed — never boards coming up by themselves under a bill: the analyst)
+    const rise = function* (view, id, dur, snd, at = null, an = HN) { const t0 = d.t; let k = 0; view.revealAt = null; yield d.until(() => { const u = Math.min(1, (d.t - t0) / dur); view.reveal = { id, u }; view.dirty = true; if (u * 8 > k) { k++; app.sfx?.play?.(snd[k % snd.length], { vol: 0.5 }); }
+      if (at) { const f = (u * 8) % 1, sw = f < 0.7 ? Math.sin(f / 0.7 * Math.PI / 2) : Math.cos((f - 0.7) / 0.3 * Math.PI / 2); const ra = view.revealAt, hp = ra ? new V(ra.x + ra.ox, ra.y, ra.z + ra.oz) : at(u), hn = ra && Math.hypot(ra.ox, ra.oz) > 1e-9 ? new V(ra.ox, 0, ra.oz).normalize() : an; app.handTools?.set('hammer', hp, hn, HU, u >= 1 ? 0 : sw * 0.6); }   // (on the board just put up, from outside — the owner: the hammer beat the air while the boards went up on the far side)   // (the hammer at the boards being nailed — never boards coming up by themselves under a bill: the analyst)
       if (u >= 1) { view.reveal = null; view.dirty = true; if (at) app.handTools?.hide(); return true; } return false; }); };
     app.journal.act('belt', {}, app.clock, () => { beltId = O.add(B.rec).id; });
     WV.reveal = { id: beltId, u: 0 }; WV.dirty = true;
