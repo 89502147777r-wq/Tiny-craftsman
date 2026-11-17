@@ -12,7 +12,7 @@ import { mortarPhoto } from './terrainMaterial.js';
 // tipped out, it falls (g) onto the ground or into a truck's body; the truck tips it out with its load; driven off to the tip —
 // gone with the load.
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S, G = 9.81 / MODEL_SCALE;
-export const LUMP = { thick: 0.12, piece: 0.9, grade: 0.03 };
+export const LUMP = { thick: 0.25, piece: 0.9, grade: 0.03 };
 
 // the ground's firm spills → lumps (called now and then: main.js). A spill: firm concrete no thicker than LUMP.thick lying on the
 // ground at its own level (not in a pit — a blinding is poured there — nor in a house), whatever its size and whatever it touches
@@ -21,7 +21,7 @@ export const LUMP = { thick: 0.12, piece: 0.9, grade: 0.03 };
 // shader shows the concrete only its own thickness).
 export function scanLumps(app) {
   const t = app.terrain, { nx, conc } = t, N = conc.length, firm = CONCRETE.stiff * 1.05, thin = MM(LUMP.thick * 1000), grade = MM(LUMP.grade * 1000);
-  const spill = (i) => conc[i] > 1e-5 && conc[i] <= thin && t.curedAt(i) >= firm && t.nat[i] >= t.orig[i] - grade && t.zone?.[i] !== 1;
+  const spill = (i) => conc[i] > 1e-5 && t.cSpill[i] === 1 && conc[i] <= thin && t.curedAt(i) >= firm && t.zone?.[i] !== 1;   // (marked when it was poured: off the formwork, on the open ground — terrain._spillAt)
   const groups = new Map(), P = MM(LUMP.piece * 1000);
   for (let i = 0; i < N; i++) {
     if (conc[i] <= 1e-5 || !spill(i)) continue;

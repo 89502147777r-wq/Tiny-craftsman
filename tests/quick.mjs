@@ -1060,6 +1060,7 @@ console.log('—', sec());
     { let deepest = 0; mt.joystick('r', 0, 1); for (let i = 0; i < 60; i++) { tc.simulate(1 / 30); for (const q of E.hardPoints()) if (t.inside(q.x, q.z)) deepest = Math.max(deepest, t.heightAt(q.x, q.z) - q.y); }
       o.heave = +E.heave.toFixed(3); mt.joystick('r', 0, 0); frames(5); o.deepest = +(deepest / M * 1000).toFixed(0); }
     // (the owner, 2026-11-16: the bucket's back, bottom and sides shove loose heaps — slewed into one each way, it moves it)
+    go(8, [0, 0], [0, -1]);   // (the bucket lifted off the ground a little: pressed down on it, it would not slew — it bears on the firm ground)
     { const b = E.teethWorld(new V()), c = E.root.position, rx = b.x - c.x, rz = b.z - c.z, rl = Math.hypot(rx, rz) || 1, tx = -rz / rl, tz = rx / rl;
       const hp = (s) => ({ x: b.x + tx * s * 1.1 * M, z: b.z + tz * s * 1.1 * M });
       const near = (q) => { let v = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - q.x, z - q.z) < 0.35 * M) v += t.loose[iz * t.nx + ix]; } return v; };
@@ -1069,7 +1070,7 @@ console.log('—', sec());
       o.push = { a: +(near(A) / Math.max(1e-12, a0)).toFixed(2), b: +(near(B) / Math.max(1e-12, b0)).toFixed(2), sw1: +(s1 - s0).toFixed(2), sw2: +(s2 - s1).toFixed(2) }; }
     // (the owner: a drop of concrete on the ground stays a dab — not a pillar down when dug round; a bucket takes it whole)
     { const LV = tc.lumpView, mod = await import('./src/world/lumps.js'), b = E.teethWorld(new V()), i0 = t.index(b.x + 1.2 * M, b.z), nx = t.nx, ids = [];
-      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const i = i0 + dz * nx + dx; t.orig[i] = t.nat[i]; t.conc[i] = 0.05 * M; t.cTime[i] = (tc.clock || 0) - 400; ids.push(i); }   /* (a spill on the ground's own level) */
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const i = i0 + dz * nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = 0.05 * M; t.cTime[i] = (tc.clock || 0) - 400; ids.push(i); }   /* (a spill on the ground's own level) */
       t._concTouch(0, 0, t.rx, t.rz);
       const made = mod.scanLumps(tc), r = made.length && tc.objects.get(made[0]);
       o.lump = { made: made.length, concLeft: ids.filter((i) => t.conc[i] > 1e-6).length };

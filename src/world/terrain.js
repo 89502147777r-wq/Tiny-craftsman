@@ -42,6 +42,7 @@ export class Terrain {
     // how smooth its surface was finished (0 as poured … 1 trowelled)
     this.conc = new Float32Array(N);
     this.cTime = new Float32Array(N);
+    this.cSpill = new Uint8Array(N);   // (1: concrete that came off the formwork, onto the open ground — a spill: world/lumps.js)
     this.cSm = new Float32Array(N);
     // extra stiffness (slope) of concrete that fell off as a lump: it stays a lump
     // (only affects flow inside one action; not kept in the journal)
@@ -940,7 +941,19 @@ export class Terrain {
         if (u >= -over && u <= L + over && v >= -pad && v <= w.t + pad) { const i = iz * n + ix; wall[i] = Math.max(wall[i], w.top); }
       }
     }
+    this._outside = null;   // (what the boards enclose: worked out again when it is asked)
   }
+  // the cells not enclosed by formwork: reached from the plot's edge without crossing a board
+  _outsideMask() {
+    if (this._outside) return this._outside;
+    const { wall, nx: n, rx, rz } = this, N = wall.length, out = (this._outside = new Uint8Array(N)), st = [];
+    for (let ix = 0; ix <= rx; ix++) for (const iz of [0, rz]) st.push(iz * n + ix);
+    for (let iz = 0; iz <= rz; iz++) for (const ix of [0, rx]) st.push(iz * n + ix);
+    while (st.length) { const i = st.pop(); if (out[i] || wall[i] > 0) continue; out[i] = 1; const ix = i % n, iz = (i / n) | 0; if (ix > 0) st.push(i - 1); if (ix < rx) st.push(i + 1); if (iz > 0) st.push(i - n); if (iz < rz) st.push(i + n); }
+    return out;
+  }
+  // concrete arriving in an empty cell: a spill when it is off the formwork and on the open ground (not in a pit: a blinding)
+  _spillAt(i) { return this._outsideMask()[i] && this.nat[i] >= this.orig[i] - 0.03 / MODEL_SCALE ? 1 : 0; }
 
   // the zones: inside(x, z) → 1 over the box [x0, z0, x1, z1] (the rest of the plot 0)
   setZone(inside, box, topAt = null) {
@@ -1052,7 +1065,7 @@ export class Terrain {
 
   _concAdd(i, add, smooth = 0, stiff = 0) {
     const c = this.conc[i], t = c + add, now = this.clock || 0;
-    if (c <= 0) this.cBase[i] = 0;
+    if (c <= 0) { this.cBase[i] = 0; this.cSpill[i] = this._spillAt(i); }
     else if (this.cTime[i] < now - CONCRETE.stiff * CONCRETE.cure) {
       // fresh concrete on set concrete: a new layer on a firm base
       this.cBase[i] = c; this.cY[i] = stiff; this.cTime[i] = now; this.cSm[i] = smooth; this.conc[i] = t;
@@ -1172,7 +1185,7 @@ export class Terrain {
                 // onto set concrete: a fresh layer on it
                 cBase[dst] = c; cTime[dst] = ts; cSm[dst] = ss * 0.8; cY[dst] = ys;
               } else {
-                if (c <= 0) cBase[dst] = 0;
+                if (c <= 0) { cBase[dst] = 0; this.cSpill[dst] = this._spillAt(dst); }   // (run over the boards onto the ground: a spill)
                 cTime[dst] = c > 0 ? (cTime[dst] * c + ts * m) / tt : ts;
                 cSm[dst] = c > 0 ? (cSm[dst] * c + ss * 0.8 * m) / tt : ss * 0.8;
                 cY[dst] = c > 0 ? (cY[dst] * c + ys * m) / tt : ys;

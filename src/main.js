@@ -652,7 +652,7 @@ function buildProject(parts = false) {
     tray: TRAY,
     terrain: parts ? { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed } : { rx: t.rx, rz: t.rz, cell: t.cell, sizeX: t.sizeX, sizeZ: t.sizeZ, floorY: t.floorY, soilY: TRAY.soil, seed: t.seed, nat: base.nat, loose: base.loose, ldep: base.ldep || t.ldep, orig: t.orig,
       layers: { count: 3, n: base.lN || t.lN, h: base.lH || t.lH, m: base.lM || t.lM, materials: ['soil', 'sand', 'gravel 5-20', 'gravel 20-40'] },
-      concrete: { h: base.conc || t.conc, poured: base.cTime || t.cTime, smooth: base.cSm || t.cSm, cureSeconds: CONCRETE.cure },
+      concrete: { h: base.conc || t.conc, poured: base.cTime || t.cTime, smooth: base.cSm || t.cSm, spill: base.cSpill || t.cSpill, cureSeconds: CONCRETE.cure },
       onConcrete: { h: base.top || t.top, m: base.topM || t.topM } },
     objects,
     settings: app.settings,
@@ -691,7 +691,7 @@ function applyProject(p) {
   const L = p.terrain.layers;
   if (L && L.h.length === t.lH.length) { t.lH.set(L.h); t.lM.set(L.m); t.lN.set(L.n); } else t.layersFromLoose();   // before BUILD 17: all soil
   const C = p.terrain.concrete;
-  if (C && C.h.length === t.conc.length) { t.conc.set(C.h); t.cTime.set(C.poured); t.cSm.set(C.smooth); } else { t.conc.fill(0); t.cSm.fill(0); }
+  if (C && C.h.length === t.conc.length) { t.conc.set(C.h); t.cTime.set(C.poured); t.cSm.set(C.smooth); if (C.spill?.length === t.cSpill.length) t.cSpill.set(C.spill); else t.cSpill.fill(0); } else { t.conc.fill(0); t.cSm.fill(0); t.cSpill.fill(0); }   // (no spill marks in an older save: all its concrete is cast)
   const P = p.terrain.onConcrete;   // BUILD 28+: sand / stone lying on concrete
   if (P && P.h.length === t.top.length) { t.top.set(P.h); t.topM.set(P.m); } else { t.top.fill(0); t.topM.fill(0); }
   t.cActive = null;
@@ -811,7 +811,7 @@ function lazySave() {
 app.scheduleSave = scheduleSave;
 let saveChain = Promise.resolve();
 // the fields of the ground saved per tile (and their values per cell)
-const TFIELDS = [['nat', 1], ['loose', 1], ['ldep', 1], ['orig', 1], ['lN', 1], ['lH', 3], ['lM', 3], ['conc', 1], ['cTime', 1], ['cSm', 1], ['top', 1], ['topM', 1]];
+const TFIELDS = [['nat', 1], ['loose', 1], ['ldep', 1], ['orig', 1], ['lN', 1], ['lH', 3], ['lM', 3], ['conc', 1], ['cTime', 1], ['cSm', 1], ['cSpill', 1], ['top', 1], ['topM', 1]];   // (cSpill: concrete poured off the formwork — a spill, world/lumps.js)
 const STILE = 64;
 function tileOf(src, t, k) {
   const tx = k % t.stnx, tz = (k / t.stnx) | 0, x0 = tx * STILE, z0 = tz * STILE, w = Math.min(t.nx, x0 + STILE) - x0, h = Math.min(t.nz, z0 + STILE) - z0, out = { x0, z0, w, h };
@@ -846,11 +846,11 @@ function assembleParts(parts) {
   for (let k = 0; k < T.tiles.nx * T.tiles.nz; k++) {
     const q = parts.get('p:t:' + k);
     if (!q) return null;
-    for (const [f, m] of TFIELDS) for (let z = 0; z < q.h; z++) { const i = ((q.z0 + z) * nx + q.x0) * m; arr[f].set(q[f].subarray(z * q.w * m, (z + 1) * q.w * m), i); }
+    for (const [f, m] of TFIELDS) { if (!q[f]) continue; for (let z = 0; z < q.h; z++) { const i = ((q.z0 + z) * nx + q.x0) * m; arr[f].set(q[f].subarray(z * q.w * m, (z + 1) * q.w * m), i); } }   // (a field saved by an older build: none — zeros)
   }
   const p = { ...meta };
   p.terrain = { ...T, nat: arr.nat, loose: arr.loose, ldep: arr.ldep, orig: arr.orig, layers: { count: 3, n: arr.lN, h: arr.lH, m: arr.lM, materials: ['soil', 'sand', 'gravel 5-20', 'gravel 20-40'] },
-    concrete: { h: arr.conc, poured: arr.cTime, smooth: arr.cSm, cureSeconds: CONCRETE.cure }, onConcrete: { h: arr.top, m: arr.topM } };
+    concrete: { h: arr.conc, poured: arr.cTime, smooth: arr.cSm, spill: arr.cSpill, cureSeconds: CONCRETE.cure }, onConcrete: { h: arr.top, m: arr.topM } };
   const ent = (id) => parts.get('p:j:' + id);
   p.journal = { nextId: meta.journal.nextId, done: meta.journal.done.map(ent).filter(Boolean), undone: meta.journal.undone.map(ent).filter(Boolean) };
   p.track = parts.get('p:track') || null;
