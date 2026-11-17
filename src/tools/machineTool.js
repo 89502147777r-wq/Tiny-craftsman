@@ -791,15 +791,7 @@ export class MachineTool {
     // (the excavator's boom, stick and bucket too, not its tracks only — the owner: the loader and the truck drove through its boom
     // and bucket): the arm as a chain of pins (boom → stick → bucket → teeth) with its thickness; a machine passes under it only where
     // the arm's underside is over the machine's top (the loader's cab 3,0 m, the truck's 3,3 m)
-    const E = !noOther && kind !== 'excavator' && this.exc?.loaded && this.exc.root?.visible !== false ? this.exc : null, arm = [];
-    if (E) {
-      E.root.updateMatrixWorld(true);
-      const P = [E.boomP, E.stickP, E.bucketP].map((n) => new THREE.Vector3().setFromMatrixPosition(n.matrixWorld)); P.push(E.teethWorld(new THREE.Vector3()));
-      for (let i = 0; i < P.length - 1; i++) arm.push([P[i], P[i + 1]]);
-    }
-    const armR = R(0.55), armT = R(0.45), tall = R(kind === 'truck' ? 3.3 : 3.0);
-    const underArm = (px, pz) => { for (const [p, q] of arm) { const dx = q.x - p.x, dz = q.z - p.z, L2 = dx * dx + dz * dz, u = L2 > 1e-12 ? Math.max(0, Math.min(1, ((px - p.x) * dx + (pz - p.z) * dz) / L2)) : 0;
-      if (Math.hypot(p.x + dx * u - px, p.z + dz * u - pz) > armR) continue; if (p.y + (q.y - p.y) * u - armT < t.heightAt(px, pz) + tall) return true; } return false; };
+    const arm = !noOther && kind !== 'excavator' ? this._armSegs() : [], underArm = (px, pz) => this._armOver(kind, px, pz, arm);
     for (const [a, b] of pts) {
       const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b), bucket = bucketY != null && a > 0.95;
       if (kind === 'truck' ? Math.abs(px) > t.halfX + R(6) || Math.abs(pz) > t.halfZ + R(6) : !t.inside(px, pz)) return false;
@@ -813,6 +805,20 @@ export class MachineTool {
       }
     }
     return true;
+  }
+  // the excavator's arm (boom → stick → bucket → teeth) as segments between its pins (world), or none
+  _armSegs() {
+    const E = this.exc; if (!E?.loaded || E.root?.visible === false) return [];
+    E.root.updateMatrixWorld(true);
+    const P = [E.boomP, E.stickP, E.bucketP].map((n) => new THREE.Vector3().setFromMatrixPosition(n.matrixWorld)); P.push(E.teethWorld(new THREE.Vector3()));
+    const out = []; for (let i = 0; i < P.length - 1; i++) out.push([P[i], P[i + 1]]); return out;
+  }
+  // is (px, pz) under the excavator's arm lower than the top of a `kind` standing there (the arm's thickness taken off)?
+  _armOver(kind, px, pz, arm = this._armSegs()) {
+    const t = this.app.terrain, armR = R(0.55), armT = R(0.45), tall = R(kind === 'truck' ? 3.3 : 3.0);
+    for (const [p, q] of arm) { const dx = q.x - p.x, dz = q.z - p.z, L2 = dx * dx + dz * dz, u = L2 > 1e-12 ? Math.max(0, Math.min(1, ((px - p.x) * dx + (pz - p.z) * dz) / L2)) : 0;
+      if (Math.hypot(p.x + dx * u - px, p.z + dz * u - pz) > armR) continue; if (p.y + (q.y - p.y) * u - armT < t.heightAt(px, pz) + tall) return true; }
+    return false;
   }
   // the nearest place the loader fits (rings round, 25 cm apart)
   _clearNear(x, z, yaw, kind = 'loader') {
