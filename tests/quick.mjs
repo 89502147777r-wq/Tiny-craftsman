@@ -1114,6 +1114,14 @@ console.log('—', sec());
       const pr = tc.objects.add({ type: 'siteprop', kind: 'pallet', x: +(E.x + fx / fl * 4.2 * M).toFixed(5), z: +(E.z + fz / fl * 4.2 * M).toFixed(5), yaw: 0 }); tc.siteProps?.update?.(0); frames(2);
       const e1 = [E.x, E.z]; mt.joystick('l', 0, -1); frames(150); mt.joystick('l', 0, 0); frames(3);
       o.prop = { moved: +(Math.hypot(E.x - e1[0], E.z - e1[1]) / M).toFixed(2), clear: mt._fits('excavator', E.x, E.z, E.yaw) }; tc.objects.remove(pr.id); }
+    // (the owner: the loader and the truck drove through its boom and bucket — the arm stops them where it is low; swung away, the
+    // same spot is free)
+    { const set = (sw, bm) => { for (const [k, v] of [['swing', sw], ['boom', bm], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); E.root.updateMatrixWorld(true); };
+      let bm = 0, lowY = Infinity; for (const b of [-0.4, -0.2, 0, 0.2, 0.4]) { set(0, b); const y = E.teethWorld(new V()).y; if (y < lowY) { lowY = y; bm = b; } }
+      set(0, bm); const p = E.teethWorld(new V()), c = new V().setFromMatrixPosition(E.bucketP.matrixWorld), q = { x: (p.x + c.x) / 2, z: (p.z + c.z) / 2 };
+      const yawX = Math.atan2(-(p.z - E.z), p.x - E.x) + Math.PI / 2, low = mt._fits('loader', q.x, q.z, yawX), lowT = mt._fits('truck', q.x, q.z, yawX);
+      set(Math.PI, bm); const away = mt._fits('loader', q.x, q.z, yawX);
+      set(0, 0); o.arm = { low, lowT, away, h: +((lowY - t.heightAt(q.x, q.z)) / M).toFixed(2) }; }
     E.place(t, 2 * M, -t.halfZ + 3 * M, 0);   // (parked out of the truck's way: the machines stop at one another now)
     for (const r of tc.objects.all('siteprop')) tc.objects.remove(r.id); tc.siteProps?.update?.(0);   // (the site's things off its way out too: this is the drive off the plot, not a detour)
     mt.exit(); frames(5);
@@ -1130,6 +1138,7 @@ console.log('—', sec());
     return o;
   });
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
+  check('machines: the excavator\'s boom and bucket stop the loader and the truck where the arm is low; swung away, the spot is free (the owner)', o.arm && o.arm.low === false && o.arm.lowT === false && o.arm.away === true, JSON.stringify(o.arm));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.push.tA[2] + 0.12 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.push.tB[2] + 0.12 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
   check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 3 && o.lump.pieces <= 20 && o.lump.maxR <= 0.5 && o.lump.spread >= 1.5, JSON.stringify(o.lump));

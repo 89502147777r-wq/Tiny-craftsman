@@ -788,12 +788,25 @@ export class MachineTool {
     const others = noOther ? [] : [['loader', this.loader], ['truck', this.truck], ['excavator', this.exc]].filter(([k, m]) => k !== kind && m?.loaded && m.root?.visible !== false)
       .map(([k, m]) => { const [o0, o1, ob] = kind === 'truck' && k === 'loader' ? [-1.6, 1.6, 1.0] : dims(k); return { m, o0: o0 - 0.05, o1: o1 + 0.05, ob: (k === 'truck' && m.width ? m.width * MODEL_SCALE / 2 : ob) + 0.05, top: k === 'truck' && kind === 'loader' && m.bodyBox ? m.y + m.bodyBox.max.y : Infinity }; });   // (the loader comes right up to the body's side; its bucket lifted over the body's side goes over it)
     const bucketY = kind === 'loader' && this.loader?.loaded ? this.loader.lowWorld(new THREE.Vector3()).y : null;
+    // (the excavator's boom, stick and bucket too, not its tracks only — the owner: the loader and the truck drove through its boom
+    // and bucket): the arm as a chain of pins (boom → stick → bucket → teeth) with its thickness; a machine passes under it only where
+    // the arm's underside is over the machine's top (the loader's cab 3,0 m, the truck's 3,3 m)
+    const E = !noOther && kind !== 'excavator' && this.exc?.loaded && this.exc.root?.visible !== false ? this.exc : null, arm = [];
+    if (E) {
+      E.root.updateMatrixWorld(true);
+      const P = [E.boomP, E.stickP, E.bucketP].map((n) => new THREE.Vector3().setFromMatrixPosition(n.matrixWorld)); P.push(E.teethWorld(new THREE.Vector3()));
+      for (let i = 0; i < P.length - 1; i++) arm.push([P[i], P[i + 1]]);
+    }
+    const armR = R(0.55), armT = R(0.45), tall = R(kind === 'truck' ? 3.3 : 3.0);
+    const underArm = (px, pz) => { for (const [p, q] of arm) { const dx = q.x - p.x, dz = q.z - p.z, L2 = dx * dx + dz * dz, u = L2 > 1e-12 ? Math.max(0, Math.min(1, ((px - p.x) * dx + (pz - p.z) * dz) / L2)) : 0;
+      if (Math.hypot(p.x + dx * u - px, p.z + dz * u - pz) > armR) continue; if (p.y + (q.y - p.y) * u - armT < t.heightAt(px, pz) + tall) return true; } return false; };
     for (const [a, b] of pts) {
       const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b), bucket = bucketY != null && a > 0.95;
       if (kind === 'truck' ? Math.abs(px) > t.halfX + R(6) || Math.abs(pz) > t.halfZ + R(6) : !t.inside(px, pz)) return false;
       if (!bucket && this.out && this.out(px, pz) !== true) return false;
       const top = this._obstTop(px, pz);
       if (bucket ? top > bucketY : top > -Infinity) return false;
+      if (arm.length && underArm(px, pz)) return false;
       for (const O of others) {
         const dx = px - O.m.x, dz = pz - O.m.z, ox = Math.cos(O.m.yaw), oz = -Math.sin(O.m.yaw), u = dx * ox + dz * oz, w = -dx * oz + dz * ox;
         if (u > R(O.o0) && u < R(O.o1) && Math.abs(w) < R(O.ob) && (!bucket || bucketY < O.top)) return false;
