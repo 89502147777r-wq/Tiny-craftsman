@@ -58,17 +58,17 @@ export function breakLump(app, id, maxR, rnd = Math.random) {
   const split = (cells, depth = 0) => {
     const k = Math.max(2, Math.min(15, Math.round(cells.length * A / 0.12)));
     const seeds = []; for (let n = 0; n < k; n++) seeds.push(cells[Math.floor(rnd() * cells.length)]);
-    const w = seeds.map(() => 0.75 + rnd() * 0.5), groups = seeds.map(() => []);
+    const w = seeds.map(() => rnd() * 60), groups = seeds.map(() => []);   // (an added weight, not a factor: each piece one connected piece)
     for (const c of cells) {
       let best = 0, bd = Infinity;
-      for (let n = 0; n < k; n++) { const d = Math.hypot(c[0] - seeds[n][0], c[1] - seeds[n][1]) * w[n] + Math.sin(c[0] * 0.021 + c[1] * 0.013 + n * 1.7) * 25; if (d < bd) bd = d, best = n; }
+      for (let n = 0; n < k; n++) { const d = Math.hypot(c[0] - seeds[n][0], c[1] - seeds[n][1]) + w[n] + Math.sin(c[0] * 0.021 + c[1] * 0.013 + n * 1.7) * 25; if (d < bd) bd = d, best = n; }
       groups[best].push(c);
     }
     for (const g of groups) {
       if (!g.length) continue;
       const mx = g.reduce((a, c) => a + c[0], 0) / g.length, mz = g.reduce((a, c) => a + c[1], 0) / g.length;
       const rr = Math.max(...g.map((c) => Math.hypot(c[0] - mx, c[1] - mz))) + (r.cell || 30) / 2;
-      if (MM(rr) > maxR && g.length > 8 && depth < 4) split(g, depth + 1); else pieces.push({ g, mx, mz });
+      if (MM(rr) > maxR && g.length > 8 && depth < 6) split(g, depth + 1); else pieces.push({ g, mx, mz });
     }
   };
   split(r.cells);

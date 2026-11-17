@@ -957,6 +957,11 @@ export class Terrain {
     for (let ix = 0; ix <= rx; ix++) for (const iz of [0, rz]) st.push(iz * n + ix);
     for (let iz = 0; iz <= rz; iz++) for (const ix of [0, rx]) st.push(iz * n + ix);
     while (st.length) { const i = st.pop(); if (out[i] || wall[i] > 0) continue; out[i] = 1; const ix = i % n, iz = (i / n) | 0; if (ix > 0) st.push(i - 1); if (ix < rx) st.push(i + 1); if (iz > 0) st.push(i - n); if (iz < rz) st.push(i + n); }
+    // (and inside a setting-out with its formwork — even where its boards do not close at a corner: cast, never a spill)
+    for (const z of this.castZones || []) {
+      const ix0 = Math.max(0, Math.floor(this.toCellX(z.x0))), ix1 = Math.min(rx, Math.ceil(this.toCellX(z.x1))), iz0 = Math.max(0, Math.floor(this.toCellZ(z.z0))), iz1 = Math.min(rz, Math.ceil(this.toCellZ(z.z1)));
+      for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) if (z.in(this.toWorldX(ix), this.toWorldZ(iz))) out[iz * n + ix] = 0;
+    }
     return out;
   }
   // concrete arriving in an empty cell: a spill when it is off the formwork and on the open ground (not in a pit: a blinding)

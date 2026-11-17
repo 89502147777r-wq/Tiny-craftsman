@@ -10,7 +10,7 @@ import { SOIL } from './world/soilColor.js';
 import { makeTerrainMaterial, makeLightTerrainMaterial, makeFallbackTerrainMaterial } from './world/terrainMaterial.js';
 import { Grass } from './world/grass.js';
 import { SoilParticles } from './world/particles.js';
-import { OutlineView, contains, gradeY } from './world/outlines.js';
+import { OutlineView, contains, gradeY, bbox } from './world/outlines.js';
 import { FormworkView } from './world/formwork.js';
 import { RebarView } from './world/rebar.js';
 import { SitePropView } from './world/siteProps.js';
@@ -134,6 +134,9 @@ async function main() {
   app.formView = new FormworkView(tex, app.objects, terrain); scene.add(app.formView.group);
   app.rebarView = new RebarView(app.objects); scene.add(app.rebarView.group);
   app.dpcView = new DpcView(app);   // (the damp-proof course on the foundations — world/dpc.js)
+  // (the settings-out with formwork on them: concrete poured there is cast, not a spill — terrain._outsideMask)
+  { const zones = () => { const O = app.objects, withForm = new Set(O.all('form').map((f) => f.outlineId)); app.terrain.castZones = O.all('outline').filter((o) => withForm.has(o.id)).map((o) => ({ ...bbox(o, 0.002), in: (x, z) => contains(o, x, z) })); app.terrain._outside = null; };
+    zones(); app.objects.on((id, rec) => { if (!rec || rec.type === 'outline' || rec.type === 'form') zones(); }); }
   app.lumpView = new LumpView(app);   // (lumps of set concrete spilt on the ground — world/lumps.js)
   app.siteProps = new SitePropView(app);   // (the site's things: the office, the mixer, the pallets … — world/siteProps.js)
   app.wallView = new WallView(app.objects, tex); scene.add(app.wallView.group); app.wallView.app = app;

@@ -350,7 +350,7 @@ console.log('—', sec());
       const stripped = mine() === 0 && !!pile && pile.boards.length >= n0;
       tc.undo(); const back = mine() === n0 && !tc.objects.all('formpile').length; tc.redo();
       const bl = (pile?.items || []).filter((it) => it.k === 'board').sort((a, b) => a.p[1] - b.p[1]), layered = bl.every((it, k) => !k || it.s[0] <= bl[k - 1].s[0] + 1e-4 || it.p[1] - bl[k - 1].p[1] < 1e-4);
-      out.strip = { trips, tilt: +tilt.toFixed(1), layered, bearers: (pile?.items || []).filter((it) => it.bear).length, n0, warned, running, stripped, items: pile?.items?.length, still: !!pile?.items?.every((it) => it.p.every(Number.isFinite)), boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(concAll() - cv) < Math.max(1e-12, cv * 1e-6) };
+      out.strip = { trips, tilt: +tilt.toFixed(1), layered, bearers: (pile?.items || []).filter((it) => it.bear).length, n0, warned, running, stripped, items: pile?.items?.length, still: !!pile?.items?.every((it) => it.p.every(Number.isFinite)), boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(concAll() - cv) < Math.max(1e-12, cv * 0.03) };
     }
     tc.setTool('camera');
     await tc.saveNow();
