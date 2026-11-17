@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { PROPS, PROP_SEED } from '../world/siteProps.js';
+import { PROPS, PROP_SEED, freeSpot } from '../world/siteProps.js';
 import { LANG } from '../i18n/i18n.js';
 const _ray = new THREE.Raycaster();
 
@@ -22,7 +22,9 @@ export class PropWork {
   down(p, e) {
     const app = this.app, O = app.objects, mode = this.mode, en = LANG === 'en';
     if (PROPS[mode]) {
-      const r = { type: 'siteprop', kind: mode, x: +p.x.toFixed(5), z: +p.z.toFixed(5), yaw: 0 };
+      const f = freeSpot(app, mode, p.x, p.z, 0);   // (never on another thing: the nearest free ground)
+      if (!f) { app.ui?.toast(en ? 'No free ground for it here' : 'Здесь нет свободного места'); return true; }
+      const r = { type: 'siteprop', kind: mode, x: +f.x.toFixed(5), z: +f.z.toFixed(5), yaw: 0 };
       app.journal.act('prop-add', {}, app.clock, () => { this.last = O.add(r).id; });
       app.sfx?.play?.('plank', { vol: 0.5 });
       app.ui?.toast(en ? 'Put down — «Move» carries it, «Turn» turns it' : `${PROPS[mode].name}: поставили — «Переставить» переносит, «Повернуть» поворачивает`);
@@ -32,7 +34,8 @@ export class PropWork {
     if (!r) { app.ui?.toast(en ? 'Touch a thing on the site' : 'Коснитесь вещи на площадке: бытовки, поддона, тачки…'); return true; }
     this.last = r.id;
     if (mode === 'del') { this._take(r); return true; }
-    if (mode === 'turn') { app.journal.act('prop-turn', {}, app.clock, () => O.update(r.id, { yaw: +(((r.yaw || 0) + Math.PI / 4) % (Math.PI * 2)).toFixed(4) })); return true; }
+    if (mode === 'turn') { const yaw = +(((r.yaw || 0) + Math.PI / 4) % (Math.PI * 2)).toFixed(4), f = freeSpot(app, r.kind, r.x, r.z, yaw, r.id) || r;   // (turned into another: stepped aside)
+      app.journal.act('prop-turn', {}, app.clock, () => O.update(r.id, { yaw, x: +f.x.toFixed(5), z: +f.z.toFixed(5) })); return true; }
     // carried: it follows the finger over the ground, put down where it is let go
     this.drag = { id: r.id, dx: r.x - p.x, dz: r.z - p.z, x: r.x, z: r.z };
     return true;
@@ -51,8 +54,9 @@ export class PropWork {
   move(p) {
     const D = this.drag; if (!D) return;
     const T = this.app.terrain, m = this.app.siteProps?.meshes.get(D.id); if (!m) return;
-    D.x = Math.max(-T.halfX, Math.min(T.halfX, p.x + D.dx)); D.z = Math.max(-T.halfZ, Math.min(T.halfZ, p.z + D.dz));
-    this.app.siteProps.place(m, D.x, D.z, this.app.objects.get(D.id)?.yaw);
+    const r = this.app.objects.get(D.id); let x = Math.max(-T.halfX, Math.min(T.halfX, p.x + D.dx)), z = Math.max(-T.halfZ, Math.min(T.halfZ, p.z + D.dz));
+    const f = r && freeSpot(this.app, r.kind, x, z, r.yaw, r.id); if (f) { x = f.x; z = f.z; }   // (carried over another thing: it goes round it, on free ground)
+    D.x = x; D.z = z; this.app.siteProps.place(m, D.x, D.z, r?.yaw);
   }
   up() {
     const D = this.drag; this.drag = null; if (!D) return;
@@ -74,5 +78,5 @@ export class PropWork {
 export function seedProps(app) {
   if (app.settings.propsSeeded || app.objects.all('siteprop').length) return;
   app.settings.propsSeeded = true;
-  for (const [kind, x, z, yaw] of PROP_SEED) app.objects.add({ type: 'siteprop', kind, x: +M(x).toFixed(5), z: +M(z).toFixed(5), yaw });
+  for (const [kind, x, z, yaw] of PROP_SEED) { const f = freeSpot(app, kind, M(x), M(z), yaw) || { x: M(x), z: M(z) }; app.objects.add({ type: 'siteprop', kind, x: +f.x.toFixed(5), z: +f.z.toFixed(5), yaw }); }
 }

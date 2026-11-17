@@ -185,7 +185,13 @@ export function paintDom(ctx, el, o, k, op = 1, s0 = 1, depth = 0, flat = false)
         const sh = (cs.filter.match(/drop-shadow\((.+)\)/) || [])[1];
         ctx.save(); ctx.globalAlpha = op;
         if (sh) { const d = shadows(sh)[0]; if (d) { ctx.shadowColor = d.c; ctx.shadowBlur = d.b * k; ctx.shadowOffsetX = d.x * k; ctx.shadowOffsetY = d.y * k; } }
-        ctx.drawImage(el, (r.left - o.left) * k, (r.top - o.top) * k, r.width * k, r.height * k);
+        // (turned: its own box drawn through its matrix about its middle — the bounding rect would stretch it; the sketch's fly-in)
+        const m = cs.transform && cs.transform !== 'none' ? cs.transform.match(/matrix\(([^)]+)\)/) : null, q = m ? m[1].split(',').map(Number) : null;
+        if (q && (Math.abs(q[1]) > 1e-4 || Math.abs(q[2]) > 1e-4) && el.offsetWidth > 0) {
+          const w = el.offsetWidth * s0, h = el.offsetHeight * s0;
+          ctx.translate((r.left + r.width / 2 - o.left) * k, (r.top + r.height / 2 - o.top) * k); ctx.transform(q[0], q[1], q[2], q[3], 0, 0);
+          ctx.drawImage(el, -w / 2 * k, -h / 2 * k, w * k, h * k);
+        } else ctx.drawImage(el, (r.left - o.left) * k, (r.top - o.top) * k, r.width * k, r.height * k);
         ctx.restore();
       }
       return;

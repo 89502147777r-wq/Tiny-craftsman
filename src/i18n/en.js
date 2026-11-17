@@ -1630,6 +1630,7 @@ export default {
 "Жёлтый": "Yellow",
 "Цемент в мешках": "Cement in bags",
 "Штабель досок": "Timber stack",
+"Штабель бруса": "Stack of square timber",
 "Тачка": "Wheelbarrow",
 "Конусы": "Cones",
 "Контейнер для мусора": "Skip",
