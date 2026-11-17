@@ -139,6 +139,13 @@ export class Terrain {
   hAt(i) { return this.nat[i] + this.loose[i] + this.conc[i] + this.top[i]; }
   base(i) { return this.nat[i] + this.loose[i]; }
 
+  // the firm ground's height (its own soil and the concrete — not what is loose on it), as smooth as heightAt
+  firmAt(x, z) {
+    const n = this.nx; let cx = this.toCellX(x), cz = this.toCellZ(z);
+    cx = Math.min(Math.max(cx, 0), this.rx - 1e-4); cz = Math.min(Math.max(cz, 0), this.rz - 1e-4);
+    const ix = Math.floor(cx), iz = Math.floor(cz), fx = cx - ix, fz = cz - iz, i = iz * n + ix, f = (j) => this.nat[j] + this.conc[j];
+    return (f(i) * (1 - fx) + f(i + 1) * fx) * (1 - fz) + (f(i + n) * (1 - fx) + f(i + n + 1) * fx) * fz;
+  }
   heightAt(x, z) {
     const n = this.nx;
     let cx = this.toCellX(x), cz = this.toCellZ(z);

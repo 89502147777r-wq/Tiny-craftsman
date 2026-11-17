@@ -226,6 +226,15 @@ export class MachineTool {
   // → { step (model m), d (left to go), blocked }
   _drive(dt, tx, tz, slow = 1) {
     const app = this.app, t = app.terrain, L = this.loader;
+    // (far off: round what stands in the way — the site's things, masonry, the other machines (the owner: they stop at them now);
+    // the way found once for a goal, its corners driven one by one; the last 2 m straight at it, as before)
+    { const D = Math.hypot(tx - L.x, tz - L.z), W = this._way;
+      if (D > R(2.5)) {
+        if (!W || Math.hypot(W.tx - tx, W.tz - tz) > R(0.3)) this._way = { tx, tz, pts: this._plan(L.x, L.z, tx, tz) };
+        const pts = this._way.pts;
+        while (pts?.length > 1 && Math.hypot(pts[0][0] - L.x, pts[0][1] - L.z) < R(0.5)) pts.shift();
+        if (pts?.length > 1) { tx = pts[0][0]; tz = pts[0][1]; }
+      } else this._way = null; }
     const dx = tx - L.x, dz = tz - L.z, d = Math.hypot(dx, dz);
     if (d < R(0.12)) return { step: 0, d, blocked: false };
     let err = Math.atan2(-dz, dx) - L.yaw;
@@ -238,6 +247,46 @@ export class MachineTool {
     L.place(t, L.x + fx * step, L.z + fz * step, yaw);
     if (step) this._tracks('loader', step);
     return { step, d: d - step, blocked, fx, fz };
+  }
+  // a way for the loader from (x0, z0) to (x1, z1) round what stands on the plot: a grid of 0,4 m, a cell shut when something stands
+  // within the loader's reach of it (its half-length 2 m and a margin), A* over it, then straightened where the line is clear.
+  // → [[x, z]…] ending at the goal, or null (no way: driven straight, stopped by what is there — as before)
+  _plan(x0, z0, x1, z1) {
+    const t = this.app.terrain, c = R(0.4), nx = Math.ceil(2 * t.halfX / c) + 1, nz = Math.ceil(2 * t.halfZ / c) + 1, N = nx * nz;
+    const X = (i) => -t.halfX + (i % nx) * c, Z = (i) => -t.halfZ + ((i / nx) | 0) * c, cellOf = (x, z) => Math.max(0, Math.min(nz - 1, Math.round((z + t.halfZ) / c))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x + t.halfX) / c)));
+    const others = [this.truck, this.exc].filter((m) => m?.loaded && m.root?.visible !== false);
+    const ring = [[0, 0]]; for (let k = 0; k < 8; k++) ring.push([Math.cos(k * Math.PI / 4) * R(1.7), Math.sin(k * Math.PI / 4) * R(1.7)]);
+    const shut = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      const x = X(i), z = Z(i);
+      if (!t.inside(x, z) || (this.out && this.out(x, z) !== true)) { shut[i] = 1; continue; }
+      for (const [a, b] of ring) { const px = x + a, pz = z + b; if (t.inside(px, pz) && this._obstTop(px, pz) > -Infinity) { shut[i] = 1; break; } }
+      if (!shut[i]) for (const m of others) if (Math.hypot(x - m.x, z - m.z) < R(3.6)) { shut[i] = 1; break; }
+    }
+    const s0 = cellOf(x0, z0), g = cellOf(x1, z1); shut[s0] = 0; shut[g] = 0;
+    const cost = new Float32Array(N).fill(Infinity), from = new Int32Array(N).fill(-1), open = [[0, s0]]; cost[s0] = 0;
+    const H = (i) => Math.hypot(X(i) - X(g), Z(i) - Z(g));
+    let found = false, it = 0;
+    while (open.length && it++ < 60000) {
+      let bi = 0; for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k;
+      const [, i] = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+      if (i === g) { found = true; break; }
+      const ix = i % nx, iz = (i / nx) | 0;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dz) continue; const jx = ix + dx, jz = iz + dz; if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
+        const j = jz * nx + jx; if (shut[j]) continue;
+        const nc = cost[i] + (dx && dz ? 1.4142 : 1) * c; if (nc >= cost[j]) continue;
+        cost[j] = nc; from[j] = i; open.push([nc + H(j), j]);
+      }
+    }
+    if (!found) return null;
+    const cells = []; for (let i = g; i >= 0; i = from[i]) cells.unshift(i);
+    // (straightened: from each corner on to the farthest one in a clear line)
+    const clear = (a, b) => { const n = Math.ceil(Math.hypot(X(a) - X(b), Z(a) - Z(b)) / (c * 0.5)); for (let k = 0; k <= n; k++) { const q = cellOf(X(a) + (X(b) - X(a)) * k / n, Z(a) + (Z(b) - Z(a)) * k / n); if (shut[q]) return false; } return true; };
+    const out = []; let k = 0;
+    while (k < cells.length - 1) { let j = cells.length - 1; while (j > k + 1 && !clear(cells[k], cells[j])) j--; out.push([X(cells[j]), Z(cells[j])]); k = j; }
+    out[out.length - 1] = [x1, z1];
+    return out;
   }
   // turn on the spot to face (tx, tz) → true when it does
   _face(dt, tx, tz) {
@@ -1129,19 +1178,23 @@ export class MachineTool {
     E.curlGoal -= rx * 1.2 * dt;
     // the ground under what goes into it: how deep the deepest of the points is in it
     // (the FIRM ground holds the bucket — its own soil, concrete — not what is loose on it: a heap is shoved, not leant on)
-    const firm = (x, z) => { const i = t.index(x, z); return t.heightAt(x, z) - t.loose[i]; };
+    const firm = (x, z) => t.firmAt(x, z);   // (its own ground and concrete, as smooth as the surface — no heap in it)
     const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, firm(q.x, q.z) - q.y, this._inObst(q)); return w; };   // (and what stands on it: masonry, the site's things)   // (the ground — and what stands on it: masonry, the site's things — holds the bucket)
     const pose0 = E.pose(), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
-    const hp0 = E.hardPoints();
+    // (the line of its teeth across its width, before and after the move: what leads a sideways slew through a heap)
+    const lip = () => { const tp = E.teethWorld(new THREE.Vector3()), hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, out = []; for (let k = -4; k <= 4; k++) out.push(new THREE.Vector3(tp.x + ux * hw * k / 4, tp.y, tp.z + uz * hw * k / 4)); return out; };
+    const hp0 = E.hardPoints(), lip0 = lip();
     E.update(dt);
     const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
-    this._excPush(hp0, E.hardPoints(), p);   // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews)
     // (digging: the teeth leading — the way they go as it curls in — not full, not tipped)
     // (full, it still cuts while it is in no deeper than 85 % of its depth: what does not fit runs out over its lip —
     // a driver drags a full bucket on so; deeper, the ground holds it)
     const hold = cap * E.holdShare(), bucketDeep = R(1.0) * 0.8, full = g.load >= hold * 0.98;
     const edge = E.cutDir(new THREE.Vector3()), cutting = moving && !E.open && (!full || tDeep0 < bucketDeep * 0.85) && mv.dot(edge) > mv.length() * 0.2;   // (the teeth going where they point — as the bucket curls in; its back first only pushes)
     this._excCut = cutting;   // (for a lump of concrete in its way: world/lumps.js)
+    // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews; not cutting, its teeth too:
+    // swung sideways through a heap, they go first)
+    if (!cutting) this._excPush([...hp0, ...lip0], [...E.hardPoints(), ...lip()], p); else this._excPush(hp0, E.hardPoints(), p);
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
@@ -1180,8 +1233,12 @@ export class MachineTool {
     {
       // (on the stroke the bucket is the cut: only the stick's end is held then)
       const tol = R(0.03), deep = cutting ? under(E.stickPoints()) : under(E.hardPoints()), tDeep = cutting ? 0 : under([p]);
-      const bad = (deep > tol && deep > (cutting ? deepS0 : deep0) + 1e-6) || (tDeep > tol && tDeep > tDeep0 + 1e-6);
+      // (a move that lifts the bucket is never held: pressed in, its front up, the boom raised must get it out — the front coming
+      // down first would put the teeth deeper for a frame, and the machine would stay stuck)
+      const lift = p.y > before.y + R(0.0003) && ry < 0;
+      const bad = !lift && ((deep > tol && deep > (cutting ? deepS0 : deep0) + 1e-6) || (tDeep > tol && tDeep > tDeep0 + 1e-6));
       if (bad) {
+        this._bad = { deep: +(deep / R(0.001)).toFixed(0), tDeep: +(tDeep / R(0.001)).toFixed(0), deep0: +(deep0 / R(0.001)).toFixed(0), obst: +(Math.max(0, ...E.hardPoints().map((q) => this._inObst(q))) / R(0.001)).toFixed(0), cutting };   // (what held it last: for the tests)
         let ok = false;
         if (!cutting && ry > 0 && E.boom < pose0[1]) for (let h = E.heave + 0.01; h <= 0.18 && !ok; h += 0.01) { E.heave = h; E._apply(); ok = under(E.hardPoints()) <= Math.max(tol, deep0) && (cutting || under([E.teethWorld(new THREE.Vector3())]) <= Math.max(tol, tDeep0)); }
         if (!ok) { E.setPose(pose0); if (!this._thudT || performance.now() - this._thudT > 900) { this._thudT = performance.now(); app.sfx.play('metal_hit', { at: p, vol: 0.45 }); } }
@@ -1491,17 +1548,24 @@ export class MachineTool {
   // holds it (the check after). Only the loose above the part's point moves: its own ground stays.
   _excPush(P0, P1, teeth) {
     const t = this.app.terrain, g = this.grader; let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1, moved = 0;
+    const touch = (c) => { const ix = c % t.nx, iz = (c / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); };
+    // (each part's whole way this frame swept — a fast slew goes 0,2 m a frame — a band ±1,5 cells about it; what is loose over the
+    // part's height there is carried on ahead of where the part is now)
     for (let k = 0; k < P1.length; k++) {
       const a = P0[k], b = P1[k]; if (!a || !b || !t.inside(b.x, b.z)) continue;
-      const i = t.index(b.x, b.z); if (!g.free(i, b.x, b.z)) continue;
-      const over = Math.min(t.nat[i] + t.loose[i] - b.y, t.loose[i]); if (!(over > 1e-7)) continue;
-      let dx = b.x - a.x, dz = b.z - a.z, h = Math.hypot(dx, dz);
+      let dx = b.x - a.x, dz = b.z - a.z, h = Math.hypot(dx, dz), y = Math.min(a.y, b.y);
       if (h < t.cell * 0.02) { dx = b.x - teeth.x; dz = b.z - teeth.z; h = Math.hypot(dx, dz); if (h < 1e-9) continue; }   // (pressed down: squeezed out sideways)
-      const jx = b.x + dx / h * t.cell * 1.2, jz = b.z + dz / h * t.cell * 1.2; if (!t.inside(jx, jz)) continue;
-      const j = t.index(jx, jz); if (j === i || !g.free(j, jx, jz)) continue;
-      t._move(i, j, over); moved += over;
-      for (const c of [i, j]) { const ix = c % t.nx, iz = (c / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
+      const ux = dx / h, uz = dz / h, n = Math.max(1, Math.ceil(Math.min(h, R(0.5)) / (t.cell * 0.7)));
+      const jx = b.x + ux * t.cell * 1.6, jz = b.z + uz * t.cell * 1.6; if (!t.inside(jx, jz)) continue;
+      const j = t.index(jx, jz); if (!g.free(j, jx, jz)) continue;
+      for (let s = 0; s <= n; s++) for (let q = -1.5; q <= 1.5; q += 1) {
+        const f = s / n, px = a.x + (b.x - a.x) * f - uz * q * t.cell, pz = a.z + (b.z - a.z) * f + ux * q * t.cell; if (!t.inside(px, pz)) continue;
+        const i = t.index(px, pz); if (i === j || !g.free(i, px, pz)) continue;
+        const over = Math.min(t.nat[i] + t.loose[i] - y, t.loose[i]); if (!(over > 1e-7)) continue;
+        t._move(i, j, over); moved += over; touch(i); touch(j);
+      }
     }
+    this._pushStat = (this._pushStat || 0) + moved;   // (for the tests)
     if (moved > 0) { t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); this.app.sfx.play('soil_dump', { gap: 0.6, at: P1[0], vol: 0.35 }); }
     // (a lump of concrete in the way of its back or side — on the ground or in a heap: shoved on with it, the way the bucket goes)
     const LV = this.app.lumpView, O = this.app.objects;
