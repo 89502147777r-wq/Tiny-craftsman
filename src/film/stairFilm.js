@@ -5,6 +5,7 @@ import { loadPhysics, physicsReady } from '../world/physics.js';
 import { findBelt, beltCage, beltsOverlap, plan, toWorld } from '../tools/belt.js';
 import { IBIZA } from './foundFilm.js';
 import { placeLintelForm } from '../tools/lintels.js';
+import { PROPS } from '../world/siteProps.js';
 
 // «Ibiza», stage 2 — the stair wall and the pavilion (docs/ideas/ibiza.md; the foreman's plan and the owner's choices 2026-11-14;
 // the director's shot table). It starts where stage 1 ended — the same plot, the same records (assets/films/ibiza-1.json.gz, made
@@ -494,6 +495,12 @@ export function* stairFilm(d, app) {
     // edge. So the stair is turned from the pure profile toward its foot only as much as it needs: the risers face the camera then)
     const PX = TRAY.innerX / 2 - MM(500), PZ = TRAY.innerZ / 2 - MM(500), G0 = y0 + MM(150);
     const groundOn = () => { for (const nx of [-1, 0, 1]) { const d = new V(nx, -1, 0.5).unproject(cam).sub(cam.position).normalize(); if (d.y > -1e-4) continue; const h = cam.position.clone().addScaledVector(d, (G0 - cam.position.y) / d.y); if (Math.abs(h.x) > PX || Math.abs(h.z) > PZ) return false; } return true; };
+    // (nothing between the camera and the stair: the site's things and the machines — a toilet stood in front of it in the loop's frame)
+    const things = [...O.all('siteprop').map((r) => ({ x: r.x, z: r.z, r: MM((PROPS[r.kind]?.r ?? 1000) + 150), h: MM(2700) })), ...O.all('vehicle').map((r) => ({ x: r.x, z: r.z, r: MM(3200), h: MM(3600) }))];
+    const looks = []; for (let i = 0; i <= 8; i++) for (const f of [0.15, 0.5, 0.85]) { const z = z0 + (z1 - z0) * i / 8; looks.push(new V((x0 + x1) / 2, y0 + (y1 - y0) * f * Math.min(1, 0.15 + i / 8), z)); }
+    const clear = (e) => looks.every((q) => things.every((o) => { const dx = q.x - e.x, dz = q.z - e.z, L2 = dx * dx + dz * dz; if (L2 < 1e-9) return true;
+      const t = Math.max(0, Math.min(1, ((o.x - e.x) * dx + (o.z - e.z) * dz) / L2)); if (Math.hypot(e.x + dx * t - o.x, e.z + dz * t - o.z) > o.r) return true;
+      return e.y + (q.y - e.y) * t > G0 + o.h; }));   // (the line over its top: seen over it)
     const a0 = Math.atan2(1000, 9500);
     for (let deg = 0; deg <= 80; deg += 2.5) {
       const a = a0 + THREE.MathUtils.degToRad(deg), dir = new V(Math.cos(a), 0, Math.sin(a));
@@ -506,6 +513,7 @@ export function* stairFilm(d, app) {
         const aim = c.clone(); aim.y -= dn; const e = eye.clone(); e.y -= dn;
         cam.position.copy(e); cam.lookAt(aim); cam.updateMatrixWorld();
         if (!groundOn()) break;   // (farther is only worse: the next angle)
+        if (!clear(e)) break;   // (something in front: the next angle)
         say('prof fit ' + deg + '° ' + m.toFixed(2) + ' m'); return [e, aim];
       }
     }
