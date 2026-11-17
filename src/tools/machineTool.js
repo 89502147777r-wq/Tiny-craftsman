@@ -1189,9 +1189,16 @@ export class MachineTool {
       if (Math.abs(this.v) < R(0.01) && !ly) this.v = 0;
       const yaw = E.yaw - lx * 0.8 * dt, nx = E.x + Math.cos(yaw) * this.v * dt, nz = E.z - Math.sin(yaw) * this.v * dt;
       if ((this.v || lx) && this._fits('excavator', nx, nz, yaw)) {
+        // (the bucket goes with the machine: its back, bottom and sides shove a heap on as it drives — the owner: driven into a heap,
+        // the bucket's back went through it; the arm only shoved when it moved)
+        const pts = () => (E.pushPoints ? [...E.pushPoints(), ...E.stickPoints(), E.teethWorld(new THREE.Vector3())] : E.hardPoints()), P0 = pts();
         const keep = [E.x, E.z, E.yaw]; E.place(t, nx, nz, yaw);
         if (this._tooSteep('excavator', E, keep)) { E.place(t, ...keep); this.v = 0; }
-        else this._tracks('excavator', Math.hypot(nx - keep[0], nz - keep[1]) + Math.abs(yaw - keep[2]) * R(1));   // (the tracks press the ground)
+        else {
+          this._tracks('excavator', Math.hypot(nx - keep[0], nz - keep[1]) + Math.abs(yaw - keep[2]) * R(1));   // (the tracks press the ground)
+          this._excPush(P0, pts(), E.teethWorld(new THREE.Vector3()));
+          this.v *= Math.max(0.2, 1 - (this._pushLoad || 0) / 1.5); this._pushLoad = (this._pushLoad || 0) * Math.exp(-dt * 1.2);   // (a heap before it slows it)
+        }
       } else this.v = 0;
     } else {
       const bog = Math.max(0.2, 1 - (this._pushLoad || 0) / 1.0);   // (shoving a heap: slower, down to a fifth at 1 m³ before it — the realist)

@@ -1087,8 +1087,17 @@ if (want("2i")) {
       // (the owner, 2026-11-17: its back went through a heap — the stick out, the bucket's back first, shoves it on)
       { const [bb] = ring(), cc = E.root.position, rx = bb.x - cc.x, rz = bb.z - cc.z, rl = Math.hypot(rx, rz) || 1, H = { x: bb.x + rx / rl * 0.9 * M, z: bb.z + rz / rl * 0.9 * M };
         const r = 0.45 * M, ht = low() - t.firmAt(H.x, H.z) + 0.6 * M; t.deposit(H.x, H.z, ht * 2 * Math.PI * r * r, r, 0); frames(3);   // (its top well over the bucket's bottom all the way: the stick's arc lifts it)
-        const h0 = top(H), n0 = near(H); mt._pushStat = 0; go(30, [0, -1], [0, 0]);
-        o.back = { h0: +h0.toFixed(2), h1: +top(H).toFixed(2), kept: +(near(H) / Math.max(1e-12, n0)).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(H.x, H.z)) / M).toFixed(2) }; } }
+        // (where the heap's mass is along the way out, within 1,5 m of it — shoved on, it moves out; gone through, it stays)
+        const ux = rx / rl, uz = rz / rl, mid = () => { let m = 0, w = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - H.x, z - H.z) > 1.5 * M) continue; const l = t.loose[iz * t.nx + ix]; m += l; w += l * ((x - H.x) * ux + (z - H.z) * uz); } return w / Math.max(1e-12, m) / M; };
+        const h0 = top(H), n0 = near(H), c0 = mid(); mt._pushStat = 0; go(30, [0, -1], [0, 0]);
+        o.back = { shift: +(mid() - c0).toFixed(2), h0: +h0.toFixed(2), h1: +top(H).toFixed(2), kept: +(near(H) / Math.max(1e-12, n0)).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(H.x, H.z)) / M).toFixed(2) }; }
+        // (and driven into a heap, the bucket low before it: its back shoves it on — the owner's case)
+        { E.swing = E.swingGoal = 0; E.update(0); frames(2);   // (the arm straight ahead of the tracks)
+          const fx = Math.cos(E.yaw), fz = -Math.sin(E.yaw), tp = E.teethWorld(new V()), lo = low(), D = { x: tp.x + fx * 1.2 * M, z: tp.z + fz * 1.2 * M }, r2 = 0.45 * M, h2 = lo - t.firmAt(D.x, D.z) + 0.6 * M;
+          t.deposit(D.x, D.z, h2 * 2 * Math.PI * r2 * r2, r2, 0); frames(3);
+          const mid2 = () => { let m = 0, w = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - D.x, z - D.z) > 1.8 * M) continue; const l = t.loose[iz * t.nx + ix]; m += l; w += l * ((x - D.x) * fx + (z - D.z) * fz); } return w / Math.max(1e-12, m) / M; };
+          const d0 = mid2(), e0 = [E.x, E.z]; mt._pushStat = 0; mt.setExcMode('drive'); mt.joystick('l', 0, -1); frames(40); mt.joystick('l', 0, 0); frames(3); mt.setExcMode('dig');
+          o.drivePush = { shift: +(mid2() - d0).toFixed(2), drove: +(Math.hypot(E.x - e0[0], E.z - e0[1]) / M).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3) }; } }
     // (the owner: a drop of concrete on the ground stays a dab — not a pillar down when dug round; a bucket takes it whole)
     { const LV = tc.lumpView, mod = await import('./src/world/lumps.js'), b = E.teethWorld(new V()), i0 = t.index(b.x + 1.2 * M, b.z), nx = t.nx, ids = [];
       for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const i = i0 + dz * nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = 0.05 * M; t.cTime[i] = (tc.clock || 0) - 400; ids.push(i); }   /* (a spill on the ground's own level) */
@@ -1152,7 +1161,8 @@ if (want("2i")) {
   });
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: the excavator\'s boom and bucket stop the loader and the truck where the arm is low; swung away, the spot is free (the owner)', o.arm && o.arm.low === true && o.arm.lowT === true && o.arm.inFits && o.arm.away === false && o.arm.lifted !== true, JSON.stringify(o.arm));
-  check('machines: the excavator\'s bucket, its back first (the stick out), shoves a heap on — not through it (the owner)', o.back && o.back.pushed > 0.01 && o.back.kept < 0.8, JSON.stringify(o.back));
+  check('machines: the excavator\'s bucket, its back first (the stick out), shoves on what of a heap is over its way — its top down', o.back && o.back.pushed > 0.1 && o.back.h1 < o.back.h0 - 0.1, JSON.stringify(o.back));
+  check('machines: the excavator driven into a heap, the bucket low before it, shoves it on (the owner)', o.drivePush && o.drivePush.shift > 0.15 && o.drivePush.pushed > 0.02, JSON.stringify(o.drivePush));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.push.tA[2] + 0.12 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.push.tB[2] + 0.12 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
   check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 3 && o.lump.pieces <= 20 && o.lump.maxR <= 0.5 && o.lump.spread >= 1.5, JSON.stringify(o.lump));
