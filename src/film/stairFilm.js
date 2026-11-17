@@ -87,7 +87,9 @@ export function* stairFilm(d, app) {
   const V = THREE.Vector3, O = app.objects, T = app.terrain, st = app.settings, W = app.wallTool, G = app.concreteGear;
   Object.assign(st, { dayHour: 9.5, pump: 1.25, rebarD: 12, cover: 40 }); app.sky.setHour(9.5);
   d.lock = true; d.hand = 0.3;
-  const startIds = new Set(O.all().map((r) => r.id));   // (what stood before this film: the hook's rewind takes away all the rest)
+  const startIds = new Set(O.all().map((r) => r.id));
+  // (the film's subject for check-film — the stair (the spine's blocks and its landing) whole and uncovered on the loop's frame)
+  d.subject = () => { const B = new THREE.Box3(); for (const u of O.all('unit')) if (u.kind === 'cinder' && !startIds.has(u.id)) { const h = Math.max(u.s[0], u.s[2]) / 2; B.expandByPoint(new THREE.Vector3(u.p[0] - h, u.p[1] - u.s[1] / 2, u.p[2] - h)); B.expandByPoint(new THREE.Vector3(u.p[0] + h, u.p[1] + u.s[1] / 2, u.p[2] + h)); } let L = null; try { L = landId; } catch { /* (not declared yet: before the landing) */ } if (!B.isEmpty() && L != null && O.get(L)) B.max.y += MM(200); return B; };   // (what stood before this film: the hook's rewind takes away all the rest)
   d.logo();
   { const r0 = new V(MM(X0), T.heightAt(MM(X0), MM(ZB)) + MM(100), MM(ZB)); d.cut(look(r0.clone().add(new V(MM(550), MM(650), MM(750))), r0), { drift: 0, push: 0, hand: 0.2 }); }   // (the 1st frame after the hook: the work, close — the analyst)
   // (the analyst and the owner, 2026-11-15: the stage's own pencil sketch pinned in the corner — the goal of this film, no more; at
