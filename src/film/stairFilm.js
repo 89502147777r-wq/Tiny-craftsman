@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODEL_SCALE } from '../config.js';
+import { MODEL_SCALE, TRAY } from '../config.js';
 import { look } from './director.js';
 import { loadPhysics, physicsReady } from '../world/physics.js';
 import { findBelt, beltCage, beltsOverlap, plan, toWorld } from '../tools/belt.js';
@@ -481,17 +481,23 @@ export function* stairFilm(d, app) {
     for (const u of O.all('unit')) { if (u.kind !== 'cinder') continue; const turned = Math.abs(u.q?.[1] || 0) > 0.5, hx = (turned ? u.s[2] : u.s[0]) / 2, hz = (turned ? u.s[0] : u.s[2]) / 2;
       x0 = Math.min(x0, u.p[0] - hx); x1 = Math.max(x1, u.p[0] + hx); y0 = Math.min(y0, u.p[1] - u.s[1] / 2); y1 = Math.max(y1, u.p[1] + u.s[1] / 2); z0 = Math.min(z0, u.p[2] - hz); z1 = Math.max(z1, u.p[2] + hz); }
     y0 = Math.min(y0, T.heightAt((x0 + x1) / 2, (z0 + z1) / 2)) - MM(150); y1 += MM(200 + 150);   // (the foundation's edge under it; the landing on top)
-    const c = new V((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), dir = new V(9500, 0, 1000).normalize(), cam = app.camera.clone();
+    const c = new V((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), cam = app.camera.clone();
     const corners = []; for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [z0, z1]) corners.push(new V(x, y, z));
-    const band = { l: 0.05, r: 0.95, t: 0.2, b: 0.66 };   // (top-down: the logo and the budget over 0,2; «TO BE CONTINUED» at 0,71)
-    for (let m = 6; m <= 80; m += 0.25) {
-      const eye = c.clone().addScaledVector(dir, m / MODEL_SCALE); cam.position.copy(eye); cam.lookAt(c); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
-      // (the stair's middle set at the band's middle: the aim lifted so the box sits between the plates)
-      if (corners.every((q) => { const v = q.clone().project(cam), sx = (v.x + 1) / 2, sy = (1 - v.y) / 2; return v.z < 1 && sx > band.l && sx < band.r && sy - 0.5 + (band.t + band.b) / 2 > band.t && sy - 0.5 + (band.t + band.b) / 2 < band.b; })) {
+    const band = { l: 0.05, r: 0.95, t: 0.2, b: 0.66 }, mid = (band.t + band.b) / 2;   // (top-down: the logo and the budget over 0,2; «TO BE CONTINUED» at 0,71)
+    // (the camera on the plot, never past its edge: there the ground is the panorama's, smeared — so the stair is turned from the pure
+    // profile toward its foot only as much as it needs to fit: the risers then face the camera, it reads as a stair still more)
+    const PX = TRAY.innerX / 2, PZ = TRAY.innerZ / 2, onPlot = (e) => Math.abs(e.x) < PX - MM(800) && Math.abs(e.z) < PZ - MM(800);
+    const a0 = Math.atan2(1000, 9500);
+    for (let deg = 0; deg <= 70; deg += 2.5) {
+      const a = a0 + THREE.MathUtils.degToRad(deg), dir = new V(Math.cos(a), 0, Math.sin(a));
+      for (let m = 6; m <= 40; m += 0.25) {
+        const eye = c.clone().addScaledVector(dir, m / MODEL_SCALE); if (!onPlot(eye)) break;
+        cam.position.copy(eye); cam.lookAt(c); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+        if (!corners.every((q) => { const v = q.clone().project(cam), sx = (v.x + 1) / 2, sy = (1 - v.y) / 2 - 0.5 + mid; return v.z < 1 && sx > band.l && sx < band.r && sy > band.t && sy < band.b; })) continue;
         // (the band's middle is over the frame's: the camera and its aim lowered by that share of the frame's height at that distance)
-        const half = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * m / MODEL_SCALE, up = (0.5 - (band.t + band.b) / 2) * 2 * half;
-        const aim = c.clone(); aim.y -= up; const e = eye.clone(); e.y -= up;   // (the camera lowered: the box rises to the band)
-        say('prof fit ' + m.toFixed(2) + ' m'); return [e, aim];
+        const half = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * m / MODEL_SCALE, dn = (0.5 - mid) * 2 * half;
+        const aim = c.clone(); aim.y -= dn; const e = eye.clone(); e.y -= dn;
+        say('prof fit ' + deg + '° ' + m.toFixed(2) + ' m'); return [e, aim];
       }
     }
     return [P(15500, 4300, 500), P(6000, 4300, -500)];
