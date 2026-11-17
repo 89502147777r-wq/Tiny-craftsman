@@ -26,10 +26,16 @@ const rowsRaw = await page.evaluate(async (FPS) => {
   const objN = () => { let n = 0; for (const t of ['unit', 'belt', 'dpc', 'slab', 'column', 'pool']) n += tc.objects.all(t).length; return n; };
   const scr = (p) => { if (!p) return null; const v = p.clone().project(tc.camera); return v.z < 1 && Math.abs(v.x) <= 0.95 && Math.abs(v.y) <= 0.95 ? [v.x, v.y] : null; };
   // (the words' boxes on the screen: which overlap)
-  const boxes = () => [...document.querySelectorAll('#film .f-bill, #film .f-head, #film .f-kick, #film .f-count, #film .f-steps, #film .f-stage, #film .f-sketch, #film .f-next, #film .f-pin span, #film .f-rcpt .paper, #film .f-card')]
+  const boxes = () => [...document.querySelectorAll('#film .f-bill, #film .f-head, #film .f-kick, #film .f-count, #film .f-steps, #film .f-rew, #film .f-stage, #film .f-sketch, #film .f-next, #film .f-pin span, #film .f-rcpt .paper, #film .f-card')]
     
     .filter((e) => getComputedStyle(e).visibility !== 'hidden' && +getComputedStyle(e.closest('.f-pin') || e).opacity > 0.35 && +getComputedStyle(e).opacity > 0.35 && e.getClientRects().length > 0)
-    .map((e) => { const r = e.getBoundingClientRect(); return { k: e.className.split(' ')[0] || e.tagName, txt: e.textContent.slice(0, 24), x0: r.left, y0: r.top, x1: r.right, y1: r.bottom, o: +getComputedStyle(e).opacity * +getComputedStyle(e.closest('.f-pin') || e).opacity }; });
+    .map((e) => { const r = e.getBoundingClientRect(), F = document.getElementById('film')?.getBoundingClientRect() || { top: 0, height: innerHeight }; return { k: e.className.split(' ')[0] || e.tagName, txt: e.textContent.slice(0, 24), x0: r.left, y0: r.top, x1: r.right, y1: r.bottom, yb: (r.bottom - F.top) / F.height, o: +getComputedStyle(e).opacity * +getComputedStyle(e.closest('.f-pin') || e).opacity }; });
+  // (the film's subject — d.subject(): a THREE.Box3 — on the screen, as fractions of the frame (x0, y0, x1, y1, top-down) and as the
+  // plates' px: is it whole and uncovered on the loop's frame)
+  const subj = () => { const B = f.subject?.(); if (!B || B.isEmpty()) return null; tc.camera.updateMatrixWorld(); let x0 = 1, y0 = 1, x1 = 0, y1 = 0, behind = false;
+    for (const x of [B.min.x, B.max.x]) for (const y of [B.min.y, B.max.y]) for (const z of [B.min.z, B.max.z]) { const v = new tc.camera.position.constructor(x, y, z).project(tc.camera); if (v.z > 1) behind = true; const sx = (v.x + 1) / 2, sy = (1 - v.y) / 2; x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy); }
+    const F = document.getElementById('film')?.getBoundingClientRect() || { left: 0, top: 0, width: innerWidth, height: innerHeight };
+    return { x0, y0, x1, y1, behind, px: [F.left + x0 * F.width, F.top + y0 * F.height, F.left + x1 * F.width, F.top + y1 * F.height], fw: F.width, fl: F.left }; };
   for (let i = 0; i < 6000 && !f.done; i++) {
     // (a real pause each frame, as the render's round trip: the models and sounds the film waits for load as they do when it is drawn)
     await new Promise((r) => setTimeout(r, 4));
@@ -37,11 +43,11 @@ const rowsRaw = await page.evaluate(async (FPS) => {
     const c = tc.camera.position, q = tc.rig.target;
     const tp = f.toolAt?.(), wv = tc.wallView?.reveal, rv = tc.rebarView?.reveal;
     out.push({ t: +f.t.toFixed(3), n: f.shot?.n || 0, fx: f.fx.some((e) => e.kind !== 'shake'), title: f.stepName || '', e: [c.x, c.y, c.z], a: [q.x, q.y, q.z], d: tc.rig.dist, b: boxes(),
-      tp: tp ? [tp.x, tp.y, tp.z] : null, ts: scr(tp), on: objN() + (wv ? wv.u : 0) + (rv ? rv.u : 0), job: !!(tc.physJob || tc.wallTool?.dpc?.busy || tc.concreteTools?.hose?.state === 'work') });
+      tp: tp ? [tp.x, tp.y, tp.z] : null, ts: scr(tp), sub: subj(), on: objN() + (wv ? wv.u : 0) + (rv ? rv.u : 0), job: !!(tc.physJob || tc.wallTool?.dpc?.busy || tc.concreteTools?.hose?.state === 'work') });
   }
-  return { out, snd, marks: f.marks || {} };
+  return { out, snd, marks: f.marks || {}, typed: f.hudTyped || [], notes: (f.notes || []).map((n) => String(n[1])) };
 }, FPS);
-const { out: rows, snd, marks } = rowsRaw;
+const { out: rows, snd, marks, typed, notes } = rowsRaw;
 await browser.close(); server.close();
 // ---- the camera: within a shot, the change of the eye's and the aim's velocity (a jerk), as a share of the distance
 const sub = (a, b) => a.map((v, i) => v - b[i]), len = (a) => Math.hypot(...a);
@@ -134,7 +140,40 @@ console.log(`\nBILL OVER STILL:\n` + billStill.slice(0, 20).join('\n'));
 console.log(`\nFIRST 10 S WITHOUT WORK:\n` + first10.join('\n'));
 console.log(`\nHOOK / SEAM:\n` + hook.join('\n'));
 console.log(`\nSILENCE (> 1 s):\n` + sil.slice(0, 20).join('\n'));
-const fails = still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
+// (the menu in the frame is the game's own (the owner, 2026-11-17: «актуальное меню» — the material in the frame is the one chosen in
+// it): rows typed in the film (d.hud([...])) instead of read from the game (d.menu) fail; so does a film's own «… FAILED» note)
+// (nothing of the film's own lower than 75 % of the frame — YouTube Shorts' captions and buttons lie there: the analyst's list)
+const lowP = uniq(rows.flatMap((r) => r.b.filter((q) => q.k !== 'f-sketch' && q.yb > 0.75).map((q) => `${r.t.toFixed(2)} s ${q.k} «${q.txt}» to ${(q.yb * 100).toFixed(0)} % of the height`)));
+console.log(`\nUNDER 75 % (the Shorts zone):\n` + lowP.slice(0, 10).join('\n'));
+// ---- the closed release list as numbers (the owner, 2026-11-17: «мерить числами, картинки — только как выглядит») ----
+const list = [];
+if (Number.isFinite(H0)) {
+  const pre = rows.filter((r) => r.t < H0).at(-1), h0 = rows.find((r) => inHook(r.t)), hk = rows.filter((r) => inHook(r.t));
+  // (the loop's frame: the subject whole in the frame's clear band, no plate over it; the last frame = the first — the camera ≤ 2 % of its distance)
+  for (const [nm, r] of [['first frame', h0], ['last frame', pre]]) {
+    if (!r?.sub) { if (r && rows.some((q) => q.sub)) list.push(`${nm}: no subject`); continue; }
+    const S = r.sub; if (S.behind || S.x0 < 0.02 || S.x1 > 0.98 || S.y0 < 0.1 || S.y1 > 0.75) list.push(`${nm}: the subject not whole in the frame's band — x ${S.x0.toFixed(2)}–${S.x1.toFixed(2)}, y ${S.y0.toFixed(2)}–${S.y1.toFixed(2)}`);
+    for (const b of r.b) { if (b.k === 'f-sketch') continue; const w = Math.min(b.x1, S.px[2]) - Math.max(b.x0, S.px[0]), h = Math.min(b.y1, S.px[3]) - Math.max(b.y0, S.px[1]); if (w > 4 && h > 4) list.push(`${nm}: ${b.k} «${b.txt}» over the subject`); }
+  }
+  if (pre && h0) { const de = len(sub(pre.e, h0.e)) / h0.d, da = len(sub(pre.a, h0.a)) / h0.d; if (de > 0.02 || da > 0.02) list.push(`the loop's seam: the camera moved ${(Math.max(de, da) * 100).toFixed(1)} % of its distance`);
+    const k = (r) => r.b.filter((b) => b.k === 'f-next').map((b) => `${Math.round(b.x0)},${Math.round(b.y0)},${Math.round(b.x1 - b.x0)}`).join(); if (k(pre) !== k(h0)) list.push(`the loop's seam: «TO BE CONTINUED» not the same both sides (${k(pre) || '–'} / ${k(h0) || '–'})`); }
+  // (the rewind: its sign from the hook's first 0,1 s; its count changing at least every 0,3 s while it runs)
+  const rew = hk.filter((r) => r.b.some((b) => b.k === 'f-rew'));
+  if (hk.length && rows.some((r) => r.b.some((b) => b.k === 'f-steps') && inHook(r.t))) {
+    if (!rew.length || rew[0].t - H0 > 0.1) list.push(`the rewind's sign from ${rew.length ? (rew[0].t - H0).toFixed(2) : '—'} s of the hook (≤ 0,1)`);
+    let last = null, lt = H0; for (const r of rew) { const c = r.b.find((b) => b.k === 'f-steps')?.txt; if (c !== last) { if (last != null && r.t - lt > 0.3) list.push(`the rewind's count stood ${(r.t - lt).toFixed(2)} s on «${last}»`); last = c; lt = r.t; } }
+    // (no bare foundation after it: from its stop to the hook's end ≤ 0,3 s; the film's first frame with the tool on the screen)
+    const stop = rew.at(-1)?.t ?? H0; if (H1 - stop > 0.35) list.push(`after the rewind ${(H1 - stop).toFixed(2)} s before the film (≤ 0,3)`);
+    const b0 = rows.find((r) => r.t >= 0); if (b0 && !b0.ts) list.push('the film\'s first frame: no tool on the screen');
+  }
+  // (the stage's sketch: its paper 22–25 % of the frame's width — the picture is 1,117 × its paper with its shadow)
+  const sk = rows.flatMap((r) => r.b.filter((b) => b.k === 'f-sketch' && !inFin(r.t)).map((b) => (b.x1 - b.x0) / (r.sub?.fw || 1) / 1.117)).filter((w) => w < 0.6);
+  if (rows.some((r) => r.sub) && sk.length) { const m = [...sk].sort((p, q) => p - q)[sk.length >> 1]; if (m > 0.255 || m < 0.215) list.push(`the sketch's paper ${(m * 100).toFixed(1)} % of the width (22–25)`); }   // (its usual size: the median — it flies in small)
+}
+console.log(`\nTHE RELEASE LIST (numbers):\n` + list.join('\n'));
+const menu = [...new Set(typed)].map((r) => `menu typed by the film, not the game's: ${r}`).concat(notes.filter((n) => /FAILED/.test(n)));
+console.log(`\nMENU / NOTES:\n` + menu.join('\n'));
+const fails = list.length + lowP.length + menu.length + still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
 console.log(`\nRULES: ${fails ? fails + ' problems' : 'all pass'}`);
 if (!fails) console.log('gate: rules passed for version ' + gateMark(film, 'rules')); else console.log('gate: version ' + filmHash(film) + ' NOT passed — no render');
 console.log('LOG ' + JSON.stringify(rows.reduce((a, r) => { if (!a.length || a.at(-1)[0] !== r.n) a.push([r.n, r.t, r.title]); return a; }, [])));

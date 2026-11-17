@@ -788,18 +788,37 @@ export class MachineTool {
     const others = noOther ? [] : [['loader', this.loader], ['truck', this.truck], ['excavator', this.exc]].filter(([k, m]) => k !== kind && m?.loaded && m.root?.visible !== false)
       .map(([k, m]) => { const [o0, o1, ob] = kind === 'truck' && k === 'loader' ? [-1.6, 1.6, 1.0] : dims(k); return { m, o0: o0 - 0.05, o1: o1 + 0.05, ob: (k === 'truck' && m.width ? m.width * MODEL_SCALE / 2 : ob) + 0.05, top: k === 'truck' && kind === 'loader' && m.bodyBox ? m.y + m.bodyBox.max.y : Infinity }; });   // (the loader comes right up to the body's side; its bucket lifted over the body's side goes over it)
     const bucketY = kind === 'loader' && this.loader?.loaded ? this.loader.lowWorld(new THREE.Vector3()).y : null;
+    // (the excavator's boom, stick and bucket too, not its tracks only — the owner: the loader and the truck drove through its boom
+    // and bucket): the arm as a chain of pins (boom → stick → bucket → teeth) with its thickness; a machine passes under it only where
+    // the arm's underside is over the machine's top (the loader's cab 3,0 m, the truck's 3,3 m)
+    const arm = !noOther && kind !== 'excavator' ? this._armSegs() : [], underArm = (px, pz) => this._armOver(kind, px, pz, arm);
     for (const [a, b] of pts) {
       const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b), bucket = bucketY != null && a > 0.95;
       if (kind === 'truck' ? Math.abs(px) > t.halfX + R(6) || Math.abs(pz) > t.halfZ + R(6) : !t.inside(px, pz)) return false;
       if (!bucket && this.out && this.out(px, pz) !== true) return false;
       const top = this._obstTop(px, pz);
       if (bucket ? top > bucketY : top > -Infinity) return false;
+      if (arm.length && underArm(px, pz)) return false;
       for (const O of others) {
         const dx = px - O.m.x, dz = pz - O.m.z, ox = Math.cos(O.m.yaw), oz = -Math.sin(O.m.yaw), u = dx * ox + dz * oz, w = -dx * oz + dz * ox;
         if (u > R(O.o0) && u < R(O.o1) && Math.abs(w) < R(O.ob) && (!bucket || bucketY < O.top)) return false;
       }
     }
     return true;
+  }
+  // the excavator's arm (boom → stick → bucket → teeth) as segments between its pins (world), or none
+  _armSegs() {
+    const E = this.exc; if (!E?.loaded || E.root?.visible === false) return [];
+    E.root.updateMatrixWorld(true);
+    const P = [E.boomP, E.stickP, E.bucketP].map((n) => new THREE.Vector3().setFromMatrixPosition(n.matrixWorld)); P.push(E.teethWorld(new THREE.Vector3()));
+    const out = []; for (let i = 0; i < P.length - 1; i++) out.push([P[i], P[i + 1]]); return out;
+  }
+  // is (px, pz) under the excavator's arm lower than the top of a `kind` standing there (the arm's thickness taken off)?
+  _armOver(kind, px, pz, arm = this._armSegs()) {
+    const t = this.app.terrain, armR = R(0.55), armT = R(0.45), tall = this._tallOf(kind);
+    for (const [p, q] of arm) { const dx = q.x - p.x, dz = q.z - p.z, L2 = dx * dx + dz * dz, u = L2 > 1e-12 ? Math.max(0, Math.min(1, ((px - p.x) * dx + (pz - p.z) * dz) / L2)) : 0;
+      if (Math.hypot(p.x + dx * u - px, p.z + dz * u - pz) > armR) continue; if (p.y + (q.y - p.y) * u - armT < t.heightAt(px, pz) + tall) return true; }
+    return false;
   }
   // the nearest place the loader fits (rings round, 25 cm apart)
   _clearNear(x, z, yaw, kind = 'loader') {
@@ -854,9 +873,34 @@ export class MachineTool {
     return out;
   }
   // how deep a point is inside something standing on the plot (masonry, a pallet, a site thing) — 0 if it is not
+  // the loader and the truck as boxes for the excavator's bucket and arm (the realist: the bucket stops at the cab and the body's side;
+  // over the body it passes over its sides only): the truck's body up to its sides' top as it is now (tipped — its raised end), its cab
+  // up to 2,7 m; the loader's body to 3,0 m and its bucket where it is. Once a step (the clock): the arm's points ask often
+  _machBoxes() {
+    if (this._mbT === this.app.clock && this._mb) return this._mb;
+    const t = this.app.terrain, out = [], L = this.loader, T = this.truck, V3 = THREE.Vector3;
+    if (T?.loaded && T.root?.visible !== false) {
+      const fx = Math.cos(T.yaw), fz = -Math.sin(T.yaw), g = t.heightAt(T.x, T.z), hw = (T.width || R(2.3)) / 2;
+      let b0 = -R(2.35), b1 = R(0.6), top = g + R(2.5);
+      if (T.bed && Number.isFinite(T.hx)) { T.root.updateMatrixWorld(true); b0 = Infinity; b1 = -Infinity; top = -Infinity; const v = new V3();
+        for (const x of [T.x0, T.x0 + T.hx]) for (const y of [T.floor, T.rim]) for (const z of [-T.hz / 2, T.hz / 2]) { T.bed.localToWorld(v.set(x, y, z)); const a = (v.x - T.x) * fx + (v.z - T.z) * fz; b0 = Math.min(b0, a); b1 = Math.max(b1, a); top = Math.max(top, v.y); } }
+      const box = (a0, a1, tp) => ({ who: 'truck', g, x: T.x + fx * (a0 + a1) / 2, z: T.z + fz * (a0 + a1) / 2, ux: fx, uz: fz, hl: Math.max(R(0.1), (a1 - a0) / 2), hw, bot: g - R(0.1), top: tp });
+      out.push(box(b0, b1, top));
+      const tl = T.bed && T.tailLip ? T.tailLip(new V3()) : null, ta = tl ? (tl.x - T.x) * fx + (tl.z - T.z) * fz : -1;   // (the cab: on the side away from the tail)
+      out.push(ta < 0 ? box(b1, R(2.35), g + R(2.7)) : box(-R(2.35), b0, g + R(2.7)));
+    }
+    if (L?.loaded && L.root?.visible !== false) {
+      const fx = Math.cos(L.yaw), fz = -Math.sin(L.yaw), g = t.heightAt(L.x, L.z);
+      out.push({ who: 'loader', g, x: L.x + fx * R(0.25), z: L.z + fz * R(0.25), ux: fx, uz: fz, hl: R(1.75), hw: R(1.0), bot: g - R(0.1), top: g + R(3.0) });
+      const b = L.lowWorld(new V3()); out.push({ who: 'loader', g, x: b.x, z: b.z, ux: fx, uz: fz, hl: R(0.6), hw: R(1.2), bot: b.y - R(0.05), top: b.y + R(0.9) });
+    }
+    this._mbT = this.app.clock; this._mb = out; return out;
+  }
+  // how high a machine of that kind stands now, over its ground (the realist: a tipped body, a lifted bucket — not a constant)
+  _tallOf(kind) { let h = R(kind === 'truck' ? 3.3 : 3.0); for (const b of this._machBoxes()) if (b.who === kind) h = Math.max(h, b.top - b.g); return h; }
   _inObst(q) {
     this._obstTop(q.x, q.z);   // (the grid fresh)
-    const l = [...(this._wg?.get(Math.floor(q.x / R(2)) * 65536 + Math.floor(q.z / R(2))) || []), ...this._propBoxes()]; if (!l.length) return 0;
+    const l = [...(this._wg?.get(Math.floor(q.x / R(2)) * 65536 + Math.floor(q.z / R(2))) || []), ...this._propBoxes(), ...this._machBoxes()]; if (!l.length) return 0;
     let w = 0;
     for (const b of l) { const dx = q.x - b.x, dz = q.z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl && Math.abs(-dx * b.uz + dz * b.ux) < b.hw && q.y < b.top && q.y > b.bot) w = Math.max(w, Math.min(b.top - q.y, R(0.3))); }
     return w;
@@ -1170,9 +1214,39 @@ export class MachineTool {
       if (Math.abs(this.v) < R(0.01) && !ly) this.v = 0;
       const yaw = E.yaw - lx * 0.8 * dt, nx = E.x + Math.cos(yaw) * this.v * dt, nz = E.z - Math.sin(yaw) * this.v * dt;
       if ((this.v || lx) && this._fits('excavator', nx, nz, yaw)) {
+        // (the bucket goes with the machine: its back, bottom and sides shove a heap on as it drives — the owner: driven into a heap,
+        // the bucket's back went through it; the arm only shoved when it moved)
+        // (as the loader's bucket does: what is loose over the bucket's bottom, in its footprint, carried on to before its leading
+        // face — point by point shoving moved the soil inside the footprint back and forth, the heap stayed (the test))
+        const hitP = () => { let w = 0; for (const q of [...E.hardPoints(), E.teethWorld(new THREE.Vector3())]) w = Math.max(w, this._inObst(q)); return w; }, hit0 = hitP();
         const keep = [E.x, E.z, E.yaw]; E.place(t, nx, nz, yaw);
-        if (this._tooSteep('excavator', E, keep)) { E.place(t, ...keep); this.v = 0; }
-        else this._tracks('excavator', Math.hypot(nx - keep[0], nz - keep[1]) + Math.abs(yaw - keep[2]) * R(1));   // (the tracks press the ground)
+        const hit1 = hitP();   // (its arm and bucket carried into a cab, a body's side, masonry, a site's thing: it stops — the realist)
+        if (this._tooSteep('excavator', E, keep) || (hit1 > R(0.03) && hit1 > hit0 + 1e-6)) { E.place(t, ...keep); this.v = 0; }
+        else {
+          this._tracks('excavator', Math.hypot(nx - keep[0], nz - keep[1]) + Math.abs(yaw - keep[2]) * R(1));   // (the tracks press the ground)
+          const mx = E.x - keep[0], mz = E.z - keep[1], ml = Math.hypot(mx, mz), P = E.pushPoints ? E.pushPoints() : E.hardPoints();
+          if (ml > 1e-9 && P.length) {
+            const f = [mx / ml, mz / ml]; let fr = -Infinity, bk = Infinity, by = Infinity, cs = 0;
+            for (const q of P) { const a = q.x * f[0] + q.z * f[1]; fr = Math.max(fr, a); bk = Math.min(bk, a); by = Math.min(by, q.y); cs += -q.x * f[1] + q.z * f[0]; }
+            cs /= P.length; const fx0 = f[0] * fr - f[1] * cs, fz0 = f[1] * fr + f[0] * cs;
+            // (its mouth leading — open toward the way it goes: what it meets goes into it, up to its fill; the rest is shoved on — the
+            // realist: its back leading shoves a windrow, its mouth leading fills)
+            { let cx = 0, cy = 0, cz = 0; for (const q of P) { cx += q.x; cy += q.y; cz += q.z; } const mo = E.mouthWorld ? E.mouthWorld(new THREE.Vector3()) : null;
+              const nxm = mo ? mo.x - cx / P.length : 0, nzm = mo ? mo.z - cz / P.length : 0, nl = Math.hypot(nxm, nzm);
+              let room = cap * E.holdShare() - g.load;
+              if (nl > 1e-9 && (nxm * f[0] + nzm * f[1]) / nl > 0.3 && room > 0) {
+                const hwB = (E.bucketW || R(1)) / 2; let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
+                for (let d = 0; d <= fr - bk && room > 0; d += t.cell * 0.7) for (let q2 = -hwB; q2 <= hwB && room > 0; q2 += t.cell * 0.7) {
+                  const px = fx0 - f[0] * d - f[1] * q2, pz = fz0 - f[1] * d + f[0] * q2; if (!t.inside(px, pz)) continue;
+                  const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
+                  const over = Math.min(t.nat[i] + t.loose[i] - by, t.loose[i]), take = Math.min(over, room); if (!(take > 1e-7)) continue;
+                  g.cut(i, take); room -= take; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz);
+                }
+                if (x1 >= 0) t._touch(Math.max(0, x0 - 1), Math.max(0, z0 - 1), Math.min(t.rx, x1 + 1), Math.min(t.rz, z1 + 1));
+              } }
+            for (let d = 0; d <= fr - bk + t.cell; d += t.cell * 0.7) this._bulldoze(fx0 - f[0] * d, fz0 - f[1] * d, f, (E.bucketW || R(1)) / 2, by, d, true);
+          }
+        }
       } else this.v = 0;
     } else {
       const bog = Math.max(0.2, 1 - (this._pushLoad || 0) / 1.0);   // (shoving a heap: slower, down to a fifth at 1 m³ before it — the realist)
@@ -1190,7 +1264,7 @@ export class MachineTool {
     const pose0 = E.pose(), obst0 = inO([...E.hardPoints(), E.teethWorld(new THREE.Vector3())]), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
     // (the line of its teeth across its width, before and after the move: what leads a sideways slew through a heap)
     const lip = () => { const tp = E.teethWorld(new THREE.Vector3()), hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, out = []; for (let k = -4; k <= 4; k++) out.push(new THREE.Vector3(tp.x + ux * hw * k / 4, tp.y, tp.z + uz * hw * k / 4)); return out; };
-    const hp0 = E.hardPoints(), lip0 = lip();
+    const hp0 = E.hardPoints(), lip0 = lip(), pp0 = E.pushPoints ? E.pushPoints() : hp0;
     E.update(dt);
     const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
     // (digging: the teeth leading — the way they go as it curls in — not full, not tipped)
@@ -1201,7 +1275,8 @@ export class MachineTool {
     this._excCut = cutting;   // (for a lump of concrete in its way: world/lumps.js)
     // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews; not cutting, its teeth too:
     // swung sideways through a heap, they go first)
-    if (!cutting) this._excPush([...hp0, ...lip0], [...E.hardPoints(), ...lip()], p); else this._excPush(hp0, E.hardPoints(), p);
+    // (the bucket's back, bottom and sides shove what is over them — dense across its width (pushPoints), not the shell's sparse vertices)
+    { const pp1 = E.pushPoints ? E.pushPoints() : E.hardPoints(), st0 = E.stickPoints(); if (!cutting) this._excPush([...pp0, ...hp0.slice(-st0.length), ...lip0], [...pp1, ...st0, ...lip()], p); else this._excPush(hp0, E.hardPoints(), p); }
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;

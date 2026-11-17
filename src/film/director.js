@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { trEn } from '../i18n/i18n.js';
 
 // The film mode (?film=found): a short played out by itself — the work done stage by stage by the
 // same jobs the finger starts, filmed and cut in the game (what is recorded off the screen is the
@@ -492,7 +493,8 @@ export class Director {
   // ---- the game's own face over the film (the owner: «с кнопкой внизу и строками вверху, как в тихом режиме») ----
   // always there, small, costs the film no time: rows of chips at the top (what is chosen: the material, the way of
   // working — '*' marks the chosen one) and the round tool button at the bottom. rows: [['Wall', '*Brick'], …]; none: off
-  hud(rows, tool) {
+  hud(rows, tool, fromGame = false) {
+    if (rows && !fromGame) (this.hudTyped = this.hudTyped || []).push(rows.map((r) => r.join(' ')).join(' / '));   // (check-film: the menu must be the game's — menu())
     if (this.hudEl) { this.hudEl.remove(); this.hudEl = null; }
     this.el.classList.toggle('hud', !!rows);
     if (!rows) return;
@@ -502,6 +504,33 @@ export class Director {
     if (svg) { const c = svg.cloneNode(true); for (const [k, v] of [['xmlns', 'http://www.w3.org/2000/svg'], ['fill', 'none'], ['stroke', '#f4efe6'], ['stroke-width', '1.7'], ['stroke-linecap', 'round'], ['stroke-linejoin', 'round']]) c.setAttribute(k, v); img = `<img src="data:image/svg+xml;utf8,${encodeURIComponent(c.outerHTML)}">`; }
     h.innerHTML = rows.map((r) => `<div class="f-row${r.join('').length > 26 ? ' long' : ''}">${r.map((t) => (t[0] === '*' ? `<b class="on">${t.slice(1)}</b>` : `<b>${t}</b>`)).join('')}</div>`).join('') + `<div class="f-fab">${img}</div>`;
     this.el.appendChild(h);
+  }
+  // the game's own menu in the frame (the owner, 2026-11-17: «слова нужны, но актуальное меню — чтобы совпадало с материалами,
+  // которые сейчас в кадре, чтобы было видно, что это игра»): the rows are READ from the game's menu (app.ui.chips()) for the tool
+  // and the path of groups given — its labels (in English) and what is chosen there now come from the game's own state (the material,
+  // the mode the film set before working), never typed in the film. path: group ids to open ['masonry']; on: a label lit when the
+  // game's state has none lit (the pump past the game's own speeds). The last two levels shown; a long row — a window round the
+  // chosen chip, as the game's row scrolls to it
+  menu(path = [], tool = this.app.tool, on = null) {
+    const ui = this.app.ui, rows = [];
+    if (!ui?.chips) return this.hud(null);
+    const name = (c) => trEn(c.label).trim(), app = this.app, t0 = app.tool;
+    app.tool = tool;   // (the menu of that tool, read without switching to it: switching stops what the film's tool is doing)
+    try {
+      let list = ui.chips();
+      for (const id of path) {
+        const n = list.find((c) => c.id === id && c.kids); if (!n) break;
+        rows.push(list.filter((c) => c.label).map((c) => (c === n ? '*' : '') + name(c)));
+        list = typeof n.kids === 'function' ? n.kids() : n.kids;
+      }
+      const last = list.filter((c) => c.label), lit = last.some((c) => c.on);
+      rows.push(last.map((c) => (c.on || (!lit && on && c.label === on) ? '*' : '') + name(c)));
+    } finally { app.tool = t0; }
+    const fit = (r) => { const k = Math.max(0, r.findIndex((t) => t[0] === '*')); let a = k, b = k + 1, len = r[k].length;
+      while (true) { const can = b < r.length && len + r[b].length <= 30 ? b : a > 0 && len + r[a - 1].length <= 30 ? a - 1 : -1; if (can < 0) break; if (can === b) { len += r[b].length; b++; } else { a--; len += r[a].length; } }
+      return r.slice(a, b); };
+    this.hud(rows.slice(-2).map(fit), tool, true);
+    this.menuRows = rows;   // (for the tests: what the frame shows came from the game)
   }
   // the game's name in the corner all the film long (the owner: «нужно добавить логотип») — small, out of the work's way
   // «to be continued» (the owner, 2026-11-12: every stage short ends with a hint that more comes): a small tag that stays from

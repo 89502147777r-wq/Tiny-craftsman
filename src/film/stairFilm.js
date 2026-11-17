@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { MODEL_SCALE } from '../config.js';
+import { MODEL_SCALE, TRAY } from '../config.js';
 import { look } from './director.js';
 import { loadPhysics, physicsReady } from '../world/physics.js';
 import { findBelt, beltCage, beltsOverlap, plan, toWorld } from '../tools/belt.js';
 import { IBIZA } from './foundFilm.js';
 import { placeLintelForm } from '../tools/lintels.js';
+import { PROPS } from '../world/siteProps.js';
 
 // «Ibiza», stage 2 — the stair wall and the pavilion (docs/ideas/ibiza.md; the foreman's plan and the owner's choices 2026-11-14;
 // the director's shot table). It starts where stage 1 ended — the same plot, the same records (assets/films/ibiza-1.json.gz, made
@@ -86,7 +87,9 @@ export function* stairFilm(d, app) {
   const V = THREE.Vector3, O = app.objects, T = app.terrain, st = app.settings, W = app.wallTool, G = app.concreteGear;
   Object.assign(st, { dayHour: 9.5, pump: 1.25, rebarD: 12, cover: 40 }); app.sky.setHour(9.5);
   d.lock = true; d.hand = 0.3;
-  const startIds = new Set(O.all().map((r) => r.id));   // (what stood before this film: the hook's rewind takes away all the rest)
+  const startIds = new Set(O.all().map((r) => r.id));
+  // (the film's subject for check-film — the stair (the spine's blocks and its landing) whole and uncovered on the loop's frame)
+  d.subject = () => { const B = new THREE.Box3(); for (const u of O.all('unit')) if (u.kind === 'cinder' && !startIds.has(u.id)) { const h = Math.max(u.s[0], u.s[2]) / 2; B.expandByPoint(new THREE.Vector3(u.p[0] - h, u.p[1] - u.s[1] / 2, u.p[2] - h)); B.expandByPoint(new THREE.Vector3(u.p[0] + h, u.p[1] + u.s[1] / 2, u.p[2] + h)); } let L = null; try { L = landId; } catch { /* (not declared yet: before the landing) */ } if (!B.isEmpty() && L != null && O.get(L)) B.max.y += MM(200); return B; };   // (what stood before this film: the hook's rewind takes away all the rest)
   d.logo();
   { const r0 = new V(MM(X0), T.heightAt(MM(X0), MM(ZB)) + MM(100), MM(ZB)); d.cut(look(r0.clone().add(new V(MM(550), MM(650), MM(750))), r0), { drift: 0, push: 0, hand: 0.2 }); }   // (the 1st frame after the hook: the work, close — the analyst)
   // (the analyst and the owner, 2026-11-15: the stage's own pencil sketch pinned in the corner — the goal of this film, no more; at
@@ -120,11 +123,8 @@ export function* stairFilm(d, app) {
   d.money(true); d.byStages();
   // (stage 1's excavator parked at the plot's edge, past the fireplace's pad — out of the work's way, now and then in a wide shot (the
   // owner); it stood in two shots, a camera inside it)
-  for (const r of O.all('vehicle')) O.remove(r.id);
-  { const mt = app.machineTool, x = MM(-12600), z = MM(7400), yaw = 0.35;
-    O.add({ type: 'vehicle', kind: 'excavator', x, z, yaw, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
-    let ok = false; mt.ensureExc?.().then(() => { ok = true; }).catch(() => { ok = true; }); yield d.until(() => ok);
-    const E = mt.exc; if (E) { E.place(T, x, z, yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = 0; E.boom = E.boomGoal = 0.15; E.update(0); } }
+  // (its model fetched in stairFilm.prepare, before the first frame: loaded here it was 0,5 s of a bare foundation at the start — the analyst)
+  { const mt = app.machineTool, E = mt.exc; if (E) { E.place(T, EXC.x, EXC.z, EXC.yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = 0; E.boom = E.boomGoal = 0.15; E.update(0); } }
   const g = T.heightAt(MM(-9000), MM(9000)), P = (x, y, z) => new V(MM(x), g + MM(y), MM(z)), idle = () => !app.busy();
   // (the walls set out level from the HIGHEST point of the concrete under them — the owner saw a brick and a block «in the air»: the
   // slab and the strip are not cast dead flat, a course set from one point in the middle stood over the lower edge; as on site the
@@ -149,7 +149,9 @@ export function* stairFilm(d, app) {
   // (the share of frames with the stream over the last ~half second — it flickers where the concrete runs out of room: on, off)
   let wetE = 1; const dry = () => { wetE = wetE * 0.8 + (G.pump?.stream?.visible ? 0.2 : 0); return wetE < 0.5 ? 1 : 0; }, wet0 = () => { wetE = 1; };
   const say = (m) => { (d.notes = d.notes || []).push([+d.t.toFixed(1), m]); };
-  const hud = (row1, i, row2, tool) => d.hud([row1.map((t, k) => (k === i ? '*' + t : t)), ...(row2 ? [row2] : [])], tool);
+  // (the menu in the frame is the game's own, read from it after the film has set what it works with — the owner, 2026-11-17:
+  // «актуальное меню», the material in the frame is the one chosen in it)
+  const mason = (kind) => { st.wallKind = kind; app.setTool('wall'); W.setMode('lay'); d.menu(['masonry'], 'wall'); };
   loadPhysics().catch(() => {});
   // ---- the camera (as in stage 1): a still shot list cut by the film's clock, or a tripod panning after the tool ----
   let shotN = 0, tool = () => null; d.toolAt = () => tool();   // (for scripts/check-film.mjs: where the work is)
@@ -172,8 +174,7 @@ export function* stairFilm(d, app) {
   const tick = (n = 1) => app.sfx?.seq?.(Array(n).fill('block'));
 
   // ---- 1 · the damp-proof course: the spine's strip 1300 (two strips lapped), the slab's edges 400 ----
-  hud(['DPC', 'Cinder', 'Gas block', 'Brick'], 0, null, 'wall');
-  st.wallKind = 'dpc'; app.setTool('wall'); W.setMode('lay');
+  st.dpcW = 1300; mason('dpc');
   const dpc = W.dpc, lay = (a, b, w) => { st.dpcW = w; const y = T.heightAt(MM(a[0]), MM(a[1])); dpc.down({ x: MM(a[0]), y, z: MM(a[1]) }); dpc.move({ x: MM(b[0]), y, z: MM(b[1]) }); dpc.up(); };
   lay([X0, ZB + 150], [X0, ZS - 150], 1300);
   const s0 = new V(MM(X0), T.heightAt(MM(X0), MM(ZB)) + MM(100), MM(ZB));   // (the roll's start: the camera there from the first frame)
@@ -204,8 +205,7 @@ export function* stairFilm(d, app) {
   // (the first course's bed down to the concrete and the membrane under each unit: what the slab lacks there, the mortar takes up)
   const fit = (r) => { const bot = r.p[1] - r.s[1] / 2, under = T.heightAt(r.p[0], r.p[2]) + MM(3.4), bed = bot - under; if (bed < MM(60) && bed > MM(4)) r.bedT = +bed.toFixed(6); };
   for (const r of [...spineLow[0], ...pav.filter((q) => q.p[1] - q.s[1] / 2 - pTop < MM(40))]) fit(r);
-  hud(['DPC', 'Cinder', 'Gas block', 'Brick'], 1, ['*By hand', 'Course'], 'wall');
-  st.wallKind = 'cinder';
+  mason('cinder');
   yield d.until(() => physicsReady());
   // (one block of a low step held back: the hook's action — laid there by the mallet, close in the foreground (the analyst: the hook
   // must move))
@@ -224,7 +224,7 @@ export function* stairFilm(d, app) {
   { const tr = d.t; for (const r of row) { yield d.until(() => job(r, true)); }
     yield d.until(idle); yield d.until(() => d.t - tr >= 0.9); }   // (the course's shot ≥ 0.8 s: check-film)
   // the first aerated block — the pavilion's front corner, from inside the slab toward the sea
-  hud(['DPC', 'Cinder', 'Gas block', 'Brick'], 2, ['*By hand', 'Course'], 'wall');
+  mason('block');
   yield d.until(() => !dpc.jobs.length);
   const pBlocks = pav.filter((r) => r.kind === 'block'), b0 = pBlocks.filter((r) => Math.abs(r.p[1] - pBlocks[0].p[1]) < MM(5)).sort((p, q) => (q.p[0] - p.p[0]) || (p.p[2] - q.p[2]));
   const fb = b0.filter((r) => Math.abs(r.p[2] - MM(SL.z0 + 150)) < MM(5));
@@ -234,7 +234,7 @@ export function* stairFilm(d, app) {
   for (const r of fb.slice(1, 4)) { yield d.until(() => job(r, true)); }
   yield d.until(idle);
   // a brick pier
-  hud(['DPC', 'Cinder', 'Gas block', 'Brick'], 3, ['*By hand', 'Course'], 'wall');
+  mason('brick');
   const pier = pav.filter((r) => r.kind === 'brick' && r.p[0] < MM(-1000));   // (the pier the inner wall stands against)
   tool = () => new V().fromArray(pier[0].p);
   act([[1.4, [-900, 900, -1100], 1], [1.2, [1500, 1300, -1800], 4]]);
@@ -256,7 +256,7 @@ export function* stairFilm(d, app) {
 
   // ---- 3 · the ring beam over both, at one level (a joint between them — they stand on two foundations): its boards, its cage,
   // the concrete by the hose, the poker ----
-  hud(['Formwork', 'Rebar', 'Concrete'], 0, null, 'wall');
+  st.wallKind = 'belt'; d.menu(['mono'], 'wall');
   const topS = Math.max(...O.all('unit').filter((u) => u.kind === 'cinder').map((u) => u.p[1] + u.s[1] / 2));
   const B = findBelt(app, new V(MM(X0), topS, MM(-3000)));
   say('belt ' + (B ? `${B.rec.ni}×${B.rec.nj}` : 'none'));
@@ -304,7 +304,7 @@ export function* stairFilm(d, app) {
       app.sfx?.seq?.(['plank', 'hammer_nail', 'pipe']);
     }
     // the cages lowered in: the chairs, then bar after bar, the ties (the game's reveal of a cage)
-    hud(['Formwork', 'Rebar', 'Concrete'], 1, null, 'wall');
+    app.rebarTool?.setMode?.('cage'); d.menu([], 'rebar');
     shots([[9, [7200, 4200, -4000], [6000, 3300, -5200]]]);
     let cageA = null, cageB = null;
     app.journal.act('belt-cage', {}, app.clock, () => { cageA = O.add(beltCage(O.get(beltId))).id; if (pavId != null) cageB = O.add(beltCage(O.get(pavId))).id; for (const l of lintels) O.add(beltCage(O.get(l.id))); });
@@ -312,7 +312,7 @@ export function* stairFilm(d, app) {
     yield* rise(RV, cageA, 0.8, ['rebar', 'wire']);   // (≤ 1 s without a tool in the frame: the analyst)
     // the concrete: the hose along the spine's beam, always over the place still to fill — the stream seen the whole pour, the beam
     // filling under it (the owner: «no stream, the pour stops and at once the beam is full»); the poker after it
-    hud(['Formwork', 'Rebar', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
+    d.menu([], 'hose', 'Быстро');
     const hose = app.concreteTools.hose, yb = topS + MM(200);
     const pts = [[X0, -5600], [X0, 1100]];
     const segs = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1])), tot = segs.reduce((a, b) => a + b, 0);
@@ -345,7 +345,9 @@ export function* stairFilm(d, app) {
       const q = lead(ch, path, tot, false, (v) => { dir = v; }, dir) || path(u); hose.move(q, ev(q));
       return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 2.6 || (d.t - t0 > 1 && dry() > 0.5);
     });
-    hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
+    // (the hose let go and its channel committed now: left to settle on its own it wrote its levels seconds later, OVER the top-up
+    // below — the spine's beam stood at 29 %, bare bars after its boards came off (the owner: «куда делся бетон?»))
+    hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } hose.finish?.(); d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
     still();
     say('belt fill ' + O.get(beltId)?.fill + ' u ' + u.toFixed(2) + ' in ' + (d.t - t0).toFixed(1));
     // (the last tenth topped up and worked level between two shots — the poker's round: no step in the frame)
@@ -371,7 +373,7 @@ export function* stairFilm(d, app) {
         const q = ring(ur); hose.move(q, evp(q));
         return (ur >= 1 && hose.ch?.h && share(hose.ch) > 0.97 && hose.ch.b?.id === pavId) || d.t - t0 > 1.1 || (d.t - t0 > 0.8 && dry() > 0.5);   // (a second, quicker round over what is short)
       });
-      hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
+      hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } hose.finish?.(); d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
       still();
       say('pavilion fill ' + O.get(pavId)?.fill + ' lintels ' + lintels.map((l) => O.get(l.id)?.fill?.toFixed(2)).join(',') + ' in ' + (d.t - t0).toFixed(1));
       for (const id of [pavId, ...lintels.map((l) => l.id)]) { const r = O.get(id); if (r && r.fill < 0.999) app.journal.act('belt-pour', {}, app.clock, () => O.update(id, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
@@ -383,6 +385,8 @@ export function* stairFilm(d, app) {
   shots([[9, [-7000, 7500, 6500], [0, 3000, -1500]]]);
   // (the clock over work — the analyst: never over a still frame: the beams' boards come off board by board under it)
   { const ids = [beltId, pavId, ...lintels.map((l) => l.id)].filter((id) => id != null);
+    // (a beam not full when its boards come off is bare bars in the frame — check-film fails the film on this note)
+    for (const id of ids) { const f = O.get(id)?.fill ?? 1; if (f < 0.99) say(`beam ${id} ${(f * 100).toFixed(0)} % at its stripping FAILED`); }
     yield* d.lapse(7, 1.95, (q) => { app.clock += 9000 * d.dt / 1.95; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); const n = ids.length, k = Math.min(n - 1, Math.floor(q * n)), u = 1 - (q * n - k); for (let i = 0; i < k; i++) if (!O.get(ids[i])?.stripped) O.update(ids[i], { stripped: true, pile: [+MM(-3200 + i * 1300).toFixed(6), +MM(7600).toFixed(6)] }); app.wallView.reveal = { id: ids[k], u: Math.max(0, u) }; app.wallView.dirty = true; if (Math.random() < 0.3) app.sfx?.play?.('plank', { vol: 0.35, gap: 0.15 }); });
     app.wallView.reveal = null; }
   app.sky.setHour(9.5);
@@ -392,8 +396,7 @@ export function* stairFilm(d, app) {
   // ---- 4 · the steps on up: the first block over the beam close, its course; then the courses one by one in profile ----
   const bTop = beltId != null ? O.get(beltId).top + O.get(beltId).H : topS + MM(200);
   const spineUp = [...Array(NUP).keys()].map((j) => spineCourse(sTop, NLOW + j, NLOW + j, bTop + MM(j * (CB.H + CB.J))));
-  hud(['Cinder', 'Formwork', 'Concrete'], 0, ['*By hand', 'Course'], 'wall');
-  st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
+  mason('cinder');
   const u0 = spineUp[0][0];
   tool = () => new V().fromArray(u0.p);
   act([[9, [1300, 500, 1300], 1]]);
@@ -435,18 +438,19 @@ export function* stairFilm(d, app) {
     app.sfx?.seq?.(['plank', 'hammer_nail', 'rebar']);
     app.journal.act('belt', {}, app.clock, () => { landId = O.add(B2.rec).id; O.add(beltCage(O.get(landId))); });
     const hose = app.concreteTools.hose, yb = topU + MM(200), ev = (q) => ({ target: landId, hit: q });
-    app.setTool('hose'); hud(['Cinder', 'Formwork', 'Concrete'], 2, ['*Hose', 'Vibrator'], 'hose');
+    app.setTool('hose'); st.wallKind = 'belt'; d.menu(['mono'], 'wall');   // (its boards first: the formwork's menu, then the hose's)
     const a = new V(MM(X0), yb, MM(-4300)), b = new V(MM(X0), yb, MM(-5600));
     tool = () => (G.pump?.ready ? G.pump.spout().clone().add(new V(0, -MM(400), 0)) : a.clone());
     act([[9, [2200, 800, 3100], 5]]);   // (the hose followed from its way in — from the stair up to its top, the landing is the stair's: the analyst)
     // (the pump called first — it gets ready while the boards go up, the camera already on the landing: no 2 s of nothing — check-film)
     st.pump = 1e-5; hose.down(a, ev(a));
     { const WV = app.wallView, t0 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t0) / 1.0); WV.reveal = { id: landId, u }; WV.dirty = true; hose.move(a, ev(a)); if (u >= 1 && G.pump?.ready) { WV.reveal = null; return true; } return false; }); }   // (its boards going up too)
+    d.menu([], 'hose', 'Быстро');
     { let w = 0; d.speed = 8; yield d.until(() => { w += d.dt * d.speed; hose.move(a, ev(a)); const sp = G.pump?.ready ? G.pump.spout() : null; return w > 6 || (!!sp && Math.hypot(sp.x - a.x, sp.z - a.z) < MM(250)); }); }
     st.pump = 4;
     // (till it is full, the camera on it — the owner: «the landing's beam did not fill in the frames»)
     let pt = 0; wet0(); const t0 = d.t, lDry = dry; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); const ch = hose.ch; return !!ch?.full || (ch?.h && ch.h.every((v) => v >= ch.cap - 8)) || d.t - t0 > 1.0 || (d.t - t0 > 0.6 && lDry() > 0.5); });
-    hose.up(); d.speed = 12; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } d.speed = 1; G.set?.(null);   // (no 2 s waiting for it to settle, the frame still — check-film; the record tops it up)
+    hose.up(); d.speed = 12; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } hose.finish?.(); d.speed = 1; G.set?.(null);   // (no 2 s waiting for it to settle, the frame still — check-film; the record tops it up)
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
   }
@@ -460,22 +464,69 @@ export function* stairFilm(d, app) {
   // (the sketch's own view: the camera set where the drawing was made from — still, no hand)
   d.hud(null);   // (from here on nothing the hook has not: the analyst)
   d.mark('finale');   // (the sketch's finale: the sheet, not a tool — check-film lets it be)
+  // (the landing's boards off under the cut to the sketch's view — a jump in time, as the sheet is: boxed in boards on the stair's
+  // narrow top it read as a column; bare, it is the stair's top step — the analyst's release list, 2026-11-17)
+  if (landId != null && (O.get(landId)?.fill ?? 1) < 0.99) say(`landing ${(O.get(landId).fill * 100).toFixed(0)} % at its stripping FAILED`);
+  if (landId != null && O.get(landId)) { const i = 2 + lintels.length; app.journal.act('belt-strip', {}, app.clock, () => O.update(landId, { stripped: true, pile: [+MM(-3200 + i * 1300).toFixed(6), +MM(7600).toFixed(6)] })); app.wallView.dirty = true; }
   shotN++; d.cut(look(new V(MM(17500), MM(9000), MM(15500)), new V(MM(2600), MM(3200), MM(-1600))), { drift: 0, push: 0, hand: 0 });
   yield d.sec(0.4);
   // (the sheet grows from its corner to its place in the frame — its drawing is the band 36 %…92 % of the frame from the sketch's view,
   // the stair's top off its edge (the analyst: the answer to the hook's «where?» never on the sheet) — then washes away into the real
   // view, which shows the top: the answer)
   // (the pin out first, up and away — else its red head hung on the sky after the sheet had washed off: the realist)
-  { const tp = d.t; pin.style.opacity = ''; app.sfx?.play?.('tap', { vol: 0.4 }); yield d.until(() => { const u = Math.min(1, (d.t - tp) / 0.2); pin.style.top = 23.35 - 2 * u + '%'; pin.style.opacity = String(1 - u); return u >= 1; }); pin.remove(); }
+  { const tp = d.t; pin.style.opacity = ''; app.sfx?.play?.('tap', { vol: 0.4 }); yield d.until(() => { const u = Math.min(1, (d.t - tp) / 0.2); pin.style.top = 23.23 - 2 * u + '%'; pin.style.opacity = String(1 - u); return u >= 1; }); pin.remove(); }
   { sk.src = 'assets/films/ibiza-2-sketch-flat.png';   // (straightened as it is taken down — the frame's own view to fall on)
-    const r0 = { l: 68.3, t: 22.5, w: 31.3 }, r1 = { l: -15.19, t: 27.46, w: 130.37 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
+    const r0 = { l: 72.8, t: 22.5, w: 26.8 }, r1 = { l: -15.19, t: 27.46, w: 130.37 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
     yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.5), e = u * u * (3 - 2 * u); sk.classList.add('grow'); sk.style.left = r0.l + (r1.l - r0.l) * e + '%'; sk.style.top = r0.t + (r1.t - r0.t) * e + '%'; sk.style.width = r0.w + (r1.w - r0.w) * e + '%'; return u >= 1; });
     yield d.sec(0.35);
     const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 1.0); sk.style.opacity = String(1 - u); return u >= 1; });
     sk.remove(); }
+  // the frame the video starts and ends on: the whole stair in profile on the sky — all 34 steps and the landing, from the foot to the
+  // top, inside the frame's clear band (under the logo and the budget, over «TO BE CONTINUED»), nothing cut by the frame's edge (the
+  // analyst's release list, 2026-11-17: half the stair was in the first frame). Fitted by projecting the stair's box, not guessed.
+  function fitProf() {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const u of O.all('unit')) { if (u.kind !== 'cinder') continue; const turned = Math.abs(u.q?.[1] || 0) > 0.5, hx = (turned ? u.s[2] : u.s[0]) / 2, hz = (turned ? u.s[0] : u.s[2]) / 2;
+      x0 = Math.min(x0, u.p[0] - hx); x1 = Math.max(x1, u.p[0] + hx); y0 = Math.min(y0, u.p[1] - u.s[1] / 2); y1 = Math.max(y1, u.p[1] + u.s[1] / 2); z0 = Math.min(z0, u.p[2] - hz); z1 = Math.max(z1, u.p[2] + hz); }
+    y0 = Math.min(y0, T.heightAt((x0 + x1) / 2, (z0 + z1) / 2)) - MM(150); y1 += MM(200 + 150);   // (the foundation's edge under it; the landing on top)
+    const c = new V((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), cam = app.camera.clone();
+    const corners = []; for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [z0, z1]) corners.push(new V(x, y, z));
+    const band = { l: 0.03, r: 0.97, t: 0.13, b: 0.66 }, mid = (band.t + band.b) / 2;   // (top-down: the logo and the budget end at ~0,11; «TO BE CONTINUED» at 0,69, all over the Shorts zone (75 %) — the analyst's list)
+    // (the ground the frame shows near its bottom on the plot: past the plot's edge the ground is the panorama's, smeared (a camera
+    // fitted from 24 m off showed a blurred band across the frame's lower third) — the camera itself may stand a little past the
+    // edge. So the stair is turned from the pure profile toward its foot only as much as it needs: the risers face the camera then)
+    const PX = TRAY.innerX / 2 - MM(500), PZ = TRAY.innerZ / 2 - MM(500), G0 = y0 + MM(150);
+    const groundOn = () => { for (const nx of [-1, 0, 1]) { const d = new V(nx, -1, 0.5).unproject(cam).sub(cam.position).normalize(); if (d.y > -1e-4) continue; const h = cam.position.clone().addScaledVector(d, (G0 - cam.position.y) / d.y); if (Math.abs(h.x) > PX || Math.abs(h.z) > PZ) return false; } return true; };
+    // (nothing between the camera and the stair: the site's things and the machines — a toilet stood in front of it in the loop's frame)
+    const things = [...O.all('siteprop').map((r) => ({ x: r.x, z: r.z, r: MM((PROPS[r.kind]?.r ?? 1000) + 150), h: MM(2700) })), ...O.all('vehicle').map((r) => ({ x: r.x, z: r.z, r: MM(3200), h: MM(3600) }))];
+    const looks = []; for (let i = 0; i <= 8; i++) for (const f of [0.15, 0.5, 0.85]) { const z = z0 + (z1 - z0) * i / 8; looks.push(new V((x0 + x1) / 2, y0 + (y1 - y0) * f * Math.min(1, 0.15 + i / 8), z)); }
+    const clear = (e) => looks.every((q) => things.every((o) => { const dx = q.x - e.x, dz = q.z - e.z, L2 = dx * dx + dz * dz; if (L2 < 1e-9) return true;
+      const t = Math.max(0, Math.min(1, ((o.x - e.x) * dx + (o.z - e.z) * dz) / L2)); if (Math.hypot(e.x + dx * t - o.x, e.z + dz * t - o.z) > o.r) return true;
+      return e.y + (q.y - e.y) * t > G0 + o.h; }));   // (the line over its top: seen over it)
+    const a0 = Math.atan2(1000, 9500), U = (m) => m / MODEL_SCALE, inBand = () => corners.every((q) => { const v = q.clone().project(cam), sx = (v.x + 1) / 2, sy = (1 - v.y) / 2; return v.z < 1 && sx > band.l && sx < band.r && sy > band.t && sy < band.b; });
+    // (the least turned from the profile, the nearest, the lowest eye — as level as the frame's band and the plot allow: the box set
+    // in the band by aiming lower, a few rounds of moving the aim by what is still off)
+    for (let deg = 0; deg <= 80; deg += 2.5) {
+      const a = a0 + THREE.MathUtils.degToRad(deg), dir = new V(Math.cos(a), 0, Math.sin(a));
+      for (let m = 8; m <= 30; m += 0.5) for (let h = 1; h <= 12; h += 0.5) {
+        const e = c.clone().addScaledVector(dir, U(m)); e.y = G0 + U(h);
+        const aim = c.clone(); cam.position.copy(e);
+        for (let k = 0; k < 4; k++) {
+          cam.lookAt(aim); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+          let lo = 1, hi = 0; for (const q of corners) { const sy = (1 - q.clone().project(cam).y) / 2; lo = Math.min(lo, sy); hi = Math.max(hi, sy); }
+          const off = (lo + hi) / 2 - mid, half = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * aim.distanceTo(e); aim.y -= off * 2 * half;
+        }
+        cam.lookAt(aim); cam.updateMatrixWorld();
+        if (!inBand() || !groundOn() || !clear(e)) continue;
+        say(`prof fit ${deg}° ${m} m, eye ${h} m`); return [e, aim];
+      }
+    }
+    say('prof fit FAILED');   // (check-film fails the film on it: the loop's frame must show the whole stair)
+    return [P(15500, 4300, 500), P(6000, 4300, -500)];
+  }
   // ---- the end: the stair's last block by the mallet, close; then back to the stair in profile on the sky, still — the frame the
   // video starts on (the owner, 2026-11-16: the hook IS the rewind from this frame) ----
-  const hp = new V().fromArray(hold.p), near = [new V(hp.x + MM(1300), hp.y + MM(420), hp.z + MM(1500)), hp.clone()], prof = [P(15500, 4300, 500), P(6000, 4300, -500)];
+  const hp = new V().fromArray(hold.p), near = [new V(hp.x + MM(1300), hp.y + MM(420), hp.z + MM(1500)), hp.clone()], prof = fitProf();
   d.hud(null);
   st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
   shotN++; d.cut(look(near[0], near[1]), { drift: 0, push: 0, hand: 0.15 });
@@ -492,14 +543,17 @@ export function* stairFilm(d, app) {
   // no dust (not a collapse) — «◀◀» in the corner and the count 34 → 0 on the top step; a rising whoosh, a dull stop; the bare
   // foundation; then the torch lit, the roll moving: the film's first work, the same view ----
   d.mark('hook');
-  { const topOf = (r) => (r.type === 'unit' ? r.p[1] + r.s[1] / 2 : r.type === 'dpc' ? -1e9 : r.top ?? r.p?.[1] ?? 0);
+  // (each thing by its own top — a cage by its bars (it has no `top`: counted 0 it hung in the air over the courses taken away; the
+  // owner's rewind must take the stair down in order), lifted a little so it goes with its beam, not after it)
+  { const topOf = (r) => (r.type === 'unit' ? r.p[1] + r.s[1] / 2 : r.type === 'dpc' ? -1e9 : Array.isArray(r.bars) && r.bars.length ? Math.max(...r.bars.map((b) => Math.max(b[1], b[4]))) + MM(80) : r.top != null ? r.top + (r.H ?? 0) : r.y ?? r.p?.[1] ?? 0);
     const back = O.all().filter((r) => !startIds.has(r.id) && r.type !== 'siteprop' && r.type !== 'vehicle').sort((p, q) => topOf(q) - topOf(p));
     const gone = [], top = new V(MM(X0), topU + MM(500), MM(-5000)), t0 = d.t;
-    let rw = null, hc = null, stopped = false, n = 0;
+    let rw = null, hc = null, stopped = false, made = false, n = 0;
     const at = (el) => { const v = top.clone().project(app.camera); el.style.left = ((v.x + 1) / 2 * 100).toFixed(2) + '%'; el.style.top = ((1 - v.y) / 2 * 100).toFixed(2) + '%'; };
     yield d.until(() => {
       const u = Math.min(1, Math.max(0, (d.t - t0 - 0.1) / 0.8)), e = u ** 1.6;   // (the top slow, the bottom quicker)
-      if (!rw && d.t - t0 > 0.04) {   // (just past the seam: the words either side of it the same)
+      if (!made && d.t - t0 > 0.04) {   // (just past the seam: the words either side of it the same; once — taken off at the stop, never back)
+        made = true;
         rw = document.createElement('div'); rw.className = 'f-rew'; rw.setAttribute('data-notr', ''); rw.textContent = '◀◀'; d.el.appendChild(rw);
         hc = document.createElement('div'); hc.className = 'f-steps'; hc.setAttribute('data-notr', ''); d.el.appendChild(hc);
         app.sfx?.play?.('rewind', { vol: 0.8 });
@@ -508,19 +562,22 @@ export function* stairFilm(d, app) {
       if (hc) { hc.textContent = String(Math.round(34 * (1 - e))); at(hc); }
       if (d.nextEl) d.nextEl.style.opacity = String(Math.max(0, 1 - Math.max(0, d.t - t0 - 0.05) / 0.25));   // (its plate gone 0,3 s past the seam: ≤ 2 signs in the first 0,5 s — the analyst)
       if (u >= 1 && !stopped) { stopped = true; app.sfx?.play?.('thud', { vol: 0.9 }); rw?.remove(); hc?.remove(); rw = hc = null; }
-      return d.t - t0 >= 1.0;
+      return stopped && d.t - t0 >= 0.95;
     });
-    // (the first work in the same view: the torch lit, the roll moving — the cut into the film's own first shot, close)
-    st.wallKind = 'dpc'; app.setTool('wall'); W.setMode('lay');
-    const n0 = O.all('dpc').length; lay([X0, ZB + 150], [X0, ZS - 150], 1300);
-    yield d.sec(0.4);
+    // (the hook ends on the thud — straight into the film's first shot, the torch at work close: no bare foundation between, ≤ 0,3 s —
+    // the analyst's release list, 2026-11-17)
     d.mark('hookEnd');
     // (after the video's end: the plot as it was at the end of the film — the game and the tests go on from there)
-    for (const r of O.all('dpc').slice(n0)) O.remove(r.id);
-    dpc.jobs.length = 0;
     for (const r of gone.reverse()) O.add(r); }
   yield d.sec(0.1);
 }
+// (the excavator parked at the plot's edge, its model fetched before the film's first frame)
+const EXC = { x: MM(-12600), z: MM(7400), yaw: 0.35 };
+stairFilm.prepare = async (app) => {
+  for (const r of app.objects.all('vehicle')) app.objects.remove(r.id);
+  app.objects.add({ type: 'vehicle', kind: 'excavator', x: EXC.x, z: EXC.z, yaw: EXC.yaw, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
+  await app.machineTool.ensureExc();
+};
 stairFilm.seconds = 62;
 stairFilm.place = 'beach';
 stairFilm.start = 'assets/films/ibiza-1.json.gz';

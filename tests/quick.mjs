@@ -36,7 +36,13 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/`;
 
 const results = [];
-const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${info}`); };
+// (the owner, 2026-11-17: a failure found — fixed and taken up from there, not the whole half hour again). The sections are
+// independent (each opens its own page): TEST_ONLY=2i,2l² runs those; TEST_FROM=2i runs from that one on; TEST_BAIL=1 stops at
+// the first FAIL (its section named: fix it, then TEST_FROM=<it>). A release still needs one whole run.
+const ONLY = (process.env.TEST_ONLY || '').split(',').filter(Boolean), FROM = process.env.TEST_FROM || '', BAIL = !!process.env.TEST_BAIL;
+let reached = !FROM, current = '';
+const want = (id) => { if (FROM && id === FROM) reached = true; const go = ONLY.length ? ONLY.includes(id) : reached; if (go) { current = id; console.log(`---- ${id}`); } return go; };
+const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${info}`); if (!ok && BAIL) { console.log(`\nstopped at the first FAIL — section ${current}: after the fix, TEST_FROM=${current}`); process.exit(1); } };
 const sec = () => `${((Date.now() - t0) / 1000).toFixed(0)} s`;
 
 async function open(browserType, query, opts = {}, locale = 'ru-RU') {
@@ -72,7 +78,7 @@ function validate(src, name) {
 
 // ---- 0. The frames' cadence (core/pace.js): while something moves, drawn evenly — at 60 Hz every frame, at
 // 120 Hz every other one — even when the display's frames come with a little jitter; still: twice a second ----
-{
+if (want("0")) {
   const { Pace } = await import('../src/core/pace.js');
   const run = (hz, live, secs = 6) => { const P = new Pace(), f = 1000 / hz, gaps = []; let x = 0x1234567, last = null;
     const rnd = () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return x / 0x7fffffff; };
@@ -120,7 +126,7 @@ for (const variant of ['full', 'light']) {
 console.log('—', sec());
 
 // ---- 2. Chromium: play ------------------------------------------------------------------------
-{
+if (want("2")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.evaluate(() => { localStorage.clear(); indexedDB.deleteDatabase('tiny-craftsman'); });
   await page.reload({ timeout: 120000 });
@@ -385,7 +391,7 @@ console.log('—', sec());
 console.log('—', sec());
 
 // ---- 2a. The garden: a path, a lawn and a fence through all their stages -------------------------
-{
+if (want("2a")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const land = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, out = {};
@@ -517,7 +523,7 @@ console.log('—', sec());
 }
 
 // ---- 2b. English: a device in English gets the whole game in English ------------------------------
-{
+if (want("2b")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }, 'en-US');
   const en = await page.evaluate(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -535,7 +541,7 @@ console.log('—', sec());
 }
 
 // ---- 2c. the modelled doors, gates and windows: all come, each fits any opening ------------------
-{
+if (want("2c")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const op = await page.evaluate(async () => {
     const K = await import('/src/world/openingKits.js'), Wn = await import('/src/world/windows.js'), Dr = await import('/src/world/doors.js');
@@ -604,7 +610,7 @@ console.log('—', sec());
 // ---- 2d. Columns and piles («Фундамент»): the formwork by the finger on what is under it, the cage
 // carried into it, the concrete by the bucket and the hose, the stripping; a slab and a brick on them;
 // the black topsoil delivered -----------------------------------------------------------------------
-{
+if (want("2d")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const c = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, col = wt.col, o = {};
@@ -689,7 +695,7 @@ console.log('—', sec());
 
 // ---- 2d'. A tree column (a house on one support): a trunk Ø1200 with its bars round the edge, two branches
 // out of its top leaning apart (30°), a slab on them with its cantilevers all round, 350 thick ----
-{
+if (want("2d'")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, col = wt.col, o = {}, MM = (v) => v / 1000 / 10.4651;
@@ -726,7 +732,7 @@ console.log('—', sec());
 // ground by the column tool, a slab laid on its top (cantilevered all round, its opening over the shaft), the
 // cabin riding up into the floor; the fascia on the slab's outer edges (not round the opening); a green roof —
 // sedum in the field, gravel 500 mm along the parapet ----
-{
+if (want("2d''")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, o = {}, MM = (v) => v / 1000 / 10.4651;
@@ -786,7 +792,7 @@ console.log('—', sec());
 
 // ---- 2e. The fence by the post («Забор»): the string with its pegs, a peg moved for a wicket, the holes
 // one by one, the posts, the concrete by the bucket and the hose, the rails welded, the fill, the wicket
-{
+if (want("2e")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const f = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, fw = wt.fence, o = {}, F2 = await import('/src/world/fence2.js');
@@ -878,7 +884,7 @@ console.log('—', sec());
 }
 
 // ---- 2f. The garden path by hand: the string, the trough, the kerbs, the geotextile, the stone, the sand, the pavers ----
-{
+if (want("2f")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, pw = wt.land.pw, o = {}, toasts = [];
@@ -924,7 +930,7 @@ console.log('—', sec());
 }
 
 // ---- 2g. The lawn by hand ----
-{
+if (want("2g")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, lw = wt.land.lw, o = {};
@@ -974,7 +980,7 @@ console.log('—', sec());
 }
 
 // ---- 2h. Plants and garden lights: every kind goes in (a pot set down, no hole), its model comes, a lamp glows ----
-{
+if (want("2h")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, land = wt.land, o = {};
@@ -1013,7 +1019,7 @@ console.log('—', sec());
 }
 
 // ---- 2i. Machines («Техника»): the loader in an area into the truck; the excavator digs and tips; the truck out to the tip ----
-{
+if (want("2i")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {}, M = 1 / 10.4651;
@@ -1077,7 +1083,24 @@ console.log('—', sec());
       const top = (H) => (t.heightAt(H.x, H.z) - t.firmAt(H.x, H.z)) / M, lowA = (low() - t.firmAt(A.x, A.z)) / M, lowB = (low() - t.firmAt(B.x, B.z)) / M, tA0 = top(A), tB0 = top(B);
       const a0 = near(A), b0 = near(B), s0 = E.swing;
       go(45, [1, 0], [0, 0]); const s1 = E.swing; go(90, [-1, 0], [0, 0]); const s2 = E.swing;
-      o.push = { tA: [+tA0.toFixed(2), +top(A).toFixed(2), +lowA.toFixed(2)], tB: [+tB0.toFixed(2), +top(B).toFixed(2), +lowB.toFixed(2)], pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(A.x, A.z)) / M).toFixed(2), top: +((t.heightAt(A.x, A.z) - t.firmAt(A.x, A.z)) / M).toFixed(2), bad: mt._bad, a: +(near(A) / Math.max(1e-12, a0)).toFixed(2), b: +(near(B) / Math.max(1e-12, b0)).toFixed(2), sw1: +(s1 - s0).toFixed(2), sw2: +(s2 - s1).toFixed(2) }; }
+      o.push = { tA: [+tA0.toFixed(2), +top(A).toFixed(2), +lowA.toFixed(2)], tB: [+tB0.toFixed(2), +top(B).toFixed(2), +lowB.toFixed(2)], pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(A.x, A.z)) / M).toFixed(2), top: +((t.heightAt(A.x, A.z) - t.firmAt(A.x, A.z)) / M).toFixed(2), bad: mt._bad, a: +(near(A) / Math.max(1e-12, a0)).toFixed(2), b: +(near(B) / Math.max(1e-12, b0)).toFixed(2), sw1: +(s1 - s0).toFixed(2), sw2: +(s2 - s1).toFixed(2) };
+      // (the owner, 2026-11-17: its back went through a heap — the stick out, the bucket's back first, shoves it on)
+      { const [bb] = ring(), cc = E.root.position, rx = bb.x - cc.x, rz = bb.z - cc.z, rl = Math.hypot(rx, rz) || 1, H = { x: bb.x + rx / rl * 0.9 * M, z: bb.z + rz / rl * 0.9 * M };
+        const r = 0.45 * M, ht = low() - t.firmAt(H.x, H.z) + 0.6 * M; t.deposit(H.x, H.z, ht * 2 * Math.PI * r * r, r, 0); frames(3);   // (its top well over the bucket's bottom all the way: the stick's arc lifts it)
+        // (where the heap's mass is along the way out, within 1,5 m of it — shoved on, it moves out; gone through, it stays)
+        const ux = rx / rl, uz = rz / rl, mid = () => { let m = 0, w = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - H.x, z - H.z) > 1.5 * M) continue; const l = t.loose[iz * t.nx + ix]; m += l; w += l * ((x - H.x) * ux + (z - H.z) * uz); } return w / Math.max(1e-12, m) / M; };
+        const h0 = top(H), n0 = near(H), c0 = mid(); mt._pushStat = 0; go(30, [0, -1], [0, 0]);
+        o.back = { shift: +(mid() - c0).toFixed(2), h0: +h0.toFixed(2), h1: +top(H).toFixed(2), kept: +(near(H) / Math.max(1e-12, n0)).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(H.x, H.z)) / M).toFixed(2) }; }
+        // (and driven into a heap, the bucket low before it: its back shoves it on — the owner's case)
+        { E.swing = E.swingGoal = 0; E.update(0); frames(2);   // (the arm straight ahead of the tracks)
+          const tp = E.teethWorld(new V()), sg = Math.sign((tp.x - E.x) * Math.cos(E.yaw) - (tp.z - E.z) * Math.sin(E.yaw)) || 1, fx = Math.cos(E.yaw) * sg, fz = -Math.sin(E.yaw) * sg, lo = low(), D = { x: tp.x + fx * 0.8 * M, z: tp.z + fz * 0.8 * M }, r2 = 0.8 * M, h2 = lo - t.firmAt(D.x, D.z) + 0.8 * M;
+          const looseKeep = t.loose.slice(), eKeep = [E.x, E.z, E.yaw];   // (put back after: the tests that follow dig here)
+          t.deposit(D.x, D.z, h2 * 2 * Math.PI * r2 * r2, r2, 0); frames(3);
+          const mid2 = () => { let m = 0, w = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - D.x, z - D.z) > 1.8 * M) continue; const l = t.loose[iz * t.nx + ix]; m += l; w += l * ((x - D.x) * fx + (z - D.z) * fz); } return w / Math.max(1e-12, m) / M; };
+          const zone = (lo2, hi2, side = 1.5) => { let v = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz), a = ((x - D.x) * fx + (z - D.z) * fz) / M, c = Math.abs((x - D.x) * -fz + (z - D.z) * fx) / M; if (a >= lo2 && a < hi2 && c < side) v += t.loose[iz * t.nx + ix]; } return v * t.cellArea / (M * M * M); };
+          const zb0 = zone(-3, -0.3), zm0 = zone(-0.3, 0.3), zf0 = zone(0.3, 5), zs0 = zone(-3, 5, 3) - zone(-3, 5);
+          const d0 = mid2(), e0 = [E.x, E.z]; mt._pushStat = 0; mt.setExcMode('drive'); mt.joystick('l', 0, -sg); frames(30); mt.joystick('l', 0, 0); frames(3); mt.setExcMode('dig');
+          o.drivePush = { gain: +(zone(0.3, 5) - zf0).toFixed(3), lost: +(zm0 - zone(-0.3, 0.3)).toFixed(3), zones: [zb0, zm0, zf0, zs0].map((v) => +v.toFixed(3)).join('/') + ' → ' + [zone(-3, -0.3), zone(-0.3, 0.3), zone(0.3, 5), zone(-3, 5, 3) - zone(-3, 5)].map((v) => +v.toFixed(3)).join('/'), sg, ahead: +(Math.hypot(tp.x - E.x, tp.z - E.z) / M).toFixed(2), low: +((lo - t.firmAt(D.x, D.z)) / M).toFixed(2), shift: +(mid2() - d0).toFixed(2), drove: +(Math.hypot(E.x - e0[0], E.z - e0[1]) / M).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3) };  t.loose.set(looseKeep); t._touch(0, 0, t.rx, t.rz); E.place(t, ...eKeep); frames(3); } }
     // (the owner: a drop of concrete on the ground stays a dab — not a pillar down when dug round; a bucket takes it whole)
     { const LV = tc.lumpView, mod = await import('./src/world/lumps.js'), b = E.teethWorld(new V()), i0 = t.index(b.x + 1.2 * M, b.z), nx = t.nx, ids = [];
       for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const i = i0 + dz * nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = 0.05 * M; t.cTime[i] = (tc.clock || 0) - 400; ids.push(i); }   /* (a spill on the ground's own level) */
@@ -1114,6 +1137,40 @@ console.log('—', sec());
       const pr = tc.objects.add({ type: 'siteprop', kind: 'pallet', x: +(E.x + fx / fl * 4.2 * M).toFixed(5), z: +(E.z + fz / fl * 4.2 * M).toFixed(5), yaw: 0 }); tc.siteProps?.update?.(0); frames(2);
       const e1 = [E.x, E.z]; mt.joystick('l', 0, -1); frames(150); mt.joystick('l', 0, 0); frames(3);
       o.prop = { moved: +(Math.hypot(E.x - e1[0], E.z - e1[1]) / M).toFixed(2), clear: mt._fits('excavator', E.x, E.z, E.yaw) }; tc.objects.remove(pr.id); }
+    // (the owner: the loader and the truck drove through its boom and bucket — the arm stops them where it is low; swung away, the
+    // same spot is free)
+    { const set = (sw, bm) => { for (const [k, v] of [['swing', sw], ['boom', bm], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); E.root.updateMatrixWorld(true); };
+      let bm = 0, lowY = Infinity; for (const b of [-0.4, -0.2, 0, 0.2, 0.4]) { set(0, b); const y = E.teethWorld(new V()).y; if (y < lowY) { lowY = y; bm = b; } }
+      set(0, bm); const p = E.teethWorld(new V()), c = new V().setFromMatrixPosition(E.bucketP.matrixWorld), q = { x: (p.x + c.x) / 2, z: (p.z + c.z) / 2 };
+      // (the arm itself, not the ground there — that spot may be in a hole the dig test left: _fits would refuse it anyway)
+      const low = mt._armOver('loader', q.x, q.z), lowT = mt._armOver('truck', q.x, q.z), inFits = mt._fits('loader', q.x, q.z, 0) === false;
+      set(Math.PI, bm); const away = mt._armOver('loader', q.x, q.z);
+      for (const b of [0.9, 1.1, 1.3]) set(0, b); const lifted = Math.min(...mt._armSegs().map(([a, c]) => Math.min(a.y, c.y))) - t.heightAt(q.x, q.z) > 3.6 * M ? mt._armOver('loader', q.x, q.z) : null;
+      set(0, 0); o.arm = { low, lowT, inFits, away, lifted, h: +((lowY - t.heightAt(q.x, q.z)) / M).toFixed(2) }; }
+    // (the realist: the excavator's own arm swung into a standing truck — its bucket stops at the cab and the body's side; a tipped body
+    // stands higher than a level one)
+    if (mt.truck?.loaded) { mt.setExcMode('dig'); const T = mt.truck, keepT = [T.x, T.z, T.yaw, T.root.visible]; T.root.visible = true;   // (the slew: in «Копание», not «Ход»)
+      const pen = () => { let w = 0; mt._mbT = null; for (const q of [...E.hardPoints(), E.teethWorld(new V())]) for (const b of mt._machBoxes()) { const dx = q.x - b.x, dz = q.z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl && Math.abs(-dx * b.uz + dz * b.ux) < b.hw && q.y < b.top && q.y > b.bot) w = Math.max(w, Math.min(b.top - q.y, b.hw - Math.abs(-dx * b.uz + dz * b.ux))); } return w / M; };
+      for (const [k, v] of [['swing', 0], ['boom', 0.1], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
+      const tp = E.teethWorld(new V()), r = Math.hypot(tp.x - E.x, tp.z - E.z), a0 = Math.atan2(tp.z - E.z, tp.x - E.x), res = {};
+      for (const sg of [1, -1]) { const a = a0 + sg * 0.9;   // (the truck 50° round the way the bucket swings, side on to it)
+        T.place(t, E.x + Math.cos(a) * r, E.z + Math.sin(a) * r, -a); mt._mbT = null; frames(2);
+        for (const [k, v] of [['swing', 0], ['boom', 0.1], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
+        const p0 = pen(); let pm = 0, sw0 = E.swing; for (const lx of [1, -1]) { for (let i = 0; i < 70; i++) { mt.joystick('l', lx, 0); frames(1); pm = Math.max(pm, pen()); } mt.joystick('l', 0, 0); frames(2); }
+        res[sg > 0 ? 'a' : 'b'] = { p0: +p0.toFixed(3), max: +pm.toFixed(3), swung: +(E.swing - sw0).toFixed(2) }; }
+      T.tip = 0; mt._mbT = null; const tall0 = mt._tallOf('truck') / M; T.tip = T.tipGoal = 0.9; T.update?.(0); mt._mbT = null; const tall1 = mt._tallOf('truck') / M; T.tip = T.tipGoal = 0; T.update?.(0); mt._mbT = null;
+      T.place(t, keepT[0], keepT[1], keepT[2]); T.root.visible = keepT[3]; for (const [k, v] of [['swing', 0], ['boom', 0], ['stick', 0], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
+      o.armTruck = { ...res, tall0: +tall0.toFixed(2), tall1: +tall1.toFixed(2) }; }
+    // (the realist: driven the way its mouth faces — backwards, the bucket open toward the machine — what it meets goes into the bucket)
+    { for (const [k, v] of [['swing', 0], ['boom', 0], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
+      // (which way its mouth faces, from the bucket's own points — the machine driven that way, the heap just before the mouth)
+      const g = mt.digG, tp = E.teethWorld(new V()), mo = E.mouthWorld(new V()), fx = Math.cos(E.yaw), fz = -Math.sin(E.yaw), PP = E.pushPoints(), cc = PP.reduce((a, q) => a.add(q), new V()).multiplyScalar(1 / PP.length);
+      const out = -Math.sign((mo.x - cc.x) * fx + (mo.z - cc.z) * fz) || 1;   // (the joystick's y: −1 drives along +f)
+      const low = Math.min(tp.y, ...E.hardPoints().map((q) => q.y)), D = { x: mo.x - fx * out * 0.5 * M, z: mo.z - fz * out * 0.5 * M }, r = 0.5 * M, h = low - t.firmAt(D.x, D.z) + 0.5 * M;
+      const keep = t.loose.slice(), eK = [E.x, E.z, E.yaw], l0 = g ? g.load : 0; t.deposit(D.x, D.z, h * 2 * Math.PI * r * r, r, 0); frames(3);
+      mt.setExcMode('drive'); mt.joystick('l', 0, out); frames(25); mt.joystick('l', 0, 0); frames(3); mt.setExcMode('dig');
+      o.mouth = { gain: +(((mt.digG?.load || 0) - l0) * t.cellArea / (M * M * M)).toFixed(3), drove: +(Math.hypot(E.x - eK[0], E.z - eK[1]) / M).toFixed(2), facing: +(((mo.x - cc.x) * fx + (mo.z - cc.z) * fz) * -out / M).toFixed(2) };
+      t.loose.set(keep); t._touch(0, 0, t.rx, t.rz); E.place(t, ...eK); if (mt.digG) mt.digG.load = l0; frames(3); }
     E.place(t, 2 * M, -t.halfZ + 3 * M, 0);   // (parked out of the truck's way: the machines stop at one another now)
     for (const r of tc.objects.all('siteprop')) tc.objects.remove(r.id); tc.siteProps?.update?.(0);   // (the site's things off its way out too: this is the drive off the plot, not a detour)
     mt.exit(); frames(5);
@@ -1130,6 +1187,11 @@ console.log('—', sec());
     return o;
   });
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
+  check('machines: the excavator\'s boom and bucket stop the loader and the truck where the arm is low; swung away, the spot is free (the owner)', o.arm && o.arm.low === true && o.arm.lowT === true && o.arm.inFits && o.arm.away === false && o.arm.lifted !== true, JSON.stringify(o.arm));
+  check('machines: the excavator\'s bucket, its back first (the stick out), shoves on what of a heap is over its way — its top down', o.back && o.back.pushed > 0.1 && o.back.h1 < o.back.h0 - 0.1, JSON.stringify(o.back));
+  check('machines: the excavator driven into a heap, the bucket low before it, shoves it on (the owner)', o.drivePush && o.drivePush.gain > 0.1 && o.drivePush.lost > 0.1, JSON.stringify(o.drivePush));
+  check('machines: the excavator\'s own bucket swung at a standing truck stops at it — never in its cab or body\'s side; a tipped body counts higher (the realist)', o.armTruck && o.armTruck.a.max < 0.08 && o.armTruck.b.max < 0.08 && o.armTruck.tall1 > o.armTruck.tall0 + 0.1, JSON.stringify(o.armTruck));
+  check('machines: the excavator driven the way its bucket\'s mouth faces takes what it meets into the bucket (the realist)', o.mouth && o.mouth.gain > 0.03 && o.mouth.drove > 0.2, JSON.stringify(o.mouth));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.push.tA[2] + 0.12 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.push.tB[2] + 0.12 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
   check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 3 && o.lump.pieces <= 20 && o.lump.maxR <= 0.5 && o.lump.spread >= 1.5, JSON.stringify(o.lump));
@@ -1146,7 +1208,7 @@ console.log('—', sec());
 // steeper than its angle, at the sides no higher than their tops, the rest on the ground by them (not under the body), nothing
 // lost; a shovel thrown in with the finger on the body — in it; the excavator's bucket of black topsoil opened over it — in it,
 // as black topsoil, and so in its record ----
-{
+if (want("2i'")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {}, M = 1 / 10.4651, S3 = 10.4651 ** 3;
@@ -1250,7 +1312,7 @@ console.log('—', sec());
 }
 
 // ---- 2j. Sounds: every sound the code asks for is in the library, every file of it is there and decodes ----
-{
+if (want("2j")) {
   const fs = await import('fs'), path = await import('path');
   const lib = await import(path.resolve('src/audio/sounds.js')), names = new Set(Object.keys(lib.SOUNDS));
   const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.js') ? [path.join(d, e.name)] : []));
@@ -1282,7 +1344,7 @@ console.log('—', sec());
 }
 
 // ---- 2k. Catastrophes: a house of blocks; a weak quake leaves it, a strong one brings it down; every kind runs; all back as it was ----
-{
+if (want("2k")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, t = tc.terrain, M = 1 / 1000 / 10.4651, o = {};
@@ -1342,7 +1404,7 @@ console.log('—', sec());
 // ---- 2k'. «Обрушение опоры»: a house on its glass lift shaft — the posts bow, the panes crack and whiten, the
 // house sinks and leans, then falls as one body (≈ g), strikes and breaks into pieces; the slabs fall too (not
 // lost); a fascia does not hold it up; all back as it was ----
-{
+if (want("2k'")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, o = {}, MM = (v) => v / 1000 / 10.4651, M = 1 / 1000 / 10.4651;
@@ -1411,7 +1473,7 @@ console.log('—', sec());
 }
 
 // ---- 2l. The film director's grammar (director.js): the beat's three angles, the longest shot, hard cuts within a stage, the hand-held sway ----
-{
+if (want("2l")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, { Director } = await import('./src/film/director.js'), THREE = await import('three'), o = {};
@@ -1452,7 +1514,7 @@ console.log('—', sec());
 
 // ---- 2l⁰. «Ibiza» stage 1, the foundations: every stage the game's own work, in the order of a site — the pits dug (the new
 // «dig a marked pit» job), the beds, the pool's shell poured, the strip / slab / pad formed, caged, poured, a week, the boards off
-{
+if (want("2l⁰")) {
   const { browser, page, errors } = await open(pw.chromium, '&film=found&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
   const o = await page.evaluate(async () => {
@@ -1480,7 +1542,7 @@ console.log('—', sec());
 // a strip the wall + 100 wide torched down along it at the pace of its width (v · w = 0,06 m²/s) — the roll (the strip's own
 // length, thinning), the torch's jet into the nip, the burning, the smoke; wider than the roll — two strips lapped 100, the
 // second over the first only in the lap; done — the torch out on its stand, the beads at the edges; undo takes it off ----
-{
+if (want("2o")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.dpcView, null, { timeout: 120000 });
   const o = await page.evaluate(async () => {
@@ -1548,7 +1610,7 @@ console.log('—', sec());
 // ---- 2l². «Ibiza» stage 2 (the owner: in the order of the build, from where stage 1 ended): the plot of film 1's end loaded, the
 // damp-proof course torched down, the spine and the pavilion laid to one level, the ring beam over them, the steps up to 6,8, the
 // landing's beam; the hook marked before the end (the loop) ----
-{
+if (want("2l²")) {
   const { browser, page, errors } = await open(pw.chromium, '&film=stair&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
   const o = await page.evaluate(async () => {
@@ -1571,7 +1633,7 @@ console.log('—', sec());
 // cantilevers (3 m over the pool, 2,4 m to the left), the olive's opening and the notch round the fireplace's tower; its props over the
 // pool on the shell's floor (not through it); a week; the box; its roof slab; 28 days — the props out piece by piece from the
 // cantilever's edge back to the walls; the green roof, the fascias, the glass, the finish; the hook marked ----
-{
+if (want("2l³")) {
   const { browser, page, errors } = await open(pw.chromium, '&film=sail&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
   const o = await page.evaluate(async () => {
@@ -1598,7 +1660,7 @@ console.log('—', sec());
 }
 
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
-{
+if (want("2m")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, t = tc.terrain, M = 1 / 1000 / 10.4651, o = {};
