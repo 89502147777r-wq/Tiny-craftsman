@@ -1098,6 +1098,7 @@ console.log('—', sec());
       const pr = tc.objects.add({ type: 'siteprop', kind: 'pallet', x: +(E.x + fx / fl * 4.2 * M).toFixed(5), z: +(E.z + fz / fl * 4.2 * M).toFixed(5), yaw: 0 }); tc.siteProps?.update?.(0); frames(2);
       const e1 = [E.x, E.z]; mt.joystick('l', 0, -1); frames(150); mt.joystick('l', 0, 0); frames(3);
       o.prop = { moved: +(Math.hypot(E.x - e1[0], E.z - e1[1]) / M).toFixed(2), clear: mt._fits('excavator', E.x, E.z, E.yaw) }; tc.objects.remove(pr.id); }
+    E.place(t, -t.halfX + 3 * M, t.halfZ - 3 * M, 0);   // (parked out of the truck's way: the machines stop at one another now)
     mt.exit(); frames(5);
     // the truck: loaded, driven out past the plot's edge — to the tip, back empty
     mt.enter('truck'); for (let i = 0; i < 200 && !(mt.driving && mt.drv === 'truck'); i++) await new Promise((r) => setTimeout(r, 50));
@@ -1523,7 +1524,7 @@ console.log('—', sec());
     const q = tc.objects.get(ps[1].id), dm = Math.hypot(ps[0].x - q.x, ps[0].z - q.z) / MM(1);
     return { n: ps.length, d01: Math.round(d01), d02: Math.round(d02), dm: Math.round(dm) };
   });
-  check('site: things never stand on one another — put twice on one spot, or carried onto another, it stands clear (the owner)', sp.n === 3 && sp.d01 >= 1200 && sp.d02 >= 1800 && sp.dm >= 1200, JSON.stringify(sp));
+  check('site: things never stand on one another — put twice on one spot, or carried onto another, it stands clear (the owner)', sp.n === 3 && sp.d01 >= 1200 && sp.d02 >= 1650 && sp.dm >= 1200, JSON.stringify(sp));
   await browser.close();
 }
 

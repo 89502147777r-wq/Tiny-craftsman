@@ -733,7 +733,7 @@ export class MachineTool {
     // (every other machine on the plot, each its own outline — the owner: the excavator drove through the loader while the
     // truck was there, for only one other was looked at)
     const others = noOther ? [] : [['loader', this.loader], ['truck', this.truck], ['excavator', this.exc]].filter(([k, m]) => k !== kind && m?.loaded && m.root?.visible !== false)
-      .map(([k, m]) => { const [o0, o1, ob] = dims(k); return { m, o0: o0 - 0.05, o1: o1 + 0.05, ob: (k === 'truck' && m.width ? m.width * MODEL_SCALE / 2 : ob) + 0.05, top: k === 'truck' && kind === 'loader' && m.bodyBox ? m.y + m.bodyBox.max.y : Infinity }; });   // (the loader comes right up to the body's side; its bucket lifted over the body's side goes over it)
+      .map(([k, m]) => { const [o0, o1, ob] = kind === 'truck' && k === 'loader' ? [-1.6, 1.6, 1.0] : dims(k); return { m, o0: o0 - 0.05, o1: o1 + 0.05, ob: (k === 'truck' && m.width ? m.width * MODEL_SCALE / 2 : ob) + 0.05, top: k === 'truck' && kind === 'loader' && m.bodyBox ? m.y + m.bodyBox.max.y : Infinity }; });   // (the loader comes right up to the body's side; its bucket lifted over the body's side goes over it)
     const bucketY = kind === 'loader' && this.loader?.loaded ? this.loader.lowWorld(new THREE.Vector3()).y : null;
     for (const [a, b] of pts) {
       const px = x + fx * R(a) - fz * R(b), pz = z + fz * R(a) + fx * R(b), bucket = bucketY != null && a > 0.95;
@@ -1128,7 +1128,9 @@ export class MachineTool {
     E.boomGoal -= ry * 0.55 * dt;
     E.curlGoal -= rx * 1.2 * dt;
     // the ground under what goes into it: how deep the deepest of the points is in it
-    const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, t.heightAt(q.x, q.z) - q.y, this._inObst(q)); return w; };   // (the ground — and what stands on it: masonry, the site's things — holds the bucket)
+    // (the FIRM ground holds the bucket — its own soil, concrete — not what is loose on it: a heap is shoved, not leant on)
+    const firm = (x, z) => { const i = t.index(x, z); return t.heightAt(x, z) - t.loose[i]; };
+    const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, firm(q.x, q.z) - q.y, this._inObst(q)); return w; };   // (and what stands on it: masonry, the site's things)   // (the ground — and what stands on it: masonry, the site's things — holds the bucket)
     const pose0 = E.pose(), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
     const hp0 = E.hardPoints();
     E.update(dt);
