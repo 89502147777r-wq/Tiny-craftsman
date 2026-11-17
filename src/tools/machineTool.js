@@ -1203,7 +1203,7 @@ export class MachineTool {
     const pose0 = E.pose(), obst0 = inO([...E.hardPoints(), E.teethWorld(new THREE.Vector3())]), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
     // (the line of its teeth across its width, before and after the move: what leads a sideways slew through a heap)
     const lip = () => { const tp = E.teethWorld(new THREE.Vector3()), hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, out = []; for (let k = -4; k <= 4; k++) out.push(new THREE.Vector3(tp.x + ux * hw * k / 4, tp.y, tp.z + uz * hw * k / 4)); return out; };
-    const hp0 = E.hardPoints(), lip0 = lip();
+    const hp0 = E.hardPoints(), lip0 = lip(), pp0 = E.pushPoints ? E.pushPoints() : hp0;
     E.update(dt);
     const p = E.teethWorld(new THREE.Vector3()), mv = p.clone().sub(before), moving = mv.length() > R(0.00005);
     // (digging: the teeth leading — the way they go as it curls in — not full, not tipped)
@@ -1214,7 +1214,8 @@ export class MachineTool {
     this._excCut = cutting;   // (for a lump of concrete in its way: world/lumps.js)
     // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews; not cutting, its teeth too:
     // swung sideways through a heap, they go first)
-    if (!cutting) this._excPush([...hp0, ...lip0], [...E.hardPoints(), ...lip()], p); else this._excPush(hp0, E.hardPoints(), p);
+    // (the bucket's back, bottom and sides shove what is over them — dense across its width (pushPoints), not the shell's sparse vertices)
+    { const pp1 = E.pushPoints ? E.pushPoints() : E.hardPoints(), st0 = E.stickPoints(); if (!cutting) this._excPush([...pp0, ...hp0.slice(-st0.length), ...lip0], [...pp1, ...st0, ...lip()], p); else this._excPush(hp0, E.hardPoints(), p); }
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;

@@ -1078,6 +1078,11 @@ console.log('—', sec());
       const a0 = near(A), b0 = near(B), s0 = E.swing;
       go(45, [1, 0], [0, 0]); const s1 = E.swing; go(90, [-1, 0], [0, 0]); const s2 = E.swing;
       o.push = { tA: [+tA0.toFixed(2), +top(A).toFixed(2), +lowA.toFixed(2)], tB: [+tB0.toFixed(2), +top(B).toFixed(2), +lowB.toFixed(2)], pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(A.x, A.z)) / M).toFixed(2), top: +((t.heightAt(A.x, A.z) - t.firmAt(A.x, A.z)) / M).toFixed(2), bad: mt._bad, a: +(near(A) / Math.max(1e-12, a0)).toFixed(2), b: +(near(B) / Math.max(1e-12, b0)).toFixed(2), sw1: +(s1 - s0).toFixed(2), sw2: +(s2 - s1).toFixed(2) }; }
+      // (the owner, 2026-11-17: its back went through a heap — the stick out, the bucket's back first, shoves it on)
+      { const [bb] = ring(), cc = E.root.position, rx = bb.x - cc.x, rz = bb.z - cc.z, rl = Math.hypot(rx, rz) || 1, H = { x: bb.x + rx / rl * 0.9 * M, z: bb.z + rz / rl * 0.9 * M };
+        const r = 0.35 * M, ht = low() - t.firmAt(H.x, H.z) + 0.2 * M; t.deposit(H.x, H.z, ht * 2 * Math.PI * r * r, r, 0); frames(3);
+        const h0 = top(H), n0 = near(H); mt._pushStat = 0; go(30, [0, -1], [0, 0]);
+        o.back = { h0: +h0.toFixed(2), h1: +top(H).toFixed(2), kept: +(near(H) / Math.max(1e-12, n0)).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(H.x, H.z)) / M).toFixed(2) }; }
     // (the owner: a drop of concrete on the ground stays a dab — not a pillar down when dug round; a bucket takes it whole)
     { const LV = tc.lumpView, mod = await import('./src/world/lumps.js'), b = E.teethWorld(new V()), i0 = t.index(b.x + 1.2 * M, b.z), nx = t.nx, ids = [];
       for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const i = i0 + dz * nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = 0.05 * M; t.cTime[i] = (tc.clock || 0) - 400; ids.push(i); }   /* (a spill on the ground's own level) */
@@ -1139,6 +1144,7 @@ console.log('—', sec());
   });
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: the excavator\'s boom and bucket stop the loader and the truck where the arm is low; swung away, the spot is free (the owner)', o.arm && o.arm.low === false && o.arm.lowT === false && o.arm.away === true, JSON.stringify(o.arm));
+  check('machines: the excavator\'s bucket, its back first (the stick out), shoves a heap on — not through it (the owner)', o.back && o.back.pushed > 0.01 && o.back.kept < 0.8, JSON.stringify(o.back));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.push.tA[2] + 0.12 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.push.tB[2] + 0.12 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
   check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 3 && o.lump.pieces <= 20 && o.lump.maxR <= 0.5 && o.lump.spread >= 1.5, JSON.stringify(o.lump));

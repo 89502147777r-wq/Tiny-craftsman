@@ -96,6 +96,15 @@ export class Excavator {
     const shell = [];
     for (let i = 0; i < kp.length; i += Math.max(1, Math.floor(kp.length / 200))) if (Math.hypot(kp[i].x - tip.x, kp[i].y - tip.y) > R(0.22)) shell.push(toB(kp[i]));
     this.shell = shell;
+    // (what shoves loose soil — its back, its bottom, its sides: the shell's profile (its outline) repeated across all its width every 8 cm. The
+    // shell's own points are the model's vertices — big flat plates have few — and each shoves a band of ~10 cm: a heap went through
+    // the bucket's back between them (the owner))
+    { const wAx = toB(tip.clone().add(new THREE.Vector3(0, 0, 1))).sub(this.teeth).normalize(), flat = shell.map((q) => q.clone().addScaledVector(wAx, -q.clone().sub(this.teeth).dot(wAx)));
+      // (the profile's outline only — its outer points by the angle round its middle, 5° bins: inside it is the bucket's hollow)
+      const c = flat.reduce((a, q) => a.add(q), new THREE.Vector3()).multiplyScalar(1 / Math.max(1, flat.length)), e1 = new THREE.Vector3().subVectors(this.teeth, c).projectOnPlane(wAx).normalize(), e2 = new THREE.Vector3().crossVectors(wAx, e1), bins = new Map();
+      for (const q of flat) { const d = q.clone().sub(c), a = Math.atan2(d.dot(e2), d.dot(e1)), b = Math.round(a / (Math.PI / 36)), r = d.length(); if (!(bins.get(b)?.r >= r)) bins.set(b, { q, r }); }
+      const half = this.bucketW / 2, n = Math.max(2, Math.ceil(this.bucketW / R(0.08)));
+      this.pushShell = []; for (const { q } of bins.values()) for (let i = 0; i <= n; i++) this.pushShell.push(q.clone().addScaledVector(wAx, -half + this.bucketW * i / n)); }
     const sp = pointsOf(this.stickP, 800, parts), sMin = Math.min(...sp.map((q) => q.y));
     this.stickLow = sp.filter((q) => q.y < sMin + R(0.15)).map((q) => this.stickP.worldToLocal(q.clone()));
     // the hollow: between the pin and the teeth, toward the bottom of the C (the shell's point farthest
@@ -290,6 +299,8 @@ export class Excavator {
     for (const q of this.stickLow) out.push(q.clone().applyMatrix4(this.stickP.matrixWorld));
     return out;
   }
+  // the bucket's back, bottom and sides, dense across its width (world): what shoves loose soil
+  pushPoints() { this.root.updateMatrixWorld(true); const m = this.bucketP.matrixWorld; return (this.pushShell || this.shell).map((q) => q.clone().applyMatrix4(m)); }
   // the stick's end alone (world)
   stickPoints() { this.root.updateMatrixWorld(true); return this.stickLow.map((q) => q.clone().applyMatrix4(this.stickP.matrixWorld)); }
   // the bucket's shell alone (world)
