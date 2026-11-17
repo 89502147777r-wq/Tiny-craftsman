@@ -29,7 +29,7 @@ const rowsRaw = await page.evaluate(async (FPS) => {
   const boxes = () => [...document.querySelectorAll('#film .f-bill, #film .f-head, #film .f-kick, #film .f-count, #film .f-steps, #film .f-stage, #film .f-sketch, #film .f-next, #film .f-pin span, #film .f-rcpt .paper, #film .f-card')]
     
     .filter((e) => getComputedStyle(e).visibility !== 'hidden' && +getComputedStyle(e.closest('.f-pin') || e).opacity > 0.35 && +getComputedStyle(e).opacity > 0.35 && e.getClientRects().length > 0)
-    .map((e) => { const r = e.getBoundingClientRect(); return { k: e.className.split(' ')[0] || e.tagName, txt: e.textContent.slice(0, 24), x0: r.left, y0: r.top, x1: r.right, y1: r.bottom, o: +getComputedStyle(e).opacity * +getComputedStyle(e.closest('.f-pin') || e).opacity }; });
+    .map((e) => { const r = e.getBoundingClientRect(), F = document.getElementById('film')?.getBoundingClientRect() || { top: 0, height: innerHeight }; return { k: e.className.split(' ')[0] || e.tagName, txt: e.textContent.slice(0, 24), x0: r.left, y0: r.top, x1: r.right, y1: r.bottom, yb: (r.bottom - F.top) / F.height, o: +getComputedStyle(e).opacity * +getComputedStyle(e.closest('.f-pin') || e).opacity }; });
   for (let i = 0; i < 6000 && !f.done; i++) {
     // (a real pause each frame, as the render's round trip: the models and sounds the film waits for load as they do when it is drawn)
     await new Promise((r) => setTimeout(r, 4));
@@ -136,9 +136,12 @@ console.log(`\nHOOK / SEAM:\n` + hook.join('\n'));
 console.log(`\nSILENCE (> 1 s):\n` + sil.slice(0, 20).join('\n'));
 // (the menu in the frame is the game's own (the owner, 2026-11-17: «актуальное меню» — the material in the frame is the one chosen in
 // it): rows typed in the film (d.hud([...])) instead of read from the game (d.menu) fail; so does a film's own «… FAILED» note)
+// (nothing of the film's own lower than 75 % of the frame — YouTube Shorts' captions and buttons lie there: the analyst's list)
+const lowP = uniq(rows.flatMap((r) => r.b.filter((q) => q.k !== 'f-sketch' && q.yb > 0.75).map((q) => `${r.t.toFixed(2)} s ${q.k} «${q.txt}» to ${(q.yb * 100).toFixed(0)} % of the height`)));
+console.log(`\nUNDER 75 % (the Shorts zone):\n` + lowP.slice(0, 10).join('\n'));
 const menu = [...new Set(typed)].map((r) => `menu typed by the film, not the game's: ${r}`).concat(notes.filter((n) => /FAILED/.test(n)));
 console.log(`\nMENU / NOTES:\n` + menu.join('\n'));
-const fails = menu.length + still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
+const fails = lowP.length + menu.length + still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
 console.log(`\nRULES: ${fails ? fails + ' problems' : 'all pass'}`);
 if (!fails) console.log('gate: rules passed for version ' + gateMark(film, 'rules')); else console.log('gate: version ' + filmHash(film) + ' NOT passed — no render');
 console.log('LOG ' + JSON.stringify(rows.reduce((a, r) => { if (!a.length || a.at(-1)[0] !== r.n) a.push([r.n, r.t, r.title]); return a; }, [])));

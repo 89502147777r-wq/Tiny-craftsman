@@ -365,12 +365,12 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-kick.gold { color: #f2b134; }
 #film .f-next { position: absolute; left: 50%; top: 70%; transform: translateX(-50%); white-space: nowrap; color: #f4f1ea; font-family: "Rockwell Extra Bold", "Rockwell", "Roboto Slab", "Arial Black", "Inter Display", Arial, sans-serif; font-size: clamp(16px, 5.6vw, 42px); font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.6); padding-bottom: 0.18em; border-bottom: 0.14em solid #c8321f; }   /* (the owner: in the brand's style, as the logo — white block letters, the initials red; above the Shorts' bottom zone) */
 #film .f-next i { font-style: normal; color: #e0392b; }
-#film .f-sketch { position: absolute; left: 68.3%; top: 22.5%; width: 31.3%; height: auto; pointer-events: none; }   /* (the stage's sketch: a paper sticker on a push pin, its shadow in the picture — under the top group of the HUD) */
+#film .f-sketch { position: absolute; left: 72.8%; top: 22.5%; width: 26.8%; height: auto; pointer-events: none; }   /* (the stage's sketch: a paper sticker on a push pin, its shadow in the picture — under the top group of the HUD; the paper ~24 % of the frame's width — the analyst's list) */
 #film .f-steps { position: absolute; left: 50%; top: 47%; transform: translateX(-50%); color: #fff; font-family: "Rockwell Extra Bold", "Rockwell", "Roboto Slab", "Arial Black", Arial, sans-serif; font-size: clamp(16px, 6vw, 46px); font-weight: 900; letter-spacing: 0.04em; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.7); white-space: nowrap; }   /* (the steps' counter — the analyst) */
 #film .f-steps.done { color: #ffd23f; }
 #film .f-rew { position: absolute; left: 6%; top: 13%; color: #fff; font-size: clamp(20px, 8vw, 60px); font-weight: 900; letter-spacing: -0.08em; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.6); }   /* (the hook's rewind sign: no words — the owner) */
-#film .f-tack { position: absolute; left: 82.2%; top: 23.35%; width: 4.27%; height: auto; pointer-events: none; }
-#film .f-next.small { top: 82%; font-size: clamp(11px, 3.6vw, 27px); }   /* (on the hook: under the question, not over the thing — the analyst) */
+#film .f-tack { position: absolute; left: 84.7%; top: 23.23%; width: 3.66%; height: auto; pointer-events: none; }
+#film .f-next.small { top: 69%; font-size: clamp(11px, 3.6vw, 27px); }   /* (on the hook: under the thing, over the Shorts zone (75 %) — the analyst's release list) */
 #film .f-kick.top { top: 26%; font-size: clamp(24px, 9vw, 70px); }   /* (the hook's question: in the upper third, clear of the Shorts UI) */
 #film .f-kick.f-ask { width: auto; transform: translate(-50%, -110%); font-size: clamp(40px, 16vw, 120px); }   /* (the hook's «?» on the stair's top, in the frame) */
 /* the game's face over a film: the chips' rows at the top, the round tool button at the bottom (as the quiet mode's) */

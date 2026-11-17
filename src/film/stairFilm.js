@@ -472,9 +472,9 @@ export function* stairFilm(d, app) {
   // the stair's top off its edge (the analyst: the answer to the hook's «where?» never on the sheet) — then washes away into the real
   // view, which shows the top: the answer)
   // (the pin out first, up and away — else its red head hung on the sky after the sheet had washed off: the realist)
-  { const tp = d.t; pin.style.opacity = ''; app.sfx?.play?.('tap', { vol: 0.4 }); yield d.until(() => { const u = Math.min(1, (d.t - tp) / 0.2); pin.style.top = 23.35 - 2 * u + '%'; pin.style.opacity = String(1 - u); return u >= 1; }); pin.remove(); }
+  { const tp = d.t; pin.style.opacity = ''; app.sfx?.play?.('tap', { vol: 0.4 }); yield d.until(() => { const u = Math.min(1, (d.t - tp) / 0.2); pin.style.top = 23.23 - 2 * u + '%'; pin.style.opacity = String(1 - u); return u >= 1; }); pin.remove(); }
   { sk.src = 'assets/films/ibiza-2-sketch-flat.png';   // (straightened as it is taken down — the frame's own view to fall on)
-    const r0 = { l: 68.3, t: 22.5, w: 31.3 }, r1 = { l: -15.19, t: 27.46, w: 130.37 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
+    const r0 = { l: 72.8, t: 22.5, w: 26.8 }, r1 = { l: -15.19, t: 27.46, w: 130.37 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
     yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.5), e = u * u * (3 - 2 * u); sk.classList.add('grow'); sk.style.left = r0.l + (r1.l - r0.l) * e + '%'; sk.style.top = r0.t + (r1.t - r0.t) * e + '%'; sk.style.width = r0.w + (r1.w - r0.w) * e + '%'; return u >= 1; });
     yield d.sec(0.35);
     const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 1.0); sk.style.opacity = String(1 - u); return u >= 1; });
@@ -489,7 +489,7 @@ export function* stairFilm(d, app) {
     y0 = Math.min(y0, T.heightAt((x0 + x1) / 2, (z0 + z1) / 2)) - MM(150); y1 += MM(200 + 150);   // (the foundation's edge under it; the landing on top)
     const c = new V((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), cam = app.camera.clone();
     const corners = []; for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [z0, z1]) corners.push(new V(x, y, z));
-    const band = { l: 0.03, r: 0.97, t: 0.13, b: 0.78 }, mid = (band.t + band.b) / 2;   // (top-down: the logo and the budget end at ~0,11; «TO BE CONTINUED» starts at ~0,8)
+    const band = { l: 0.03, r: 0.97, t: 0.13, b: 0.66 }, mid = (band.t + band.b) / 2;   // (top-down: the logo and the budget end at ~0,11; «TO BE CONTINUED» at 0,69, all over the Shorts zone (75 %) — the analyst's list)
     // (the ground the frame shows near its bottom on the plot: past the plot's edge the ground is the panorama's, smeared (a camera
     // fitted from 24 m off showed a blurred band across the frame's lower third) — the camera itself may stand a little past the
     // edge. So the stair is turned from the pure profile toward its foot only as much as it needs: the risers face the camera then)
@@ -501,20 +501,22 @@ export function* stairFilm(d, app) {
     const clear = (e) => looks.every((q) => things.every((o) => { const dx = q.x - e.x, dz = q.z - e.z, L2 = dx * dx + dz * dz; if (L2 < 1e-9) return true;
       const t = Math.max(0, Math.min(1, ((o.x - e.x) * dx + (o.z - e.z) * dz) / L2)); if (Math.hypot(e.x + dx * t - o.x, e.z + dz * t - o.z) > o.r) return true;
       return e.y + (q.y - e.y) * t > G0 + o.h; }));   // (the line over its top: seen over it)
-    const a0 = Math.atan2(1000, 9500);
+    const a0 = Math.atan2(1000, 9500), U = (m) => m / MODEL_SCALE, inBand = () => corners.every((q) => { const v = q.clone().project(cam), sx = (v.x + 1) / 2, sy = (1 - v.y) / 2; return v.z < 1 && sx > band.l && sx < band.r && sy > band.t && sy < band.b; });
+    // (the least turned from the profile, the nearest, the lowest eye — as level as the frame's band and the plot allow: the box set
+    // in the band by aiming lower, a few rounds of moving the aim by what is still off)
     for (let deg = 0; deg <= 80; deg += 2.5) {
       const a = a0 + THREE.MathUtils.degToRad(deg), dir = new V(Math.cos(a), 0, Math.sin(a));
-      for (let m = 6; m <= 40; m += 0.25) {
-        const eye = c.clone().addScaledVector(dir, m / MODEL_SCALE);
-        cam.position.copy(eye); cam.lookAt(c); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
-        if (!corners.every((q) => { const v = q.clone().project(cam), sx = (v.x + 1) / 2, sy = (1 - v.y) / 2 - 0.5 + mid; return v.z < 1 && sx > band.l && sx < band.r && sy > band.t && sy < band.b; })) continue;
-        // (the band's middle is over the frame's: the camera and its aim lowered by that share of the frame's height at that distance)
-        const half = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * m / MODEL_SCALE, dn = (0.5 - mid) * 2 * half;
-        const aim = c.clone(); aim.y -= dn; const e = eye.clone(); e.y -= dn;
-        cam.position.copy(e); cam.lookAt(aim); cam.updateMatrixWorld();
-        if (!groundOn()) break;   // (farther is only worse: the next angle)
-        if (!clear(e)) break;   // (something in front: the next angle)
-        say('prof fit ' + deg + '° ' + m.toFixed(2) + ' m'); return [e, aim];
+      for (let m = 8; m <= 30; m += 0.5) for (let h = 1; h <= 12; h += 0.5) {
+        const e = c.clone().addScaledVector(dir, U(m)); e.y = G0 + U(h);
+        const aim = c.clone(); cam.position.copy(e);
+        for (let k = 0; k < 4; k++) {
+          cam.lookAt(aim); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+          let lo = 1, hi = 0; for (const q of corners) { const sy = (1 - q.clone().project(cam).y) / 2; lo = Math.min(lo, sy); hi = Math.max(hi, sy); }
+          const off = (lo + hi) / 2 - mid, half = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * aim.distanceTo(e); aim.y -= off * 2 * half;
+        }
+        cam.lookAt(aim); cam.updateMatrixWorld();
+        if (!inBand() || !groundOn() || !clear(e)) continue;
+        say(`prof fit ${deg}° ${m} m, eye ${h} m`); return [e, aim];
       }
     }
     say('prof fit FAILED');   // (check-film fails the film on it: the loop's frame must show the whole stair)
