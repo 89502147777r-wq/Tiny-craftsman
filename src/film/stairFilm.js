@@ -291,7 +291,11 @@ export function* stairFilm(d, app) {
     // (before the hammer is up: the first board's place — the camera is there already, no swing to it)
     let lastH = null, hideShot = null;   // (the hammer put away: the camera stays on where it was till its next shot — no swing to the boards running on)
     tool = () => { if (app.handTools?.cur === 'hammer' && app.handTools.tools.hammer.g.visible) { lastH = app.handTools.tools.hammer.g.getWorldPosition(new V()); hideShot = d.shot?.n; return lastH; } if (lastH && d.shot?.n === hideShot) return lastH; const rv = WV.reveal?.id === beltId ? WV.reveal.u : 1e-3, f = WV.revealTip?.(O.get(beltId), rv); return f ? new V(f.x + f.ox, f.y, f.z + f.oz) : hAt(0); };
-    act([[1.3, [1300, 450, 1100], 1], [9, [2600, 1200, 2600], 1]]);
+    // (the camera on the hammer's side of the first board — outside it, a little along: from the far side the board hid the hammer)
+    { const F0 = WV.boardFaces?.(O.get(beltId))?.[0], k = 1 / MM(1);
+      if (F0) { const nl = Math.hypot(F0.ox, F0.oz) || 1, nx = F0.ox / nl, nz = F0.oz / nl, al = Math.hypot(F0.x1 - F0.x0, F0.z1 - F0.z0) || 1, ax = (F0.x1 - F0.x0) / al, az = (F0.z1 - F0.z0) / al;
+        act([[1.3, [Math.round(nx * 1300 - ax * 700), 450, Math.round(nz * 1300 - az * 700)], 1], [9, [Math.round(nx * 2600 + ax * 900), 1200, Math.round(nz * 2600 + az * 900)], 1]]); }
+      else act([[1.3, [1300, 450, 1100], 1], [9, [2600, 1200, 2600], 1]]); }
     bill('');   // (over the boards going up — never over a still grey wall: the analyst)
     d.speed = 1; yield* rise(WV, beltId, 3.2, ['plank', 'hammer_nail', 'hammer_nail'], hAt);
     // the pavilion's ring: boards round it, seen whole from far (its openings bridged — a lintel on props)
