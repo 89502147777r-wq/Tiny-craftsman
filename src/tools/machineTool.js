@@ -1191,13 +1191,19 @@ export class MachineTool {
       if ((this.v || lx) && this._fits('excavator', nx, nz, yaw)) {
         // (the bucket goes with the machine: its back, bottom and sides shove a heap on as it drives — the owner: driven into a heap,
         // the bucket's back went through it; the arm only shoved when it moved)
-        const pts = () => (E.pushPoints ? [...E.pushPoints(), ...E.stickPoints(), E.teethWorld(new THREE.Vector3())] : E.hardPoints()), P0 = pts();
+        // (as the loader's bucket does: what is loose over the bucket's bottom, in its footprint, carried on to before its leading
+        // face — point by point shoving moved the soil inside the footprint back and forth, the heap stayed (the test))
         const keep = [E.x, E.z, E.yaw]; E.place(t, nx, nz, yaw);
         if (this._tooSteep('excavator', E, keep)) { E.place(t, ...keep); this.v = 0; }
         else {
           this._tracks('excavator', Math.hypot(nx - keep[0], nz - keep[1]) + Math.abs(yaw - keep[2]) * R(1));   // (the tracks press the ground)
-          this._excPush(P0, pts(), E.teethWorld(new THREE.Vector3()));
-          this.v *= Math.max(0.2, 1 - (this._pushLoad || 0) / 1.5); this._pushLoad = (this._pushLoad || 0) * Math.exp(-dt * 1.2);   // (a heap before it slows it)
+          const mx = E.x - keep[0], mz = E.z - keep[1], ml = Math.hypot(mx, mz), P = E.pushPoints ? E.pushPoints() : E.hardPoints();
+          if (ml > 1e-9 && P.length) {
+            const f = [mx / ml, mz / ml]; let fr = -Infinity, bk = Infinity, by = Infinity, cs = 0;
+            for (const q of P) { const a = q.x * f[0] + q.z * f[1]; fr = Math.max(fr, a); bk = Math.min(bk, a); by = Math.min(by, q.y); cs += -q.x * f[1] + q.z * f[0]; }
+            cs /= P.length; const fx0 = f[0] * fr - f[1] * cs, fz0 = f[1] * fr + f[0] * cs;
+            for (let d = 0; d <= fr - bk + t.cell; d += t.cell * 0.7) this._bulldoze(fx0 - f[0] * d, fz0 - f[1] * d, f, (E.bucketW || R(1)) / 2, by, d, true);
+          }
         }
       } else this.v = 0;
     } else {
