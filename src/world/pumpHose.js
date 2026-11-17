@@ -255,10 +255,20 @@ export class PumpHose {
       }
     }
     for (let j = 0; j < segs; j++) for (let k = 0; k < rad; k++) { const a = j * (rad + 1) + k; I.push(a, a + rad + 1, a + 1, a + 1, a + rad + 1, a + rad + 2); }
-    const g = this.stream.geometry;
-    if (!g.attributes.position || g.attributes.position.count !== P.length / 3) { g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setIndex(I); }
-    else { g.attributes.position.array.set(P); g.attributes.position.needsUpdate = true; }
-    g.computeVertexNormals(); g.computeBoundingSphere();
+    // (one buffer, made once at its largest — 25 rings of 11 — and only the part in use drawn: the stream's length changes every
+    // frame, and a buffer made anew each time is not drawn on the owner's iPhone (the formwork filled with no stream in his video);
+    // a NaN from a degenerate curve — the frame skipped, the last stream kept)
+    for (let k = 0; k < P.length; k++) if (!Number.isFinite(P[k])) return this.landing;
+    const g = this.stream.geometry, MAXV = 25 * (rad + 1), MAXI = 24 * rad * 6;
+    if (!g.attributes.position || g.attributes.position.count !== MAXV) {
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAXV * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(MAXV * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      g.setIndex(new THREE.BufferAttribute(new Uint16Array(MAXI), 1).setUsage(THREE.DynamicDrawUsage));
+    }
+    g.attributes.position.array.fill(0); g.attributes.position.array.set(P); g.attributes.position.needsUpdate = true;
+    g.index.array.fill(0); g.index.array.set(I); g.index.needsUpdate = true;
+    g.setDrawRange(0, I.length);
+    g.computeVertexNormals(); g.attributes.normal.needsUpdate = true; g.computeBoundingSphere();
     this.stream.visible = true;
     this.stream.userData.bottomR = r1; this.stream.userData.topR = r0;
     return this.landing;

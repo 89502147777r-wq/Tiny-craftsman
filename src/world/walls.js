@@ -83,6 +83,17 @@ export const OPENINGS = {
 const BEAR = 250;   // a lintel rests 250 mm on the masonry each side
 const S = 1 / 1000 / MODEL_SCALE;   // real mm → model m
 const MM = (v) => v * S;
+// the faces of a formwork in the order a carpenter puts them up: each next the nearest to where the last one ended — round the
+// ring, not here and there (the owner: the hammer beat the air, the boards went up on the far side; the film's camera jumped after it)
+function inOrder(faces) {
+  // (each face turned to start where the last one ended: [s0,t0,s1,t1,ns,nt] with s0,t0 the near end)
+  const left = faces.slice(), out = [];
+  let cur = left.shift(); out.push(cur);
+  while (left.length) { const ex = cur[2], ez = cur[3]; let bi = 0, bd = Infinity, flip = false;
+    for (let i = 0; i < left.length; i++) { const f = left[i], d0 = Math.hypot(f[0] - ex, f[1] - ez), d1 = Math.hypot(f[2] - ex, f[3] - ez); if (d0 < bd) { bd = d0; bi = i; flip = false; } if (d1 < bd) { bd = d1; bi = i; flip = true; } }
+    const f = left.splice(bi, 1)[0]; cur = flip ? [f[2], f[3], f[0], f[1], f[4], f[5]] : f; out.push(cur); }
+  return out;
+}
 
 export function axis(w) {
   const dx = w.b[0] - w.a[0], dz = w.b[1] - w.a[1], len = Math.hypot(dx, dz);
@@ -695,8 +706,8 @@ export class WallView {
       // (a lintel's end against a block: no board across it, the side boards stop at it)
       const cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0;
       // (formwork going up — this.reveal = { id, u }: board after board, face after face)
-      const faces = boardsOf(b), rv = this.reveal && b.id != null && this.reveal.id === b.id ? this.reveal.u : 1;
-      const lim = rv >= 1 ? Infinity : Math.floor(rv * faces.length * Math.ceil((over + b.H) / (150.4 * S)));
+      const rv = this.reveal && b.id != null && this.reveal.id === b.id ? this.reveal.u : 1, faces = rv < 1 ? inOrder(boardsOf(b)) : boardsOf(b);
+      const lim = rv >= 1 ? Infinity : Math.max(rv > 0 ? 1 : 0, Math.floor(rv * faces.length * Math.ceil((over + b.H) / (150.4 * S))));   // (the first board up at once: the hammer has one to nail)
       let shown = 0;
       for (const [s0, t0, s1, t1, ns, nt] of faces) {
         if (shown >= lim) break;
@@ -1046,6 +1057,33 @@ export class WallView {
   }
   clearSpread() { for (const m of [...this.spreadG.children]) { m.geometry.dispose(); this.spreadG.remove(m); } }
   takeSpread(it) { if (it?.mesh.parent) { it.mesh.geometry.dispose(); this.spreadG.remove(it.mesh); } }
+  // the board a formwork going up (this.reveal) has just put up at u — for the film's hammer, worked out at once from the same
+  // order the boards go up in (read off the drawn frame it lagged a frame: metres, where the next face starts elsewhere)
+  // the formwork's faces in the order they go up (closed lintel ends out): [{ x0, z0, x1, z1, ox, oz, y }] — the bottom board's line on
+  // its outer side, its outward step (60 mm) — for the film's hammer and for check-film (is the hammer at a board that is up)
+  boardFaces(b) {
+    if (!b) return [];
+    const th = BELT.board * S, over = (b.over ?? BELT.over) * S, cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0, bh = 150 * S;
+    return inOrder(boardsOf(b)).filter(([, , , , ns]) => !((ns < 0 && cl[0]) || (ns > 0 && cl[1]))).map(([s0, t0, s1, t1, ns, nt]) => {
+      const off = ns === 0 ? (c0 - c1) * th / 2 : 0, [x0, z0] = toWorld(b, s0 + ns * th / 2 + off, t0 + nt * th / 2), [x1, z1] = toWorld(b, s1 + ns * th / 2 + off, t1 + nt * th / 2), [xo, zo] = toWorld(b, s0 + ns * (th / 2 + MM(60)) + off, t0 + nt * (th / 2 + MM(60)));
+      return { x0, z0, x1, z1, ox: xo - x0, oz: zo - z0, y: b.top - over + Math.min(bh, b.top + b.H - (b.top - over)) / 2 };
+    });
+  }
+  revealTip(b, u) {
+    if (!b) return null;
+    const th = BELT.board * S, over = (b.over ?? BELT.over) * S, cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0, bh = 150 * S;
+    const faces = inOrder(boardsOf(b)).filter(([, , , , ns]) => !((ns < 0 && cl[0]) || (ns > 0 && cl[1])));
+    let nb = 0; for (let y0 = b.top - over; y0 < b.top + b.H - 1e-5; y0 += bh + 0.4 * S) nb++;
+    if (!faces.length || !nb) return null;
+    // (the hammer goes along the board being nailed, from the end the last one finished at to its other end — a carpenter's way:
+    // where it ends the next board begins; at a face's middle it jumped metres from one face to the next)
+    const all = Math.min(faces.length * nb - 1e-6, Math.max(0, u * Math.ceil((over + b.H) / (150.4 * S)) * boardsOf(b).length)), fi = Math.min(faces.length - 1, Math.floor(all / nb));
+    const [s0, t0, s1, t1, ns, nt] = faces[fi], within = all - fi * nb, here = within / nb, row = Math.min(nb - 1, Math.floor(within));
+    const along = ns === 0, off = along ? (c0 - c1) * th / 2 : 0;
+    const ss = s0 + (s1 - s0) * here + ns * th / 2 + off, tt = t0 + (t1 - t0) * here + nt * th / 2, [x, z] = toWorld(b, ss, tt), [ox, oz] = toWorld(b, ss + ns * MM(60), tt + nt * MM(60));
+    const y0 = b.top - over + row * (bh + 0.4 * S), tip = { x, y: y0 + Math.min(bh, b.top + b.H - y0) / 2, z, ox: ox - x, oz: oz - z };
+    return tip;
+  }
   rideLift(id) {
     const r = this.objects.get(id); if (!r || this._ride) return 0;
     // (up one stop at a time; from the top, back down to the ground)
