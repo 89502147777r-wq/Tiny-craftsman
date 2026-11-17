@@ -1149,7 +1149,7 @@ if (want("2i")) {
       set(0, 0); o.arm = { low, lowT, inFits, away, lifted, h: +((lowY - t.heightAt(q.x, q.z)) / M).toFixed(2) }; }
     // (the realist: the excavator's own arm swung into a standing truck — its bucket stops at the cab and the body's side; a tipped body
     // stands higher than a level one)
-    if (mt.truck?.loaded) { const T = mt.truck, keepT = [T.x, T.z, T.yaw, T.root.visible]; T.root.visible = true;
+    if (mt.truck?.loaded) { mt.setExcMode('dig'); const T = mt.truck, keepT = [T.x, T.z, T.yaw, T.root.visible]; T.root.visible = true;   // (the slew: in «Копание», not «Ход»)
       const pen = () => { let w = 0; mt._mbT = null; for (const q of [...E.hardPoints(), E.teethWorld(new V())]) for (const b of mt._machBoxes()) { const dx = q.x - b.x, dz = q.z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl && Math.abs(-dx * b.uz + dz * b.ux) < b.hw && q.y < b.top && q.y > b.bot) w = Math.max(w, Math.min(b.top - q.y, b.hw - Math.abs(-dx * b.uz + dz * b.ux))); } return w / M; };
       for (const [k, v] of [['swing', 0], ['boom', 0.1], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
       const tp = E.teethWorld(new V()), r = Math.hypot(tp.x - E.x, tp.z - E.z), a0 = Math.atan2(tp.z - E.z, tp.x - E.x), res = {};
@@ -1163,11 +1163,13 @@ if (want("2i")) {
       o.armTruck = { ...res, tall0: +tall0.toFixed(2), tall1: +tall1.toFixed(2) }; }
     // (the realist: driven the way its mouth faces — backwards, the bucket open toward the machine — what it meets goes into the bucket)
     { for (const [k, v] of [['swing', 0], ['boom', 0], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
-      const g = mt.digG, tp = E.teethWorld(new V()), mo = E.mouthWorld(new V()), fx = Math.cos(E.yaw), fz = -Math.sin(E.yaw), out = Math.sign((tp.x - E.x) * fx + (tp.z - E.z) * fz) || 1;
-      const low = Math.min(tp.y, ...E.hardPoints().map((q) => q.y)), D = { x: tp.x - fx * out * 0.5 * M, z: tp.z - fz * out * 0.5 * M }, r = 0.5 * M, h = low - t.firmAt(D.x, D.z) + 0.5 * M;
+      // (which way its mouth faces, from the bucket's own points — the machine driven that way, the heap just before the mouth)
+      const g = mt.digG, tp = E.teethWorld(new V()), mo = E.mouthWorld(new V()), fx = Math.cos(E.yaw), fz = -Math.sin(E.yaw), PP = E.pushPoints(), cc = PP.reduce((a, q) => a.add(q), new V()).multiplyScalar(1 / PP.length);
+      const out = -Math.sign((mo.x - cc.x) * fx + (mo.z - cc.z) * fz) || 1;   // (the joystick's y: −1 drives along +f)
+      const low = Math.min(tp.y, ...E.hardPoints().map((q) => q.y)), D = { x: mo.x - fx * out * 0.5 * M, z: mo.z - fz * out * 0.5 * M }, r = 0.5 * M, h = low - t.firmAt(D.x, D.z) + 0.5 * M;
       const keep = t.loose.slice(), eK = [E.x, E.z, E.yaw], l0 = g ? g.load : 0; t.deposit(D.x, D.z, h * 2 * Math.PI * r * r, r, 0); frames(3);
       mt.setExcMode('drive'); mt.joystick('l', 0, out); frames(25); mt.joystick('l', 0, 0); frames(3); mt.setExcMode('dig');
-      o.mouth = { gain: +(((mt.digG?.load || 0) - l0) * t.cellArea / (M * M * M)).toFixed(3), drove: +(Math.hypot(E.x - eK[0], E.z - eK[1]) / M).toFixed(2), facing: +(((mo.x - tp.x) * fx + (mo.z - tp.z) * fz) * -out / M).toFixed(2) };
+      o.mouth = { gain: +(((mt.digG?.load || 0) - l0) * t.cellArea / (M * M * M)).toFixed(3), drove: +(Math.hypot(E.x - eK[0], E.z - eK[1]) / M).toFixed(2), facing: +(((mo.x - cc.x) * fx + (mo.z - cc.z) * fz) * -out / M).toFixed(2) };
       t.loose.set(keep); t._touch(0, 0, t.rx, t.rz); E.place(t, ...eK); if (mt.digG) mt.digG.load = l0; frames(3); }
     E.place(t, 2 * M, -t.halfZ + 3 * M, 0);   // (parked out of the truck's way: the machines stop at one another now)
     for (const r of tc.objects.all('siteprop')) tc.objects.remove(r.id); tc.siteProps?.update?.(0);   // (the site's things off its way out too: this is the drive off the plot, not a detour)
