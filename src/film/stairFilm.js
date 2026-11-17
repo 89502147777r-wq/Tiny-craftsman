@@ -120,11 +120,8 @@ export function* stairFilm(d, app) {
   d.money(true); d.byStages();
   // (stage 1's excavator parked at the plot's edge, past the fireplace's pad — out of the work's way, now and then in a wide shot (the
   // owner); it stood in two shots, a camera inside it)
-  for (const r of O.all('vehicle')) O.remove(r.id);
-  { const mt = app.machineTool, x = MM(-12600), z = MM(7400), yaw = 0.35;
-    O.add({ type: 'vehicle', kind: 'excavator', x, z, yaw, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
-    let ok = false; mt.ensureExc?.().then(() => { ok = true; }).catch(() => { ok = true; }); yield d.until(() => ok);
-    const E = mt.exc; if (E) { E.place(T, x, z, yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = 0; E.boom = E.boomGoal = 0.15; E.update(0); } }
+  // (its model fetched in stairFilm.prepare, before the first frame: loaded here it was 0,5 s of a bare foundation at the start — the analyst)
+  { const mt = app.machineTool, E = mt.exc; if (E) { E.place(T, EXC.x, EXC.z, EXC.yaw); for (const k of ['swing', 'boom', 'stick', 'curl']) E[k] = E[k + 'Goal'] = 0; E.boom = E.boomGoal = 0.15; E.update(0); } }
   const g = T.heightAt(MM(-9000), MM(9000)), P = (x, y, z) => new V(MM(x), g + MM(y), MM(z)), idle = () => !app.busy();
   // (the walls set out level from the HIGHEST point of the concrete under them — the owner saw a brick and a block «in the air»: the
   // slab and the strip are not cast dead flat, a course set from one point in the middle stood over the lower edge; as on site the
@@ -460,6 +457,9 @@ export function* stairFilm(d, app) {
   // (the sketch's own view: the camera set where the drawing was made from — still, no hand)
   d.hud(null);   // (from here on nothing the hook has not: the analyst)
   d.mark('finale');   // (the sketch's finale: the sheet, not a tool — check-film lets it be)
+  // (the landing's boards off under the cut to the sketch's view — a jump in time, as the sheet is: boxed in boards on the stair's
+  // narrow top it read as a column; bare, it is the stair's top step — the analyst's release list, 2026-11-17)
+  if (landId != null && O.get(landId)) { const i = 2 + lintels.length; app.journal.act('belt-strip', {}, app.clock, () => O.update(landId, { stripped: true, pile: [+MM(-3200 + i * 1300).toFixed(6), +MM(7600).toFixed(6)] })); app.wallView.dirty = true; }
   shotN++; d.cut(look(new V(MM(17500), MM(9000), MM(15500)), new V(MM(2600), MM(3200), MM(-1600))), { drift: 0, push: 0, hand: 0 });
   yield d.sec(0.4);
   // (the sheet grows from its corner to its place in the frame — its drawing is the band 36 %…92 % of the frame from the sketch's view,
@@ -473,9 +473,32 @@ export function* stairFilm(d, app) {
     yield d.sec(0.35);
     const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 1.0); sk.style.opacity = String(1 - u); return u >= 1; });
     sk.remove(); }
+  // the frame the video starts and ends on: the whole stair in profile on the sky — all 34 steps and the landing, from the foot to the
+  // top, inside the frame's clear band (under the logo and the budget, over «TO BE CONTINUED»), nothing cut by the frame's edge (the
+  // analyst's release list, 2026-11-17: half the stair was in the first frame). Fitted by projecting the stair's box, not guessed.
+  function fitProf() {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (const u of O.all('unit')) { if (u.kind !== 'cinder') continue; const turned = Math.abs(u.q?.[1] || 0) > 0.5, hx = (turned ? u.s[2] : u.s[0]) / 2, hz = (turned ? u.s[0] : u.s[2]) / 2;
+      x0 = Math.min(x0, u.p[0] - hx); x1 = Math.max(x1, u.p[0] + hx); y0 = Math.min(y0, u.p[1] - u.s[1] / 2); y1 = Math.max(y1, u.p[1] + u.s[1] / 2); z0 = Math.min(z0, u.p[2] - hz); z1 = Math.max(z1, u.p[2] + hz); }
+    y0 = Math.min(y0, T.heightAt((x0 + x1) / 2, (z0 + z1) / 2)) - MM(150); y1 += MM(200 + 150);   // (the foundation's edge under it; the landing on top)
+    const c = new V((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), dir = new V(9500, 0, 1000).normalize(), cam = app.camera.clone();
+    const corners = []; for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [z0, z1]) corners.push(new V(x, y, z));
+    const band = { l: 0.05, r: 0.95, t: 0.2, b: 0.66 };   // (top-down: the logo and the budget over 0,2; «TO BE CONTINUED» at 0,71)
+    for (let m = 6; m <= 80; m += 0.25) {
+      const eye = c.clone().addScaledVector(dir, m / MODEL_SCALE); cam.position.copy(eye); cam.lookAt(c); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+      // (the stair's middle set at the band's middle: the aim lifted so the box sits between the plates)
+      if (corners.every((q) => { const v = q.clone().project(cam), sx = (v.x + 1) / 2, sy = (1 - v.y) / 2; return v.z < 1 && sx > band.l && sx < band.r && sy - 0.5 + (band.t + band.b) / 2 > band.t && sy - 0.5 + (band.t + band.b) / 2 < band.b; })) {
+        // (the band's middle is over the frame's: the camera and its aim lowered by that share of the frame's height at that distance)
+        const half = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * m / MODEL_SCALE, up = (0.5 - (band.t + band.b) / 2) * 2 * half;
+        const aim = c.clone(); aim.y -= up; const e = eye.clone(); e.y -= up;   // (the camera lowered: the box rises to the band)
+        say('prof fit ' + m.toFixed(2) + ' m'); return [e, aim];
+      }
+    }
+    return [P(15500, 4300, 500), P(6000, 4300, -500)];
+  }
   // ---- the end: the stair's last block by the mallet, close; then back to the stair in profile on the sky, still — the frame the
   // video starts on (the owner, 2026-11-16: the hook IS the rewind from this frame) ----
-  const hp = new V().fromArray(hold.p), near = [new V(hp.x + MM(1300), hp.y + MM(420), hp.z + MM(1500)), hp.clone()], prof = [P(15500, 4300, 500), P(6000, 4300, -500)];
+  const hp = new V().fromArray(hold.p), near = [new V(hp.x + MM(1300), hp.y + MM(420), hp.z + MM(1500)), hp.clone()], prof = fitProf();
   d.hud(null);
   st.wallKind = 'cinder'; app.setTool('wall'); W.setMode('lay');
   shotN++; d.cut(look(near[0], near[1]), { drift: 0, push: 0, hand: 0.15 });
@@ -508,19 +531,22 @@ export function* stairFilm(d, app) {
       if (hc) { hc.textContent = String(Math.round(34 * (1 - e))); at(hc); }
       if (d.nextEl) d.nextEl.style.opacity = String(Math.max(0, 1 - Math.max(0, d.t - t0 - 0.05) / 0.25));   // (its plate gone 0,3 s past the seam: ≤ 2 signs in the first 0,5 s — the analyst)
       if (u >= 1 && !stopped) { stopped = true; app.sfx?.play?.('thud', { vol: 0.9 }); rw?.remove(); hc?.remove(); rw = hc = null; }
-      return d.t - t0 >= 1.0;
+      return stopped && d.t - t0 >= 0.95;
     });
-    // (the first work in the same view: the torch lit, the roll moving — the cut into the film's own first shot, close)
-    st.wallKind = 'dpc'; app.setTool('wall'); W.setMode('lay');
-    const n0 = O.all('dpc').length; lay([X0, ZB + 150], [X0, ZS - 150], 1300);
-    yield d.sec(0.4);
+    // (the hook ends on the thud — straight into the film's first shot, the torch at work close: no bare foundation between, ≤ 0,3 s —
+    // the analyst's release list, 2026-11-17)
     d.mark('hookEnd');
     // (after the video's end: the plot as it was at the end of the film — the game and the tests go on from there)
-    for (const r of O.all('dpc').slice(n0)) O.remove(r.id);
-    dpc.jobs.length = 0;
     for (const r of gone.reverse()) O.add(r); }
   yield d.sec(0.1);
 }
+// (the excavator parked at the plot's edge, its model fetched before the film's first frame)
+const EXC = { x: MM(-12600), z: MM(7400), yaw: 0.35 };
+stairFilm.prepare = async (app) => {
+  for (const r of app.objects.all('vehicle')) app.objects.remove(r.id);
+  app.objects.add({ type: 'vehicle', kind: 'excavator', x: EXC.x, z: EXC.z, yaw: EXC.yaw, swing: 0, boom: 0, stick: 0, curl: 0, load: 0 });
+  await app.machineTool.ensureExc();
+};
 stairFilm.seconds = 62;
 stairFilm.place = 'beach';
 stairFilm.start = 'assets/films/ibiza-1.json.gz';
