@@ -39,9 +39,9 @@ const rowsRaw = await page.evaluate(async (FPS) => {
     out.push({ t: +f.t.toFixed(3), n: f.shot?.n || 0, fx: f.fx.some((e) => e.kind !== 'shake'), title: f.stepName || '', e: [c.x, c.y, c.z], a: [q.x, q.y, q.z], d: tc.rig.dist, b: boxes(),
       tp: tp ? [tp.x, tp.y, tp.z] : null, ts: scr(tp), on: objN() + (wv ? wv.u : 0) + (rv ? rv.u : 0), job: !!(tc.physJob || tc.wallTool?.dpc?.busy || tc.concreteTools?.hose?.state === 'work') });
   }
-  return { out, snd, marks: f.marks || {} };
+  return { out, snd, marks: f.marks || {}, typed: f.hudTyped || [], notes: (f.notes || []).map((n) => String(n[1])) };
 }, FPS);
-const { out: rows, snd, marks } = rowsRaw;
+const { out: rows, snd, marks, typed, notes } = rowsRaw;
 await browser.close(); server.close();
 // ---- the camera: within a shot, the change of the eye's and the aim's velocity (a jerk), as a share of the distance
 const sub = (a, b) => a.map((v, i) => v - b[i]), len = (a) => Math.hypot(...a);
@@ -134,7 +134,11 @@ console.log(`\nBILL OVER STILL:\n` + billStill.slice(0, 20).join('\n'));
 console.log(`\nFIRST 10 S WITHOUT WORK:\n` + first10.join('\n'));
 console.log(`\nHOOK / SEAM:\n` + hook.join('\n'));
 console.log(`\nSILENCE (> 1 s):\n` + sil.slice(0, 20).join('\n'));
-const fails = still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
+// (the menu in the frame is the game's own (the owner, 2026-11-17: «актуальное меню» — the material in the frame is the one chosen in
+// it): rows typed in the film (d.hud([...])) instead of read from the game (d.menu) fail; so does a film's own «… FAILED» note)
+const menu = [...new Set(typed)].map((r) => `menu typed by the film, not the game's: ${r}`).concat(notes.filter((n) => /FAILED/.test(n)));
+console.log(`\nMENU / NOTES:\n` + menu.join('\n'));
+const fails = menu.length + still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
 console.log(`\nRULES: ${fails ? fails + ' problems' : 'all pass'}`);
 if (!fails) console.log('gate: rules passed for version ' + gateMark(film, 'rules')); else console.log('gate: version ' + filmHash(film) + ' NOT passed — no render');
 console.log('LOG ' + JSON.stringify(rows.reduce((a, r) => { if (!a.length || a.at(-1)[0] !== r.n) a.push([r.n, r.t, r.title]); return a; }, [])));

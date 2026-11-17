@@ -58,6 +58,8 @@ export function tr(s) {
   if (CYR.test(r)) missed(s);
   return r;
 }
+// a line in English whatever the game's language (the films are in English: their in-game menu too)
+export function trEn(s) { const L = LANG; LANG = 'en'; try { return tr(s); } finally { LANG = L; } }
 // lines still Russian after all that (collected for the tests: window.__i18nMissed)
 const MISSED = new Set();
 function missed(s) { if (MISSED.size < 500) MISSED.add(s); }
