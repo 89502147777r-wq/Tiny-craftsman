@@ -342,7 +342,9 @@ export function* stairFilm(d, app) {
       const q = lead(ch, path, tot, false, (v) => { dir = v; }, dir) || path(u); hose.move(q, ev(q));
       return !!ch?.full || (ch?.h && share(ch) > 0.985) || d.t - t0 > 2.6 || (d.t - t0 > 1 && dry() > 0.5);
     });
-    hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
+    // (the hose let go and its channel committed now: left to settle on its own it wrote its levels seconds later, OVER the top-up
+    // below — the spine's beam stood at 29 %, bare bars after its boards came off (the owner: «куда делся бетон?»))
+    hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } hose.finish?.(); d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
     still();
     say('belt fill ' + O.get(beltId)?.fill + ' u ' + u.toFixed(2) + ' in ' + (d.t - t0).toFixed(1));
     // (the last tenth topped up and worked level between two shots — the poker's round: no step in the frame)
@@ -368,7 +370,7 @@ export function* stairFilm(d, app) {
         const q = ring(ur); hose.move(q, evp(q));
         return (ur >= 1 && hose.ch?.h && share(hose.ch) > 0.97 && hose.ch.b?.id === pavId) || d.t - t0 > 1.1 || (d.t - t0 > 0.8 && dry() > 0.5);   // (a second, quicker round over what is short)
       });
-      hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
+      hose.up(); d.speed = 4; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } hose.finish?.(); d.speed = 1; G.set?.(null);   // (the pour's tail ≤ 0,8 s: the analyst; the record tops it up)
       still();
       say('pavilion fill ' + O.get(pavId)?.fill + ' lintels ' + lintels.map((l) => O.get(l.id)?.fill?.toFixed(2)).join(',') + ' in ' + (d.t - t0).toFixed(1));
       for (const id of [pavId, ...lintels.map((l) => l.id)]) { const r = O.get(id); if (r && r.fill < 0.999) app.journal.act('belt-pour', {}, app.clock, () => O.update(id, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
@@ -380,6 +382,8 @@ export function* stairFilm(d, app) {
   shots([[9, [-7000, 7500, 6500], [0, 3000, -1500]]]);
   // (the clock over work — the analyst: never over a still frame: the beams' boards come off board by board under it)
   { const ids = [beltId, pavId, ...lintels.map((l) => l.id)].filter((id) => id != null);
+    // (a beam not full when its boards come off is bare bars in the frame — check-film fails the film on this note)
+    for (const id of ids) { const f = O.get(id)?.fill ?? 1; if (f < 0.99) say(`beam ${id} ${(f * 100).toFixed(0)} % at its stripping FAILED`); }
     yield* d.lapse(7, 1.95, (q) => { app.clock += 9000 * d.dt / 1.95; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 }); const n = ids.length, k = Math.min(n - 1, Math.floor(q * n)), u = 1 - (q * n - k); for (let i = 0; i < k; i++) if (!O.get(ids[i])?.stripped) O.update(ids[i], { stripped: true, pile: [+MM(-3200 + i * 1300).toFixed(6), +MM(7600).toFixed(6)] }); app.wallView.reveal = { id: ids[k], u: Math.max(0, u) }; app.wallView.dirty = true; if (Math.random() < 0.3) app.sfx?.play?.('plank', { vol: 0.35, gap: 0.15 }); });
     app.wallView.reveal = null; }
   app.sky.setHour(9.5);
@@ -443,7 +447,7 @@ export function* stairFilm(d, app) {
     st.pump = 4;
     // (till it is full, the camera on it — the owner: «the landing's beam did not fill in the frames»)
     let pt = 0; wet0(); const t0 = d.t, lDry = dry; yield d.until(() => { pt += d.dt * d.speed; const q = a.clone().lerp(b, 0.5 + 0.5 * Math.sin(pt * 0.6)); hose.move(q, ev(q)); const ch = hose.ch; return !!ch?.full || (ch?.h && ch.h.every((v) => v >= ch.cap - 8)) || d.t - t0 > 1.0 || (d.t - t0 > 0.6 && lDry() > 0.5); });
-    hose.up(); d.speed = 12; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } d.speed = 1; G.set?.(null);   // (no 2 s waiting for it to settle, the frame still — check-film; the record tops it up)
+    hose.up(); d.speed = 12; { const tq = d.t; yield d.until(() => idle() || d.t - tq > 0.3); } hose.finish?.(); d.speed = 1; G.set?.(null);   // (no 2 s waiting for it to settle, the frame still — check-film; the record tops it up)
     still();
     { const r = O.get(landId); if (r) app.journal.act('belt-pour', {}, app.clock, () => O.update(landId, { lv: r.lv.map(() => r.H / S), sm: r.lv.map(() => 0.9), fill: 1 })); }
   }
@@ -459,6 +463,7 @@ export function* stairFilm(d, app) {
   d.mark('finale');   // (the sketch's finale: the sheet, not a tool — check-film lets it be)
   // (the landing's boards off under the cut to the sketch's view — a jump in time, as the sheet is: boxed in boards on the stair's
   // narrow top it read as a column; bare, it is the stair's top step — the analyst's release list, 2026-11-17)
+  if (landId != null && (O.get(landId)?.fill ?? 1) < 0.99) say(`landing ${(O.get(landId).fill * 100).toFixed(0)} % at its stripping FAILED`);
   if (landId != null && O.get(landId)) { const i = 2 + lintels.length; app.journal.act('belt-strip', {}, app.clock, () => O.update(landId, { stripped: true, pile: [+MM(-3200 + i * 1300).toFixed(6), +MM(7600).toFixed(6)] })); app.wallView.dirty = true; }
   shotN++; d.cut(look(new V(MM(17500), MM(9000), MM(15500)), new V(MM(2600), MM(3200), MM(-1600))), { drift: 0, push: 0, hand: 0 });
   yield d.sec(0.4);
