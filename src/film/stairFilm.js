@@ -521,14 +521,17 @@ export function* stairFilm(d, app) {
   // no dust (not a collapse) — «◀◀» in the corner and the count 34 → 0 on the top step; a rising whoosh, a dull stop; the bare
   // foundation; then the torch lit, the roll moving: the film's first work, the same view ----
   d.mark('hook');
-  { const topOf = (r) => (r.type === 'unit' ? r.p[1] + r.s[1] / 2 : r.type === 'dpc' ? -1e9 : r.top ?? r.p?.[1] ?? 0);
+  // (each thing by its own top — a cage by its bars (it has no `top`: counted 0 it hung in the air over the courses taken away; the
+  // owner's rewind must take the stair down in order), lifted a little so it goes with its beam, not after it)
+  { const topOf = (r) => (r.type === 'unit' ? r.p[1] + r.s[1] / 2 : r.type === 'dpc' ? -1e9 : Array.isArray(r.bars) && r.bars.length ? Math.max(...r.bars.map((b) => Math.max(b[1], b[4]))) + MM(80) : r.top != null ? r.top + (r.H ?? 0) : r.y ?? r.p?.[1] ?? 0);
     const back = O.all().filter((r) => !startIds.has(r.id) && r.type !== 'siteprop' && r.type !== 'vehicle').sort((p, q) => topOf(q) - topOf(p));
     const gone = [], top = new V(MM(X0), topU + MM(500), MM(-5000)), t0 = d.t;
-    let rw = null, hc = null, stopped = false, n = 0;
+    let rw = null, hc = null, stopped = false, made = false, n = 0;
     const at = (el) => { const v = top.clone().project(app.camera); el.style.left = ((v.x + 1) / 2 * 100).toFixed(2) + '%'; el.style.top = ((1 - v.y) / 2 * 100).toFixed(2) + '%'; };
     yield d.until(() => {
       const u = Math.min(1, Math.max(0, (d.t - t0 - 0.1) / 0.8)), e = u ** 1.6;   // (the top slow, the bottom quicker)
-      if (!rw && d.t - t0 > 0.04) {   // (just past the seam: the words either side of it the same)
+      if (!made && d.t - t0 > 0.04) {   // (just past the seam: the words either side of it the same; once — taken off at the stop, never back)
+        made = true;
         rw = document.createElement('div'); rw.className = 'f-rew'; rw.setAttribute('data-notr', ''); rw.textContent = '◀◀'; d.el.appendChild(rw);
         hc = document.createElement('div'); hc.className = 'f-steps'; hc.setAttribute('data-notr', ''); d.el.appendChild(hc);
         app.sfx?.play?.('rewind', { vol: 0.8 });
