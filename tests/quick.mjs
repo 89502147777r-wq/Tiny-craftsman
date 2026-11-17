@@ -36,7 +36,13 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/`;
 
 const results = [];
-const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${info}`); };
+// (the owner, 2026-11-17: a failure found — fixed and taken up from there, not the whole half hour again). The sections are
+// independent (each opens its own page): TEST_ONLY=2i,2l² runs those; TEST_FROM=2i runs from that one on; TEST_BAIL=1 stops at
+// the first FAIL (its section named: fix it, then TEST_FROM=<it>). A release still needs one whole run.
+const ONLY = (process.env.TEST_ONLY || '').split(',').filter(Boolean), FROM = process.env.TEST_FROM || '', BAIL = !!process.env.TEST_BAIL;
+let reached = !FROM, current = '';
+const want = (id) => { if (FROM && id === FROM) reached = true; const go = ONLY.length ? ONLY.includes(id) : reached; if (go) { current = id; console.log(`---- ${id}`); } return go; };
+const check = (name, ok, info = '') => { results.push({ name, ok: !!ok }); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${info}`); if (!ok && BAIL) { console.log(`\nstopped at the first FAIL — section ${current}: after the fix, TEST_FROM=${current}`); process.exit(1); } };
 const sec = () => `${((Date.now() - t0) / 1000).toFixed(0)} s`;
 
 async function open(browserType, query, opts = {}, locale = 'ru-RU') {
@@ -72,7 +78,7 @@ function validate(src, name) {
 
 // ---- 0. The frames' cadence (core/pace.js): while something moves, drawn evenly — at 60 Hz every frame, at
 // 120 Hz every other one — even when the display's frames come with a little jitter; still: twice a second ----
-{
+if (want("0")) {
   const { Pace } = await import('../src/core/pace.js');
   const run = (hz, live, secs = 6) => { const P = new Pace(), f = 1000 / hz, gaps = []; let x = 0x1234567, last = null;
     const rnd = () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return x / 0x7fffffff; };
@@ -120,7 +126,7 @@ for (const variant of ['full', 'light']) {
 console.log('—', sec());
 
 // ---- 2. Chromium: play ------------------------------------------------------------------------
-{
+if (want("2")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.evaluate(() => { localStorage.clear(); indexedDB.deleteDatabase('tiny-craftsman'); });
   await page.reload({ timeout: 120000 });
@@ -385,7 +391,7 @@ console.log('—', sec());
 console.log('—', sec());
 
 // ---- 2a. The garden: a path, a lawn and a fence through all their stages -------------------------
-{
+if (want("2a")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const land = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, out = {};
@@ -517,7 +523,7 @@ console.log('—', sec());
 }
 
 // ---- 2b. English: a device in English gets the whole game in English ------------------------------
-{
+if (want("2b")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }, 'en-US');
   const en = await page.evaluate(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -535,7 +541,7 @@ console.log('—', sec());
 }
 
 // ---- 2c. the modelled doors, gates and windows: all come, each fits any opening ------------------
-{
+if (want("2c")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const op = await page.evaluate(async () => {
     const K = await import('/src/world/openingKits.js'), Wn = await import('/src/world/windows.js'), Dr = await import('/src/world/doors.js');
@@ -604,7 +610,7 @@ console.log('—', sec());
 // ---- 2d. Columns and piles («Фундамент»): the formwork by the finger on what is under it, the cage
 // carried into it, the concrete by the bucket and the hose, the stripping; a slab and a brick on them;
 // the black topsoil delivered -----------------------------------------------------------------------
-{
+if (want("2d")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const c = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, col = wt.col, o = {};
@@ -689,7 +695,7 @@ console.log('—', sec());
 
 // ---- 2d'. A tree column (a house on one support): a trunk Ø1200 with its bars round the edge, two branches
 // out of its top leaning apart (30°), a slab on them with its cantilevers all round, 350 thick ----
-{
+if (want("2d'")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, col = wt.col, o = {}, MM = (v) => v / 1000 / 10.4651;
@@ -726,7 +732,7 @@ console.log('—', sec());
 // ground by the column tool, a slab laid on its top (cantilevered all round, its opening over the shaft), the
 // cabin riding up into the floor; the fascia on the slab's outer edges (not round the opening); a green roof —
 // sedum in the field, gravel 500 mm along the parapet ----
-{
+if (want("2d''")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, o = {}, MM = (v) => v / 1000 / 10.4651;
@@ -786,7 +792,7 @@ console.log('—', sec());
 
 // ---- 2e. The fence by the post («Забор»): the string with its pegs, a peg moved for a wicket, the holes
 // one by one, the posts, the concrete by the bucket and the hose, the rails welded, the fill, the wicket
-{
+if (want("2e")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const f = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, fw = wt.fence, o = {}, F2 = await import('/src/world/fence2.js');
@@ -878,7 +884,7 @@ console.log('—', sec());
 }
 
 // ---- 2f. The garden path by hand: the string, the trough, the kerbs, the geotextile, the stone, the sand, the pavers ----
-{
+if (want("2f")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, pw = wt.land.pw, o = {}, toasts = [];
@@ -924,7 +930,7 @@ console.log('—', sec());
 }
 
 // ---- 2g. The lawn by hand ----
-{
+if (want("2g")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, lw = wt.land.lw, o = {};
@@ -974,7 +980,7 @@ console.log('—', sec());
 }
 
 // ---- 2h. Plants and garden lights: every kind goes in (a pot set down, no hole), its model comes, a lamp glows ----
-{
+if (want("2h")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, land = wt.land, o = {};
@@ -1013,7 +1019,7 @@ console.log('—', sec());
 }
 
 // ---- 2i. Machines («Техника»): the loader in an area into the truck; the excavator digs and tips; the truck out to the tip ----
-{
+if (want("2i")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {}, M = 1 / 10.4651;
@@ -1163,7 +1169,7 @@ console.log('—', sec());
 // steeper than its angle, at the sides no higher than their tops, the rest on the ground by them (not under the body), nothing
 // lost; a shovel thrown in with the finger on the body — in it; the excavator's bucket of black topsoil opened over it — in it,
 // as black topsoil, and so in its record ----
-{
+if (want("2i'")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {}, M = 1 / 10.4651, S3 = 10.4651 ** 3;
@@ -1267,7 +1273,7 @@ console.log('—', sec());
 }
 
 // ---- 2j. Sounds: every sound the code asks for is in the library, every file of it is there and decodes ----
-{
+if (want("2j")) {
   const fs = await import('fs'), path = await import('path');
   const lib = await import(path.resolve('src/audio/sounds.js')), names = new Set(Object.keys(lib.SOUNDS));
   const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.js') ? [path.join(d, e.name)] : []));
@@ -1299,7 +1305,7 @@ console.log('—', sec());
 }
 
 // ---- 2k. Catastrophes: a house of blocks; a weak quake leaves it, a strong one brings it down; every kind runs; all back as it was ----
-{
+if (want("2k")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, t = tc.terrain, M = 1 / 1000 / 10.4651, o = {};
@@ -1359,7 +1365,7 @@ console.log('—', sec());
 // ---- 2k'. «Обрушение опоры»: a house on its glass lift shaft — the posts bow, the panes crack and whiten, the
 // house sinks and leans, then falls as one body (≈ g), strikes and breaks into pieces; the slabs fall too (not
 // lost); a fascia does not hold it up; all back as it was ----
-{
+if (want("2k'")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, V = tc.camera.position.constructor, wt = tc.wallTool, o = {}, MM = (v) => v / 1000 / 10.4651, M = 1 / 1000 / 10.4651;
@@ -1428,7 +1434,7 @@ console.log('—', sec());
 }
 
 // ---- 2l. The film director's grammar (director.js): the beat's three angles, the longest shot, hard cuts within a stage, the hand-held sway ----
-{
+if (want("2l")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, { Director } = await import('./src/film/director.js'), THREE = await import('three'), o = {};
@@ -1469,7 +1475,7 @@ console.log('—', sec());
 
 // ---- 2l⁰. «Ibiza» stage 1, the foundations: every stage the game's own work, in the order of a site — the pits dug (the new
 // «dig a marked pit» job), the beds, the pool's shell poured, the strip / slab / pad formed, caged, poured, a week, the boards off
-{
+if (want("2l⁰")) {
   const { browser, page, errors } = await open(pw.chromium, '&film=found&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.film, null, { timeout: 120000 });
   const o = await page.evaluate(async () => {
@@ -1497,7 +1503,7 @@ console.log('—', sec());
 // a strip the wall + 100 wide torched down along it at the pace of its width (v · w = 0,06 m²/s) — the roll (the strip's own
 // length, thinning), the torch's jet into the nip, the burning, the smoke; wider than the roll — two strips lapped 100, the
 // second over the first only in the lap; done — the torch out on its stand, the beads at the edges; undo takes it off ----
-{
+if (want("2o")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.dpcView, null, { timeout: 120000 });
   const o = await page.evaluate(async () => {
@@ -1565,7 +1571,7 @@ console.log('—', sec());
 // ---- 2l². «Ibiza» stage 2 (the owner: in the order of the build, from where stage 1 ended): the plot of film 1's end loaded, the
 // damp-proof course torched down, the spine and the pavilion laid to one level, the ring beam over them, the steps up to 6,8, the
 // landing's beam; the hook marked before the end (the loop) ----
-{
+if (want("2l²")) {
   const { browser, page, errors } = await open(pw.chromium, '&film=stair&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
   const o = await page.evaluate(async () => {
@@ -1588,7 +1594,7 @@ console.log('—', sec());
 // cantilevers (3 m over the pool, 2,4 m to the left), the olive's opening and the notch round the fireplace's tower; its props over the
 // pool on the shell's floor (not through it); a week; the box; its roof slab; 28 days — the props out piece by piece from the
 // cantilever's edge back to the walls; the green roof, the fascias, the glass, the finish; the hook marked ----
-{
+if (want("2l³")) {
   const { browser, page, errors } = await open(pw.chromium, '&film=sail&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
   const o = await page.evaluate(async () => {
@@ -1615,7 +1621,7 @@ console.log('—', sec());
 }
 
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
-{
+if (want("2m")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const o = await page.evaluate(async () => {
     const tc = window.__tc, t = tc.terrain, M = 1 / 1000 / 10.4651, o = {};
