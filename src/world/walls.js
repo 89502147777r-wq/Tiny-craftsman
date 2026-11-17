@@ -696,7 +696,7 @@ export class WallView {
       const cl = b.lform?.closed || [false, false], c0 = cl[0] ? 1 : 0, c1 = cl[1] ? 1 : 0;
       // (formwork going up — this.reveal = { id, u }: board after board, face after face)
       const faces = boardsOf(b), rv = this.reveal && b.id != null && this.reveal.id === b.id ? this.reveal.u : 1;
-      const lim = rv >= 1 ? Infinity : Math.floor(rv * faces.length * Math.ceil((over + b.H) / (150.4 * S)));
+      const lim = rv >= 1 ? Infinity : Math.max(rv > 0 ? 1 : 0, Math.floor(rv * faces.length * Math.ceil((over + b.H) / (150.4 * S))));   // (the first board up at once: the hammer has one to nail)
       let shown = 0;
       for (const [s0, t0, s1, t1, ns, nt] of faces) {
         if (shown >= lim) break;
