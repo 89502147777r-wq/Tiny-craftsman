@@ -1147,6 +1147,28 @@ if (want("2i")) {
       set(Math.PI, bm); const away = mt._armOver('loader', q.x, q.z);
       for (const b of [0.9, 1.1, 1.3]) set(0, b); const lifted = Math.min(...mt._armSegs().map(([a, c]) => Math.min(a.y, c.y))) - t.heightAt(q.x, q.z) > 3.6 * M ? mt._armOver('loader', q.x, q.z) : null;
       set(0, 0); o.arm = { low, lowT, inFits, away, lifted, h: +((lowY - t.heightAt(q.x, q.z)) / M).toFixed(2) }; }
+    // (the realist: the excavator's own arm swung into a standing truck — its bucket stops at the cab and the body's side; a tipped body
+    // stands higher than a level one)
+    if (mt.truck?.loaded) { const T = mt.truck, keepT = [T.x, T.z, T.yaw, T.root.visible]; T.root.visible = true;
+      const pen = () => { let w = 0; mt._mbT = null; for (const q of [...E.hardPoints(), E.teethWorld(new V())]) for (const b of mt._machBoxes()) { const dx = q.x - b.x, dz = q.z - b.z; if (Math.abs(dx * b.ux + dz * b.uz) < b.hl && Math.abs(-dx * b.uz + dz * b.ux) < b.hw && q.y < b.top && q.y > b.bot) w = Math.max(w, Math.min(b.top - q.y, b.hw - Math.abs(-dx * b.uz + dz * b.ux))); } return w / M; };
+      for (const [k, v] of [['swing', 0], ['boom', 0.1], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
+      const tp = E.teethWorld(new V()), r = Math.hypot(tp.x - E.x, tp.z - E.z), a0 = Math.atan2(tp.z - E.z, tp.x - E.x), res = {};
+      for (const sg of [1, -1]) { const a = a0 + sg * 0.9;   // (the truck 50° round the way the bucket swings, side on to it)
+        T.place(t, E.x + Math.cos(a) * r, E.z + Math.sin(a) * r, -a); mt._mbT = null; frames(2);
+        for (const [k, v] of [['swing', 0], ['boom', 0.1], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
+        const p0 = pen(); let pm = 0, sw0 = E.swing; for (const lx of [1, -1]) { for (let i = 0; i < 70; i++) { mt.joystick('l', lx, 0); frames(1); pm = Math.max(pm, pen()); } mt.joystick('l', 0, 0); frames(2); }
+        res[sg > 0 ? 'a' : 'b'] = { p0: +p0.toFixed(3), max: +pm.toFixed(3), swung: +(E.swing - sw0).toFixed(2) }; }
+      T.tip = 0; mt._mbT = null; const tall0 = mt._tallOf('truck') / M; T.tip = T.tipGoal = 0.9; T.update?.(0); mt._mbT = null; const tall1 = mt._tallOf('truck') / M; T.tip = T.tipGoal = 0; T.update?.(0); mt._mbT = null;
+      T.place(t, keepT[0], keepT[1], keepT[2]); T.root.visible = keepT[3]; for (const [k, v] of [['swing', 0], ['boom', 0], ['stick', 0], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
+      o.armTruck = { ...res, tall0: +tall0.toFixed(2), tall1: +tall1.toFixed(2) }; }
+    // (the realist: driven the way its mouth faces — backwards, the bucket open toward the machine — what it meets goes into the bucket)
+    { for (const [k, v] of [['swing', 0], ['boom', 0], ['stick', 0.3], ['curl', 0]]) E[k] = E[k + 'Goal'] = v; E.update(0); frames(2);
+      const g = mt.digG, tp = E.teethWorld(new V()), mo = E.mouthWorld(new V()), fx = Math.cos(E.yaw), fz = -Math.sin(E.yaw), out = Math.sign((tp.x - E.x) * fx + (tp.z - E.z) * fz) || 1;
+      const low = Math.min(tp.y, ...E.hardPoints().map((q) => q.y)), D = { x: tp.x - fx * out * 0.5 * M, z: tp.z - fz * out * 0.5 * M }, r = 0.5 * M, h = low - t.firmAt(D.x, D.z) + 0.5 * M;
+      const keep = t.loose.slice(), eK = [E.x, E.z, E.yaw], l0 = g ? g.load : 0; t.deposit(D.x, D.z, h * 2 * Math.PI * r * r, r, 0); frames(3);
+      mt.setExcMode('drive'); mt.joystick('l', 0, out); frames(25); mt.joystick('l', 0, 0); frames(3); mt.setExcMode('dig');
+      o.mouth = { gain: +(((mt.digG?.load || 0) - l0) * t.cellArea / (M * M * M)).toFixed(3), drove: +(Math.hypot(E.x - eK[0], E.z - eK[1]) / M).toFixed(2), facing: +(((mo.x - tp.x) * fx + (mo.z - tp.z) * fz) * -out / M).toFixed(2) };
+      t.loose.set(keep); t._touch(0, 0, t.rx, t.rz); E.place(t, ...eK); if (mt.digG) mt.digG.load = l0; frames(3); }
     E.place(t, 2 * M, -t.halfZ + 3 * M, 0);   // (parked out of the truck's way: the machines stop at one another now)
     for (const r of tc.objects.all('siteprop')) tc.objects.remove(r.id); tc.siteProps?.update?.(0);   // (the site's things off its way out too: this is the drive off the plot, not a detour)
     mt.exit(); frames(5);
@@ -1166,6 +1188,8 @@ if (want("2i")) {
   check('machines: the excavator\'s boom and bucket stop the loader and the truck where the arm is low; swung away, the spot is free (the owner)', o.arm && o.arm.low === true && o.arm.lowT === true && o.arm.inFits && o.arm.away === false && o.arm.lifted !== true, JSON.stringify(o.arm));
   check('machines: the excavator\'s bucket, its back first (the stick out), shoves on what of a heap is over its way — its top down', o.back && o.back.pushed > 0.1 && o.back.h1 < o.back.h0 - 0.1, JSON.stringify(o.back));
   check('machines: the excavator driven into a heap, the bucket low before it, shoves it on (the owner)', o.drivePush && o.drivePush.gain > 0.1 && o.drivePush.lost > 0.1, JSON.stringify(o.drivePush));
+  check('machines: the excavator\'s own bucket swung at a standing truck stops at it — never in its cab or body\'s side; a tipped body counts higher (the realist)', o.armTruck && o.armTruck.a.max < 0.08 && o.armTruck.b.max < 0.08 && o.armTruck.tall1 > o.armTruck.tall0 + 0.5, JSON.stringify(o.armTruck));
+  check('machines: the excavator driven the way its bucket\'s mouth faces takes what it meets into the bucket (the realist)', o.mouth && o.mouth.gain > 0.03 && o.mouth.drove > 0.2, JSON.stringify(o.mouth));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.push.tA[2] + 0.12 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.push.tB[2] + 0.12 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
   check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 3 && o.lump.pieces <= 20 && o.lump.maxR <= 0.5 && o.lump.spread >= 1.5, JSON.stringify(o.lump));
