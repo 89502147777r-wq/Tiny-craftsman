@@ -6,7 +6,7 @@
 // in parts and taken up again: --part i/n draws every frame k with k % n === i (the rest only run,
 // not drawn); frames already on disk are not drawn again; --assemble only cuts the mp4 from them.
 import { createRequire } from 'node:module';
-import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { execFileSync } from 'node:child_process';
+import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import { execFileSync, spawnSync } from 'node:child_process';
 const require = createRequire(import.meta.url);
 let pw; try { pw = require('playwright'); } catch { pw = require('/opt/node22/lib/node_modules/playwright'); }
 const argv = process.argv.slice(2), opt = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; };
@@ -16,6 +16,17 @@ const film = argv[0] || 'found', out = path.resolve(argv[1] || 'film-out');
 const [PI, PN] = (opt('part', '0/1')).split('/').map(Number), ASSEMBLE = argv.includes('--assemble');
 const W = +opt('w', 540), H = +opt('h', 960), DSF = +opt('dsf', 2), FPS = +opt('fps', 30), Q = opt('quality', 'high'), EVERY = +opt('every', 1), MAX = +opt('max', 90);
 fs.mkdirSync(path.join(out, 'frames'), { recursive: true });
+// --redo a-b (film seconds): only those frames drawn again, from 1 s before to 1 s after — the rest kept (the owner, 2026-11-17). The
+// film runs from the start undrawn (its state at a must be the same); past b the first kept frame is drawn again and compared: the
+// same — done, the rest kept; not the same (the fix changed what comes after) — the window goes on a second more, and again
+const REDO = (opt('redo', '') || '').split('-').map(Number), fname = (i) => `f${String(i).padStart(5, '0')}.jpg`;
+let redoEnd = -1;
+if (REDO.length === 2 && REDO.every(Number.isFinite)) {
+  const fr0 = (+opt('fps', 30)) / (+opt('every', 1)), i0 = Math.max(0, Math.floor((REDO[0] - 1) * fr0)); redoEnd = Math.ceil((REDO[1] + 1) * fr0);
+  for (let i = i0; i <= redoEnd; i++) fs.rmSync(path.join(out, 'frames', fname(i)), { force: true });
+  console.log(`redo frames ${i0}…${redoEnd} (film ${(i0 / fr0).toFixed(1)}–${(redoEnd / fr0).toFixed(1)} s)`);
+}
+const same = (a, b) => { const r = spawnSync('ffmpeg', ['-hide_banner', '-i', a, '-i', b, '-lavfi', 'psnr', '-f', 'null', '-'], { encoding: 'utf8' }), m = /average:([\d.]+|inf)/.exec(r.stderr || ''); return !!m && (m[1] === 'inf' || +m[1] > 40); };   // (PSNR over 40 dB: the same picture)
 const have = new Set(fs.readdirSync(path.join(out, 'frames')));
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const types = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.html': 'text/html', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.wasm': 'application/wasm', '.css': 'text/css', '.glb': 'model/gltf-binary', '.webmanifest': 'application/json', '.webp': 'image/webp' };
@@ -33,10 +44,15 @@ const t0 = Date.now();
 let n = 0, k = 0;
 for (;;) {
   const name = `f${String(Math.floor(k / EVERY)).padStart(5, '0')}.jpg`;
-  const shoot = k % EVERY === 0 && Math.floor(k / EVERY) % PN === PI && !have.has(name);
+  const idx = Math.floor(k / EVERY), check = redoEnd >= 0 && k % EVERY === 0 && idx === redoEnd + 1 && have.has(name);
+  const shoot = check || (k % EVERY === 0 && idx % PN === PI && !have.has(name));
   const st = await page.evaluate(([dt, draw]) => { const tc = window.__tc; tc.filmStep(dt, performance.now() / 1000, draw); return { done: tc.film.done, t: tc.film.t }; }, [1 / FPS, shoot]);
   k++;
-  if (shoot) { await page.screenshot({ path: path.join(out, 'frames', name), type: 'jpeg', quality: 92 }); n++; }
+  if (check) {
+    const tmp = path.join(out, 'seam.jpg'); await page.screenshot({ path: tmp, type: 'jpeg', quality: 92 });
+    if (same(tmp, path.join(out, 'frames', name))) { console.log(`seam at frame ${idx}: the same — the rest kept`); redoEnd = -1; fs.rmSync(tmp, { force: true }); }
+    else { const fr0 = FPS / EVERY, upto = idx + Math.ceil(fr0); console.log(`seam at frame ${idx}: changed — redrawing on to ${upto}`); fs.renameSync(tmp, path.join(out, 'frames', name)); for (let i = idx + 1; i <= upto; i++) { fs.rmSync(path.join(out, 'frames', fname(i)), { force: true }); have.delete(fname(i)); } redoEnd = upto; }
+  } else if (shoot) { await page.screenshot({ path: path.join(out, 'frames', name), type: 'jpeg', quality: 92 }); n++; }
   if (k % (FPS * 2) === 0) console.log(`film ${st.t.toFixed(1)} s · ${n} frames · ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   if (st.done || st.t > MAX) break;
 }
