@@ -66,6 +66,7 @@ export class MachineTool {
 
   // the loader on the plot: where it was left, else parked at the near left corner
   ensure() {
+    this.app.trace?.('техника: погрузчик');
     if (this.loader) return this.loader.ready;
     const app = this.app, t = app.terrain, L = (this.loader = new Loader());
     return L.ready.then(() => {
@@ -77,6 +78,7 @@ export class MachineTool {
     });
   }
   ensureTruck() {
+    this.app.trace?.('техника: самосвал');
     if (this.truck) return this.truck.ready;
     const app = this.app, T = (this.truck = new Truck());
     return T.ready.then(() => {
@@ -90,6 +92,7 @@ export class MachineTool {
   }
   // the mini excavator: where it was left, else at the far right corner, facing into the plot
   ensureExc() {
+    this.app.trace?.('техника: экскаватор');
     if (this.exc) return this.exc.ready;
     const app = this.app, t = app.terrain, E = (this.exc = new Excavator());
     return E.ready.then(() => {

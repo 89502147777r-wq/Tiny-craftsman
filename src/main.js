@@ -51,10 +51,15 @@ import { GardenView } from './world/gardenView.js';
 import { buildBitumen } from './world/bitumen.js';
 import { Budget } from './core/budget.js';
 import { HandTools } from './world/handTools.js';
-import { initLang } from './i18n/i18n.js';
+import { initLang, LANG } from './i18n/i18n.js';
 
 const app = (window.__tc = { ready: false, BUILD });
 
+// (the boot's steps kept in the browser — the owner, 2026-11-17: «the game reloads some 10 s after loading»: on a phone a tab
+// killed for its memory leaves no trace; the next start says which step the last one died on)
+const TRACE = 'tc.boot';
+app.trace = (stage) => { try { const mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null; localStorage.setItem(TRACE, JSON.stringify({ build: BUILD, stage, t: Math.round(performance.now() / 100) / 10, mem, at: Date.now() })); } catch { /* no storage: no trace */ } };
+app.lastBoot = (() => { try { return JSON.parse(localStorage.getItem(TRACE) || 'null'); } catch { return null; } })();
 async function main() {
   const canvas = document.getElementById('view');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -177,7 +182,8 @@ async function main() {
   if (app.filmMode) saved = null;
   let restored = false;
   if (saved) {
-    try { applyProject(saved); restored = true; } catch (e) { console.warn('could not restore project', e); }
+    app.trace('проект: восстановление'); try { applyProject(saved); restored = true; } catch (e) { console.warn('could not restore project', e); }
+    app.trace('проект восстановлен');
   }
   // (what was just read is what is stored: nothing to write until something changes)
   if (restored && byParts && !app.migrated) { app.terrain.sDirty.fill(0); for (const r of [...app.journal.done, ...app.journal.undone]) SAVE.j.add(r.id); SAVE.trackT = performance.now(); }
@@ -265,13 +271,18 @@ async function main() {
   // (in the background where the phone can — KHR_parallel_shader_compile — and again whenever the
   // light round them changes: a material is compiled anew for another sky)
   app.warmUp = () => {
+    // (what is shown now first, in one go; what is hidden — rooms, ghosts, tools — after, a few at a time with pauses: all at once
+    // the shaders' memory peaked as the textures and the machines came in — the owner's phone reloaded the tab ~10 s after loading)
+    const later = []; scene.traverse((o) => { if (!o.visible && o.parent?.visible !== false) later.push(o); });
+    const stage = async () => { for (let k = 0; k < later.length; k += 6) { await new Promise((r) => setTimeout(r, 250)); if (app.film) return; const part = later.slice(k, k + 6).filter((o) => o.parent && !o.visible);
+      for (const o of part) o.visible = true; try { for (const o of part) renderer.compile(o, camera, scene); } catch { /* not worth stopping for */ } for (const o of part) o.visible = false; } app.trace?.('шейдеры готовы'); };
     const hid = [];
-    scene.traverse((o) => { if (!o.visible) { hid.push(o); o.visible = true; } });
     let p = null;
     // (in a film at once, not in the background: the film builds and throws away as it goes — a material disposed
     // while three's background poll still waited on it threw from its timer)
     try { p = renderer.compileAsync && !app.film ? renderer.compileAsync(scene, camera) : (renderer.compile(scene, camera), null); } catch { /* not worth stopping for */ }
     for (const o of hid) o.visible = false;   // (the programs are made; they finish linking on their own)
+    (p || Promise.resolve()).then(stage);
     // (while it waits, nothing it compiled is disposed — backdrop.js holds its disposals till then)
     app.warming = p ? p.catch(() => {}).finally(() => { if (app.warming === w) app.warming = null; }) : null; const w = app.warming;
     return app.warming;
@@ -283,13 +294,17 @@ async function main() {
   app.wallView.update?.();   // (the openings built: the kits they want asked for)
   await Promise.race([kitsPending(), new Promise((r) => setTimeout(r, 6000))]);
   app.wallView.update?.();
-  if (!app.filmMode) app.warmUp();
+  if (!app.filmMode) { app.trace('прогрев шейдеров'); app.warmUp(); }
   // (each shader built later — the rooms, a ghost, a tool — not checked: the check waits for the
   // GPU to finish compiling it, a stall each time; the soil's, the one that may fail, is in by now)
   setTimeout(() => { if (!params.has('debug') && !navigator.webdriver) renderer.debug.checkShaderErrors = false; }, 8000);
   document.getElementById('loading').classList.add('done');
   document.getElementById('ui').hidden = !!app.filmMode;
   app.ready = true;
+  app.trace('игра открыта');
+  // (the last start died before it stood 30 s: say on which step — the owner tells us)
+  { const L = app.lastBoot; if (L && L.stage !== 'стабильно' && !app.filmMode && !navigator.webdriver) setTimeout(() => app.ui?.toast(LANG === 'en' ? `The last start stopped at: ${L.stage} (${L.t} s)` : `Прошлый запуск оборвался на шаге: «${L.stage}» (${L.t} с${L.mem ? ', ' + L.mem + ' МБ' : ''})`), 2500); }
+  setTimeout(() => app.trace('стабильно'), 30000);
   if (app.filmMode) await startFilm(app.filmMode);
   requestAnimationFrame(frame);
 }
