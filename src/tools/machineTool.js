@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PROPS } from '../world/siteProps.js';
-import { lumpSize } from '../world/lumps.js';
+import { lumpSize, breakLump, LUMP } from '../world/lumps.js';
+const UP3 = new THREE.Vector3(0, 1, 0);
 import { MODEL_SCALE } from '../config.js';
 import { Loader } from '../world/loader.js';
 import { Truck, TRUCK_LOAD } from '../world/truck.js';
@@ -1171,16 +1172,19 @@ export class MachineTool {
         else this._tracks('excavator', Math.hypot(nx - keep[0], nz - keep[1]) + Math.abs(yaw - keep[2]) * R(1));   // (the tracks press the ground)
       } else this.v = 0;
     } else {
-      E.swingGoal -= lx * 1.0 * dt;   // (1 rad/s: a 13–20 t machine's slew — the realist)
-      E.stickGoal += ly * 0.7 * dt;
+      const bog = Math.max(0.2, 1 - (this._pushLoad || 0) / 1.0);   // (shoving a heap: slower, down to a fifth at 1 m³ before it — the realist)
+      this._pushLoad = (this._pushLoad || 0) * Math.exp(-dt * 1.2);
+      E.swingGoal -= lx * 1.0 * dt * bog;   // (1 rad/s: a 13–20 t machine's slew — the realist)
+      E.stickGoal += ly * 0.7 * dt * bog;
     }
     E.boomGoal -= ry * 0.55 * dt;
     E.curlGoal -= rx * 1.2 * dt;
     // the ground under what goes into it: how deep the deepest of the points is in it
     // (the FIRM ground holds the bucket — its own soil, concrete — not what is loose on it: a heap is shoved, not leant on)
     const firm = (x, z) => t.firmAt(x, z);   // (its own ground and concrete, as smooth as the surface — no heap in it)
-    const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, firm(q.x, q.z) - q.y, this._inObst(q)); return w; };   // (and what stands on it: masonry, the site's things)   // (the ground — and what stands on it: masonry, the site's things — holds the bucket)
-    const pose0 = E.pose(), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
+    const under = (P) => { let w = 0; for (const q of P) if (t.inside(q.x, q.z)) w = Math.max(w, firm(q.x, q.z) - q.y); return w; };
+    const inO = (P) => { let w = 0; for (const q of P) w = Math.max(w, this._inObst(q)); return w; };   // (what stands on it — masonry, the site's things: held from below as from above)   // (the ground — and what stands on it: masonry, the site's things — holds the bucket)
+    const pose0 = E.pose(), obst0 = inO([...E.hardPoints(), E.teethWorld(new THREE.Vector3())]), deep0 = under(E.hardPoints()), deepS0 = under(E.stickPoints()), before = E.teethWorld(new THREE.Vector3()), tDeep0 = under([before]);
     // (the line of its teeth across its width, before and after the move: what leads a sideways slew through a heap)
     const lip = () => { const tp = E.teethWorld(new THREE.Vector3()), hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, out = []; for (let k = -4; k <= 4; k++) out.push(new THREE.Vector3(tp.x + ux * hw * k / 4, tp.y, tp.z + uz * hw * k / 4)); return out; };
     const hp0 = E.hardPoints(), lip0 = lip();
@@ -1236,7 +1240,7 @@ export class MachineTool {
       // (a move that lifts the bucket is never held: pressed in, its front up, the boom raised must get it out — the front coming
       // down first would put the teeth deeper for a frame, and the machine would stay stuck)
       const lift = p.y > before.y + R(0.0003) && ry < 0;
-      const bad = !lift && ((deep > tol && deep > (cutting ? deepS0 : deep0) + 1e-6) || (tDeep > tol && tDeep > tDeep0 + 1e-6));
+      const obst = inO([...E.hardPoints(), p]), bad = (obst > tol && obst > obst0 + 1e-6) || (!lift && ((deep > tol && deep > (cutting ? deepS0 : deep0) + 1e-6) || (tDeep > tol && tDeep > tDeep0 + 1e-6)));
       if (bad) {
         this._bad = { deep: +(deep / R(0.001)).toFixed(0), tDeep: +(tDeep / R(0.001)).toFixed(0), deep0: +(deep0 / R(0.001)).toFixed(0), obst: +(Math.max(0, ...E.hardPoints().map((q) => this._inObst(q))) / R(0.001)).toFixed(0), cutting };   // (what held it last: for the tests)
         let ok = false;
@@ -1515,32 +1519,45 @@ export class MachineTool {
     let by = null, node = null, edge = null, inside = null, w = 0, open = false, scoop = false;
     if (this.state === 'drive' && this.drv === 'excavator' && E?.loaded) { by = 'exc'; node = E.bucketP; edge = E.teethWorld(new THREE.Vector3()); inside = E.mouthWorld(new THREE.Vector3()); w = E.bucketW; open = E.open; scoop = !!this._excCut; }
     else if (L?.loaded && L.bucketP && (this.state !== 'drive' || this.drv === 'loader')) { by = 'loader'; node = L.bucketP; edge = L.edgeWorld(new THREE.Vector3()); node.updateMatrixWorld(true); inside = edge.clone().lerp(node.getWorldPosition(new THREE.Vector3()), 0.45); w = L.bucketW || R(2); open = L.tilt < -0.3; scoop = L.tilt > -0.45 && L.tilt < 0.45 && (this.state !== 'drive' || (this.v || 0) > 0); }   // (its middle: between the lip and the hinge)
-    const H = LV.held;
-    if (H && (H.by !== by || !O.get(H.id))) { if (O.get(H.id)) LV.drop(H.id); LV.held = null; return; }
-    if (H) {
-      const m = LV.meshes.get(H.id); if (!m) { LV.held = null; return; }
-      node.updateMatrixWorld(true); new THREE.Matrix4().multiplyMatrices(node.matrixWorld, H.local).decompose(m.position, m.quaternion, m.scale);
-      if (!open) return;
-      LV.held = null;
-      const q = T?.bed && T.root.visible && T.tip < 0.05 ? T.bed.worldToLocal(m.position.clone()) : null;
-      if (q && q.x > T.x0 && q.x < T.x0 + T.hx && Math.abs(q.z) < T.hz / 2 && q.y > T.floor - R(0.3)) {
-        O.update(H.id, { at: 'truck', tx: +q.x.toFixed(6), ty: +(T.floor + Math.max(0, (T._hAt?.(q.x, q.z) || 0) - lumpSize(O.get(H.id)).h * 0.35)).toFixed(6), tz: +q.z.toFixed(6), yaw: 0 });   // (a little sunk into what is in it; what is tipped on after covers it) app.sfx?.play?.('stone', { at: m.position, vol: 0.5 });
-      } else { const e = new THREE.Euler().setFromQuaternion(m.quaternion, 'YXZ'); O.update(H.id, { at: 'ground', x: +m.position.x.toFixed(6), z: +m.position.z.toFixed(6), yaw: +e.y.toFixed(4) }); m.rotation.set(0, e.y, 0); LV.drop(H.id); }
-      return;
+    // (what another bucket held — the machine left: it falls)
+    for (const h of [...LV.holds]) if (h.by !== by) { LV.holds.splice(LV.holds.indexOf(h), 1); if (O.get(h.id)) LV.drop(h.id); }
+    const now = performance.now() / 1000;
+    if (LV.holds.length) {
+      node.updateMatrixWorld(true); const inv = new THREE.Matrix4().copy(node.matrixWorld).invert(), inL = inside.clone().applyMatrix4(inv);
+      for (const h of LV.holds) {
+        const m = LV.meshes.get(h.id); if (!m) continue;
+        // (taken on its teeth where it lay, it slides in as the bucket curls — no jump: 0,3 s to its place in the hollow)
+        const u = Math.min(1, (now - h.t0) / 0.3), M = h.local.clone(), p = new THREE.Vector3().setFromMatrixPosition(h.local).lerp(h.to, u * u * (3 - 2 * u)); M.setPosition(p);
+        new THREE.Matrix4().multiplyMatrices(node.matrixWorld, M).decompose(m.position, m.quaternion, m.scale);
+      }
+      if (open) {
+        for (const h of LV.holds.splice(0)) {
+          const m = LV.meshes.get(h.id), r = O.get(h.id); if (!m || !r) continue;
+          const q = T?.bed && T.root.visible && T.tip < 0.05 ? T.bed.worldToLocal(m.position.clone()) : null;
+          if (q && q.x > T.x0 && q.x < T.x0 + T.hx && Math.abs(q.z) < T.hz / 2 && q.y > T.floor - R(0.3)) {
+            const sz = lumpSize(r);
+            O.update(h.id, { at: 'truck', tx: +q.x.toFixed(6), ty: +(T.floor + Math.max(0, (T._hAt?.(q.x, q.z) || 0) - sz.h * 0.35)).toFixed(6), tz: +q.z.toFixed(6), yaw: 0 });   // (a little sunk into what is in it; what is tipped on after covers it)
+            app.sfx?.play?.('stone', { at: m.position, vol: 0.5 });
+            T.load = (T.load || 0) + sz.vol / MODEL_SCALE ** 3 / (T.cap || 1);   // (it fills the body as much as it is: ~90 kg a 0,6 × 0,6 × 0,1 m dab)
+          } else { const e = new THREE.Euler().setFromQuaternion(m.quaternion, 'YXZ'); O.update(h.id, { at: 'ground', x: +m.position.x.toFixed(6), z: +m.position.z.toFixed(6), yaw: +e.y.toFixed(4) }); LV.drop(h.id); }
+        }
+        return;
+      }
     }
-    // (in the truck, the body tipping: out over the tailgate onto the ground)
-    if (T?.bed && T.tip > 0.5) for (const r of O.all('lump')) if (r.at === 'truck') { const p = T.tailLip(new THREE.Vector3()), fx = Math.cos(T.yaw), fz = -Math.sin(T.yaw); O.update(r.id, { at: 'ground', x: +(p.x - fx * R(0.4)).toFixed(6), z: +(p.z - fz * R(0.4)).toFixed(6) }); const m = LV.meshes.get(r.id); if (m) { m.position.y = p.y; LV.drop(r.id); } }
-    if (!by || open || !scoop) return;
+    if (!by || open || !scoop || LV.holds.length >= 4) return;
     for (const r of O.all('lump')) {
-      if (r.at === 'truck') continue;
+      if (r.at === 'truck' || LV.isHeld(r.id)) continue;
       const m = LV.meshes.get(r.id); if (!m) continue;
       const sz = lumpSize(r), d = Math.hypot(m.position.x - edge.x, m.position.z - edge.z);
-      if (d > w / 2 + sz.r * 0.5 || edge.y > m.position.y + sz.h + R(0.12) || edge.y < m.position.y - R(0.3)) continue;
-      if (sz.r > w * 0.8) continue;   // (wider than the bucket: it does not go in)
-      node.updateMatrixWorld(true); m.position.copy(inside); m.updateMatrixWorld(true);
-      LV.held = { id: r.id, by, local: new THREE.Matrix4().copy(node.matrixWorld).invert().multiply(m.matrixWorld) };
+      if (d > w / 2 + sz.r * 0.6 || edge.y > m.position.y + sz.h + R(0.12) || edge.y < m.position.y - R(0.3)) continue;
+      // (a big one the teeth hit breaks — uneven pieces 0,2–0,7 m, none wider than the bucket takes; a small one stays whole)
+      if (sz.r > Math.min(R(LUMP.whole), w * 0.4)) { breakLump(app, r.id, Math.min(R(0.35), w * 0.4)); return; }
+      node.updateMatrixWorld(true); m.updateMatrixWorld(true);
+      const inv = new THREE.Matrix4().copy(node.matrixWorld).invert(), local = inv.clone().multiply(m.matrixWorld), n = LV.holds.length;
+      const side = new THREE.Vector3(edge.x - inside.x, 0, edge.z - inside.z).normalize().cross(UP3), to = inside.clone().addScaledVector(side, (n % 2 ? 1 : -1) * R(0.14) * Math.ceil(n / 2)).add(new THREE.Vector3(0, R(0.05) * n, 0)).applyMatrix4(inv);   // (several: side by side in it)
+      LV.holds.push({ id: r.id, by, local, to, t0: now });
       app.sfx?.play?.('stone', { at: m.position, vol: 0.5 });
-      break;
+      if (LV.holds.length >= 4) break;
     }
   }
   // the excavator's bucket — its back, its bottom, its sides as the house slews — shoves what is LOOSE in its way (a heap, spoil,
@@ -1560,24 +1577,28 @@ export class MachineTool {
       const j = t.index(jx, jz); if (!g.free(j, jx, jz)) continue;
       for (let s = 0; s <= n; s++) for (let q = -1.5; q <= 1.5; q += 1) {
         const f = s / n, px = a.x + (b.x - a.x) * f - uz * q * t.cell, pz = a.z + (b.z - a.z) * f + ux * q * t.cell; if (!t.inside(px, pz)) continue;
-        const i = t.index(px, pz); if (i === j || !g.free(i, px, pz)) continue;
+        const i = t.index(px, pz); if (i === j || !g.free(i, px, pz) || t.comp[i] >= 0.9) continue;   // (a pressed base is not shoved)
         const over = Math.min(t.nat[i] + t.loose[i] - y, t.loose[i]); if (!(over > 1e-7)) continue;
-        t._move(i, j, over); moved += over; touch(i); touch(j);
+        // (the windrow before it loses a quarter to the sides as it goes — two low ridges along its way)
+        const sx = -uz * t.cell * 2.5, sz = ux * t.cell * 2.5, kL = t.inside(jx + sx, jz + sz) ? t.index(jx + sx, jz + sz) : j, kR = t.inside(jx - sx, jz - sz) ? t.index(jx - sx, jz - sz) : j;
+        t._move(i, j, over * 0.75); if (t.loose[i] > 0) { const rest = Math.min(t.loose[i], over * 0.25); t._move(i, kL, rest / 2); t._move(i, kR, rest / 2); touch(kL); touch(kR); }
+        moved += over; touch(i); touch(j);
       }
     }
     this._pushStat = (this._pushStat || 0) + moved;   // (for the tests)
+    this._pushLoad = (this._pushLoad || 0) + moved * t.cellArea * MODEL_SCALE ** 3;   // (m³ shoved lately: the windrow it is driving — the slew slows under it)
     if (moved > 0) { t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); this.app.sfx.play('soil_dump', { gap: 0.6, at: P1[0], vol: 0.35 }); }
     // (a lump of concrete in the way of its back or side — on the ground or in a heap: shoved on with it, the way the bucket goes)
     const LV = this.app.lumpView, O = this.app.objects;
     if (LV) for (const r of O.all('lump')) {
-      if (r.at === 'truck' || LV.held?.id === r.id) continue;
+      if (r.at === 'truck' || LV.isHeld(r.id)) continue;
       const m = LV.meshes.get(r.id); if (!m) continue;
       const sz = lumpSize(r);
       for (let k = 0; k < P1.length; k++) {
         const a = P0[k], b = P1[k]; if (!a || !b) continue;
         if (Math.hypot(b.x - m.position.x, b.z - m.position.z) > sz.r || b.y > m.position.y + sz.h || b.y < m.position.y - R(0.05)) continue;
         const dx = b.x - a.x, dz = b.z - a.z; if (Math.hypot(dx, dz) < R(0.001)) continue;
-        O.update(r.id, { x: +(r.x + dx * 1.1).toFixed(6), z: +(r.z + dz * 1.1).toFixed(6) }); this.app.sfx.play('stone', { gap: 0.5, at: m.position, vol: 0.3 });
+        O.update(r.id, { x: +(r.x + dx * 1.1).toFixed(6), z: +(r.z + dz * 1.1).toFixed(6) }); LV.shoved.add(r.id); this.app.sfx.play('stone', { gap: 0.5, at: m.position, vol: 0.3 });
         break;
       }
     }

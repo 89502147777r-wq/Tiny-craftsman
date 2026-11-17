@@ -47,7 +47,19 @@ function apart(P, Q) {   // (two turned rectangles: a line between them along on
   return false;
 }
 export function propClear(app, kind, x, z, yaw, skip = null) {
-  const me = corners(kind, x, z, yaw, GAP);
+  const me = corners(kind, x, z, yaw, GAP), T = app.terrain, MT = app.machineTool;
+  // (what it stands on — the realist: not on a slab, on masonry, over a pit's edge, under a machine: the bare ground, level
+  // enough — its corners within 150 mm of one another)
+  const foot = corners(kind, x, z, yaw, 0), pts = [...foot, [x, z], ...foot.map(([a, b]) => [(a + x) / 2, (b + z) / 2])];
+  let lo = Infinity, hi = -Infinity;
+  for (const [a, b] of pts) {
+    if (!T.inside(a, b)) return false;
+    const i = T.index(a, b); if (T.conc[i] > 1e-6 || T.zone?.[i] === 1) return false;
+    if (MT?._obstTop && MT._obstTop(a, b) > -Infinity && !MT._propBoxes?.().some((q) => Math.abs((a - q.x) * q.ux + (b - q.z) * q.uz) < q.hl && Math.abs(-(a - q.x) * q.uz + (b - q.z) * q.ux) < q.hw)) return false;   // (masonry under it)
+    const h = T.heightAt(a, b); lo = Math.min(lo, h); hi = Math.max(hi, h);
+  }
+  if (hi - lo > MM(150)) return false;
+  for (const m of [MT?.loader, MT?.truck, MT?.exc]) if (m?.loaded && m.root?.visible !== false && Math.hypot(m.x - x, m.z - z) < MM(3000) + MM(Math.hypot(...(PROPS[kind]?.foot || [800, 800])) / 2)) return false;   // (not under a machine)
   for (const r of app.objects.all('siteprop')) { if (r.id === skip || !PROPS[r.kind]) continue; if (!apart(me, corners(r.kind, r.x, r.z, r.yaw))) return false; }
   return true;
 }

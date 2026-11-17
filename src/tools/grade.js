@@ -19,7 +19,7 @@ export class Grader {
     for (const B of buildings(app)) { const H = findHouse(app, { x: B[0].x, z: B[0].z }); if (H) wings.push(...H.wings); }
     const dist = (x, z) => { let m = Infinity; for (const w of wings) { const dx = x - w.cx, dz = z - w.cz, a = Math.abs(dx * w.ux + dz * w.uz) - w.A, d = Math.abs(-dx * w.uz + dz * w.ux) - w.B; m = Math.min(m, Math.hypot(Math.max(0, a), Math.max(0, d))); } return m; };
     const fall = (x, z) => (wings.length ? slope * (Math.min(dist(x, z), MM(8000)) - MM(1500)) : 0);
-    this.free = (i, x, z) => t.zone[i] !== 1 && t.conc[i] <= 1e-6 && t.top[i] <= 0 && (!out || out(x, z) === true);
+    this.free = (i, x, z) => t.zone[i] !== 1 && (t.conc[i] <= 1e-6 || (t.cSpill[i] === 1 && t.conc[i] < MM(25))) && t.top[i] <= 0 && (!out || out(x, z) === true);   // (a thin spilt stain crumbles with the soil)
     // (the level most of the open ground lies at, the fall taken out: ±25 mm round the commonest)
     const hs = [], st = MM(200);
     for (let x = t.toWorldX(0); x <= t.toWorldX(t.rx); x += st) for (let z = t.toWorldZ(0); z <= t.toWorldZ(t.rz); z += st) {
@@ -38,6 +38,7 @@ export class Grader {
   cut(i, h, into = this.carry) {
     const t = this.app.terrain, seg = this._seg;
     if (h > 0.01 / 10.47 && t.comp[i] > 0) t.comp[i] = 0;   // (cut into: what shows is fresh, not the pressed top)
+    if (t.conc[i] > 1e-6 && t.cSpill[i] === 1) { into[0] += t.conc[i]; h = Math.max(0, h - t.conc[i]); t.conc[i] = 0; t._concTouch?.(i % t.nx, (i / t.nx) | 0, i % t.nx, (i / t.nx) | 0); }   // (a stain of spilt concrete: into the bucket, broken up)
     const got = t._pop(i, h, seg);
     for (let k = 0; k < seg.n; k++) into[seg.m[k]] += seg.h[k];
     if (h - got > 1e-9) { t.nat[i] -= h - got; into[0] += h - got; this.natCut = (this.natCut || 0) + h - got; }

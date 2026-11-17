@@ -1094,7 +1094,12 @@ console.log('—', sec());
         for (let k = 0; k < 90; k++) LV.update(1 / 30); const q = tc.objects.get(r.id), ly = LV.meshes.get(r.id).position.y, h = mod.lumpSize(q).h;
         t.deposit(q.x, q.z, 0.4 * M * M * M, 0.5 * M, 0, 1); for (let k = 0; k < 20; k++) LV.update(1 / 30);
         o.lump.buried = LV.meshes.get(r.id).position.y <= ly + 0.002 * M && ly + h < t.heightAt(q.x, q.z);
-        tc.objects.remove(r.id); } }
+        tc.objects.remove(r.id); }
+      // (a big dab — 1 × 1 m: one piece till the teeth hit it; then uneven pieces, none wider than the bucket takes — the realist)
+      { const ids2 = []; for (let dz = -16; dz <= 16; dz++) for (let dx = -16; dx <= 16; dx++) { const i = i0 + 40 + dz * nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = 0.06 * M; t.cTime[i] = (tc.clock || 0) - 400; ids2.push(i); }
+        const big = mod.scanLumps(tc); o.lump.big = big.length;
+        if (big.length === 1) { const ps = mod.breakLump(tc, big[0], 0.35 * M), sz = ps.map((id) => mod.lumpSize(tc.objects.get(id)));
+          o.lump.pieces = ps.length; o.lump.maxR = +(Math.max(...sz.map((q) => q.r)) / M).toFixed(2); o.lump.spread = +(Math.max(...sz.map((q) => q.area)) / Math.min(...sz.map((q) => q.area))).toFixed(1); for (const id of ps) tc.objects.remove(id); } } }
 
     mt.setExcMode('drive'); const x0 = E.x, z0 = E.z; mt.joystick('l', 0, -1); frames(45); mt.joystick('l', 0, 0); frames(5); o.drove = Math.hypot(E.x - x0, E.z - z0) > 0.3 * M;
     // (the owner: it drove through the loader with the truck about — every other machine stops it)
@@ -1126,7 +1131,7 @@ console.log('—', sec());
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.push.tA[2] + 0.12 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.push.tB[2] + 0.12 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
-  check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried, JSON.stringify(o.lump));
+  check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 3 && o.lump.pieces <= 20 && o.lump.maxR <= 0.5 && o.lump.spread >= 1.5, JSON.stringify(o.lump));
   check('machines: the excavator stops at a site thing (a pallet) in its way, not through it (the owner)', o.prop && o.prop.clear && o.prop.moved < 2.6, JSON.stringify(o.prop));
   check('machines: the excavator stops at the loader in its way, not through it (the owner)', !o.block || (o.block.clear && o.block.moved < 2.2), JSON.stringify(o.block));
   check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), lifted it keeps it (crowned, lumpy), opened it is empty, the crumbs fall at g; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove && o.carried >= 0.95 && o.crown > 0.15 && o.fallAt04 && o.fallAt12, JSON.stringify(o));

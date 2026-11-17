@@ -143,7 +143,7 @@ export class Terrain {
   firmAt(x, z) {
     const n = this.nx; let cx = this.toCellX(x), cz = this.toCellZ(z);
     cx = Math.min(Math.max(cx, 0), this.rx - 1e-4); cz = Math.min(Math.max(cz, 0), this.rz - 1e-4);
-    const ix = Math.floor(cx), iz = Math.floor(cz), fx = cx - ix, fz = cz - iz, i = iz * n + ix, f = (j) => this.nat[j] + this.conc[j];
+    const ix = Math.floor(cx), iz = Math.floor(cz), fx = cx - ix, fz = cz - iz, i = iz * n + ix, f = (j) => this.nat[j] + this.conc[j] + (this.comp[j] >= 0.9 ? this.loose[j] : 0);   // (a base pressed by the plate holds as the native ground: only the teeth cut it)
     return (f(i) * (1 - fx) + f(i + 1) * fx) * (1 - fz) + (f(i + n) * (1 - fx) + f(i + n + 1) * fx) * fz;
   }
   heightAt(x, z) {
@@ -960,7 +960,7 @@ export class Terrain {
     return out;
   }
   // concrete arriving in an empty cell: a spill when it is off the formwork and on the open ground (not in a pit: a blinding)
-  _spillAt(i) { return this._outsideMask()[i] && this.nat[i] >= this.orig[i] - 0.03 / MODEL_SCALE ? 1 : 0; }
+  _spillAt(i) { return this._outsideMask()[i] && this.nat[i] >= this.orig[i] - 0.03 / MODEL_SCALE && this.loose[i] < 0.02 / MODEL_SCALE ? 1 : 0; }   // (on a laid base — stone, sand: poured there on purpose, cast)
 
   // the zones: inside(x, z) → 1 over the box [x0, z0, x1, z1] (the rest of the plot 0)
   setZone(inside, box, topAt = null) {
