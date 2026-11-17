@@ -10,7 +10,11 @@ import { houseOutside, buildings, findHouse } from './pitchedTool.js';
 const MM = (v) => v / 1000 / MODEL_SCALE;
 
 export class Grader {
-  constructor(app) { this.app = app; this.carry = new Float64Array(5); this._seg = { m: new Uint8Array(8), h: new Float64Array(8), n: 0 }; this._seen = new Set(); }
+  constructor(app) {
+    this.app = app; this.carry = new Float64Array(5); this._seg = { m: new Uint8Array(8), h: new Float64Array(8), n: 0 }; this._seen = new Set();
+    // (before any area is graded — the excavator shoving, a film: the houses and the concrete untouched; a thin spilt stain crumbles)
+    this.free = (i) => { const t = app.terrain; return t.zone[i] !== 1 && (t.conc[i] <= 1e-6 || (t.cSpill[i] === 1 && t.conc[i] < MM(25))) && t.top[i] <= 0; };
+  }
 
   // the design level over the plot (worked out as the work begins)
   design(slopePct = 1.5) {
