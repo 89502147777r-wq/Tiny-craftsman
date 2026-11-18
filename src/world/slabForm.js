@@ -77,7 +77,10 @@ export class SlabFormView {
         // (as a crew works — the realist: a telescopic prop does not stand by itself; a row of props, at once its primary beam in their
         // fork heads, the next row — from the corner farthest out (a cantilever's free corner) back toward the walls; then the
         // secondaries across them, then the sheets)
-        let far = items[0]; for (const it of items) if (Math.hypot(it.at[0] - cx, it.at[2] - cz) > Math.hypot(far.at[0] - cx, far.at[2] - cz)) far = it;
+        // (reveal.from [x, z]: where the crew starts — a film starts at the cantilevers' free corner)
+        let far = items[0];
+        if (reveal.from) { for (const it of items) if (Math.hypot(it.at[0] - reveal.from[0], it.at[2] - reveal.from[1]) < Math.hypot(far.at[0] - reveal.from[0], far.at[2] - reveal.from[1])) far = it; }
+        else for (const it of items) if (Math.hypot(it.at[0] - cx, it.at[2] - cz) > Math.hypot(far.at[0] - cx, far.at[2] - cz)) far = it;
         const sOf = (it) => (it.k === 'prop' ? toFrame(b, it.x, it.z)[0] : (it.r[0] + it.r[2]) / 2), sFar = sOf(far), dFar = (it) => Math.hypot(it.at[0] - far.at[0], it.at[2] - far.at[2]) / S;
         const lines = [...new Set(items.filter((it) => it.k === 'beam' && it.yTop !== F.yDeck).map((it) => Math.round(sOf(it) / MM(50))))].sort((p, q) => Math.abs(p * MM(50) - sFar) - Math.abs(q * MM(50) - sFar));
         const row = (it) => { const s0 = sOf(it); let bi = 0, bd = Infinity; lines.forEach((k, i) => { const dd = Math.abs(k * MM(50) - s0); if (dd < bd) { bd = dd; bi = i; } }); return bi; };
