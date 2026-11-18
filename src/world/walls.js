@@ -772,7 +772,7 @@ export class WallView {
     // realist: off the slab before the next layers; as many boards as held it down)
     for (const b of O.all('belt')) {
       if (b.kind !== 'slab' || !(b.cureOff > 0) || !b.sidesPile || !this.terrain) continue;
-      const [px, pz] = b.sidesPile, x = px + 1400 * S, z = pz - 800 * S, gy = this.terrain.heightAt(x, z);
+      const [px, pz] = b.sidesPile, x = px + 1250 * S, z = pz - 700 * S, gy = this.terrain.heightAt(x, z);   // (inside the stack's place in the yard: YARD.boardsCure)
       const R = 190 * S, g = new THREE.CylinderGeometry(R, R, 1500 * S, 18, 8); g.rotateZ(Math.PI / 2);   // (Ø380: crumpled loose, 5–10 × its own volume — the realist)
       { const q = g.attributes.position; let sd = 11; const rn = () => ((sd = (sd * 16807) % 2147483647) / 2147483647 - 0.5);
         for (let i = 0; i < q.count; i++) { const r = 1 + rn() * 0.3; q.setY(i, q.getY(i) * 0.55 * r); q.setZ(i, q.getZ(i) * r); q.setX(i, q.getX(i) * (1 + rn() * 0.04)); } }
