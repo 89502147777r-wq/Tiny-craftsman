@@ -403,11 +403,10 @@ export function* sailFilm(d, app) {
     const RB = roof, area = roofArea(RB, O.all('unit')), [i0, j0, i1, j1] = area.bbox, c = RB.c, all = [[i0 * c, j0 * c, i1 * c, j1 * c]];
     let rr = O.all('roof').find((r) => r.slab === RB.id);
     app.journal.act('roof-layers', {}, app.clock, () => { const p = { vap: all, xps: all, wedge: all }; if (rr) O.update(rr.id, p); else rr = O.add({ type: 'roof', slab: RB.id, mem: 'graphite', cop: 'ral9003', memS: [], copS: [], grav: [], ...p }); });
-    // the membrane: its strips rolled, the first at a walk, then quicker
+    // (the owner, 2026-11-18, «б»: the finish in ~15 s — the box's membrane laid off the camera, the sedum seen)
     const strips = []; for (let t = j0 * c; t < j1 * c - MM(50); t += MM(2050 - 80)) strips.push([i0 * c, t, i1 * c, Math.min(j1 * c, t + MM(2050))]);
-    let k = 0, s = i0 * c; const t0 = d.t, done = [];
-    tool = () => { const q = strips[k]; if (!q) return null; const [x, z] = toWorld(RB, s, (q[1] + q[3]) / 2); return new V(x, RB.top + RB.H + MM(250), z); };
-    act([[1.4, [1400, 1300, -1500], 1], [1.4, [-1800, 1600, -1600], 3]]);
+    later.push(() => O.update(rr.id, { memS: strips.slice() }));
+    let k = strips.length, s = i0 * c; const t0 = d.t, done = [];
     yield d.until(() => {
       const e = d.t - t0, v = e < 1.0 ? 1 : Math.min(40, Math.exp(2.5 * (e - 1.0)));
       s += MM(1000) * v * d.dt * d.speed * 1.2;
@@ -415,15 +414,14 @@ export function* sailFilm(d, app) {
       if (s >= q[2]) { done.push(q); k++; s = i0 * c; O.update(rr.id, { memS: done.slice() }); app.sfx?.play?.('fabric', { vol: 0.4 }); WV.liveRoof = null; return k >= strips.length; }
       WV.liveRoof = { slab: RB.id, layer: 'mem', rect: [q[0], q[1], s, q[3]], roll: { along: true, end: s, w: 2050 } }; WV.roofDirty = true; return false;
     });
-    WV.liveRoof = null; WV.roofDirty = true;
     // the sedum mats: a strip close, then strip after strip faster (500 off the edge and the drain: gravel)
     const free = Math.round(MM(ROOF.greenFree) / c), ni = RB.ni;
     const isFree = (i, j) => { for (let dj = -free; dj <= free; dj++) for (let di = -free; di <= free; di++) if (!area.on(i + di, j + dj)) return true; return false; };
     const green = [], grav = []; let row = j0; const t1 = d.t;
     tool = () => { const [x, z] = toWorld(RB, (i0 + i1) / 2 * c, (row + 0.5) * c); return new V(x, RB.top + RB.H + MM(300), z); };
-    act([[1.3, [1200, 1200, -1300], 1], [1.4, [-2000, 1700, -1600], 3], [1.2, [2600, 2400, -2600], 6]]);
+    act([[1.1, [1200, 1200, -1300], 1], [1.5, [2600, 2400, -2600], 6]]);
     yield d.until(() => {
-      const e = d.t - t1, want = Math.min(j1, j0 + Math.floor(e < 1.3 ? e * 3 : 4 + (e - 1.3) * 18 * (e < 2.7 ? 1 : 3)));
+      const e = d.t - t1, want = Math.min(j1, j0 + Math.floor(e < 1.1 ? e * 3 : 3 + (e - 1.1) * 70));
       for (; row < want; row++) { for (let i = i0; i < i1; i++) if (area.on(i, row)) (isFree(i, row) ? grav : green).push(row * ni + i); app.sfx?.play?.('turf', { vol: 0.35, gap: 0.12 }); }
       O.update(rr.id, { green: green.slice(), grav: grav.slice() });
       return row >= j1;
@@ -446,10 +444,10 @@ export function* sailFilm(d, app) {
     const strips = []; for (let s = i0 * c; s < i1 * c - MM(50); s += MM(2050 - 80)) strips.push([s, j0 * c, Math.min(i1 * c, s + MM(2050)), j1 * c]);
     let k = 0, t = j0 * c; const t0 = d.t, done = [];
     tool = () => { const q = strips[k]; if (!q) return null; const [x, z] = toWorld(b, (q[0] + q[2]) / 2, t); return new V(x, b.top + b.H + MM(300), z); };
-    act([[1.4, [-1300, 900, -1400], 1]]);
-    { const t3 = d.t; d.each(() => { if (d.t - t3 < 1.4) return false; shots([[9, [-11000, 7000, -13500], [-3500, 3900, -1500]]]); return true; }); }   // (the strips running on fast: the whole terrace in the frame, from the sea's side)
+    act([[0.9, [-1300, 900, -1400], 1]]);
+    { const t3 = d.t; d.each(() => { if (d.t - t3 < 0.9) return false; shots([[9, [-11000, 7000, -13500], [-3500, 3900, -1500]]]); return true; }); }   // (the strips running on fast: the whole terrace in the frame, from the sea's side)
     yield d.until(() => {
-      const e = d.t - t0, v = e < 1.1 ? 1 : Math.min(40, Math.exp(2.5 * (e - 1.1)));
+      const e = d.t - t0, v = e < 0.9 ? 1 : Math.min(120, Math.exp(4.5 * (e - 0.9)));
       t += MM(1000) * v * d.dt * d.speed * 1.2;
       const q = strips[k]; if (!q) return true;
       if (t >= q[3]) { done.push(q); k++; t = j0 * c; O.update(rr.id, { memS: done.slice() }); app.sfx?.play?.('fabric', { vol: 0.4 }); WV.liveRoof = null; return k >= strips.length; }
@@ -466,15 +464,15 @@ export function* sailFilm(d, app) {
     const tileP = (q) => { const [ti, tj] = q[0].split(':').map(Number), [x, z] = toWorld(b, (ti + 0.5) * MM(600), (tj + 0.5) * MM(600)); return new V(x, b.top + b.H + MM(380), z); };
     // (close: the tile going down; then the rows going on fast — the work is the terrace, its middle)
     const midT = tiles.length ? tileP(tiles[tiles.length >> 1]) : null;
-    tool = () => { const q = tiles[Math.min(n, tiles.length - 1)]; if (!q) return null; return d.t - t1 > 2.8 && midT ? midT.clone() : tileP(q); };
-    act([[1.5, [-900, 600, -1100], 1], [1.3, [1500, 800, -1500], 3], [1.2, [-2600, 1700, -2600], 6]]);
+    tool = () => { const q = tiles[Math.min(n, tiles.length - 1)]; if (!q) return null; return d.t - t1 > 1.9 && midT ? midT.clone() : tileP(q); };
+    act([[1.0, [-900, 600, -1100], 1], [0.9, [1500, 800, -1500], 3], [1.0, [-2600, 1700, -2600], 6]]);
     yield d.until(() => {
-      const e = d.t - t1, want = Math.min(tiles.length, Math.floor(e < 1.5 ? e / 0.75 : e < 2.8 ? 2 + (e - 1.5) * 8 : 12 + (e - 2.8) * 140));
-      const fr = e < 1.5 ? (e / 0.75) % 1 : 1;
-      if (e > 2.8 && !paid) { paid = true; app.budget._pay?.([{ usd: cells.length * (c / S / 1000) ** 2 * 95 }], P(0, 0, 0)); }
+      const e = d.t - t1, want = Math.min(tiles.length, Math.floor(e < 1.0 ? e : e < 1.9 ? 1 + (e - 1.0) * 10 : 10 + (e - 1.9) * 320));
+      const fr = e < 1.0 ? e : 1;
+      if (e > 1.9 && !paid) { paid = true; app.budget._pay?.([{ usd: cells.length * (c / S / 1000) ** 2 * 95 }], P(0, 0, 0)); }
       for (; n < want; n++) { laid.push(...tiles[n][1]); app.sfx?.play?.('block', { vol: 0.35, gap: 0.09 }); }
       O.update(rr.id, { deck: laid.slice() });
-      WV.liveRoof = n < tiles.length && e < 1.5 ? { slab: b.id, layer: 'deck', cells: tiles[n][1], lift: (1 - fr) * 250 } : null; WV.roofDirty = true;
+      WV.liveRoof = n < tiles.length && e < 1.0 ? { slab: b.id, layer: 'deck', cells: tiles[n][1], lift: (1 - fr) * 250 } : null; WV.roofDirty = true;
       return n >= tiles.length;
     });
     WV.liveRoof = null; WV.roofDirty = true; still();
@@ -485,12 +483,12 @@ export function* sailFilm(d, app) {
     rails.sort((p, q) => Math.hypot(p.a[0] - MM(CORNER[0]), p.a[1] - MM(CORNER[1])) - Math.hypot(q.a[0] - MM(CORNER[0]), q.a[1] - MM(CORNER[1])));
     say('rails ' + rails.length);
     // (the work point slides along the newest railing as its panels go in — the glaziers along it)
-    let ri = 0, rt = d.t; tool = () => { const r = rails[Math.max(0, ri - 1)]; if (!r) return null; const f = Math.min(1, (d.t - rt) / 0.45); return new V(r.a[0] + (r.b[0] - r.a[0]) * f, r.y + r.up + MM(600), r.a[1] + (r.b[1] - r.a[1]) * f); };
+    let ri = 0, rt = d.t; tool = () => { const r = rails[Math.max(0, ri - 1)]; if (!r) return null; const f = Math.min(1, (d.t - rt) / 0.2); return new V(r.a[0] + (r.b[0] - r.a[0]) * f, r.y + r.up + MM(600), r.a[1] + (r.b[1] - r.a[1]) * f); };
     if (rails.length) { app.journal.act('rail', {}, app.clock, () => O.add(rails[ri++])); app.sfx?.play?.('glass', { vol: 0.6 }); }
-    act([[1.4, [1500, 300, -2200], 1]]);
-    billSoon('DECK', 0.5);
-    { const t1 = d.t; d.each(() => { if (d.t - t1 < 1.4) return false; shots([[9, [-9500, 3400, -17000], [-2500, 4100, -1500]]]); return true; }); }   // (then from the beach: every edge of the sail, each railing going on seen)
-    { const t2 = d.t; yield d.until(() => { const want = Math.min(rails.length, 1 + Math.floor((d.t - t2) / 0.45)); for (; ri < want; ri++) { O.add(rails[ri]); rt = d.t; app.sfx?.play?.('glass', { vol: 0.45, gap: 0.1 }); } return ri >= rails.length && d.t - t2 > 3.0; }); }
+    act([[0.9, [1500, 300, -2200], 1]]);
+    billSoon('DECK', 0.3);
+    { const t1 = d.t; d.each(() => { if (d.t - t1 < 0.9) return false; shots([[9, [-9500, 3400, -17000], [-2500, 4100, -1500]]]); return true; }); }   // (then from the beach: every edge of the sail, each railing going on seen)
+    { const t2 = d.t; yield d.until(() => { const want = Math.min(rails.length, 1 + Math.floor((d.t - t2) / 0.2)); for (; ri < want; ri++) { O.add(rails[ri]); rt = d.t; app.sfx?.play?.('glass', { vol: 0.45, gap: 0.1 }); } return ri >= rails.length && d.t - t2 > 1.7; }); }
     still();
   });
 
@@ -502,10 +500,10 @@ export function* sailFilm(d, app) {
     let wk = 0; tool = () => { const q = ops[Math.max(0, wk - 1)]; return q ? new V(q.x, q.y0 + MM(1300), q.z) : null; };
     const put = (q) => { O.add({ type: 'window', key: 'floor', col: 'anth', w: q.w, h: q.h, t: q.t, x: +q.x.toFixed(6), y: +q.y0.toFixed(6), z: +q.z.toFixed(6), yaw: +q.yaw.toFixed(5) }); app.sfx?.play?.('glass', { vol: 0.45, gap: 0.1 }); };
     if (ops.length) { put(ops[wk++]); }
-    act([[1.6, [-1800, 300, -3600], 1]]);
-    yield d.sec(1.6);
+    act([[1.0, [-1800, 300, -3600], 1]]);
+    yield d.sec(1.0);
     shots([[9, [-1500, 2200, -17500], [-500, 3200, 0]]]);   // (from the beach: the whole front, each glass wall going in seen)
-    { const t0 = d.t; yield d.until(() => { const want = Math.min(ops.length, 1 + Math.floor((d.t - t0) * 3)); for (; wk < want; wk++) put(ops[wk]); return wk >= ops.length && d.t - t0 > 1.2; }); }
+    { const t0 = d.t; yield d.until(() => { const want = Math.min(ops.length, 1 + Math.floor((d.t - t0) / 0.15)); for (; wk < want; wk++) put(ops[wk]); return wk >= ops.length && d.t - t0 > 0.9; }); }
     still();
   });
 
@@ -552,17 +550,17 @@ export function* sailFilm(d, app) {
     st.wallKind = 'facade'; app.setTool('wall'); d.menu(['facade', 'wet', 'pl'], 'wall');
     billSoon('GLASS', 1.2);
     if (pavF.length) { const F0 = pavF.slice().sort((a, b) => mid(a).z - mid(b).z)[0], pm = mid(F0), nx = F0.nx * F0.sg, nz = F0.nz * F0.sg; tool = () => pm.clone(); H.set('notch', pm.clone().add(new V(nx * MM(170), 0, nz * MM(170))), new V(nx, 0, nz), HU);
-      act([[1.6, [nx * 2600 - F0.ux * 900, 200, nz * 2600 - F0.uz * 900], 1]]);
-      yield* byPart(F0, plaster, 1.5, 'plaster'); H.hide();
+      act([[1.1, [nx * 2600 - F0.ux * 900, 200, nz * 2600 - F0.uz * 900], 1]]);
+      yield* byPart(F0, plaster, 1.1, 'plaster'); H.hide();
       shots([[9, [-11500, 1800, -9000], [-1000, 2200, 0]]]);
-      yield* faceBy(pavF.filter((F) => F !== F0), plaster, 1.8, 'plaster'); }
+      yield* faceBy(pavF.filter((F) => F !== F0), plaster, 0.9, 'plaster'); }
     st.facVent = 'hpl:walnut'; d.menu(['facade', 'vent', 'vp'], 'wall');
     shots([[9, [-9500, 2600, -14000], [1200, 5400, 1200]]]);
     billSoon('PLASTER', 0.4);
-    yield* faceBy(boxF, (F, u) => vent(F, 'hpl:walnut', u), 2.6, 'nailgun');
+    yield* faceBy(boxF, (F, u) => vent(F, 'hpl:walnut', u), 1.1, 'nailgun');
     st.facVent = 'porc:sandstone'; d.menu(['facade', 'vent', 'vp'], 'wall');
     shots([[9, [15500, 2200, -6000], [6000, 3800, -1000]]]);   // (low along the spine, the steps in profile)
-    yield* faceBy(spineF.sort((a, b) => a.y0 - b.y0), (F, u) => vent(F, 'porc:sandstone', u), 4.4, 'stone');
+    yield* faceBy(spineF.sort((a, b) => a.y0 - b.y0), (F, u) => vent(F, 'porc:sandstone', u), 1.8, 'stone');
     still();
   });
 
@@ -573,7 +571,7 @@ export function* sailFilm(d, app) {
     shots([[9, [-12000, 2400, -14500], [-500, 4400, -500]]]);
     const runs = [sailRec(), roofRec()].filter(Boolean).flatMap((b) => slabRuns(b));
     let fasc = 0, i = 0; const t0 = d.t, rp = (r) => new V((r.a[0] + r.b[0]) / 2, r.y, (r.a[1] + r.b[1]) / 2); tool = () => (runs[Math.max(0, i - 1)] ? rp(runs[Math.max(0, i - 1)]) : null);
-    yield d.until(() => { const want = Math.min(runs.length, Math.ceil(runs.length * Math.min(1, (d.t - t0) / 2.6))); for (; i < want; i++) { const r = runs[i]; const F = findRail(app, new V((r.a[0] + r.b[0]) / 2, r.y, (r.a[1] + r.b[1]) / 2), 'ral9003'); if (F && !F.why) { O.add(F.rec); fasc++; app.sfx?.play?.('metal_hit', { vol: 0.35, gap: 0.1 }); } } return i >= runs.length && d.t - t0 > 3.0; });
+    yield d.until(() => { const want = Math.min(runs.length, Math.ceil(runs.length * Math.min(1, (d.t - t0) / 1.0))); for (; i < want; i++) { const r = runs[i]; const F = findRail(app, new V((r.a[0] + r.b[0]) / 2, r.y, (r.a[1] + r.b[1]) / 2), 'ral9003'); if (F && !F.why) { O.add(F.rec); fasc++; app.sfx?.play?.('metal_hit', { vol: 0.35, gap: 0.1 }); } } return i >= runs.length && d.t - t0 > 1.3; });
     say('fascias ' + fasc);
   });
 
