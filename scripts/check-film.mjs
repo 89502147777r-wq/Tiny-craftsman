@@ -127,7 +127,10 @@ const noTool = fmt(runs((r) => !r.ts && !inHook(r.t) && !inFin(r.t) && r.t > 0.4
 console.log(`\nNO TOOL (> 1 s, any shot):\n` + noTool.join('\n'));
 // (no words on the screen — numbers, signs, the picture: the first viewers may not read English (the owner, 2026-11-16); DAYS is known
 // to all; «TO BE CONTINUED» is the owner's own plate)
-const OKW = new Set(['DAYS', 'DAY']), wordy = uniq(rows.flatMap((r) => r.b.filter((b) => ['f-stage', 'f-kick', 'f-head', 'f-card', 'f-steps', 'f-count', 'f-bill'].includes(b.k)).flatMap((b) => (b.txt.match(/\p{L}{2,}/gu) || []).filter((w) => !OKW.has(w.toUpperCase())).map((w) => `${r.t.toFixed(1)} s ${b.k} «${b.txt}»: «${w}»`))));
+// (the owner, 2026-11-18: a stage's bill names what the money went on — one or two English words, «BOARDS», «CINDER BLOCKS»; every
+// other text of the film's own stays without words)
+const OKW = new Set(['DAYS', 'DAY']), billWords = (b) => b.k === 'f-stage' && (b.txt.match(/\p{L}{2,}/gu) || []).length <= 2;
+const wordy = uniq(rows.flatMap((r) => r.b.filter((b) => ['f-stage', 'f-kick', 'f-head', 'f-card', 'f-steps', 'f-count', 'f-bill'].includes(b.k) && !billWords(b)).flatMap((b) => (b.txt.match(/\p{L}{2,}/gu) || []).filter((w) => !OKW.has(w.toUpperCase())).map((w) => `${r.t.toFixed(1)} s ${b.k} «${b.txt}»: «${w}»`))));
 console.log(`\nWORDS ON SCREEN:\n` + wordy.slice(0, 20).join('\n'));
 console.log(`\nSHORT CUTS (< 0.8 s, outside the hook):\n` + shortCut.join('\n'));
 console.log(`\nTWO TEXTS AT ONCE:\n` + two.slice(0, 20).join('\n'));
