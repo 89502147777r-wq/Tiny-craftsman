@@ -13,7 +13,7 @@ import { SLAB } from '../tools/slab.js';
 import { buildLift, liftStops, ride, rideTime, rideEase } from './lift.js';
 import { buildDoor, isDoor } from './doors.js';
 import { kitsLoaded } from './openingKits.js';
-import { buildRoof } from './roof.js';
+import { buildRoof, roofBelts } from './roof.js';
 import { facadeFaces, buildFacade, recOf } from './facade.js';
 import { buildPitched, flatWindow, wingShape, GROUND } from './pitched.js';
 import { outerBox, inBowl, wallTopY } from './pool.js';
@@ -388,6 +388,7 @@ export function wallState(w, objects, extra = []) {
 export class WallView {
   constructor(objects, tex) {
     this.objects = objects;
+    roofBelts(() => this.objects.all('belt'));   // (a roof sees its terrace's upstand, and a slab over it)
     this.group = new THREE.Group();
     this.group.name = 'walls';
     const box = new THREE.BoxGeometry(1, 1, 1);

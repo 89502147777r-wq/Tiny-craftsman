@@ -9,6 +9,7 @@ import { Squeeze, FAT } from './mortarSqueeze.js';
 import { findBelt, beltContains, beltCage, beltsOverlap, toWorld, beltStuds, rle } from './belt.js';
 import { COL_SECS, secOf, castDone } from '../world/columns.js';
 import { findSlab, slabCage, isSlab, cantText, SLAB, slabHole } from './slab.js';
+import { findUpstand, UPSTAND } from './upstand.js';
 import { PALLETS } from '../core/budget.js';
 import { findOpenings, findCorners, openingAt } from './windowFit.js';
 import { LANG } from '../i18n/i18n.js';
@@ -1018,6 +1019,15 @@ export class WallTool {
       v.dirty = true;
       app.ui.refresh();
       return;
+    } else if (c.kind === 'upstand') {
+      // the formwork of a terrace's upstand: on the free edges of the cast slab under the finger
+      const sl = app.objects.all('belt').filter((b) => isSlab(b) && b.fill > 0.9 && beltContains(b, p.x, p.z) && p.y > b.top + b.H - MM(300)).sort((a, b) => b.top - a.top)[0];
+      const U = sl ? findUpstand(app, sl) : null, exists = !!sl && app.objects.all('belt').some((q) => q.kind === 'upstand' && q.slab === sl.id);
+      c.belt = U?.rec ? { rec: U.rec, exists, n: U.n } : null; c.why = U?.why; c.free = undefined; c.snap = null;
+      v.live = null; v.hl = null; v.liveBed = null;
+      v.liveBelt = c.belt && !exists ? c.belt.rec : null; v.dirty = true;
+      app.ui.refresh();
+      return;
     } else if (c.kind === 'slab') {
       // the formwork of a floor slab: over the whole house under the finger
       const B = findSlab(app, p, scr, fing, app.settings.slabCant || 0);
@@ -1188,7 +1198,7 @@ export class WallTool {
     this.tray.classList.toggle('brick', kind !== 'block' && kind !== 'cinder');
     this.tray.classList.toggle('cinder', kind === 'cinder');
     const lab = document.getElementById('wall-tray-label');
-    const NAMES = { dpc: 'Гидроизоляция', studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', window: 'Окно', door: 'Дверь', rail: 'Ограждение', fascia: 'Кант', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
+    const NAMES = { dpc: 'Гидроизоляция', studs: 'Шпильки', lform: 'Опалубка перемычки', blind: 'Отмостка', block: 'Газоблок', brick: 'Кирпич', cinder: 'Шлакоблок', lintel: 'Перемычка', ublock: 'U-блок', prop: 'Подпорка', ucage: 'Каркас', belt: 'Опалубка пояса', slab: 'Перекрытие', upstand: 'Парапет', window: 'Окно', door: 'Дверь', rail: 'Ограждение', fascia: 'Кант', roof: 'Кровля', facade: 'Фасад', proof: 'Скатная крыша', rwin: 'Окно в крышу' };
     if (lab && kind === 'proof') { lab.textContent = { plate: 'Мауэрлат', joists: 'Лаги', ridge: 'Прогон', cover: { metal: 'Лист', seam: 'Панель', shingle: 'Черепица' }[this.app.settings.proofCover || 'metal'], trim: 'Конёк', gutter: 'Водосток' }[this.app.settings.proofStage || 'plate'] || 'Крыша'; return; }
     if (lab && kind === 'blind') { lab.textContent = this.app.settings.blindLayer === 'drain' ? 'Лоток' : 'Опалубка'; return; }
     if (lab && kind === 'facade') { lab.textContent = { eps: 'Лист ППС', glue: 'Клей', mesh: 'Рулон сетки', emb: 'Шпатель', pl: 'Штукатурка', fl: 'Тёрка', pan: 'Панель', br: 'Кронштейн', mw: 'Плита минваты', mb: 'Рулон мембраны', rl: 'Направляющая', vp: 'Панель НВФ' }[this.app.settings.facLayer || 'eps']; return; }
@@ -1306,6 +1316,13 @@ export class WallTool {
       app.ui.toast(door && DOORS[key].garage ? `${DOORS[key].name}: ${o.w} × ${o.h} мм — ${{ sectional: 'панели 40 мм на направляющих изнутри, торсионный вал с пружинами над проёмом, уплотнители', roller: 'короб над проёмом, шины по бокам, ламели 77 мм, нижняя планка с замком', swing: 'стальная рама в проёме, две створки из доски на ригелях с раскосами, полосовые петли, засов и проушины под замок' }[DOORS[key].garage]}` : door ? `${DOORS[key].name}: ${o.w} × ${o.h} мм — коробка на пене с зазором 15 мм, полотно на ${DOORS[key].entrance ? 'трёх петлях, порог' : 'двух петлях'}, наличники` : `${WINDOWS[key].name}: ${o.w} × ${o.h} мм — рама с зазором 18 мм на пене, снаружи лента и ${WINDOWS[key].sill ? 'отлив, внутри подоконник' : 'пароизоляция внутри'}`);
       return;
     }
+    if (ck === 'upstand') {
+      if (!belt) { app.ui.toast(this.carry?.why || 'Парапет — по краю залитого перекрытия: коснитесь плиты'); return; }
+      if (belt.exists) { app.ui.toast('Здесь опалубка парапета уже стоит'); return; }
+      app.sfx?.seq?.(['plank', 'plank', 'hammer_nail', 'hammer_nail']); app.journal.act('upstand-form', {}, app.clock, () => app.objects.add(belt.rec));
+      app.ui.toast(`Опалубка парапета ${UPSTAND.w} × ${UPSTAND.H} мм по свободному краю плиты — на выпусках из плиты; дальше каркас и бетон`);
+      return;
+    }
     if (ck === 'slab') {
       if (!belt) { app.ui.toast('Перекрытие — на верх стен, армопояс или залитые колонны и сваи (от трёх, верх на одной отметке): коснитесь верха стены или колонны'); return; }
       if (belt.exists) { app.ui.toast('Здесь опалубка перекрытия уже стоит'); return; }
@@ -1381,6 +1398,7 @@ export class WallTool {
     if (c?.kind === 'belt') return c.belt ? (c.belt.exists ? 'Здесь опалубка пояса уже стоит' : `Опалубка по верху стен: ${c.belt.lenM.toFixed(1).replace('.', ',')} м — отпустите`) : 'Поднесите к верхнему ряду кладки — опалубка встанет по всему его контуру';
     if (['roof', 'facade', 'blind', 'proof', 'rwin'].includes(c?.kind)) return this.works[c.kind].status(true);
     if (c?.kind === 'window' || c?.kind === 'door') { const door = c.kind === 'door', key = door ? this.app.settings.doorKey || 'door1' : this.app.settings.windowKey || 'pvc2'; return c.win ? (c.win.why2 ? 'Красный — ' + c.win.why2 : `${winName(key)}: ${c.win.w} × ${c.win.h} мм — отпустите`) : door ? 'Поднесите дверь к проёму до пола — она встанет по его размеру' : key === 'corner' ? 'Угловое окно: 1) обе стены кладите, не доводя до угла (в каждую сторону проём от 350 мм, по всей высоте этажа); 2) над углом — монолитный пояс или перекрытие (его консоль держит угол без стойки); 3) поднесите окно к углу' : 'Поднесите окно к проёму в кладке — оно встанет по его размеру'; }
+    if (c?.kind === 'upstand') return c.belt ? (c.belt.exists ? 'Здесь опалубка парапета уже стоит' : 'Парапет по свободному краю плиты — отпустите') : c.why || 'Поднесите к залитому перекрытию';
     if (c?.kind === 'slab') return c.belt ? (c.belt.exists ? 'Здесь опалубка перекрытия уже стоит' : `Перекрытие ${c.belt.area.toFixed(1).replace('.', ',')} м², ${cantText(c.belt.rec)} — отпустите`) : 'Поднесите к верху стен, армопояса или залитых колонн — перекрытие встанет на весь дом' + ((this.app.settings.slabCant || 0) ? ', консоль — с той стороны, где коснулись' : '');
     if (c?.kind === 'ucage') return c.cage ? (c.cage.has ? 'В этих U-блоках каркас уже есть' : `Каркас в ${c.cage.run.length} U-блок(а) — отпустите`) : c.beltCage ? (isSlab(c.beltCage) ? 'Арматура перекрытия — отпустите' : 'Каркас пояса — отпустите') : 'Поднесите каркас к ряду U-блоков, в опалубку пояса или перекрытия';
     if (c && (c.kind === 'lintel' || c.kind === 'prop') && !c.free) return c.kind === 'lintel' ? 'Поднесите перемычку к проёму в кладке' : 'Поднесите подпорку к проёму в кладке';
@@ -1391,7 +1409,8 @@ export class WallTool {
       return c.free.ok ? `${nm} встанет на подсвеченное место${c.free.how === 'beside' ? ' — рядом' : c.free.how === 'top' ? ' — сверху' : ''}. Отпустите` : 'Красный — сюда не встанет. Поднесите к кладке, на неё или на плиту';
     }
     if (this.work) return this.work.status(false);
-    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'lform', 'studs', 'rail', 'fascia'].includes(this.kind)) return {
+    if (['lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'upstand', 'window', 'door', 'lform', 'studs', 'rail', 'fascia'].includes(this.kind)) return {
+      upstand: 'Парапет террасы: тяните из лотка к залитому перекрытию — по его свободному краю (не под стенами) встанет опалубка бетонного бортика 200 × 450 мм на выпусках из плиты; потом каркас («Каркас» из лотка) и бетон шлангом',
       fascia: 'Кант перекрытия: тяните из лотка к краю залитого перекрытия — тёмная металлическая кассета закроет торец плиты по всей длине края',
       rail: 'Стеклянное ограждение: тяните из лотка к краю залитого перекрытия (консоль, балкон, проём лестницы или второго света) — встанет вдоль свободного края, высота 1,1 м',
       studs: 'Шпильки под мауэрлат: тяните из лотка к опалубке армопояса — до заливки (или в свежий бетон) встанут шпильки М12 по оси стен через ≤ 1 м; на них потом ляжет мауэрлат на шайбах и гайках',

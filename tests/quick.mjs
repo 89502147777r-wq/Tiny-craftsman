@@ -1659,6 +1659,54 @@ if (want("2l³")) {
   await browser.close();
 }
 
+
+// ---- 2p. A roof terrace on the «sail» (the owner, 2026-11-18: «максимально реалистично»): on stage 2's plot the sail cast — its
+// concrete upstand on the free edges (200 wide, on the slab's own grid, never under a wall); the roof sees it as its parapet (the
+// membrane turned up its face 400); the stone deck on pedestals level, under the upstand's top; the glass railing on its top; and
+// a slab over a still-propped slab gets its props over the lower one's, line over line ----
+if (want("2p")) {
+  const { browser, page, errors } = await open(pw.chromium, '&film=sail&offline=1&filmFrom=none', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, O = tc.objects, T = tc.terrain, MM = (v) => v / 1000 / 10.4651, THREE = await import('three');
+    const SL = await import('/src/tools/slab.js'), U = await import('/src/tools/upstand.js'), R = await import('/src/world/roof.js'), RL = await import('/src/world/railing.js'), B = await import('/src/tools/belt.js');
+    const g = T.heightAt(MM(-9000), MM(9000));
+    const ring = O.all('belt').find((b) => b.kind !== 'pool' && b.kind !== 'slab' && b.top - g > MM(3000) && B.beltContains(b, MM(0), MM(4171 - 150)));
+    const F = SL.findSlab(tc, new THREE.Vector3(0, ring.top + ring.H - MM(20), MM(4021)), null, null, 0, { H: 300, bridge: 6000, cants: [[0, -1, 3000], [-1, 0, 2400]], within: [MM(-5000), MM(-2378), MM(4717), MM(4231)] });
+    const fill = (r) => ({ ...r, lv: r.lv.map(() => r.H / MM(1)), sm: r.lv.map(() => 0.9), fill: 1 });
+    const sail = O.add(fill(F.rec)); const Hh = SL.slabHole(O.get(sail.id), MM(-7100), MM(-1750), MM(-5300), MM(50), false); if (Hh.patch) O.update(sail.id, Hh.patch);
+    const b = O.get(sail.id); O.update(b.id, fill(b));
+    // a wall on the slab (the box's first course): no upstand under it
+    const top = b.top + b.H, wall = O.add({ type: 'unit', kind: 'block', free: true, p: [MM(2000), top + MM(128), MM(-2168)], s: [MM(3000), MM(250), MM(300)], q: [0, 0, 0, 1] });
+    const Up = U.findUpstand(tc, O.get(b.id)), m = B.plan(Up.rec).mask, P = B.plan(O.get(b.id));
+    // (each upstand cell within 2 cells (200) of a cell that is not the slab; none under the wall)
+    let far = 0, underWall = 0; const ni = b.ni, nj = b.nj;
+    for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) { if (!m[j * ni + i]) continue; let near = false; for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) { const a = i + di, e = j + dj; if (a < 0 || e < 0 || a >= ni || e >= nj || !P.mask[e * ni + a]) near = true; } if (!near) far++;
+      const [x, z] = B.toWorld(b, (i + 0.5) * b.c, (j + 0.5) * b.c); if (Math.abs(x - MM(2000)) < MM(1500) && Math.abs(z - MM(-2168)) < MM(150)) underWall++; }
+    const up = O.add(fill(Up.rec));
+    const area = R.roofArea(O.get(b.id), O.all('unit'));
+    const [i0, j0, i1, j1] = area.bbox, c = b.c, all = [[i0 * c, j0 * c, i1 * c, j1 * c]], cells = [];
+    for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) if (area.on(i, j)) cells.push(j * ni + i);
+    O.add({ type: 'roof', slab: b.id, mem: 'graphite', cop: 'ral9003', vap: all, xps: all, wedge: all, memS: all, copS: [], grav: [], deck: cells });
+    const grp = R.buildRoof(O.get(b.id), O.all('unit'), O.all('roof').find((r) => r.slab === b.id), null);
+    // the membrane's turn-up: its highest point over the slab's top
+    let upMax = 0; grp.traverse((q) => { if (q.isMesh && q.material?.color && !q.material.map) { const a = q.geometry.attributes.position; for (let k = 0; k < a.count; k++) upMax = Math.max(upMax, a.getY(k) - top); } });
+    // the railings on the upstand
+    let rails = 0, onUp = 0; for (const r of RL.slabRuns(O.get(b.id))) { const G = RL.findRail(tc, new THREE.Vector3((r.a[0] + r.b[0]) / 2, r.y, (r.a[1] + r.b[1]) / 2)); if (G && !G.why) { rails++; if (Math.abs((G.rec.up || 0) - Up.rec.H) < MM(1)) onUp++; } }
+    // props over props: a slab 3 m over this one, propped while this one is still propped
+    const floor = (x, z) => top;
+    const lowF = SL.slabForm(O.get(b.id), (x, z) => T.heightAt(x, z));
+    const hi = { ...O.get(b.id), id: 999999, top: b.top + MM(3300) };
+    const hiF = SL.slabForm(hi, floor, lowF.props);
+    let off = 0, bad = []; for (const p of hiF.props) { let d = Infinity; for (const q of lowF.props) d = Math.min(d, Math.hypot(p[0] - q[0], p[1] - q[1])); off = Math.max(off, d); if (d > MM(5)) bad.push(B.toFrame(b, p[0], p[1]).map((v) => Math.round(v / MM(1)))); }
+    return { n: Up.n, far, underWall, terrace: area.terrace, upMax: Math.round(upMax / MM(1)), deckY: Math.round(grp.userData.deckY ?? -1), upH: Math.round(Up.rec.H / MM(1)), rails, onUp, props: hiF.props.length, low: lowF.props.length, off: Math.round(off / MM(1)), bad: bad.slice(0, 6), lowS: [...new Set(lowF.props.map((q) => Math.round(B.toFrame(b, q[0], q[1])[0] / MM(1))))] };
+  });
+  check('terrace: the upstand on the slab\'s free edges only (within 200 of its edge, none under a wall on it); the roof sees it', o.n > 200 && o.far === 0 && o.underWall === 0 && o.terrace, JSON.stringify(o));
+  check('terrace: the membrane turned up the upstand 400; the deck on pedestals level, ≥ 50 under the upstand\'s top; the glass railing on its top', o.upMax >= 390 && o.upMax <= 460 && o.deckY > 250 && o.deckY <= o.upH - 50 && o.rails > 0 && o.onUp === o.rails, JSON.stringify(o));
+  check('slab over a propped slab: its props over the lower ones, line over line (≤ 5 mm)', o.props > 20 && o.off <= 5, JSON.stringify(o));
+  check('terrace: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 if (want("2m")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });

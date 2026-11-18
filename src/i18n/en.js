@@ -1998,4 +1998,13 @@ export default {
 "Шахту лифта ставят на бетонное основание — сначала залейте под неё плиту или подушку (на голый грунт нельзя)": "A lift shaft stands on a concrete base — cast a slab or a pad under it first (not on the bare ground)",
 "Обрушение опоры": "Support collapse",
 "дом на шахте лифта": "the house on its lift shaft",
+"Парапет": "Upstand",
+"Здесь опалубка парапета уже стоит": "The upstand's formwork is already here",
+"Парапет по свободному краю плиты — отпустите": "An upstand along the slab's free edge — let go",
+"Поднесите к залитому перекрытию": "Bring it to a cast slab",
+"Парапет — по краю залитого перекрытия: коснитесь плиты": "An upstand goes along the edge of a cast slab: touch the slab",
+"Опалубка парапета 200 × 450 мм по свободному краю плиты — на выпусках из плиты; дальше каркас и бетон": "Upstand formwork 200 × 450 mm along the slab's free edge — on the bars left out of the slab; then the cage and the concrete",
+"Сначала залейте перекрытие": "Cast the slab first",
+"Нет свободного края": "No free edge",
+"Парапет террасы: тяните из лотка к залитому перекрытию — по его свободному краю (не под стенами) встанет опалубка бетонного бортика 200 × 450 мм на выпусках из плиты; потом каркас («Каркас» из лотка) и бетон шлангом": "A terrace upstand: drag from the tray to a cast slab — the formwork of a concrete upstand 200 × 450 mm goes up along its free edge (not under the walls), on the bars left out of the slab; then the cage («Cage» from the tray) and the concrete by the hose",
 };

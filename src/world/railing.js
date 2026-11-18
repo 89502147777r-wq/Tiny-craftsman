@@ -93,6 +93,10 @@ export function findRail(app, p, fascia = null) {
   const A = [r.a[0] + u[0] * lo, r.a[1] + u[1] * lo], B = [r.a[0] + u[0] * hi, r.a[1] + u[1] * hi];
   const rec = { type: 'rail', slab: b.id, a: A.map((v) => +v.toFixed(6)), b: B.map((v) => +v.toFixed(6)), y: +r.y.toFixed(6), out: r.out.map((v) => +v.toFixed(5)) };
   if (fascia) { rec.fascia = fascia; rec.h = +b.H.toFixed(6); }
+  // (a terrace's concrete upstand on this edge: the railing's shoe on its top, the fascia up over its face)
+  { const m = [(A[0] + B[0]) / 2 - r.out[0] * b.c * 0.5, (A[1] + B[1]) / 2 - r.out[1] * b.c * 0.5], [fs, ft] = toFrame(b, m[0], m[1]), i = Math.floor(fs / b.c), j = Math.floor(ft / b.c);
+    const U = app.objects.all('belt').find((q) => q.kind === 'upstand' && q.slab === b.id && q.fill > 0.9 && i >= 0 && j >= 0 && i < q.ni && j < q.nj && plan(q).mask[j * q.ni + i]);
+    if (U) rec.up = +U.H.toFixed(6); }
   return { rec, len: Math.round((hi - lo) / S), why };
 }
 
@@ -128,7 +132,7 @@ function fmat(k) {
 function buildFascia(r, ghost) {
   const M = fmat(r.fascia), F = FASCIA, L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, H = (r.h || MM(200)) / S, G = { face: [], sub: [], dark: [], wool: [] };
   const box = (k, x0, x1, y0, y1, z0, z1) => G[k].push(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
-  const yb = -H - F.below, yt = F.over, z0 = F.gap, z1 = F.gap + F.t, ext = F.gap + F.t;   // (the slab's top at y 0, its face at z 0)
+  const yb = -H - F.below, yt = F.over + (r.up || 0) / S, z0 = F.gap, z1 = F.gap + F.t, ext = F.gap + F.t;   // (the slab's top at y 0, its face at z 0)
   // the subframe: brackets on the face, the rails along them (seen through the joints, in the shadow)
   for (let x = 150; x < L - 100; x += F.bracket) { box('sub', x - 20, x + 20, -H + 40, -H + 100, 0, F.gap); box('sub', x - 20, x + 20, -60, -20, 0, F.gap); }
   box('sub', 0, L, -H + 60, -H + 80, F.gap - 4, F.gap); box('sub', 0, L, -50, -30, F.gap - 4, F.gap);
@@ -182,9 +186,9 @@ export function buildRail(r, ghost = null) {
 }
 // its place: the basis along the edge, up, out (in the model's scale)
 function place(g, r) {
-  const L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S;
+  const L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, up = r.fascia ? 0 : r.up || 0;   // (a railing on an upstand: on its top)
   const ux = (r.b[0] - r.a[0]) / (L * S), uz = (r.b[1] - r.a[1]) / (L * S);
   g.matrixAutoUpdate = false;
-  g.matrix.makeBasis(new THREE.Vector3(ux * S, 0, uz * S), new THREE.Vector3(0, S, 0), new THREE.Vector3(r.out[0] * S, 0, r.out[1] * S)).setPosition(r.a[0], r.y, r.a[1]);
+  g.matrix.makeBasis(new THREE.Vector3(ux * S, 0, uz * S), new THREE.Vector3(0, S, 0), new THREE.Vector3(r.out[0] * S, 0, r.out[1] * S)).setPosition(r.a[0], r.y + up, r.a[1]);
   return g;
 }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MODEL_SCALE } from '../config.js';
-import { plan, toWorld, toFrame, snapS } from '../tools/belt.js';
+import { plan, toWorld, toFrame, snapS, beltContains } from '../tools/belt.js';
 import { boxOf } from '../tools/freeBrick.js';
 import { mats as winMats } from './windows.js';
 
@@ -20,9 +20,10 @@ import { mats as winMats } from './windows.js';
 // Each layer goes only where the one under it is. The roof's plan: the slab's cells not
 // under the parapet (the masonry laid on the slab).
 //   roof { slab, mem (colour), cop (colour), vap: [[s0,t0,s1,t1]…], xps: […], wedge: […],
-//          memS: […], copS: [[x0,z0,x1,z1,y,w]…], grav: [cell…], drain: [s,t] }
+//          memS: […], copS: [[x0,z0,x1,z1,y,w]…], grav: [cell…], drain: [s,t], deck: [cell…] }
+//   deck – a terrace's stone tiles on pedestals (over the membrane, the tiles level)
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const ROOF = { green: 135, greenFree: 500, vap: 1, xps: 150, minWedge: 20, slope: 0.02, mem: 2, upstand: 300, gravel: 50, vapW: 1500, vapLap: 100, memW: 2050, memLap: 80, xpsL: 1200, xpsW: 600, wedgeL: 1000, copL: 2000 };
+export const ROOF = { pedestal: 30, green: 135, greenFree: 500, vap: 1, xps: 150, minWedge: 20, slope: 0.02, mem: 2, upstand: 300, gravel: 50, vapW: 1500, vapLap: 100, memW: 2050, memLap: 80, xpsL: 1200, xpsW: 600, wedgeL: 1000, copL: 2000 };
 export const ROOF_LAYERS = [
   ['vap', 'Пароизоляция'], ['xps', 'Утеплитель XPS'], ['wedge', 'Клин 2 %'], ['mem', 'Мембрана'], ['cop', 'Отлив'], ['grav', 'Гравий'], ['green', 'Зелёная кровля'],
 ];
@@ -34,6 +35,15 @@ export const COP_COLOURS = {
 
 // ---- textures: drawn on a canvas, a normal map from the same height --------------------------
 const TEX = {};
+// a photo texture of assets/textures/<folder>/<file> (repeating)
+const PHOTO = {};
+function photo(folder, file, srgb = false) {
+  const key = folder + '/' + file;
+  if (PHOTO[key]) return PHOTO[key];
+  const t = new THREE.TextureLoader().load(`assets/textures/${folder}/${file}`);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  return (PHOTO[key] = t);
+}
 let seed = 1; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 // (a canvas the textures are drawn on: kept in memory, not on the GPU — they are read back pixel by
 // pixel (the normal maps, the baked relief), a read off the GPU stalls it each time)
@@ -153,8 +163,22 @@ export function onSlab(units, b) {
   return units.filter((u) => u.p && u.s && u.q && u.kind !== 'prop').map(boxOf).filter((x) => x.bot > top0 - MM(5) && x.bot < top0 + MM(60));
 }
 // { on(i,j), cells, bbox [i0,j0,i1,j1] (cells), blocked } of a slab with what stands on it
+// (the ring beams and slabs of the house, for a roof to see its upstands and what is over it — set by the WallView)
+let BELTS = () => [];
+export const roofBelts = (f) => { BELTS = f; };
 export function roofArea(b, units) {
-  const P = plan(b), { ni, nj, c } = b, par = onSlab(units, b), blocked = new Uint8Array(ni * nj);
+  const P = plan(b), { ni, nj, c } = b, par = onSlab(units, b), blocked = new Uint8Array(ni * nj), top0 = b.top + b.H;
+  // a terrace: its concrete upstand (on the slab's own grid — a cast one) is its parapet: the membrane turned up its face (up: its
+  // height); and no roof under a slab over it (the box's room on the terrace: indoors)
+  const belts = BELTS() || [], ups = belts.filter((q) => q.kind === 'upstand' && q.slab === b.id && q.fill > 0.9 && q.ni === ni && q.nj === nj);
+  const over = belts.filter((q) => q.kind === 'slab' && q !== b && q.id !== b.id && q.top > top0 + MM(1500) && q.top < top0 + MM(8000));
+  const up = new Float32Array(ni * nj);
+  for (const q of ups) { const m = plan(q).mask; for (let k = 0; k < ni * nj; k++) if (m[k]) { blocked[k] = 1; up[k] = Math.max(up[k], q.H / S - 50); } }
+  if (over.length) for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
+    if (!P.mask[j * ni + i]) continue;
+    const [x, z] = toWorld(b, (i + 0.5) * c, (j + 0.5) * c);
+    if (over.some((q) => beltContains(q, x, z))) blocked[j * ni + i] = 1;
+  }
   for (const u of par) {
     const n = Math.ceil(Math.max(u.hl, u.hw) / c) + 1, [s0, t0] = toFrame(b, u.x, u.z), ci = Math.floor(s0 / c), cj = Math.floor(t0 / c);
     for (let j = cj - n; j <= cj + n; j++) for (let i = ci - n; i <= ci + n; i++) {
@@ -166,7 +190,7 @@ export function roofArea(b, units) {
   const on = (i, j) => i >= 0 && j >= 0 && i < ni && j < nj && !!P.mask[j * ni + i] && !blocked[j * ni + i];
   let i0 = ni, j0 = nj, i1 = -1, j1 = -1, n = 0;
   for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) if (on(i, j)) { n++; i0 = Math.min(i0, i); j0 = Math.min(j0, j); i1 = Math.max(i1, i + 1); j1 = Math.max(j1, j + 1); }
-  return { on, n, bbox: [i0, j0, i1, j1], blocked, par };
+  return { on, n, bbox: [i0, j0, i1, j1], blocked, par, up, terrace: ups.length > 0 };
 }
 // the cells a rectangle in the frame covers (their centres in it)
 export function cellsOf(b, [s0, t0, s1, t1]) {
@@ -239,6 +263,9 @@ export function buildRoof(b, units, rec, live) {
   const add = (geo, mat, shadow = true) => { if (!geo) return; const m = new THREE.Mesh(geo, mat); m.castShadow = shadow; m.receiveShadow = true; group.add(m); };
   const mmS = (v) => v / S / 1000;   // model → metres (for texture coordinates)
   // the vapour barrier: the strips, each a hair above the last (they overlap)
+  // (the curing film over fresh concrete: the same polyethylene, strips lapped — laid by a film, taken off at a week)
+  const cure = L('cure');
+  if (cure.length) { const t = vapTex(); add(sheet(cure, () => 0.6, (s, t2) => [mmS(s) / 1.5, mmS(t2) / 1.5], 0.25), new THREE.MeshStandardMaterial({ ...t, roughness: 0.35, metalness: 0.1, side: THREE.DoubleSide }), false); }
   const vap = L('vap');
   if (vap.length) { const t = vapTex(); add(sheet(vap, () => 0.5, (s, t2) => [mmS(s) / 1.5, mmS(t2) / 1.5], 0.25), new THREE.MeshStandardMaterial({ ...t, roughness: 0.4, metalness: 0.15, side: THREE.DoubleSide }), false); }
   // the boards (XPS, the wedges): boxes, cut to the roof; the top textured per board
@@ -296,7 +323,7 @@ export function buildRoof(b, units, rec, live) {
       if (!area.on(i, j)) continue;
       for (const [q, e0, e1] of [[[i + 1, j], [i + 1, j], [i + 1, j + 1]], [[i - 1, j], [i, j + 1], [i, j]], [[i, j + 1], [i + 1, j + 1], [i, j + 1]], [[i, j - 1], [i, j], [i + 1, j]]]) {
         if (area.on(...q) || isHole(...q)) continue;   // (at an opening: its curb, below)
-        const up = area.blocked[q[1] * ni + q[0]] ? ROOF.upstand : 0;
+        const bq = q[0] >= 0 && q[1] >= 0 && q[0] < ni && q[1] < nj ? q[1] * ni + q[0] : -1, up = bq >= 0 && area.blocked[bq] ? (area.up[bq] || ROOF.upstand) : 0;   // (off the grid: the slab's edge — a cell index there would wrap to the next row)
         const [s0, t0] = [e0[0] * c, e0[1] * c], [s1, t1] = [e1[0] * c, e1[1] * c];
         const h0 = top(s0, t0) + ROOF.mem, h1 = top(s1, t1) + ROOF.mem;
         const A = W(s0, t0, Math.max(h0, up)), B = W(s1, t1, Math.max(h1, up)), C = W(s0, t0, 0), D = W(s1, t1, 0);
@@ -316,6 +343,7 @@ export function buildRoof(b, units, rec, live) {
     };
     for (const [a0, b0, a1, b1, isLift] of b.holes || []) {
       if (isLift) continue;   // (a lift's: its shaft comes up through it, no skylight)
+      if (area.terrace) continue;   // (a terrace's opening: an open court with its upstand and railing round it — the olive grows through it)
       const S0 = a0 * c, T0 = b0 * c, S1 = a1 * c, T1 = b1 * c;
       const hTop = Math.max(...[[S0, T0], [S1, T0], [S1, T1], [S0, T1]].map(([s2, t2]) => top(s2 - cw, t2 - cw))) + ROOF.mem;
       const y0 = top0, yC = top0 + MM(hTop + ROOF.upstand), curb = [], cap = [], frame = [], glass = [];
@@ -374,6 +402,43 @@ export function buildRoof(b, units, rec, live) {
     }
     if (edge.length) add(mergeGeometries(edge, false), new THREE.MeshStandardMaterial({ color: 0xb4b8bc, metalness: 0.85, roughness: 0.35 }));
   }
+  // a terrace's deck: stone tiles 600 × 600 × 20 (the travertine photo, each tile its own window of it, turned) on adjustable
+  // pedestals stood on the membrane — the tiles level (the pedestals take up the fall), 4 mm open joints, cut at the upstand
+  const deck = new Set(r.deck || []), dlv = live && live.layer === 'deck' ? live.cells : null;
+  if (deck.size || dlv?.length) {
+    const has = (i, j) => i >= 0 && j >= 0 && i < b.ni && j < b.nj && area.on(i, j) && (deck.has(j * b.ni + i) || !!dlv?.includes(j * b.ni + i));
+    const T = MM(600), J = MM(4), cells = [];
+    for (let j = 0; j < b.nj; j++) for (let i = 0; i < b.ni; i++) if (area.on(i, j)) cells.push([i, j]);
+    // (the deck's level: over the highest point of the membrane under the whole terrace, the shortest pedestal 30)
+    let hMax = 0; for (const [i, j] of cells) hMax = Math.max(hMax, top((i + 0.5) * c, (j + 0.5) * c));
+    const yD = hMax + ROOF.mem + ROOF.pedestal, tiles = new Map();
+    for (const [i, j] of cells) { if (!has(i, j)) continue; const key = Math.floor((i + 0.5) * c / T) + ':' + Math.floor((j + 0.5) * c / T); const q = tiles.get(key) || tiles.set(key, [Infinity, Infinity, -Infinity, -Infinity]).get(key); q[0] = Math.min(q[0], i * c); q[1] = Math.min(q[1], j * c); q[2] = Math.max(q[2], (i + 1) * c); q[3] = Math.max(q[3], (j + 1) * c); }
+    const pos = [], uv = [], col = [], ped = [];
+    let seed = 1337; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (const [key, q] of tiles) {
+      const [ti, tj] = key.split(':').map(Number), s0 = Math.max(q[0], ti * T + J / 2), t0 = Math.max(q[1], tj * T + J / 2), s1 = Math.min(q[2], (ti + 1) * T - J / 2), t1 = Math.min(q[3], (tj + 1) * T - J / 2);
+      if (s1 - s0 < MM(40) || t1 - t0 < MM(40)) continue;
+      seed = ((((ti * 73856093) ^ (tj * 19349663)) & 0x7fffffff) % 2147483646) + 1;
+      const ou = rnd() * 0.4, ov = rnd() * 0.4, rot = Math.floor(rnd() * 4), sh = 0.94 + rnd() * 0.1, lift = live && live.layer === 'deck' && live.lift && dlv?.includes(Math.floor((s0 + s1) / 2 / c) + Math.floor((t0 + t1) / 2 / c) * b.ni) ? live.lift : 0;
+      const tuv = (s, t2) => { let a = (s - ti * T) / T * 0.6, e = (t2 - tj * T) / T * 0.6; for (let k = 0; k < rot; k++) [a, e] = [0.6 - e, a]; return [ou + a, ov + e]; };
+      const y1 = yD + 20 + lift, y0 = yD + lift, cs = [[s0, t0], [s1, t0], [s1, t1], [s0, t1]];
+      const P1 = cs.map(([s2, t2]) => W(s2, t2, y1)), P0 = cs.map(([s2, t2]) => W(s2, t2, y0));
+      for (const id of [0, 3, 1, 1, 3, 2]) { pos.push(...P1[id]); uv.push(...tuv(...cs[id])); col.push(sh, sh, sh * 0.98); }
+      for (let k = 0; k < 4; k++) { const k2 = (k + 1) % 4; for (const [p, u] of [[P0[k], cs[k]], [P0[k2], cs[k2]], [P1[k2], cs[k2]], [P0[k], cs[k]], [P1[k2], cs[k2]], [P1[k], cs[k]]]) { pos.push(...p); uv.push(...tuv(...u)); col.push(sh * 0.8, sh * 0.8, sh * 0.78); } }
+      // (the pedestals under its corners and its middle: from the membrane up to the tile)
+      if (!lift) for (const [s2, t2] of [[s0, t0], [s1, t0], [s1, t1], [s0, t1]]) { const h0 = top(s2, t2) + ROOF.mem; ped.push([W(s2, t2, h0), yD - h0]); }
+    }
+    if (pos.length) {
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
+      add(g, new THREE.MeshStandardMaterial({ map: photo('travertine', 'col.jpg', true), normalMap: photo('travertine', 'nor.jpg'), roughness: 0.9, vertexColors: true }));
+    }
+    if (ped.length) {
+      const parts = [];
+      for (const [p, hm] of ped) { const g = new THREE.CylinderGeometry(MM(55), MM(80), MM(Math.max(10, hm)), 10); g.translate(p[0], p[1] + MM(Math.max(10, hm)) / 2, p[2]); g.deleteAttribute('uv'); parts.push(g); }
+      add(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ color: 0x2b2d2f, roughness: 0.7 }), false);
+    }
+    group.userData.deckY = yD;
+  }
   // the coping
   const cop = r.copS === 'all' ? parapetLines(b, units).map((l) => [...l.p0, ...l.p1, l.y, l.w]) : [...(r.copS || []), ...(live && live.layer === 'cop' && live.seg ? [live.seg] : [])];
   if (cop.length) {
@@ -392,9 +457,9 @@ export function buildRoof(b, units, rec, live) {
   }
   // the roll at the end of the strip being rolled out
   if (live?.roll && live.rect) {
-    const [a0, b0, a1, b1] = live.rect, A = live.roll.along, rad = MM(live.layer === 'vap' ? 55 : 85), len = A ? b1 - b0 : a1 - a0;
-    const s = A ? live.roll.end : (a0 + a1) / 2, t2 = A ? (b0 + b1) / 2 : live.roll.end, h = live.layer === 'vap' ? 1 : top(s, t2) + ROOF.mem;
-    const P0 = W(s, t2, h), roll = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 24), new THREE.MeshStandardMaterial({ ...(live.layer === 'vap' ? vapTex() : memTex(mc[1])), roughness: 0.45 }));
+    const [a0, b0, a1, b1] = live.rect, A = live.roll.along, rad = MM(live.layer === 'vap' || live.layer === 'cure' ? 55 : 85), len = A ? b1 - b0 : a1 - a0;
+    const s = A ? live.roll.end : (a0 + a1) / 2, t2 = A ? (b0 + b1) / 2 : live.roll.end, h = live.layer === 'vap' || live.layer === 'cure' ? 1 : top(s, t2) + ROOF.mem;
+    const P0 = W(s, t2, h), roll = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 24), new THREE.MeshStandardMaterial({ ...(live.layer === 'vap' || live.layer === 'cure' ? vapTex() : memTex(mc[1])), roughness: 0.45 }));
     const yaw = Math.atan2(-b.u[1], b.u[0]);
     roll.rotation.set(Math.PI / 2, 0, 0); roll.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), yaw + (A ? 0 : Math.PI / 2));
     roll.position.set(P0[0], P0[1] + rad, P0[2]); roll.castShadow = true; group.add(roll);
