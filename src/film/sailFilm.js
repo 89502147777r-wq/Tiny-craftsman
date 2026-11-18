@@ -6,7 +6,7 @@ import { findBelt, beltCage, beltContains, plan, toWorld } from '../tools/belt.j
 import { IBIZA } from './foundFilm.js';
 import { slabRuns, findRail } from '../world/railing.js';
 import { findOpenings } from '../tools/windowFit.js';
-import { ext, OFF, CELL, cutPiece, runsOf, ck } from '../world/facade.js';
+import { ext, OFF, CELL, cutPiece, runsOf, ck, railCols, bracketRows, VENT_SUB } from '../world/facade.js';
 
 // «Ibiza», stages 3–5 in one film (the owner, 2026-11-15; the foreman's plan and the analyst's rhythm): the «sail» — the slab 300 over
 // the pavilion with its cantilevers 3 m over the pool and 2,4 m to the left (a notch round the fireplace's tower, a joint 30 — its own
@@ -238,15 +238,36 @@ export function* sailFilm(d, app) {
   say(`faces pav ${pavF.length} box ${boxF.length} spine ${spineF.length} of ${faces.length}`);
   const plaster = (F) => { const cells = allCells(F); save(F, { eps: slots(F, 'eps') }); save(F, { glue: cells, mesh: [ext(F, OFF.loose)], emb: cells, pl: { 'bark:white': cells } }); };
   const panels = (F, key) => { st.facPanel = key; save(F, { eps: slots(F, 'eps') }); save(F, { pan: slots(F, 'pan').map((q) => [...q, key]) }); };
+  // (a ventilated facade, as on site: brackets on the rails' lines → mineral wool → the windproof membrane → the rails → the panels on
+  // their clips — the owner, 2026-11-18: «камень на утеплителе» only so; stone glued to EPS falls off: the foreman's list of mistakes)
+  const vent = (F, key) => {
+    const cols = railCols(F), rows = bracketRows(F), br = [], rl = [], mb = [];
+    for (const a of cols) for (const y of rows) {
+      if (F.topAt && y > F.topAt(a) - MM(120)) continue;
+      if (F.holes.some((q) => a > q[0] - MM(60) && a < q[2] + MM(60) && y > q[1] - MM(80) && y < q[3] + MM(80))) continue;
+      if (!cutPiece(F, [a - MM(30), y - MM(60), a + MM(30), y + MM(60)], 0).length) continue;
+      br.push([+a.toFixed(6), +y.toFixed(6)]);
+    }
+    const er = ext(F, OFF.rl);
+    for (const a of cols) {
+      let pieces = [[er[1] + MM(20), F.topAt ? Math.min(er[3] - MM(20), F.topAt(a) - MM(20)) : er[3] - MM(20)]];
+      for (const q of F.holes) if (a > q[0] - MM(40) && a < q[2] + MM(40)) pieces = pieces.flatMap(([p, r]) => (q[3] <= p || q[1] >= r ? [[p, r]] : [[p, q[1] - MM(20)], [q[3] + MM(20), r]]));
+      for (const [p, r] of pieces) if (r - p > MM(300) && br.filter(([ba, by]) => Math.abs(ba - a) < MM(5) && by >= p - MM(60) && by <= r + MM(60)).length >= 2) rl.push([a, +p.toFixed(6), +r.toFixed(6)]);
+    }
+    const em = ext(F, OFF.mb);
+    for (let a = em[0]; a < em[2] - MM(10); a += MM(VENT_SUB.mbW - VENT_SUB.mbLap)) mb.push([+a.toFixed(6), +em[1].toFixed(6), +Math.min(em[2], a + MM(VENT_SUB.mbW)).toFixed(6), +em[3].toFixed(6)]);
+    st.facVent = key;
+    save(F, { br }); save(F, { mw: slots(F, 'mw') }); save(F, { mb }); save(F, { rl }); save(F, { vp: slots(F, 'vp').map((q) => [...q, key]) });
+  };
   const faceBy = function* (list, fn, dur, snd) { const t0 = d.t; let i = 0; yield d.until(() => { const want = Math.min(list.length, Math.ceil(list.length * Math.min(1, (d.t - t0) / dur))); for (; i < want; i++) { fn(list[i]); app.sfx?.play?.(snd, { vol: 0.45, gap: 0.1 }); } return i >= list.length && d.t - t0 >= dur; }); };
   hud(['Roof', 'Facade', 'Glass'], 1, ['*Plaster', 'Panels'], 'wall');
   shots([[1.6, [-11500, 1800, -7000], [-2500, 2200, 0]], [9, [9000, 2400, 13500], [0, 2400, 1000]]]);
   yield* faceBy(pavF, plaster, 2.6, 'plaster');
   hud(['Roof', 'Facade', 'Glass'], 1, ['Plaster', '*Panels'], 'wall');
   shots([[9, [-9500, 6800, 9500], [1200, 6200, 1200]]]);
-  yield* faceBy(boxF, (F) => panels(F, 'wood:walnut'), 2.0, 'nailgun');
+  yield* faceBy(boxF, (F) => vent(F, 'hpl:walnut'), 2.0, 'nailgun');   // (wood on a ventilated facade only — the foreman: HPL in walnut on its rails)
   shots([[9, [15500, 4300, 500], [6000, 4300, -500]]]);
-  yield* faceBy(spineF.sort((a, b) => a.y0 - b.y0), (F) => panels(F, 'stone:sandstone'), 2.6, 'stone');
+  yield* faceBy(spineF.sort((a, b) => a.y0 - b.y0), (F) => vent(F, 'porc:sandstone'), 2.6, 'stone');   // (porcelain stoneware in sandstone on a ventilated facade: the owner's choice)
   d.stageBill('FACADE');
   yield d.sec(1.0);
   d.sail = { sail, cage, roof, props: app.wallView.slabForm.tubeLo.count, box: box.length, fasc, glass: ops.length, faces: [pavF.length, boxF.length, spineF.length], order: [ord[0], ord.at(-1)], roofGreen: (O.all('roof').find((r) => r.slab === roof)?.green || []).length };

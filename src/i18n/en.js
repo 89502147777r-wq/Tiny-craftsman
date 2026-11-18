@@ -1124,6 +1124,7 @@ export default {
 "Погрузчик на месте — ведите пальцем по участку, где ровнять": "The loader is in place — drag over the site where to level",
 "Погрузчик: ведите пальцем по участку — он подъедет, опустит ковш и пройдёт по линии, срезая бугры и засыпая ямы по проектной отметке (уровень большей части участка, с уклоном от дома). Дом, отмостку и бетон не трогает": "Loader: drag over the site — it drives up, lowers the bucket and runs along the line, cutting humps and filling holes to the design level (the level of most of the site, falling away from the house). It leaves the house, the apron and concrete alone",
 "Под бетон": "Concrete look",
+"Под песчаник": "Sandstone look",
 "Под дверь нужен проём до пола — здесь снизу кладка (это проём под окно)": "A door needs an opening down to the floor — here there is masonry below (that is a window opening)",
 "Под плитку сетка не нужна: плитка ложится на щебень с песком — выберите «Бетон / плитка»": "Pavers need no mesh: they go on gravel with sand — pick “Concrete / pavers”",
 "Поддон убрали — {0} шт вернули поставщику: +${1}": "Pallet removed — {0} pcs returned to the supplier: +${1}",
