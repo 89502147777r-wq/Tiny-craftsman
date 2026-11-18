@@ -14,7 +14,7 @@ export const UPSTAND = { H: 450, w: 200 };
 // skip: [[x0, z0, x1, z1]…] (world) — the footprint of walls still to be built on the slab (a film knows its box before it is laid:
 // the upstand is cast first, the walls go on the slab beside it — never through it); cast: false — the mask only, for the slab's
 // starter bars before its concrete
-export function findUpstand(app, slab, { H = UPSTAND.H, w = UPSTAND.w, skip = [], cast = true, spoutNear = null } = {}) {
+export function findUpstand(app, slab, { H = UPSTAND.H, w = UPSTAND.w, skip = [], cast = true, spoutNear = null, spoutY = null } = {}) {
   const b = slab, P = plan(b), { ni, nj, c } = b, top = b.top + b.H;
   if (cast && !(b.fill > 0.9)) return { rec: null, why: 'Сначала залейте перекрытие' };
   const k = Math.max(1, Math.round(MM(w) / c));
@@ -56,23 +56,46 @@ export function findUpstand(app, slab, { H = UPSTAND.H, w = UPSTAND.w, skip = []
       for (const key of runs) { if (open.has(key)) open.get(key)[1] = e; else open.set(key, [e, e]); }
     }
   }
-  // the starter bars out of the slab (left in its cage before the concrete — U-bars Ø12 every 250, two legs 60 each side of the
-  // upstand's middle, up 400 over the slab): [x0, y0, z0, x1, y1, z1, d]
-  const starters = [], d = MM(12);
-  for (const [a0, a1, l, , par] of segs) {
+  // the starter bars out of the slab (left in its cage before its concrete — the realist): U-bars Ø12 every 250 — they are the upstand's
+  // links: the two legs at its faces with a cover of 40 (±54 from its middle), up 400 over the slab, each with a foot 150 into the
+  // slab along the bottom mat (tied to it); no two closer than 100 (the corners where two runs meet): [x0, y0, z0, x1, y1, z1, d]
+  const starters = [], d = MM(12), at = (s2, t2) => [b.o[0] + b.u[0] * s2 - b.u[1] * t2, b.o[1] + b.u[1] * s2 + b.u[0] * t2];
+  const inSlab = (s2, t2) => { const i = Math.floor(s2 / c), j = Math.floor(t2 / c); return i >= 0 && j >= 0 && i < ni && j < nj && !!P.mask[j * ni + i] && !m[j * ni + i]; };
+  const yFoot = b.top + MM(25 + 12 + 6), yTop = top + MM(400), seen = [];
+  for (const [a0, a1, l, hw, par] of segs) {
     const n = Math.max(1, Math.floor((a1 - a0 - MM(100)) / MM(250)));
+    const am = (a0 + a1) / 2, inward = inSlab(par ? am : l + hw + 2 * c, par ? l + hw + 2 * c : am) ? 1 : -1;
     for (let q = 0; q <= n; q++) {
       const a = a0 + MM(50) + (a1 - a0 - MM(100)) * q / n;
-      for (const o of [-MM(60), MM(60)]) {
-        const [s2, t2] = par ? [a, l + o] : [l + o, a], x = b.o[0] + b.u[0] * s2 - b.u[1] * t2, z = b.o[1] + b.u[1] * s2 + b.u[0] * t2;
-        starters.push([+x.toFixed(5), +(b.top + MM(40)).toFixed(5), +z.toFixed(5), +x.toFixed(5), +(top + MM(400)).toFixed(5), +z.toFixed(5), +d.toFixed(6)]);
+      for (const o of [-MM(54), MM(54)]) {
+        const st2 = par ? [a, l + o] : [l + o, a], [x, z] = at(...st2), fo = inward * MM(150), [xf, zf] = at(...(par ? [a, l + o + fo] : [l + o + fo, a]));
+        if (seen.some(([sx, sz]) => Math.hypot(sx - x, sz - z) < MM(100))) continue;   // (where two runs meet at a corner: not twice)
+        seen.push([x, z]);
+        starters.push([+x.toFixed(5), +yFoot.toFixed(5), +z.toFixed(5), +x.toFixed(5), +yTop.toFixed(5), +z.toFixed(5), +d.toFixed(6)]);
+        starters.push([+x.toFixed(5), +yFoot.toFixed(5), +z.toFixed(5), +xf.toFixed(5), +yFoot.toFixed(5), +zf.toFixed(5), +d.toFixed(6)]);
       }
     }
   }
-  // the overflow (аварийный перелив): a PVC spout Ø100 through the upstand 30 over the membrane, at its lowest corner — over the pool
+  // the overflow (аварийный перелив — the realist): at the terrace's low point by its drain (spoutNear), on the free edge nearest it, ≥ 300
+  // from a corner; a PVC sleeve Ø110 set in the formwork before the concrete, square to the face, from the inner face (flush, the
+  // membrane's collar there) out 300 past the concrete (past the fascia to come); its bottom 40 over the membrane there (spoutY: the
+  // membrane's height over the slab, mm)
   let spout = null;
-  { let best = null; for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) { if (!m[j * ni + i]) continue; const sc = (i + 0.5) * c, tc = (j + 0.5) * c, x = b.o[0] + b.u[0] * sc - b.u[1] * tc, z = b.o[1] + b.u[1] * sc + b.u[0] * tc, key = spoutNear ? Math.hypot(x - spoutNear[0], z - spoutNear[1]) : sc + tc; if (!best || key < best.key) best = { key, sc, tc }; }
-    if (best) spout = [+(b.o[0] + b.u[0] * best.sc - b.u[1] * best.tc).toFixed(5), +(b.o[1] + b.u[1] * best.sc + b.u[0] * best.tc).toFixed(5)]; }
+  if (spoutNear) {
+    let best = null;
+    for (const [a0, a1, l, hw, par] of segs) {
+      const am0 = a0 + MM(300), am1 = a1 - MM(300); if (am1 <= am0) continue;
+      for (const sg of [-1, 1]) {
+        const e = l + sg * hw, out = !inSlab(par ? (am0 + am1) / 2 : e + sg * c * 0.5, par ? e + sg * c * 0.5 : (am0 + am1) / 2) && !(() => { const s2 = par ? (am0 + am1) / 2 : e + sg * c * 0.5, t2 = par ? e + sg * c * 0.5 : (am0 + am1) / 2, i = Math.floor(s2 / c), j = Math.floor(t2 / c); return i >= 0 && j >= 0 && i < ni && j < nj && m[j * ni + i]; })();
+        if (!out) continue;   // (the outer face: beyond it neither slab nor upstand)
+        // the point of this face nearest the drain
+        const [px, pz] = [spoutNear[0], spoutNear[1]], fr = [(px - b.o[0]) * b.u[0] + (pz - b.o[1]) * b.u[1], -(px - b.o[0]) * b.u[1] + (pz - b.o[1]) * b.u[0]];
+        const a = Math.max(am0, Math.min(am1, par ? fr[0] : fr[1])), [x, z] = at(...(par ? [a, e] : [e, a])), dd = Math.hypot(x - px, z - pz);
+        if (!best || dd < best.dd) { const [x2, z2] = at(...(par ? [a, e + sg] : [e + sg, a])), nl = Math.hypot(x2 - x, z2 - z); best = { dd, x, z, nx: (x2 - x) / nl, nz: (z2 - z) / nl }; }
+      }
+    }
+    if (best) spout = { x: +best.x.toFixed(5), z: +best.z.toFixed(5), nx: +best.nx.toFixed(5), nz: +best.nz.toFixed(5), w: +MM(w).toFixed(6), y: +MM((spoutY ?? 240) + 40 + 55).toFixed(6) };
+  }
   const rec = {
     type: 'belt', kind: 'upstand', starters, ...(spout ? { spout } : {}), slab: b.id, o: b.o.slice(), u: b.u.slice(), c: b.c, ni, nj, mask: rle(m), top: +top.toFixed(6), H: +MM(H).toFixed(6),
     lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0, ...(b.clip ? { clip: b.clip.slice() } : {}),

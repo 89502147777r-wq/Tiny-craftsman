@@ -45,9 +45,9 @@ const rowsRaw = await page.evaluate(async (FPS) => {
     out.push({ t: +f.t.toFixed(3), n: f.shot?.n || 0, fx: f.fx.some((e) => e.kind !== 'shake'), title: f.stepName || '', e: [c.x, c.y, c.z], a: [q.x, q.y, q.z], d: tc.rig.dist, b: boxes(),
       tp: tp ? [tp.x, tp.y, tp.z] : null, ts: scr(tp), sub: subj(), sv: !!tc.concreteGear?.pump?.stream?.visible, hw: tc.concreteTools?.hose?.state === 'work' && !!tc.concreteGear?.pump?.ready, hm: (() => { const H = tc.handTools; if (H?.cur !== 'hammer' || !H.tools.hammer?.g.visible || !wv) return null; const p = H.tools.hammer.g.getWorldPosition(tc.camera.position.clone()), F = tc.wallView.boardFaces ? tc.wallView.boardFaces(tc.objects.get(wv.id)) : []; if (!F.length) return null; const nU = Math.max(1, Math.ceil(wv.u * F.length)); let m = Infinity; for (const f of F.slice(0, nU)) { const dx = f.x1 - f.x0, dz = f.z1 - f.z0, L2 = dx * dx + dz * dz, q = L2 > 0 ? Math.max(0, Math.min(1, ((p.x - f.x0) * dx + (p.z - f.z0) * dz) / L2)) : 0; m = Math.min(m, Math.hypot(p.x - f.x0 - dx * q, p.z - f.z0 - dz * q)); } return m * 10.4651; })(), on: objN() + (tc.objects.ver || 0) + (wv ? wv.u : 0) + (rv ? rv.u : 0), job: !!(tc.physJob || tc.wallTool?.dpc?.busy || tc.concreteTools?.hose?.state === 'work') });
   }
-  return { out, snd, marks: f.marks || {}, typed: f.hudTyped || [], notes: (f.notes || []).map((n) => String(n[1])) };
+  return { out, snd, marks: f.marks || {}, typed: f.hudTyped || [], notes: (f.notes || []).map((n) => String(n[1])), bills: (f.stageBillsLog || []).map((q) => q.usd), spent: f.spentShown ?? null };
 }, FPS);
-const { out: rows, snd, marks, typed, notes } = rowsRaw;
+const { out: rows, snd, marks, typed, notes, bills, spent } = rowsRaw;
 await browser.close(); server.close();
 // ---- the camera: within a shot, the change of the eye's and the aim's velocity (a jerk), as a share of the distance
 const sub = (a, b) => a.map((v, i) => v - b[i]), len = (a) => Math.hypot(...a);
@@ -187,6 +187,8 @@ if (marks.wow != null && marks.wowEnd != null) {
   if (w0 < 0.55 || w0 > 0.8) list.push(`the «wow» starts at ${(w0 * 100).toFixed(0)} % of the video (55–80)`);
   if (1 - w1 > 0.25) list.push(`after the «wow» ${((1 - w1) * 100).toFixed(0)} % of the video is left (≤ 25)`);
 }
+// (the bills add up to the sum the film shows at its end — the analyst: that sum goes into the title; no cost left out of every bill)
+if (spent != null && bills?.length) { const sum = bills.reduce((a, v) => a + v, 0); if (Math.abs(sum - spent) > 1) list.push(`the bills add up to $${sum}, the film shows $${spent}`); if (bills.some((v) => !(v > 0))) list.push('a bill of $0'); }
 console.log(`\nTHE RELEASE LIST (numbers):\n` + list.join('\n'));
 const menu = [...new Set(typed)].map((r) => `menu typed by the film, not the game's: ${r}`).concat(notes.filter((n) => /FAILED/.test(n)));
 console.log(`\nMENU / NOTES:\n` + menu.join('\n'));

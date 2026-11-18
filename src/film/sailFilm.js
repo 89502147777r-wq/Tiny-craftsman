@@ -27,7 +27,9 @@ const OLIVE = [-7100, -1750, -5300, 50];   // (the olive's opening — the owner
 const TOWER = [-7400, 1770, -7070, 4300];  // (the fireplace tower's notch in the left cantilever: its face −7,1 + a joint 30)
 const CORNER = [-7340, -5318];
 // (the box's walls' strips on the sail, 300 + 25 each side: the upstand is cast before them — it stops at their faces)
-const BOXSKIP = () => [[IN - 300 - 25, SL.z0 - 25, SL.x1 + 25, SL.z0 + 325], [IN - 300 - 25, SL.z1 - 325, SL.x1 + 25, SL.z1 + 25], [IN - 300 - 25, SL.z0 - 25, IN + 25, SL.z1 + 25], [SL.x1 - 325, SL.z0 - 25, SL.x1 + 25, SL.z1 + 25]].map((r) => r.map((v) => v / 1000 / MODEL_SCALE));             // (the cantilevers' free corner over the pool: where a column «should» be — the «?»)
+const BOXSKIP = () => [[IN - 300, SL.z0, SL.x1, SL.z0 + 300], [IN - 300, SL.z1 - 300, SL.x1, SL.z1], [IN - 300, SL.z0, IN, SL.z1], [SL.x1 - 300, SL.z0, SL.x1, SL.z1]].map((r) => r.map((v) => v / 1000 / MODEL_SCALE));
+// (the terrace's drain on the left cantilever, between the olive's opening and the front: the falls to it; the overflow by it)
+const DRAIN = [-6640, -3500];
 
 // the box's walls on the sail: aerated block 300, 12 courses on glue (the first on mortar 20) — the corners bonded every other course;
 // its left side on the pavilion's inner wall, the rest over the pavilion's walls (the path of the loads — docs/ideas/ibiza.md); a
@@ -229,7 +231,7 @@ export function* sailFilm(d, app) {
     app.rebarTool?.setMode?.('cage'); app.setTool('rebar'); d.menu([], 'rebar');
     let cage = null; const rec = slabCage(b); rec.tied = true;
     // (the upstand's U-bars left in the slab's cage before its concrete — the realist: an upstand is tied to its slab)
-    { const U0 = findUpstand(app, b, { cast: false, skip: BOXSKIP(), spoutNear: [MM(CORNER[0]), MM(CORNER[1])] }); if (U0.rec) { for (const q of U0.rec.starters) rec.bars.push(q.slice()); say('starters ' + U0.rec.starters.length); } }
+    { const U0 = findUpstand(app, b, { cast: false, skip: BOXSKIP(), spoutNear: [MM(DRAIN[0]), MM(DRAIN[1])], spoutY: 190 }); if (U0.rec) { for (const q of U0.rec.starters) rec.bars.push(q.slice()); say('starters ' + U0.rec.starters.length); } }
     app.journal.act('slab-cage', {}, app.clock, () => { cage = O.add(rec).id; });
     const NB = rec.bars.length; let nb = 0;
     const setB = (x) => { nb = Math.max(0, Math.min(NB, x)); RV.reveal = { id: cage, u: Math.min(1, 0.12 + 0.68 * nb / NB), lower: true }; RV.dirty = true; };
@@ -259,16 +261,17 @@ export function* sailFilm(d, app) {
     yield* hosePour(b.id, snake(SL.x0 - LEFT + 300, SL.x1 - 300, SL.z0 - FRONT + 300, SL.z1 - 300, 600),   // (rows 600 apart: the splat ~500 wide with what runs out of it)
       [[1.4, [1500, 700, -1700], 1], [1.5, [-2400, 1100, -2000], 3], [1.5, [3200, 1900, -3400], 6]]);
     // the rule over it along the cantilever (the bar levelling the concrete): close ×1, then ×3
-    { const y = b.top + b.H + MM(15), z0 = SL.z0 - FRONT + 400, xs = [SL.x0 - LEFT + 900, SL.x1 - 900]; let u = 0;
+    { const y = b.top + b.H + MM(15), z0 = SL.z0 - FRONT + 650, xs = [SL.x0 - LEFT + 900, SL.x1 - 900]; let u = 0;   // (≥ 250 from the edge's row of starters even at its swing — the realist)
       G.set('screed', new V(MM(xs[0]), y, MM(z0)), Math.PI / 2, true);
       tool = () => G.pos.clone();
       act([[1.2, [-900, 700, -1300], 1], [1.2, [1400, 900, -1700], 3]]);
-      const t1 = d.t; yield d.until(() => { u += d.dt * d.speed * 0.9 / ((xs[1] - xs[0]) / 1000); G.set('screed', new V(MM(xs[0] + (xs[1] - xs[0]) * Math.min(1, u)), y, MM(z0 + 300 * Math.sin(u * 40))), Math.PI / 2); app.sfx?.play?.('screed', { vol: 0.4, gap: 0.35 }); return u >= 1 || d.t - t1 > 1.3; });
+      const t1 = d.t; yield d.until(() => { u += d.dt * d.speed * 0.9 / ((xs[1] - xs[0]) / 1000); G.set('screed', new V(MM(xs[0] + (xs[1] - xs[0]) * Math.min(1, u)), y, MM(z0 + 150 * Math.sin(u * 40))), Math.PI / 2); app.sfx?.play?.('screed', { vol: 0.4, gap: 0.35 }); return u >= 1 || d.t - t1 > 1.3; });
       G.set(null); }
     // (the film once the water's sheen is off it — the realist: 1–3 hours in the heat; laid at once its creases print in the concrete)
     tool = () => P(CORNER[0] + 1500, 3700, CORNER[1] + 1500);
     yield* d.lapse(2 / 24, 0.6, () => { app.clock += 300 * d.dt / 0.6; });
     // the curing film rolled over it: the first strip close at its pace, then faster and faster (the owner's rule for rolls)
+    billSoon('CONCRETE', 0.3, true);   // (the sail's concrete — the pour finished at the rule's cut — over the film rolling out)
     yield* cureRoll(b);
   });
   // (the polyethylene over the fresh concrete — the same film as the roof's vapour barrier, strips 1,5 m lapped 100, rolled out
@@ -312,7 +315,7 @@ export function* sailFilm(d, app) {
   // ==== 5 · the upstand on the terrace's free edges: its boards (×3), its cage, the hose along it (×6) ====
   phase('upstand', function* () {
     const b = sailRec(); if (!b) return;
-    const U = findUpstand(app, b, { skip: BOXSKIP(), spoutNear: [MM(CORNER[0]), MM(CORNER[1])] });
+    const U = findUpstand(app, b, { skip: BOXSKIP(), spoutNear: [MM(DRAIN[0]), MM(DRAIN[1])], spoutY: 190 });   // (the membrane by the drain: 1 + 150 + 20 + 0,02·700 + 2 ≈ 190 over the slab)
     if (U.rec) U.rec.startersInSlab = true;
     say('upstand ' + (U.rec ? `${U.n} cells, ${U.rec.segs.length} runs` : U.why + ' FAILED'));
     if (!U.rec) return;
@@ -320,13 +323,16 @@ export function* sailFilm(d, app) {
     let up = null; app.journal.act('upstand-form', {}, app.clock, () => { up = O.add(U.rec).id; });
     WV.reveal = { id: up, u: 0 }; WV.dirty = true;
     const tipAt = () => { const f = WV.revealTip?.(O.get(up), WV.reveal?.u ?? 1); return f ? new V(f.x + f.ox, f.y, f.z + f.oz) : null; };
-    let lastP = null; tool = () => (lastP = tipAt() || lastP || P(CORNER[0], 3950, CORNER[1]));
-    act([[1.0, [1300, 1100, -1200], 3], [1.0, [-2200, 1500, -2000], 6]]);
-    billSoon('CONCRETE', 0.3, true);   // (the sail's concrete — over the upstand's boards going up: the work moving under it)
+    // (the boards go up all round its 60 m fast: the work point stays at the corner the camera is on — the boards running past it)
+    const upC = P(CORNER[0] + 800, 3900, CORNER[1] + 400); tool = () => upC.clone(); void tipAt;
+    act([[1.0, [1300, 1100, -1200], 3], [1.0, [-2600, 1700, -2400], 6]]);
     { const t0 = d.t; let k = 0; yield d.until(() => { const u = Math.min(1, (d.t - t0) / 1.6); WV.reveal = { id: up, u }; WV.dirty = true; if (u * 10 > k) { k++; app.sfx?.play?.(k % 2 ? 'plank' : 'hammer_nail', { vol: 0.45 }); } return u >= 1; }); }
     WV.reveal = null; WV.dirty = true;
-    app.journal.act('belt-cage', {}, app.clock, () => O.add(beltCage(O.get(up))));
-    app.sfx?.seq?.(['rebar', 'wire', 'rebar']);
+    { let cg = null; app.journal.act('belt-cage', {}, app.clock, () => { cg = O.add(beltCage(O.get(up))).id; });
+      // (its bars laid inside the starters along the edge, one after another — never all at once: the realist)
+      let lastC = null; tool = () => { const tp = RV.revealTip; if (tp) lastC = new V().fromArray(tp.at); return lastC || P(CORNER[0], 3800, CORNER[1]); };
+      const t0 = d.t; let k = 0; yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.9); RV.reveal = { id: cg, u: 0.12 + 0.88 * u, lower: true }; RV.dirty = true; if (u * 8 > k) { k++; app.sfx?.play?.(k % 2 ? 'rebar' : 'wire', { vol: 0.4 }); } return u >= 1; });
+      RV.reveal = null; RV.dirty = true; }
     // the hose along it: round the free edge from the cantilever's corner
     const ub = O.get(up), cells = plan(ub).cells, pts = [];
     { const ring = cells.map(([i, j]) => toWorld(ub, (i + 0.5) * ub.c, (j + 0.5) * ub.c)), cx = ring.reduce((a, q) => a + q[0], 0) / ring.length, cz = ring.reduce((a, q) => a + q[1], 0) / ring.length;
@@ -372,6 +378,7 @@ export function* sailFilm(d, app) {
   // ==== 7 · the box: aerated block 300 on the pavilion's walls — the first block close, its course, then the courses ====
   phase('box', function* () {
     const b = sailRec(); if (!b) return;
+    billSoon('UPSTAND', 0.5);   // (the upstand and the damp-proof course under the box — over its first block going on)
     const sTop = b.top + b.H, box = boxWalls(sTop + MM(3));
     st.wallKind = 'block'; app.setTool('wall'); W.setMode('lay'); d.menu(['masonry'], 'wall');
     const job = (rec, fast) => { if (app.physJob) return false; if (W.layUnit(rec, fast, 20)) { tool = () => new V().fromArray(rec.p); return true; } return false; };
@@ -407,13 +414,22 @@ export function* sailFilm(d, app) {
     let rc = null; app.journal.act('slab-cage', {}, app.clock, () => { const c = slabCage(O.get(roof)); c.tied = true; rc = O.add(c).id; });
     app.sfx?.seq?.(['rebar', 'rebar', 'wire']);
     yield* hosePour(roof, snake(IN - 150 + 300, SL.x1 - 300, SL.z0 + 300, SL.z1 - 300, 600), [[1.6, [1500, 800, -1500], 6]]);
+    // the rule over the box's roof (the pour finished at its cut) — its bill over it: the work going on under it
+    { const RB = O.get(roof), y = RB.top + RB.H + MM(15), xs = [IN + 300, SL.x1 - 500], zr = SL.z0 + 900; let u = 0;
+      G.set('screed', new V(MM(xs[0]), y, MM(zr)), Math.PI / 2, true); tool = () => G.pos.clone();
+      act([[1.3, [-1300, 900, -1400], 3]]);
+      billSoon('ROOF SLAB', 0.15, true);
+      const t1 = d.t; yield d.until(() => { u += d.dt * d.speed * 0.9 / ((xs[1] - xs[0]) / 1000); G.set('screed', new V(MM(xs[0] + (xs[1] - xs[0]) * Math.min(1, u)), y, MM(zr + 120 * Math.sin(u * 40))), Math.PI / 2); app.sfx?.play?.('screed', { vol: 0.4, gap: 0.35 }); return u >= 1 || d.t - t1 > 2.1; });
+      G.set(null); still(); }
   });
 
   // ==== 9 · 28 days: the clock; meanwhile the box's roof props out through its glass wall's gap ====
   phase('month', function* () {
     const roof = roofRec(); d.hud(null);
-    tool = () => P(-1500, 3600, -1500);   // (the work: the sail and the box on their props — the shot's own aim)
-    shots([[9, [-10500, 1700, -15500], [-1500, 3600, -1500]]]);
+    // (the work: the box's roof formwork going out piece by piece — the piece being carried; else the shot's own aim)
+    const aimM = P(-1500, 3600, -1500); tool = () => { const t = WV.slabForm.stripTip; return t ? new V().fromArray(t) : aimM.clone(); };
+    // (a slow dolly in over the clock — the 28 days going by, the box's formwork going out: never a still frame under the bill)
+    still(); d.fly([[PE(-10500, 1700, -15500), P(-1500, 3600, -1500)], [PE(-8600, 1600, -12600), P(-1500, 3600, -1500)]], 3.2, { hand: 0.15 }); cutT = d.t; flush();
     // (meanwhile — the realist: the box's roof formwork out piece by piece through the glass wall's gap to a stack outside (its props
     // over the sail's, so first); the upstand's boards off into their stack — none left in the concrete's way)
     let off = 0; const ups = O.all('belt').find((q) => q.kind === 'upstand');
@@ -422,6 +438,7 @@ export function* sailFilm(d, app) {
       if (off < 2 && u > 0.3 && ups) { off = 2; app.journal.act('belt-strip', {}, app.clock, () => O.update(ups.id, { stripped: true, pile: [MM(-8500), MM(7600)] })); WV.dirty = true; }
       if (roof && O.get(roof.id)?.stripAt != null && !O.get(roof.id).stripped) app.clock += 60 * d.dt; });
     app.sky.setHour(10);
+    yield d.until(() => d.t >= billT + 1.95);   // (the bill's card gone before the big word: one text at a time)
     d.kick('+28 DAYS', 1.0, 'top'); dim(1.0); billT = d.t;
     yield d.sec(1.05);   // (its plate gone before the «wow»'s first cut — the analyst)
   });
@@ -492,7 +509,7 @@ export function* sailFilm(d, app) {
     billSoon('SEDUM', 0.6);
     let rr = O.all('roof').find((r) => r.slab === b.id);
     // (the drain: in the corner of the left cantilever by the olive — the falls to it)
-    const dr = [Math.max(i0 * c + MM(700), 0), (j0 * c + j1 * c) / 2];
+    const dr = toFrame(b, MM(DRAIN[0]), MM(DRAIN[1]));
     app.journal.act('roof-layers', {}, app.clock, () => { const p = { vap: all, xps: all, wedge: all, memS: [], mem: 'graphite', cop: 'ral9003', cure: [], drain: dr }; if (rr) O.update(rr.id, p); else rr = O.add({ type: 'roof', slab: b.id, copS: [], grav: [], ...p }); });
     const strips = []; for (let s = i0 * c; s < i1 * c - MM(50); s += MM(2050 - 80)) strips.push([s, j0 * c, Math.min(i1 * c, s + MM(2050)), j1 * c]);
     let k = 0, t = j0 * c; const t0 = d.t, done = [];
@@ -672,14 +689,15 @@ export function* sailFilm(d, app) {
     const r0 = { l: 72.8, t: 22.5, w: 26.8 }, r1 = { l: -6.41, t: 17.23, w: 112.82 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
     yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.5), e = u * u * (3 - 2 * u); sk.classList.add('grow'); sk.style.left = r0.l + (r1.l - r0.l) * e + '%'; sk.style.top = r0.t + (r1.t - r0.t) * e + '%'; sk.style.width = r0.w + (r1.w - r0.w) * e + '%'; return u >= 1; });
     yield d.sec(0.3);
-    d.next(); d.nextEl?.classList.add('small');   // (~3 s before the seam: the analyst)
     const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 0.8); sk.style.opacity = String(1 - u); return u >= 1; });
     sk.remove(); }
+  d.next(); d.nextEl?.classList.add('small');   // (~3 s before the seam, after the sheet is gone — never over it: the analyst)
   // (what the film cost — the bills added up, one sign: «−$X → ?» over the sky, then only the «?» under the free corner)
-  const spent = Math.round(money0 - app.budget.money);   // (all the film's work)
+  const spent = Math.round(money0 - app.budget.money);   // (all the film's work — each of its costs in one of the bills: check-film sums them)
+  d.spentShown = spent;
   const tot = document.createElement('div'); tot.className = 'f-steps'; tot.setAttribute('data-notr', ''); tot.textContent = `−$${spent.toLocaleString('en-US')} → ?`; tot.style.top = '20%'; d.el.appendChild(tot);
   app.sfx?.play?.('cash', { vol: 0.6 });
-  yield d.sec(1.5);
+  yield d.sec(1.25);
   tot.remove();
   const q = document.createElement('div'); q.className = 'f-steps'; q.setAttribute('data-notr', ''); q.textContent = '?';
   const cornerP = () => { const b = sailRec(); return new V(MM(CORNER[0]), (b ? b.top : g + MM(3650)) - MM(600), MM(CORNER[1])); };
@@ -687,16 +705,16 @@ export function* sailFilm(d, app) {
   const at = (el) => { const v = cornerP().project(app.camera), Bx = d.subject(); let lo = 0; if (Bx) for (const x of [Bx.min.x, Bx.max.x]) for (const y of [Bx.min.y, Bx.max.y]) for (const z of [Bx.min.z, Bx.max.z]) lo = Math.max(lo, (1 - new V(x, y, z).project(app.camera).y) / 2);
     el.style.left = ((v.x + 1) / 2 * 100).toFixed(2) + '%'; el.style.top = (Math.max((1 - v.y) / 2, lo + 0.015) * 100).toFixed(2) + '%'; };
   at(q); d.el.appendChild(q);
-  yield d.sec(0.9);
+  yield d.sec(1.35);
   d.sail = { sail: sailRec()?.id, roof: roofRec()?.id, props: WV.slabForm.tubeLo.count, units: O.all('unit').length, rails: O.all('rail').length, spent };
   // ---- the hook (put first by the recorder; the video ends at its mark — the loop): the rewind from this frame — layer by layer from
   // the top down, the props back for a blink, the sail gone — «◀◀», a whoosh, a dull stop: the bare pavilion of stage 2 ----
   d.mark('hook');
-  { const topOf = (r) => (r.type === 'unit' ? r.p[1] + r.s[1] / 2 : r.type === 'dpc' ? (r.y ?? 0) + MM(5) : Array.isArray(r.bars) && r.bars.length ? Math.max(...r.bars.map((b) => Math.max(b[1], b[4]))) + MM(80) : r.type === 'roof' ? (O.get(r.slab)?.top ?? 0) + MM(900) : r.type === 'rail' ? r.y + MM(1200) : r.type === 'window' ? r.y + MM(3000) : r.type === 'facade' ? MM(9000) : r.top != null ? r.top + (r.H ?? 0) : r.y ?? r.p?.[1] ?? 0);
+  { const topOf = (r) => (r.type === 'unit' ? r.p[1] + r.s[1] / 2 : r.type === 'dpc' ? (r.y ?? 0) + MM(5) : Array.isArray(r.bars) && r.bars.length ? Math.max(...r.bars.map((b) => Math.max(b[1], b[4]))) + MM(80) : r.type === 'roof' ? -1e9 : r.type === 'rail' ? r.y + MM(1200) : r.type === 'window' ? r.y + MM(3000) : r.type === 'facade' ? MM(9000) : r.top != null ? r.top + (r.H ?? 0) : r.y ?? r.p?.[1] ?? 0);
     const back = O.all().filter((r) => !startIds.has(r.id) && r.type !== 'siteprop' && r.type !== 'vehicle').sort((p, q2) => topOf(q2) - topOf(p));
     const gone = [], t0 = d.t; let rw = null, stopped = false, made = false, n = 0;
     yield d.until(() => {
-      const u = Math.min(1, Math.max(0, (d.t - t0 - 0.1) / 1.2)), e = u ** 1.15;   // (no slow start: the count changes every ≤ 0,3 s — the analyst)
+      const u = Math.min(1, Math.max(0, (d.t - t0 - 0.03) / 1.2)), e = u;   // (no slow start: the count changes every ≤ 0,3 s — the analyst)
       if (!made && d.t - t0 > 0.04) { made = true; rw = document.createElement('div'); rw.className = 'f-rew'; rw.setAttribute('data-notr', ''); rw.textContent = '◀◀'; d.el.appendChild(rw); app.sfx?.play?.('rewind', { vol: 0.8 }); }
       for (const want = Math.ceil(back.length * e); n < want; n++) { const r = back[n]; if (O.get(r.id)) { gone.push(r); O.remove(r.id); } }
       q.style.opacity = String(Math.max(0, 1 - (d.t - t0) / 0.5));

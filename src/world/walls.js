@@ -693,7 +693,7 @@ export class WallView {
       // (a slab's edge boards off at a week: in their own stack, b.sidesPile; a ring beam's, an upstand's — all of them, b.pile)
       const pile = b.kind === 'slab' ? (b.sidesOff || b.stripAt != null || b.stripped ? b.sidesPile : null) : b.stripped ? b.pile : null;
       if (!pile || !this.terrain) continue;
-      const n = Math.min(60, Math.max(6, Math.round(boardsOf(b).length * 2.5))), [px, pz] = pile, g = this.terrain.heightAt(px, pz), bw = 150 * S, bt = 25 * S, L = 3000 * S;
+      const n = Math.min(90, Math.max(6, Math.round(boardsOf(b).reduce((a, f) => a + Math.hypot(f[2] - f[0], f[3] - f[1]), 0) / S / 1000 * Math.ceil((b.H / S + 100) / 150) / 3))), [px, pz] = pile, g = Math.max(this.terrain.heightAt(px, pz - 1500 * S), this.terrain.heightAt(px, pz), this.terrain.heightAt(px, pz + 1500 * S)), bw = 150 * S, bt = 25 * S, L = 3000 * S;   // (boards by the run of the formwork / 3 m; on the highest ground under it — never sunk at an end)
       for (let k = 0; k < n && nw < this.max.wood - 40; k++) {
         const lay = Math.floor(k / 6), i = k % 6, y = g + bt / 2 + lay * bt + 40 * S;
         Q.setFromAxisAngle(_Y, 0.02 * Math.sin(k * 7.1)); this.wood.setMatrixAt(nw, m.compose(P.set(px + (i - 2.5) * (bw + 4 * S), y, pz), Q, Sv.set(bw, bt, L))); this.owner.wood[nw++] = b.id ?? null;
@@ -733,6 +733,7 @@ export class WallView {
           aB.setXYZ(nbb, rnd(), Math.floor(rnd() * 8) / 8, (L * MODEL_SCALE) / 1.87);
           this.owner.beltBoards[nbb++] = b.id ?? null;
         }
+        if (slabU && ov === 0 && nw < this.max.wood - 2) { const [fx, fz] = toWorld(b, cs + ns * (th + 25 * S), ct + nt * (th + 25 * S)); this.wood.setMatrixAt(nw, m.compose(P.set(fx, b.top + 20 * S, fz), Q, Sv.set(along ? L : 50 * S, 40 * S, along ? 50 * S : L))); this.owner.wood[nw++] = b.id ?? null; }
         const n = Math.max(1, Math.round(L / (600 * S)));
         for (let k = 0; k <= n && !b.lform; k++) {
           const f = k / n - 0.5, ss = cs + (along ? f * (L - 60 * S) : 0) + ns * (th / 2 + 20 * S), tt = ct + (along ? 0 : f * (L - 60 * S)) + nt * (th / 2 + 20 * S);
@@ -753,13 +754,11 @@ export class WallView {
     // a terrace upstand's overflow: a grey PVC pipe Ø110 through it, 30 over the membrane (≈ 280 over the slab), 150 out of its face
     for (const c of [...this.spouts.children]) { c.geometry.dispose(); this.spouts.remove(c); }
     for (const b of O.all('belt')) {
-      if (b.kind !== 'upstand' || !b.spout || !(b.fill > 0.5)) continue;
-      const sl = O.get(b.slab); if (!sl) continue;
-      // (out: from the slab's middle toward the spout's cell — through the upstand's width and on)
-      const cx = sl.o[0] + sl.u[0] * sl.ni * sl.c / 2 - sl.u[1] * sl.nj * sl.c / 2, cz = sl.o[1] + sl.u[1] * sl.ni * sl.c / 2 + sl.u[0] * sl.nj * sl.c / 2;
-      let ox = b.spout[0] - cx, oz = b.spout[1] - cz; const L = Math.hypot(ox, oz) || 1; ox /= L; oz /= L;
-      const len = 500 * S, g = new THREE.CylinderGeometry(55 * S, 55 * S, len, 20, 1, true);
-      g.rotateZ(Math.PI / 2); g.rotateY(-Math.atan2(oz, ox)); g.translate(b.spout[0] + ox * 150 * S, b.top + 280 * S, b.spout[1] + oz * 150 * S);
+      if (b.kind !== 'upstand' || !b.spout || typeof b.spout !== 'object' || Array.isArray(b.spout)) continue;
+      // (set in the formwork before the concrete: from the inner face, flush, square to the face, 300 out past the concrete)
+      const { x, z, nx, nz, w, y } = b.spout, len = w + 300 * S, cx = x + nx * (300 * S - w) / 2, cz = z + nz * (300 * S - w) / 2;
+      const g = new THREE.CylinderGeometry(55 * S, 55 * S, len, 20, 1, true);
+      g.rotateZ(Math.PI / 2); g.rotateY(-Math.atan2(nz, nx)); g.translate(cx, b.top + y, cz);
       const mpvc = this._pvc || (this._pvc = new THREE.MeshStandardMaterial({ color: 0x8d9093, roughness: 0.55, side: THREE.DoubleSide }));
       const mesh = new THREE.Mesh(g, mpvc); mesh.castShadow = true; this.spouts.add(mesh);
     }
@@ -1129,7 +1128,8 @@ export class WallView {
     for (const g of [...this.rails.children]) { this.rails.remove(g); g.traverse((o) => o.geometry?.dispose()); }
     const recs = this.objects.all('rail'), lifts = this.objects.all('lift');
     this._railIds = new Set([...recs, ...lifts].map((r) => r.id));
-    for (const r of recs) { const g = buildRail(r); g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; }); this.rails.add(g); }
+    // (a railing / a fascia going on in a film: this.railReveal = { id, u } — panel after panel)
+    for (const r of recs) { const g = buildRail(r, null, this.railReveal && this.railReveal.id === r.id ? this.railReveal.u : 1); g.traverse((o) => { if (o.isMesh) o.userData.uOwner = r.id; }); this.rails.add(g); }
     // the lifts (their stops: the slabs over them with their opening)
     this._liftG = new Map();
     for (const r of lifts) {

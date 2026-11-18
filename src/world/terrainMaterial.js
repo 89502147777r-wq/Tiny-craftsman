@@ -484,6 +484,7 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
         varying float vSm;
         varying vec3 vCWPos;
         varying vec3 vCWNrm;
+        float tcUnder = 0.0;
         float tcHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         ${CONC_NOISE_GLSL}
         #define TCFB(p) (tcSNoise(p) * 0.5 + tcSNoise((p) * 2.13 + 5.0) * 0.3 + tcSNoise((p) * 4.7 + 9.0) * 0.2)
@@ -534,14 +535,9 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
             float joint = ${steel ? '0.0' : '1.0 - smoothstep(0.0, 0.035, min(by, 1.0 - by))'};
             cc = mix(cc, tcConcCol(vec2(along, vCWPos.y) + 3.7, vSm, cure) * (1.0 - 0.12 * joint), cside);
           }
-          // the soffit (cast on the plywood deck): smooth, the sheets' joints 1220 × 2440 printed faintly; a little cooler — the warm
-          // light the sand throws up on it read as wood (the owner's eye on the sail's underside)
-          float under = ${steel ? '0.0' : 'smoothstep(0.6, 0.85, -wn.y)'};
-          if (under > 0.001) {
-            vec2 sq2 = fract(vCWPos.xz / vec2(${(1.22 / MODEL_SCALE).toFixed(6)}, ${(2.44 / MODEL_SCALE).toFixed(6)}));
-            float jn = 1.0 - smoothstep(0.0, 0.0035, min(min(sq2.x, 1.0 - sq2.x), min(sq2.y, 1.0 - sq2.y) * 0.5));
-            cc = mix(cc, cc * vec3(0.8, 0.94, 1.24) * (1.0 - 0.14 * jn), under);
-          }
+          // the soffit: the warm light the sand throws up on it read as wood — the light on it made less coloured (below), the concrete's
+          // own colour kept (the realist: fix it in the light, not with a blue tint)
+          tcUnder = ${steel ? '0.0' : 'smoothstep(0.6, 0.85, -wn.y)'};
           diffuseColor.rgb *= cc * vColor;
         }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -553,6 +549,9 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
           else { vec3 ta = abs(wn.x) > abs(wn.z) ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0); vec2 d = tcConcGrad(vec2(dot(vCWPos, ta), vCWPos.y) + 3.7, max(vSm, 0.6)); g = ta * d.x + vec3(0.0, 1.0, 0.0) * d.y; }
           normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz);
         }`)
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        // (a soffit lit from below by the warm sand: its light less coloured — grey concrete, not wood)
+        if (tcUnder > 0.001) { float ly = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722)); gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(ly) * 1.04, 0.5 * tcUnder); }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         roughnessFactor = mix(mix(0.88, 0.5, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));   // (fresh and heaped: matt — no sky in it; worked: a satin sheen)`);
   };

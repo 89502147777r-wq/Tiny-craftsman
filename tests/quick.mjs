@@ -1682,8 +1682,11 @@ if (want("2p")) {
     // first courses)
     const skipR = [MM(-1000), MM(2600), MM(1000), MM(4300)], Us = U.findUpstand(tc, O.get(b.id), { skip: [skipR] });
     let inSkip = 0; { const ms = B.plan(Us.rec).mask; for (let j = 0; j < b.nj; j++) for (let i = 0; i < b.ni; i++) { if (!ms[j * b.ni + i]) continue; const [x, z] = B.toWorld(b, (i + 0.5) * b.c, (j + 0.5) * b.c); if (x > skipR[0] && x < skipR[2] && z > skipR[1] && z < skipR[3]) inSkip++; } }
-    const Up = U.findUpstand(tc, O.get(b.id)), m = B.plan(Up.rec).mask, P = B.plan(O.get(b.id));
-    const starters = Up.rec.starters.length, spout = !!Up.rec.spout, chOver = new B.BeltChannel(tc, { ...Up.rec, id: -5 }).over;
+    const Up = U.findUpstand(tc, O.get(b.id), { spoutNear: [MM(-6640), MM(-3500)], spoutY: 190 }), m = B.plan(Up.rec).mask, P = B.plan(O.get(b.id));
+    // (the overflow by the drain: square to the free face, 30–50 over the membrane there; the starters' legs at the faces (cover 40), none doubled)
+    const sp = Up.rec.spout, spOk = !!sp && Math.abs(Math.hypot(sp.nx, sp.nz) - 1) < 1e-3 && Math.abs(sp.y / MM(1) - 55 - 190 - 40) < 2;
+    let minSt = Infinity; { const legs = Up.rec.starters.filter((q) => Math.abs(q[0] - q[3]) < 1e-9 && Math.abs(q[2] - q[5]) < 1e-9); for (let i = 0; i < legs.length; i++) for (let k = i + 1; k < legs.length; k++) minSt = Math.min(minSt, Math.hypot(legs[i][0] - legs[k][0], legs[i][2] - legs[k][2])); }
+    const starters = Up.rec.starters.length, spout = spOk, minStarter = Math.round(minSt / MM(1)), chOver = new B.BeltChannel(tc, { ...Up.rec, id: -5 }).over;
     // (each upstand cell within 2 cells (200) of a cell that is not the slab; none under the wall)
     let far = 0, underWall = 0; const ni = b.ni, nj = b.nj;
     for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) { if (!m[j * ni + i]) continue; let near = false; for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) { const a = i + di, e = j + dj; if (a < 0 || e < 0 || a >= ni || e >= nj || !P.mask[e * ni + a]) near = true; } if (!near) far++;
@@ -1704,10 +1707,10 @@ if (want("2p")) {
     const hi = { ...O.get(b.id), id: 999999, top: b.top + MM(3300) };
     const hiF = SL.slabForm(hi, floor, lowF.props);
     let off = 0, bad = []; for (const p of hiF.props) { let d = Infinity; for (const q of lowF.props) d = Math.min(d, Math.hypot(p[0] - q[0], p[1] - q[1])); off = Math.max(off, d); if (d > MM(5)) bad.push(B.toFrame(b, p[0], p[1]).map((v) => Math.round(v / MM(1)))); }
-    return { inSkip, starters, spout, chOver, n: Up.n, far, underWall, terrace: area.terrace, upMax: Math.round(upMax / MM(1)), deckY: Math.round(grp.userData.deckY ?? -1), upH: Math.round(Up.rec.H / MM(1)), rails, onUp, props: hiF.props.length, low: lowF.props.length, off: Math.round(off / MM(1)), bad: bad.slice(0, 6), lowS: [...new Set(lowF.props.map((q) => Math.round(B.toFrame(b, q[0], q[1])[0] / MM(1))))] };
+    return { inSkip, starters, spout, minStarter, chOver, n: Up.n, far, underWall, terrace: area.terrace, upMax: Math.round(upMax / MM(1)), deckY: Math.round(grp.userData.deckY ?? -1), upH: Math.round(Up.rec.H / MM(1)), rails, onUp, props: hiF.props.length, low: lowF.props.length, off: Math.round(off / MM(1)), bad: bad.slice(0, 6), lowS: [...new Set(lowF.props.map((q) => Math.round(B.toFrame(b, q[0], q[1])[0] / MM(1))))] };
   });
   check('terrace: the upstand on the slab\'s free edges only (within 200 of its edge, none under a wall on it or one still to come); the roof sees it', o.n > 200 && o.far === 0 && o.underWall === 0 && o.inSkip === 0 && o.terrace, JSON.stringify(o));
-  check('terrace: the upstand on starter bars (U-bars every ≤ 250 along it), an overflow spout; its concrete never stands over its boards', o.starters > o.n / 10 && o.spout && o.chOver === 0, JSON.stringify(o));
+  check('terrace: the upstand on starter bars (U-bars every ≤ 250, never two closer than 100), an overflow spout by the drain square to its face 40 over the membrane; its concrete never stands over its boards', o.starters > o.n / 10 && o.minStarter >= 100 && o.spout && o.chOver === 0, JSON.stringify(o));
   check('terrace: the membrane turned up the upstand 400; the deck on pedestals level, ≥ 50 under the upstand\'s top; the glass railing on its top', o.upMax >= 390 && o.upMax <= 460 && o.deckY > 250 && o.deckY <= o.upH - 50 && o.rails > 0 && o.onUp === o.rails, JSON.stringify(o));
   check('slab over a propped slab: its props over the lower ones, line over line (≤ 5 mm)', o.props > 20 && o.off <= 5, JSON.stringify(o));
   check('terrace: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));

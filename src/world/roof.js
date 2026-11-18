@@ -269,12 +269,18 @@ export function buildRoof(b, units, rec, live) {
   // against the wind — taken off at a week)
   const cure = L('cure');
   if (cure.length) {
-    add(sheet(cure, () => 0.6, (s, t2) => [mmS(s) / 1.2, mmS(t2) / 1.2], 0.25), new THREE.MeshStandardMaterial({ color: 0xe8ecef, transparent: true, opacity: 0.42, depthWrite: false, roughness: 0.22, metalness: 0, normalMap: photo('', 'film_nor.jpg'), normalScale: new THREE.Vector2(0.9, 0.9), side: THREE.DoubleSide }), false);
+    // (the band along a free edge where the upstand's starters stand out of it: left open — the film stops 220 short of the edge)
+    const P2 = plan(b), slabAt = (i, j) => i >= 0 && j >= 0 && i < b.ni && j < b.nj && !!P2.mask[j * b.ni + i], kk = Math.ceil(MM(220) / c);
+    const nearEdge = (i, j) => { for (let dj = -kk; dj <= kk; dj++) for (let di = -kk; di <= kk; di++) if (!slabAt(i + di, j + dj)) return true; return false; };
+    const keep = cure.flatMap((rc) => cellsOf(b, rc).filter(([i, j]) => area.on(i, j) && !nearEdge(i, j)).map(([i, j]) => [i * c, j * c, (i + 1) * c, (j + 1) * c]));
+    add(sheet(keep, () => 0.6, (s, t2) => [mmS(s) / 1.2, mmS(t2) / 1.2], 0), new THREE.MeshStandardMaterial({ color: 0xe8ecef, transparent: true, opacity: 0.42, depthWrite: false, roughness: 0.22, metalness: 0, normalMap: photo('', 'film_nor.jpg'), normalScale: new THREE.Vector2(0.9, 0.9), side: THREE.DoubleSide }), false);
+    // (one board on each lap, in its middle, the boards of each strip staggered by half their spacing — the realist)
     const parts = [], yaw = Math.atan2(-b.u[1], b.u[0]);
-    for (const rc of cure) for (const t2 of [rc[1] + MM(60), rc[3] - MM(60)]) for (let s = rc[0] + MM(500); s < rc[2] - MM(300); s += MM(2800)) {
-      const [i, j] = [Math.floor(s / c), Math.floor(t2 / c)]; if (!area.on(i, j)) continue;
-      const p = W(s, t2, 0.6 + 14), g = new THREE.BoxGeometry(MM(1000), MM(25), MM(100)); g.rotateY(yaw + ((Math.round(s / MM(100)) % 3) - 1) * 0.12); g.translate(...p); parts.push(g);
-    }
+    cure.forEach((rc, k) => { const t2 = rc[3] - MM(50), s00 = rc[0] + MM(500) + (k % 2) * MM(1400);
+      for (let s = s00; s < rc[2] - MM(300); s += MM(2800)) {
+        const i = Math.floor(s / c), j = Math.floor(t2 / c); if (!area.on(i, j) || nearEdge(i, j)) continue;
+        const p = W(s, t2, 0.6 + 14), g = new THREE.BoxGeometry(MM(1000), MM(25), MM(100)); g.rotateY(yaw + ((Math.round(s / MM(100)) % 3) - 1) * 0.12); g.translate(...p); parts.push(g);
+      } });
     if (parts.length) add(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ map: photo('raw_plank_wall', 'diff.jpg', true), normalMap: photo('raw_plank_wall', 'nor_gl.jpg'), roughness: 0.85 }));
   }
   const vap = L('vap');
@@ -303,6 +309,9 @@ export function buildRoof(b, units, rec, live) {
   if (xps.length) boards(xps, ROOF.vap, () => ROOF.vap + ROOF.xps, xpsTex(), [ROOF.xpsL / 1000, ROOF.xpsW / 1000]);
   const wedge = L('wedge'), base = ROOF.vap + ROOF.xps;
   if (wedge.length) boards(wedge, base, (s, t) => base + wedgeAt(r, s, t), wedgeTex(), [1, 1], true);
+  // (a separating fleece under the PVC membrane — PVC on polystyrene loses its plasticiser: glass fleece / geotextile 150 g/m², white,
+  // rolled ahead of the membrane over the whole roof once the membrane starts — the realist)
+  if ((r.memS?.length || (live && live.layer === 'mem')) && (r.wedge?.length || r.xps?.length)) add(sheet(r.wedge?.length ? r.wedge : r.xps, (s, t2) => (r.wedge?.length ? base + wedgeAt(r, s, t2) : base) + 0.6, (s, t2) => [mmS(s), mmS(t2)], 0), new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 1, normalMap: photo('', 'film_nor.jpg'), normalScale: new THREE.Vector2(0.25, 0.25), side: THREE.DoubleSide }), false);
   // the membrane: strips over the wedges, the welds along their overlaps
   const memS = L('mem', 'memS'), memDone = done(b, area, r.memS).full, mc = MEM_COLOURS[r.mem] || MEM_COLOURS.grey;
   const top = (s, t) => base + wedgeAt(r, s, t);
@@ -329,17 +338,24 @@ export function buildRoof(b, units, rec, live) {
   }
   // the field closed: turned up the parapet, the drain
   if (memDone) {
-    const pos = [], { ni, nj } = b;
+    const pos = [], bars = [], { ni, nj } = b;
     for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
       if (!area.on(i, j)) continue;
       for (const [q, e0, e1] of [[[i + 1, j], [i + 1, j], [i + 1, j + 1]], [[i - 1, j], [i, j + 1], [i, j]], [[i, j + 1], [i + 1, j + 1], [i, j + 1]], [[i, j - 1], [i, j], [i + 1, j]]]) {
         if (area.on(...q) || isHole(...q)) continue;   // (at an opening: its curb, below)
-        const bq = q[0] >= 0 && q[1] >= 0 && q[0] < ni && q[1] < nj ? q[1] * ni + q[0] : -1, up = bq >= 0 && area.blocked[bq] ? (area.up[bq] || ROOF.upstand) : 0;   // (off the grid: the slab's edge — a cell index there would wrap to the next row)
+        const bq = q[0] >= 0 && q[1] >= 0 && q[0] < ni && q[1] < nj ? q[1] * ni + q[0] : -1, up = bq >= 0 && area.blocked[bq] ? (area.up[bq] || ROOF.upstand) : 0, onUp = bq >= 0 && area.up[bq] > 0;   // (off the grid: the slab's edge — a cell index there would wrap to the next row)
         const [s0, t0] = [e0[0] * c, e0[1] * c], [s1, t1] = [e1[0] * c, e1[1] * c];
         const h0 = top(s0, t0) + ROOF.mem, h1 = top(s1, t1) + ROOF.mem;
         const A = W(s0, t0, Math.max(h0, up)), B = W(s1, t1, Math.max(h1, up)), C = W(s0, t0, 0), D = W(s1, t1, 0);
         pos.push(...A, ...C, ...B, ...B, ...C, ...D);
+        // (on a terrace's upstand the membrane's edge under an aluminium termination bar 40 × 3 on dowels every 200, sealed — the realist)
+        if (onUp) bars.push([s0, t0, s1, t1, Math.max(h0, up) - 25]);
       }
+    }
+    if (bars.length) {
+      const parts = [], yaw2 = Math.atan2(-b.u[1], b.u[0]);
+      for (const [s0, t0, s1, t1, y] of bars) { const [x0, , z0] = W(s0, t0, 0), [x1, , z1] = W(s1, t1, 0), L2 = Math.hypot(x1 - x0, z1 - z0); if (L2 < 1e-6) continue; const g = new THREE.BoxGeometry(L2 + MM(1), MM(40), MM(4)); g.rotateY(-Math.atan2(z1 - z0, x1 - x0)); g.translate((x0 + x1) / 2, top0 + MM(y), (z0 + z1) / 2); g.deleteAttribute('uv'); parts.push(g); }
+      if (parts.length) add(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ color: 0x9a9ea2, metalness: 1, roughness: 0.45 }), false);
     }
     if (pos.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); add(g, new THREE.MeshStandardMaterial({ color: mc[1], roughness: 0.5, side: THREE.DoubleSide })); }
     // an opening in the slab (the stair well): a curb round it 300 mm over the roof, the
@@ -413,39 +429,56 @@ export function buildRoof(b, units, rec, live) {
     }
     if (edge.length) add(mergeGeometries(edge, false), new THREE.MeshStandardMaterial({ color: 0xb4b8bc, metalness: 0.85, roughness: 0.35 }));
   }
-  // a terrace's deck: stone tiles 600 × 600 × 20 (the travertine photo, each tile its own window of it, turned) on adjustable
-  // pedestals stood on the membrane — the tiles level (the pedestals take up the fall), 4 mm open joints, cut at the upstand
+  // a terrace's deck: porcelain stoneware 600 × 600 × 20 in travertine (the photo — ambientCG Travertine009; natural travertine on
+  // pedestals is 30–40 thick: the realist), each tile its own window of the photo, its veins one way (turned 0 / 180° only), 4 mm
+  // open joints; the tiles level on adjustable pedestals — one on each crossing of the joints, under the four tiles' corners; the
+  // pedestals set out a row or two ahead of the tiles; the layout centred so that the cut at each edge is ≥ half a tile
   const deck = new Set(r.deck || []), dlv = live && live.layer === 'deck' ? live.cells : null;
   if (deck.size || dlv?.length) {
     const has = (i, j) => i >= 0 && j >= 0 && i < b.ni && j < b.nj && area.on(i, j) && (deck.has(j * b.ni + i) || !!dlv?.includes(j * b.ni + i));
     const T = MM(600), J = MM(4), cells = [];
-    for (let j = 0; j < b.nj; j++) for (let i = 0; i < b.ni; i++) if (area.on(i, j)) cells.push([i, j]);
+    let sa = Infinity, sb = -Infinity, ta = Infinity, tb = -Infinity;
+    for (let j = 0; j < b.nj; j++) for (let i = 0; i < b.ni; i++) if (area.on(i, j)) { cells.push([i, j]); sa = Math.min(sa, i * c); sb = Math.max(sb, (i + 1) * c); ta = Math.min(ta, j * c); tb = Math.max(tb, (j + 1) * c); }
+    const off = (lo, hi) => { const cut = ((hi - lo) % T) / 2; return lo + cut - (cut < T / 2 ? T / 2 : 0); };
+    const os = off(sa, sb), ot = off(ta, tb), ti = (s2) => Math.floor((s2 - os) / T), tj = (t2) => Math.floor((t2 - ot) / T);
     // (the deck's level: over the highest point of the membrane under the whole terrace, the shortest pedestal 30)
     let hMax = 0; for (const [i, j] of cells) hMax = Math.max(hMax, top((i + 0.5) * c, (j + 0.5) * c));
-    const yD = hMax + ROOF.mem + ROOF.pedestal, tiles = new Map();
-    for (const [i, j] of cells) { if (!has(i, j)) continue; const key = Math.floor((i + 0.5) * c / T) + ':' + Math.floor((j + 0.5) * c / T); const q = tiles.get(key) || tiles.set(key, [Infinity, Infinity, -Infinity, -Infinity]).get(key); q[0] = Math.min(q[0], i * c); q[1] = Math.min(q[1], j * c); q[2] = Math.max(q[2], (i + 1) * c); q[3] = Math.max(q[3], (j + 1) * c); }
-    const pos = [], uv = [], col = [], ped = [];
+    const yD = hMax + ROOF.mem + ROOF.pedestal, tiles = new Map(), all = new Map();
+    for (const [i, j] of cells) {
+      const key = ti((i + 0.5) * c) + ':' + tj((j + 0.5) * c), put = (M) => { const q = M.get(key) || M.set(key, [Infinity, Infinity, -Infinity, -Infinity]).get(key); q[0] = Math.min(q[0], i * c); q[1] = Math.min(q[1], j * c); q[2] = Math.max(q[2], (i + 1) * c); q[3] = Math.max(q[3], (j + 1) * c); };
+      put(all); if (has(i, j)) put(tiles);
+    }
+    let rowMax = -Infinity; for (const key of tiles.keys()) rowMax = Math.max(rowMax, +key.split(':')[1]);
+    const rect = (key, q) => { const [a2, e2] = key.split(':').map(Number); return [Math.max(q[0], os + a2 * T + J / 2), Math.max(q[1], ot + e2 * T + J / 2), Math.min(q[2], os + (a2 + 1) * T - J / 2), Math.min(q[3], ot + (e2 + 1) * T - J / 2)]; };
+    const pos = [], uv = [], col = [], ped = new Map();
     let seed = 1337; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    for (const [key, q] of tiles) {
-      const [ti, tj] = key.split(':').map(Number), s0 = Math.max(q[0], ti * T + J / 2), t0 = Math.max(q[1], tj * T + J / 2), s1 = Math.min(q[2], (ti + 1) * T - J / 2), t1 = Math.min(q[3], (tj + 1) * T - J / 2);
+    for (const [key, q] of all) {
+      const [a2, e2] = key.split(':').map(Number), [s0, t0, s1, t1] = rect(key, q);
       if (s1 - s0 < MM(40) || t1 - t0 < MM(40)) continue;
-      seed = ((((ti * 73856093) ^ (tj * 19349663)) & 0x7fffffff) % 2147483646) + 1;
-      const ou = rnd() * 0.4, ov = rnd() * 0.4, rot = Math.floor(rnd() * 4), sh = 0.94 + rnd() * 0.1, lift = live && live.layer === 'deck' && live.lift && dlv?.includes(Math.floor((s0 + s1) / 2 / c) + Math.floor((t0 + t1) / 2 / c) * b.ni) ? live.lift : 0;
-      const tuv = (s, t2) => { let a = (s - ti * T) / T * 0.6, e = (t2 - tj * T) / T * 0.6; for (let k = 0; k < rot; k++) [a, e] = [0.6 - e, a]; return [ou + a, ov + e]; };
+      // (its pedestals: under its corners, one per crossing — set out when its row is laid or the next one is)
+      if (e2 <= rowMax + 1) for (const [s2, t2] of [[s0, t0], [s1, t0], [s1, t1], [s0, t1]]) { const k2 = Math.round(s2 / MM(20)) + ':' + Math.round(t2 / MM(20)); if (!ped.has(k2)) ped.set(k2, [s2, t2]); }
+      if (!tiles.has(key)) continue;
+      seed = ((((a2 * 73856093) ^ (e2 * 19349663)) & 0x7fffffff) % 2147483646) + 1;
+      const ou = rnd() * 0.4, ov = rnd() * 0.4, flip = rnd() < 0.5, sh = 0.94 + rnd() * 0.1;
+      const lift = live && live.layer === 'deck' && live.lift && dlv?.includes(Math.floor((s0 + s1) / 2 / c) + Math.floor((t0 + t1) / 2 / c) * b.ni) ? live.lift : 0;
+      const tuv = (s2, t2) => { let u2 = (s2 - os - a2 * T) / T * 0.6, v2 = (t2 - ot - e2 * T) / T * 0.6; if (flip) { u2 = 0.6 - u2; v2 = 0.6 - v2; } return [ou + u2, ov + v2]; };
       const y1 = yD + 20 + lift, y0 = yD + lift, cs = [[s0, t0], [s1, t0], [s1, t1], [s0, t1]];
       const P1 = cs.map(([s2, t2]) => W(s2, t2, y1)), P0 = cs.map(([s2, t2]) => W(s2, t2, y0));
       for (const id of [0, 3, 1, 1, 3, 2]) { pos.push(...P1[id]); uv.push(...tuv(...cs[id])); col.push(sh, sh, sh * 0.98); }
       for (let k = 0; k < 4; k++) { const k2 = (k + 1) % 4; for (const [p, u] of [[P0[k], cs[k]], [P0[k2], cs[k2]], [P1[k2], cs[k2]], [P0[k], cs[k]], [P1[k2], cs[k2]], [P1[k], cs[k]]]) { pos.push(...p); uv.push(...tuv(...u)); col.push(sh * 0.8, sh * 0.8, sh * 0.78); } }
-      // (the pedestals under its corners and its middle: from the membrane up to the tile)
-      if (!lift) for (const [s2, t2] of [[s0, t0], [s1, t0], [s1, t1], [s0, t1]]) { const h0 = top(s2, t2) + ROOF.mem; ped.push([W(s2, t2, h0), yD - h0]); }
     }
     if (pos.length) {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
       add(g, new THREE.MeshStandardMaterial({ map: photo('travertine', 'col.jpg', true), normalMap: photo('travertine', 'nor.jpg'), roughness: 0.9, vertexColors: true }));
     }
-    if (ped.length) {
+    if (ped.size) {
+      // (a pedestal: a round base Ø200 on the membrane, the threaded column, the head with its four spacer lugs)
       const parts = [];
-      for (const [p, hm] of ped) { const g = new THREE.CylinderGeometry(MM(55), MM(80), MM(Math.max(10, hm)), 10); g.translate(p[0], p[1] + MM(Math.max(10, hm)) / 2, p[2]); g.deleteAttribute('uv'); parts.push(g); }
+      for (const [s2, t2] of ped.values()) { const P = W(s2, t2, 0), h0 = top(s2, t2) + ROOF.mem, hm = Math.max(10, yD - h0);
+        const base = new THREE.CylinderGeometry(MM(100), MM(100), MM(6), 16); base.translate(P[0], P[1] + MM(h0 + 3), P[2]); parts.push(base);
+        const colm = new THREE.CylinderGeometry(MM(30), MM(30), MM(hm), 10); colm.translate(P[0], P[1] + MM(h0 + hm / 2), P[2]); parts.push(colm);
+        const head = new THREE.CylinderGeometry(MM(60), MM(60), MM(5), 14); head.translate(P[0], P[1] + MM(yD - 2.5), P[2]); parts.push(head);
+        for (const g of parts.slice(-3)) g.deleteAttribute('uv'); }
       add(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ color: 0x2b2d2f, roughness: 0.7 }), false);
     }
     group.userData.deckY = yD;
