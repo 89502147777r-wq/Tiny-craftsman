@@ -534,6 +534,14 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
             float joint = ${steel ? '0.0' : '1.0 - smoothstep(0.0, 0.035, min(by, 1.0 - by))'};
             cc = mix(cc, tcConcCol(vec2(along, vCWPos.y) + 3.7, vSm, cure) * (1.0 - 0.12 * joint), cside);
           }
+          // the soffit (cast on the plywood deck): smooth, the sheets' joints 1220 × 2440 printed faintly; a little cooler — the warm
+          // light the sand throws up on it read as wood (the owner's eye on the sail's underside)
+          float under = ${steel ? '0.0' : 'smoothstep(0.6, 0.85, -wn.y)'};
+          if (under > 0.001) {
+            vec2 sq2 = fract(vCWPos.xz / vec2(${(1.22 / MODEL_SCALE).toFixed(6)}, ${(2.44 / MODEL_SCALE).toFixed(6)}));
+            float jn = 1.0 - smoothstep(0.0, 0.0035, min(min(sq2.x, 1.0 - sq2.x), min(sq2.y, 1.0 - sq2.y) * 0.5));
+            cc = mix(cc, cc * vec3(0.8, 0.94, 1.24) * (1.0 - 0.14 * jn), under);
+          }
           diffuseColor.rgb *= cc * vColor;
         }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
