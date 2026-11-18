@@ -563,7 +563,7 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
         // (a soffit lit from below by the warm sand: its light less coloured — grey concrete, not wood)
         if (tcUnder > 0.001) { float ly = dot(gl_FragColor.rgb, vec3(0.2126, 0.7152, 0.0722)); gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(ly) * 1.04, 0.5 * tcUnder); }`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-        roughnessFactor = mix(mix(0.88, 0.5, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));   // (fresh and heaped: matt — no sky in it; worked: a satin sheen)`);
+        roughnessFactor = mix(mix(0.88, 0.72, vSm), mix(0.9, 0.72, vSm), smoothstep(0.1, 0.8, cure));   // (fresh and heaped: matt — no sky in it; worked: a satin sheen)`);
   };
   m.customProgramCacheKey = () => 'tc-cast-concrete' + (steel ? '-steel' : '');
   return m;
