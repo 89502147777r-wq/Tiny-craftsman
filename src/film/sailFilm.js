@@ -6,7 +6,7 @@ import { floorUnder } from '../world/slabForm.js';
 import { beltCage, beltContains, plan, toWorld, toFrame } from '../tools/belt.js';
 import { findUpstand } from '../tools/upstand.js';
 import { slabRuns, findRail } from '../world/railing.js';
-import { roofArea, ROOF } from '../world/roof.js';
+import { roofArea, ROOF, CURE_BOARDS } from '../world/roof.js';
 import { findOpenings } from '../tools/windowFit.js';
 import { ext, OFF, CELL, cutPiece, runsOf, ck, railCols, bracketRows, VENT_SUB } from '../world/facade.js';
 
@@ -97,7 +97,7 @@ export function* sailFilm(d, app) {
   let shotN = 0, cutT = -9, tool = () => null; d.toolAt = () => tool();   // (for scripts/check-film.mjs: where the work is)
   const shots = (list) => { const id = ++shotN; let i = -1, t1 = -1; const f = () => { if (id !== shotN) return true; if (i < 0 && d.t - cutT < 0.85) return false; if (d.t >= t1) { if (i >= list.length - 1) { t1 = d.t + 1; return false; } i++; const [sec, e, a] = list[i]; d.cut(look(PE(...e), P(...a)), { drift: 0.006, push: 0.008, hand: 0.2 }); cutT = d.t; flush(); t1 = d.t + sec; } return false; }; f(); d.each(f); };
   const act = (list) => {
-    const id = ++shotN; let k = -1, t1 = -1, eye = null, aim = null, sp = 1;
+    const id = ++shotN; let k = -1, t1 = -1, eye = null, aim = null, sp = 1; const aimV = new V();
     const f = () => {
       if (id !== shotN) return true;
       const p = tool(); if (!p) return false;
@@ -105,9 +105,9 @@ export function* sailFilm(d, app) {
       if (eye && d.t >= t1 && k >= list.length - 1) { t1 = d.t + 1; }   // (past the list's end: the last shot goes on, no cut a frame before the work ends)
       else if (d.t >= t1 || !eye) {
         k++; const L = list.length, i = k < L ? k : L - 2 + ((k - L) % 2), [sec, [dx, dy, dz], v] = list[Math.max(0, i)];
-        eye = lift(new V(p.x + MM(dx), p.y + MM(dy), p.z + MM(dz))); aim = p.clone(); sp = v;
+        eye = lift(new V(p.x + MM(dx), p.y + MM(dy), p.z + MM(dz))); aim = p.clone(); aimV.set(0, 0, 0); sp = v;
         d.cut(look(eye, aim), { drift: 0.004, push: 0.006, hand: 0.2 }); cutT = d.t; flush(); t1 = d.t + sec;
-      } else { const st0 = p.clone().sub(aim).multiplyScalar(1 - Math.exp(-d.dt * 4)), mx = MM(3000) * d.dt; if (st0.length() > mx) st0.setLength(mx); aim.add(st0); const vw = look(eye, aim); if (d.shot) d.shot.goal = d.shot.from = d._full(vw, d.shot.goal); }   // (the pan after the work: the aim never quicker than ~4 m/s — a piece going on across the slab is not a cut)
+      } else { const w = 5.5, acc = p.clone().sub(aim).multiplyScalar(w * w).addScaledVector(aimV, -2 * w); aimV.addScaledVector(acc, d.dt); if (aimV.length() > MM(4000)) aimV.setLength(MM(4000)); aim.addScaledVector(aimV, d.dt); const vw = look(eye, aim); if (d.shot) d.shot.goal = d.shot.from = d._full(vw, d.shot.goal); }   // (the pan after the work: the aim never quicker than ~4 m/s — a piece going on across the slab is not a cut)   // (a critically damped spring: the aim's speed changes smoothly — no shiver under a bill (the analyst); never quicker than 3 m/s)
       d.speed = sp; return false;
     };
     f(); d.each(f);
@@ -230,7 +230,7 @@ export function* sailFilm(d, app) {
       return e >= T0.at(-1);
     });
     H.hide(); setN(N); WV.reveal = null; WV.dirty = true;
-    billSoon('FORMWORK', 1.9);   // (what the formwork cost — shown over the bars' close work, where the hook is)
+    billSoon('PLYWOOD', 1.9);   // (what the formwork cost — shown over the bars' close work, where the hook is)
     say('props ' + SF.tubeLo.count + ' beams ' + SF.beams.count + (nailed ? '' : ' no nailing FAILED'));
   });
 
@@ -278,7 +278,7 @@ export function* sailFilm(d, app) {
       G.set(null); }
     // (the film once the water's sheen is off it — the realist: 1–3 hours in the heat; laid at once its creases print in the concrete)
     tool = () => P(CORNER[0] + 1500, 3700, CORNER[1] + 1500);
-    yield* d.lapse(2 / 24, 0.6, () => { app.clock += 300 * d.dt / 0.6; });
+    yield* d.lapse(2 / 24, 0.6, () => { app.clock += 45 * d.dt / 0.6; });   // (only the sheen off: under its film it stays dark and wet till the week — the realist; the game's full set is 300)
     // the curing film rolled over it: the first strip close at its pace, then faster and faster (the owner's rule for rolls)
     billSoon('CONCRETE', 0.3, true);   // (the sail's concrete — the pour finished at the rule's cut — over the film rolling out)
     yield* cureRoll(b);
@@ -314,7 +314,7 @@ export function* sailFilm(d, app) {
     // (meanwhile: the film taken off, the edge boards off into their stack on the beach (the props stay — the foreman))
     const rr = O.all('roof').find((r) => r.slab === b.id); let off = 0;
     yield* d.lapse(7, 1.4, (u) => { app.clock += 9000 * d.dt / 1.4; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 });
-      if (off < 1 && u > 0.35) { off = 1; if (rr) { const c0 = rr.cure?.[0]; O.update(rr.id, { cure: [], ...(c0 ? { cureStack: [+(c0[0] + MM(800)).toFixed(6), +((c0[1] + c0[3]) / 2).toFixed(6), 12] } : {}) }); } }   // (folded, its boards stacked by it — the realist)
+      if (off < 1 && u > 0.35) { off = 1; if (rr) { const n = CURE_BOARDS.get(rr.id) || 0; O.update(rr.id, { cure: [] }); O.update(b.id, { cureOff: Math.max(1, n) }); } }   // (rolled up, down to the ground by the edge boards' stack, every board of it with it — the realist)
       if (off < 2 && u > 0.6) { off = 2; app.journal.act('slab-sides', {}, app.clock, () => O.update(b.id, { sidesOff: true, sidesPile: [MM(-9800), MM(7600)] })); app.sfx?.seq?.(['crowbar', 'plank', 'plank']); } });
     app.sky.setHour(9.5);
     d.kick('+7 DAYS', 1.0, 'top'); dim(1.0); billT = d.t;
@@ -387,7 +387,7 @@ export function* sailFilm(d, app) {
   // ==== 7 · the box: aerated block 300 on the pavilion's walls — the first block close, its course, then the courses ====
   phase('box', function* () {
     const b = sailRec(); if (!b) return;
-    billSoon('UPSTAND', 0.5);   // (the upstand and the damp-proof course under the box — over its first block going on)
+    billSoon('BOARDS', 0.5);   // (the upstand and the damp-proof course under the box — over its first block going on)
     const sTop = b.top + b.H, box = boxWalls(sTop + MM(3));
     st.wallKind = 'block'; app.setTool('wall'); W.setMode('lay'); d.menu(['masonry'], 'wall', null, true);
     const job = (rec, fast) => { if (app.physJob) return false; if (W.layUnit(rec, fast, 20)) { tool = () => new V().fromArray(rec.p); return true; } return false; };
@@ -401,7 +401,7 @@ export function* sailFilm(d, app) {
     { const done = new Set(b0.slice(0, 5)), rest = box.filter((r) => !done.has(r));
       shots([[9, [-9000, 2000, -16000], [500, 4800, 500]]]);   // (from the beach, an eye at 2 m: the courses going up on the sail)
       let i = 0; const n = rest.length, dur = 2.3, t0 = d.t;
-      yield d.until(() => { const want = Math.min(n, Math.ceil(n * Math.min(1, (d.t - t0) / dur) ** 1.4)); if (want > i) { for (; i < want; i++) O.add(rest[i]); app.sfx?.play?.('block', { vol: 0.4, gap: 0.08 }); } return i >= n; }); }
+      yield d.until(() => { const want = Math.min(n, Math.ceil(n * Math.min(1, (d.t - t0) / dur) ** 1.4)); if (want > i) { for (; i < want; i++) O.add(rest[i]); const r = rest[i - 1]; tool = () => new V().fromArray(r.p); app.sfx?.play?.('block', { vol: 0.4, gap: 0.08 }); } return i >= n; }); }   // (the work: the block going on now)
     app.budget._pay?.([{ usd: box.length * 3.1 }], P(0, 0, 0));
     say('box blocks ' + box.length);
     billSoon('BLOCKS', 0.5);
@@ -427,7 +427,7 @@ export function* sailFilm(d, app) {
     { const RB = O.get(roof), y = RB.top + RB.H + MM(15), xs = [IN + 300, SL.x1 - 500], zr = SL.z0 + 900; let u = 0;
       G.set('screed', new V(MM(xs[0]), y, MM(zr)), Math.PI / 2, true); tool = () => G.pos.clone();
       act([[1.3, [-2600, 2300, -3200], 3]]);   // (over the roof from the front, outside the box: not against its wall)
-      billSoon('ROOF SLAB', 0.15, true);
+      billSoon('CONCRETE', 0.15, true);
       const t1 = d.t; yield d.until(() => { u += d.dt * d.speed * 0.9 / ((xs[1] - xs[0]) / 1000); G.set('screed', new V(MM(xs[0] + (xs[1] - xs[0]) * Math.min(1, u)), y, MM(zr + 120 * Math.sin(u * 40))), Math.PI / 2); app.sfx?.play?.('screed', { vol: 0.4, gap: 0.35 }); return u >= 1 || d.t - t1 > 2.1; });
       G.set(null); still(); }
   });
@@ -438,18 +438,18 @@ export function* sailFilm(d, app) {
     // (the work: the box's roof formwork going out piece by piece — the piece being carried; else the shot's own aim)
     const aimM = P(-1500, 3600, -1500); tool = () => { const t = WV.slabForm.stripTip; return t ? new V().fromArray(t) : aimM.clone(); };
     // (a slow dolly in over the clock — the 28 days going by, the box's formwork going out: never a still frame under the bill)
-    still(); d.fly([[PE(-10500, 1700, -15500), P(-1500, 3600, -1500)], [PE(-8600, 1600, -12600), P(-1500, 3600, -1500)]], 3.2, { hand: 0.15 }); cutT = d.t; flush();
+    still(); d.fly([[PE(-10500, 1700, -15500), P(-1500, 3600, -1500)], [PE(-8600, 1600, -12600), P(-1500, 3600, -1500)]], 2.4, { hand: 0.15 }); cutT = d.t; flush();
     // (meanwhile — the realist: the box's roof formwork out piece by piece through the glass wall's gap to a stack outside (its props
     // over the sail's, so first); the upstand's boards off into their stack — none left in the concrete's way)
     let off = 0; const ups = O.all('belt').find((q) => q.kind === 'upstand');
-    yield* d.lapse(28, 1.6, (u) => { app.clock += 9000 * d.dt / 1.6; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 });
+    yield* d.lapse(28, 0.9, (u) => { app.clock += 9000 * d.dt / 0.9; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 });
       if (off < 1 && u > 0.1 && roof) { off = 1; app.journal.act('belt-strip', {}, app.clock, () => O.update(roof.id, { stripAt: +app.clock.toFixed(3) })); }
       if (off < 2 && u > 0.3 && ups) { off = 2; app.journal.act('belt-strip', {}, app.clock, () => O.update(ups.id, { stripped: true, pile: [MM(-8500), MM(7600)] })); WV.dirty = true; }
       if (roof && O.get(roof.id)?.stripAt != null && !O.get(roof.id).stripped) app.clock += 60 * d.dt; });
     app.sky.setHour(10);
     yield d.until(() => d.t >= billT + 1.95);   // (the bill's card gone before the big word: one text at a time)
     d.kick('+28 DAYS', 1.0, 'top'); dim(1.0); billT = d.t;
-    yield d.sec(1.05);   // (its plate gone before the «wow»'s first cut — the analyst)
+    yield d.sec(1.0);   // (its plate gone before the «wow»'s first cut — the analyst)
   });
 
   // ==== 10 · the «wow»: the sail's props out from the cantilever's edge back to the walls — it hangs over the water ====
@@ -457,12 +457,14 @@ export function* sailFilm(d, app) {
     const b = sailRec(); if (!b) return;
     app.formTool?.setMode?.('strip'); app.setTool('form'); d.menu([], 'form', null, true);   // (the game's «Strip» — what the crew does here)
     app.journal.act('belt-strip', {}, app.clock, () => O.update(b.id, { stripAt: +app.clock.toFixed(3) }));
+    WV.slabForm.stripTip = null;   // (the box roof's last piece is not this work: the aim never on it)
     let lastS = P(CORNER[0] + 600, 2400, CORNER[1] + 600); tool = () => { const t = WV.slabForm.stripTip; if (t) lastS = new V().fromArray(t); return lastS; };
     // (the first pieces at their pace, close from the pool's floor; then faster from further; the last prop close; then nothing)
     d.mark('wow');
     // (the first pieces at their pace, close from the pool's floor; then faster from further — the camera on the edge being stripped;
     // the far shot the rest at once (many hands, the crew's clock run on) — stopped two props before the end: the last one close, ×1)
-    shots([[1.8, [-9300, 900, -8300], [-6600, 2600, -5300]], [2.0, [-11500, 1500, -10500], [-4500, 2800, -3500]], [9, [-14500, 1800, -15000], [-1500, 3200, -1500]]]);
+    act([[1.2, [-2600, -2500, -3000], 1], [1.0, [-4200, -2100, -4600], 3]]);   // (the first pieces close where they come out — low from the pool's side, after them)
+    let wide = false;
     // (the last prop that counts: the last one under the cantilevers, outside the pavilion's walls — those in its rooms come out after,
     // unseen: the camera on the one under the corner)
     // (under the cantilevers, outside the walls — stripped from the edge back (the foreman), so the last of them stands by the wall's face,
@@ -470,7 +472,7 @@ export function* sailFilm(d, app) {
     const outside = (p) => p[2] < MM(SL.z0 - 50) || (p[0] < MM(SL.x0 - 50) && p[2] < MM(1000));
     const vis = () => (WV.slabForm.propsLeft?.[b.id] || []).filter((p) => outside(p));
     const t0 = d.t, SF = WV.slabForm, left = () => (SF.propsLeft?.[b.id] ? vis().length : 99);
-    yield d.until(() => { const e = d.t - t0; d.speed = e < 1.8 ? 1 : e < 3.8 ? 3 : 6; if (e > 3.8 && left() > 3) app.clock += d.dt * 6 * 4; return left() <= 1 || !!O.get(b.id)?.stripped || e > 30; });
+    yield d.until(() => { const e = d.t - t0; if (!wide && e > 2.2) { wide = true; shots([[9, [-14500, 1800, -15000], [-1500, 3200, -1500]]]); } if (wide) d.speed = 5; if (e > 2.2 && left() > 3) app.clock += d.dt * 5 * 4; return left() <= 1 || !!O.get(b.id)?.stripped || e > 30; });
     d.speed = 1; say('props left ' + left() + ' at ' + d.t.toFixed(1));
     // (the last prop under the cantilevers out in the wide from the beach — a close shot of it stood against the pavilion's walls,
     // a wall filling the frame: the wide reads, the analyst's «last prop» is the last one seen going in it)
@@ -700,8 +702,7 @@ export function* sailFilm(d, app) {
   for (const [name, fn] of phases) { if (!on && name === FROM) on = true; if (!on || !PLAY.has(name)) continue; d.mark(name); yield* fn(); }
 
   // ==== the end: the loop's frame — low from the sea side: the sail hanging over the empty pool, nothing under its corner ====
-  d.hud(null);
-  d.mark('finale');
+  d.mark('finale');   // (the game's HUD stays on in the hanging shot: it goes with the sheet — never vanishing inside a still shot: the analyst)
   // (the plan's frame, checked on a picture: low from the pool's far edge, the free corner on the sky — the analyst's loop; fitLoop's
   // whole-subject search can only find it from high up)
   const loopV = LOOPV();
@@ -715,7 +716,7 @@ export function* sailFilm(d, app) {
     const r0 = { l: 72.8, t: 22.5, w: 26.8 }, r1 = { l: -6.41, t: 17.23, w: 112.82 }, t0 = d.t; sk.style.opacity = ''; app.sfx?.play?.('fabric', { vol: 0.5 });
     yield d.until(() => { const u = Math.min(1, (d.t - t0) / 0.5), e = u * u * (3 - 2 * u); sk.classList.add('grow'); sk.style.left = r0.l + (r1.l - r0.l) * e + '%'; sk.style.top = r0.t + (r1.t - r0.t) * e + '%'; sk.style.width = r0.w + (r1.w - r0.w) * e + '%'; return u >= 1; });
     yield d.sec(0.3);
-    const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 0.4); sk.style.opacity = String(1 - u); return u >= 1; });   // (0,4 s: «TO BE CONTINUED» 0,4 s earlier — the analyst)
+    const t1 = d.t; yield d.until(() => { const u = Math.min(1, (d.t - t1) / 0.4); sk.style.opacity = String(1 - u); if (d.hudEl) d.hudEl.style.opacity = String(1 - u); return u >= 1; }); d.hud(null);   // (0,4 s: «TO BE CONTINUED» 0,4 s earlier — the analyst)
     sk.remove(); }
   d.next(); d.nextEl?.classList.add('small');   // (~3 s before the seam, after the sheet is gone — never over it: the analyst)
   // (what the film cost — the bills added up, one sign: «−$X → ?» over the sky, then only the «?» under the free corner)
@@ -731,7 +732,7 @@ export function* sailFilm(d, app) {
   const at = (el) => { const v = cornerP().project(app.camera), Bx = d.subject(); let lo = 0; if (Bx) for (const x of [Bx.min.x, Bx.max.x]) for (const y of [Bx.min.y, Bx.max.y]) for (const z of [Bx.min.z, Bx.max.z]) lo = Math.max(lo, (1 - new V(x, y, z).project(app.camera).y) / 2);
     el.style.left = ((v.x + 1) / 2 * 100).toFixed(2) + '%'; el.style.top = (Math.max((1 - v.y) / 2, lo + 0.015) * 100).toFixed(2) + '%'; };
   at(q); d.el.appendChild(q);
-  { const tq = d.t; yield d.until(() => { const e = d.t - tq; q.style.transform = `translateX(-50%) scale(${(1 + 0.08 * Math.sin(e * 2 * Math.PI / 0.9)).toFixed(3)})`; return e >= 1.75; }); }   // (it beats: a question, never a still frame)
+  { const tq = d.t; yield d.until(() => { const e = d.t - tq; q.style.transform = `translateX(-50%) scale(${(1 + 0.08 * Math.sin(e * 2 * Math.PI / 0.9)).toFixed(3)})`; return e >= 1.8; }); q.style.transform = 'translateX(-50%)'; }   // (two beats: back to its own size at the seam — the hook's first frame the same; it beats: a question, never a still frame)
   d.sail = { sail: sailRec()?.id, roof: roofRec()?.id, props: WV.slabForm.tubeLo.count, units: O.all('unit').length, rails: O.all('rail').length, spent };
   // ---- the hook (put first by the recorder; the video ends at its mark — the loop): the rewind from this frame — layer by layer from
   // the top down, the props back for a blink, the sail gone — «◀◀», a whoosh, a dull stop: the bare pavilion of stage 2 ----

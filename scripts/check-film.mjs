@@ -69,6 +69,9 @@ for (let i = 2; i < rows.length; i++) {
   const je = len(sub(sub(c.e, b.e), sub(b.e, a.e))) / c.d, ja = len(sub(sub(c.a, b.a), sub(b.a, a.a))) / c.d;
   if (je > 0.012 || ja > 0.012) bad.push(`${c.t.toFixed(2)} s [${c.title}] shot ${c.n}: jerk eye ${je.toFixed(3)} aim ${ja.toFixed(3)}`);
 }
+// (a long shiver: more than 5 frames running with the aim's jerk > 0,04 — under 0,08 each, yet a nervous pan; the analyst, film 3)
+const shiver = []; { let run = 0, t0 = 0; for (let i = 2; i < rows.length; i++) { const [a, b, c] = [rows[i - 2], rows[i - 1], rows[i]]; const ok = a.n === c.n && !c.fx && !b.fx, ja = ok ? len(sub(sub(c.a, b.a), sub(b.a, a.a))) / c.d : 0;
+  if (ja > 0.04) { if (!run) t0 = c.t; run++; } else { if (run > 5) shiver.push(`${t0.toFixed(2)} s shot ${c.n}: the aim shivers ${run} frames running`); run = 0; } } }
 // shots that last under 0.8 s
 const shots = []; for (const r of rows) { const l = shots.at(-1); if (!l || l.n !== r.n) shots.push({ n: r.n, t0: r.t, t1: r.t, title: r.title }); else l.t1 = r.t; }
 const short = shots.filter((s, i) => i < shots.length - 1 && s.t1 - s.t0 < 0.8).map((s) => `${s.t0.toFixed(2)} s [${s.title}] shot ${s.n}: ${(s.t1 - s.t0).toFixed(2)} s`);
@@ -135,7 +138,7 @@ const nx = rows.find((r) => r.t < H0 && r.b.some((b) => b.k === 'f-next')), nxt 
 if (Number.isFinite(H0)) { if (!nx) nxt.push('no «TO BE CONTINUED» before the seam'); else if (H0 - nx.t < 2.5 || H0 - nx.t > 3.5) nxt.push(`«TO BE CONTINUED» ${(H0 - nx.t).toFixed(1)} s before the seam (2.5–3.5)`); }
 // (the tool on screen in every shot — a thing coming up by itself is as empty: ≤ 1 s without it, but the hook and the sketch's finale)
 const F0 = marks.finale ?? Infinity, inFin = (t) => t >= F0 - 1e-6 && t < H0;
-const noTool = fmt(runs((r) => !r.ts && !inHook(r.t) && !inFin(r.t) && r.t > 0.4, 1.0), 'no tool on screen');
+const noTool = fmt(runs((r) => !r.ts && !inHook(r.t) && !inFin(r.t) && r.t > 0.4, 0.8), 'no tool on screen');   // (0,8 s: the analyst, film 3)
 console.log(`\nNO TOOL (> 1 s, any shot):\n` + noTool.join('\n'));
 // (no words on the screen — numbers, signs, the picture: the first viewers may not read English (the owner, 2026-11-16); DAYS is known
 // to all; «TO BE CONTINUED» is the owner's own plate)
@@ -173,6 +176,11 @@ if (Number.isFinite(H0)) {
   // (the hanging reads: on the loop's frame ≥ 90 % of the void's points seen through, spread over ≥ 15 % of the frame's width — film 3)
   for (const [nm, r] of [['first frame', h0], ['last frame', pre]]) if (r?.vd) console.log(`VOID ${nm}: seen through ${(r.vd.k * 100).toFixed(0)} %, across ${(r.vd.span * 100).toFixed(0)} % of the width`);
   for (const [nm, r] of [['first frame', h0], ['last frame', pre]]) if (r?.vd && (r.vd.k < 0.9 || r.vd.span < 0.15)) list.push(`${nm}: the void under the cantilever seen through ${(r.vd.k * 100).toFixed(0)} % (≥ 90), across ${(r.vd.span * 100).toFixed(0)} % of the width (≥ 15)`);
+  // (the seam's words: the first frame carries the same texts as the last, in the same places (≤ 2 % of the frame) — the rewind's sign
+  // aside — the analyst, film 3)
+  if (pre && h0) { const F = rows.find((r) => r.sub)?.sub?.fw || 300, ws = (r) => r.b.filter((b) => b.k !== 'f-rew' && b.k !== 'f-sketch');
+    const A = ws(pre), B = ws(h0); for (const a of A) { const m2 = B.find((b) => b.k === a.k && b.txt === a.txt); if (!m2) list.push(`the loop's seam: «${a.txt}» on the last frame, not on the first`); else if (Math.max(Math.abs(m2.x0 - a.x0), Math.abs(m2.y0 - a.y0), Math.abs(m2.x1 - a.x1)) > 0.02 * F) list.push(`the loop's seam: «${a.txt}» moved ${Math.round(Math.max(Math.abs(m2.x0 - a.x0), Math.abs(m2.y0 - a.y0), Math.abs(m2.x1 - a.x1)))} px`); }
+    for (const b of B) if (!A.some((a) => a.k === b.k && a.txt === b.txt)) list.push(`the loop's seam: «${b.txt}» on the first frame, not on the last`); }
   if (pre && h0) { const de = len(sub(pre.e, h0.e)) / h0.d, da = len(sub(pre.a, h0.a)) / h0.d; if (de > 0.02 || da > 0.02) list.push(`the loop's seam: the camera moved ${(Math.max(de, da) * 100).toFixed(1)} % of its distance`);
     const k = (r) => r.b.filter((b) => b.k === 'f-next').map((b) => `${Math.round(b.x0)},${Math.round(b.y0)},${Math.round(b.x1 - b.x0)}`).join(); if (k(pre) !== k(h0)) list.push(`the loop's seam: «TO BE CONTINUED» not the same both sides (${k(pre) || '–'} / ${k(h0) || '–'})`); }
   // (the rewind: its sign from the hook's first 0,1 s; its count changing at least every 0,3 s while it runs)
@@ -199,6 +207,7 @@ if (Number.isFinite(H0)) {
 if (marks.wow != null && marks.wowEnd != null) {
   const V = (H1 - H0 < Infinity ? (H1 - H0) : 0) + (H0 < Infinity ? H0 : rows.at(-1).t), w0 = vt(marks.wow) / V, w1 = vt(marks.wowEnd) / V;
   if (w0 < 0.55 || w0 > 0.8) list.push(`the «wow» starts at ${(w0 * 100).toFixed(0)} % of the video (55–80)`);
+  console.log(`WOW: starts at ${(w0 * 100).toFixed(1)} %, ends at ${(w1 * 100).toFixed(1)} % of the video`);
   if (1 - w1 > 0.25) list.push(`after the «wow» ${((1 - w1) * 100).toFixed(0)} % of the video is left (≤ 25)`);
 }
 // (the bills add up to the sum the film shows at its end — the analyst: that sum goes into the title; no cost left out of every bill)
@@ -207,10 +216,16 @@ console.log(`\nTHE RELEASE LIST (numbers):\n` + list.join('\n'));
 // (the game's menu in the frame never over the logo or the budget — the analyst, film 3: a chip under the logo reads as a glitch)
 const OVL = (p, q) => Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0) > 1 && Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0) > 1;
 const chipOver = uniq(rows.flatMap((r) => { const H = r.hb || [], ch = H.filter((b) => b.k === 'chip'), top = H.filter((b) => b.k === 'f-logo' || b.k === 'f-money'); return ch.some((c) => top.some((t) => OVL(c, t))) ? [`${r.t.toFixed(2)} s a menu chip over the logo / budget`] : []; }));
+// (a stage's bill names the MATERIAL the money went on — the owner, 2026-11-18; the analyst, film 3: «PLYWOOD», not «FORMWORK» or a part of
+// the house; the films out already (1, 2) keep theirs)
+const MATERIAL = new Set(['PLYWOOD', 'BOARDS', 'STAKES', 'REBAR', 'CONCRETE', 'BLOCKS', 'CINDER', 'BRICKS', 'BRICK', 'MORTAR', 'SAND', 'GRAVEL', 'SEDUM', 'DECK', 'TILES', 'GLASS', 'PLASTER', 'PANELS', 'STEEL', 'MEMBRANE', 'INSULATION', 'WOOL', 'TIMBER', 'SOIL']);
+const notMat = ['found', 'stair'].includes(film) ? [] : uniq(rows.flatMap((r) => r.b.filter((b) => b.k === 'f-stage').flatMap((b) => (b.txt.match(/\p{L}{2,}/gu) || []).filter((w) => !MATERIAL.has(w.toUpperCase())).map((w) => `bill word «${w}» is not a material`))));
 const menu = [...new Set(typed)].map((r) => `menu typed by the film, not the game's: ${r}`).concat(notes.filter((n) => /FAILED/.test(n)));
 console.log(`\nMENU OVER LOGO:\n` + chipOver.join("\n"));
+console.log(`\nSHIVER (> 5 frames, aim > 0.04):\n` + shiver.join("\n"));
+console.log(`\nBILL NOT A MATERIAL:\n` + notMat.join("\n"));
 console.log(`\nMENU / NOTES:\n` + menu.join('\n'));
-const fails = chipOver.length + list.length + lowP.length + menu.length + still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
+const fails = shiver.length + notMat.length + chipOver.length + list.length + lowP.length + menu.length + still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
 console.log(`\nRULES: ${fails ? fails + ' problems' : 'all pass'}`);
 if (!fails) console.log('gate: rules passed for version ' + gateMark(film, 'rules')); else console.log('gate: version ' + filmHash(film) + ' NOT passed — no render');
 console.log('LOG ' + JSON.stringify(rows.reduce((a, r) => { if (!a.length || a.at(-1)[0] !== r.n) a.push([r.n, r.t, r.title]); return a; }, [])));

@@ -48,6 +48,8 @@ function photo(folder, file, srgb = false) {
 let seed = 1; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 // (a canvas the textures are drawn on: kept in memory, not on the GPU — they are read back pixel by
 // pixel (the normal maps, the baked relief), a read off the GPU stalls it each time)
+// the curing film's boards-weights drawn on each roof record's film (id → count): the stack it goes to holds as many
+export const CURE_BOARDS = new Map();
 export function canvas(n, m = n) { const cv = document.createElement('canvas'); cv.width = n; cv.height = m; const gc = cv.getContext.bind(cv); cv.getContext = (t, o) => gc(t, t === '2d' ? { willReadFrequently: true, ...o } : o); return cv; }
 export function asTex(cv, srgb = true) { const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
 // a normal map from a height canvas (its red channel)
@@ -273,7 +275,7 @@ export function buildRoof(b, units, rec, live) {
     const P2 = plan(b), slabAt = (i, j) => i >= 0 && j >= 0 && i < b.ni && j < b.nj && !!P2.mask[j * b.ni + i], kk = Math.ceil(MM(220) / c);
     const nearEdge = (i, j) => { for (let dj = -kk; dj <= kk; dj++) for (let di = -kk; di <= kk; di++) if (!slabAt(i + di, j + dj)) return true; return false; };
     const keep = cure.flatMap((rc) => cellsOf(b, rc).filter(([i, j]) => area.on(i, j) && !nearEdge(i, j)).map(([i, j]) => [i * c, j * c, (i + 1) * c, (j + 1) * c]));
-    add(sheet(keep, () => 0.6, (s, t2) => [mmS(s) / 1.2, mmS(t2) / 1.2], 0), new THREE.MeshStandardMaterial({ color: 0xe8ecef, transparent: true, opacity: 0.42, depthWrite: false, roughness: 0.22, metalness: 0, normalMap: photo('', 'film_nor.jpg'), normalScale: new THREE.Vector2(0.9, 0.9), side: THREE.DoubleSide }), false);
+    add(sheet(keep, () => 0.6, (s, t2) => [mmS(s) / 1.2, mmS(t2) / 1.2], 0), new THREE.MeshStandardMaterial({ color: 0xdfe3e5, transparent: true, opacity: 0.17, depthWrite: false, roughness: 0.2, metalness: 0, normalMap: photo('', 'film_nor.jpg'), normalScale: new THREE.Vector2(1.6, 1.6), side: THREE.DoubleSide }), false);
     // (one board on each lap, in its middle, the boards of each strip staggered by half their spacing — the realist)
     const parts = [], yaw = Math.atan2(-b.u[1], b.u[0]);
     cure.forEach((rc, k) => { const t2 = rc[3] - MM(50), s00 = rc[0] + MM(500) + (k % 2) * MM(1400);
@@ -281,17 +283,8 @@ export function buildRoof(b, units, rec, live) {
         const i = Math.floor(s / c), j = Math.floor(t2 / c); if (!area.on(i, j) || nearEdge(i, j)) continue;
         const p = W(s, t2, 0.6 + 14), g = new THREE.BoxGeometry(MM(1000), MM(25), MM(100)); g.rotateY(yaw + ((Math.round(s / MM(100)) % 3) - 1) * 0.12); g.translate(...p); parts.push(g);
       } });
+    CURE_BOARDS.set(r.id, parts.length);   // (as many go to the stack when it is taken off — the realist)
     if (parts.length) add(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ map: photo('raw_plank_wall', 'diff.jpg', true), normalMap: photo('raw_plank_wall', 'nor_gl.jpg'), roughness: 0.85 }));
-  }
-  // (the film taken off at a week: folded into a bundle on the slab, its boards stacked by it — the realist: never just gone)
-  if (!cure.length && Array.isArray(r.cureStack)) {
-    const [s, t2, n = 12] = r.cureStack, yaw = Math.atan2(-b.u[1], b.u[0]), p0 = W(s, t2, 0);
-    const fg = new THREE.BoxGeometry(MM(1200), MM(110), MM(600)); { const q = fg.attributes.position; for (let i = 0; i < q.count; i++) if (q.getY(i) > 0) { q.setX(i, q.getX(i) * 0.94); q.setZ(i, q.getZ(i) * 0.9); } }
-    fg.rotateY(yaw); fg.translate(p0[0], p0[1] + MM(55), p0[2]);
-    add(fg, new THREE.MeshStandardMaterial({ color: 0xd9dee2, roughness: 0.35, normalMap: photo('', 'film_nor.jpg'), normalScale: new THREE.Vector2(1.4, 1.4) }));
-    const parts = []; for (let k = 0; k < n; k++) { const row = k % 4, lay = Math.floor(k / 4), g = new THREE.BoxGeometry(MM(1000), MM(25), MM(100));
-      g.translate(0, MM(12.5 + 25 * lay), MM(-150 + 100 * row)); g.rotateY(yaw + (lay % 2 ? 0.03 : -0.02)); const q = W(s + MM(1400), t2, 0); g.translate(...q); parts.push(g); }
-    add(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ map: photo('raw_plank_wall', 'diff.jpg', true), normalMap: photo('raw_plank_wall', 'nor_gl.jpg'), roughness: 0.85 }));
   }
   const vap = L('vap');
   if (vap.length) { const t = vapTex(); add(sheet(vap, () => 0.5, (s, t2) => [mmS(s) / 1.5, mmS(t2) / 1.5], 0.25), new THREE.MeshStandardMaterial({ ...t, roughness: 0.4, metalness: 0.15, side: THREE.DoubleSide }), false); }
@@ -513,7 +506,7 @@ export function buildRoof(b, units, rec, live) {
   if (live?.roll && live.rect) {
     const [a0, b0, a1, b1] = live.rect, A = live.roll.along, rad = MM(live.layer === 'vap' || live.layer === 'cure' ? 55 : 85), len = A ? b1 - b0 : a1 - a0;
     const s = A ? live.roll.end : (a0 + a1) / 2, t2 = A ? (b0 + b1) / 2 : live.roll.end, h = live.layer === 'vap' || live.layer === 'cure' ? 1 : top(s, t2) + ROOF.mem;
-    const P0 = W(s, t2, h), roll = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 24), new THREE.MeshStandardMaterial(live.layer === 'cure' ? { color: 0xdfe4e8, roughness: 0.3, normalMap: photo('', 'film_nor.jpg') } : { ...(live.layer === 'vap' ? vapTex() : memTex(mc[1])), roughness: 0.45 }));
+    const P0 = W(s, t2, h), roll = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 24), new THREE.MeshStandardMaterial(live.layer === 'cure' ? { color: 0xe4e6e3, roughness: 0.58, envMapIntensity: 0.3, normalMap: photo('', 'film_nor.jpg') } : { ...(live.layer === 'vap' ? vapTex() : memTex(mc[1])), roughness: 0.45 }));
     const yaw = Math.atan2(-b.u[1], b.u[0]);
     roll.rotation.set(Math.PI / 2, 0, 0); roll.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), yaw + (A ? 0 : Math.PI / 2));
     roll.position.set(P0[0], P0[1] + rad, P0[2]); roll.castShadow = true; group.add(roll);

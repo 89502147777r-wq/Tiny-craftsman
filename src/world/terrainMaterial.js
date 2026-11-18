@@ -538,6 +538,16 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
           // the soffit: the warm light the sand throws up on it read as wood — the light on it made less coloured (below), the concrete's
           // own colour kept (the realist: fix it in the light, not with a blue tint)
           tcUnder = ${steel ? '0.0' : 'smoothstep(0.6, 0.85, -wn.y)'};
+          // (the soffit cast on shuttering plywood — the realist: smooth, even light grey, each sheet 1220 × 2440 a little its own shade,
+          // the joints printed as thin lines, a few pores; never the top's coarse grain)
+          if (tcUnder > 0.001) {
+            vec2 sq = vCWPos.xz / vec2(${(1.22 / MODEL_SCALE).toFixed(6)}, ${(2.44 / MODEL_SCALE).toFixed(6)}), fq = fract(sq), cell = floor(sq);
+            float jx = min(fq.x, 1.0 - fq.x) * ${(1220 / 2).toFixed(1)}, jz = min(fq.y, 1.0 - fq.y) * ${(2440 / 2).toFixed(1)};   // (mm to the joint)
+            float joint = 1.0 - smoothstep(2.0, 6.0, min(jx, jz));   // (a few mm: read at the camera distance)
+            float shade = 0.95 + 0.08 * tcHash(cell + 5.3), pore = step(0.993, tcHash(floor(vCWPos.xz * ${(MODEL_SCALE / 0.004).toFixed(1)})));
+            vec3 sm = tcConcCol(vCWPos.xz * 0.15 + 11.0, 1.0, cure) * shade * (1.0 - 0.18 * joint) * (1.0 - 0.35 * pore);
+            cc = mix(cc, sm, tcUnder);
+          }
           diffuseColor.rgb *= cc * vColor;
         }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -545,7 +555,7 @@ export function makeCastConcreteMaterial(uniforms, { steel = false } = {}) {
           vec3 wn = normalize(vCWNrm);
           float up = smoothstep(0.35, 0.7, abs(wn.y));
           vec3 g;   // (a side: a cast face, smoother than a top)
-          if (up > 0.5) { vec2 d = tcConcGrad(vCWPos.xz, vSm); g = vec3(d.x, 0.0, d.y); }
+          if (up > 0.5) { vec2 d = tcConcGrad(vCWPos.xz, ${steel ? 'vSm' : 'wn.y < -0.6 ? 1.0 : vSm'}) * ${steel ? '1.0' : '(wn.y < -0.6 ? 0.15 : 1.0)'}; g = vec3(d.x, 0.0, d.y); }   // (a soffit: plywood-smooth)
           else { vec3 ta = abs(wn.x) > abs(wn.z) ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0); vec2 d = tcConcGrad(vec2(dot(vCWPos, ta), vCWPos.y) + 3.7, max(vSm, 0.6)); g = ta * d.x + vec3(0.0, 1.0, 0.0) * d.y; }
           normal = normalize(normal + (viewMatrix * vec4(g, 0.0)).xyz);
         }`)

@@ -27,7 +27,7 @@ export class SlabFormView {
     this.beams = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xd9a632, roughness: 0.72 }), this.max.beams);
     this.tubeLo = new THREE.InstancedMesh(cyl, new THREE.MeshStandardMaterial({ color: 0xc2401f, roughness: 0.5, metalness: 0.35 }), this.max.props);
     this.tubeHi = new THREE.InstancedMesh(cyl, new THREE.MeshStandardMaterial({ color: 0xa9adb1, roughness: 0.35, metalness: 0.85 }), this.max.props);
-    this.plates = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x7d8186, roughness: 0.45, metalness: 0.8 }), this.max.props * 4);
+    this.plates = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x7d8186, roughness: 0.45, metalness: 0.8 }), this.max.props * 7);
     // (each prop's foot on a timber sole 50 × 200 × 600 — on the ground it would sink in; the realist)
     this.soles = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9a7448, roughness: 0.85 }), this.max.props);
     for (const m of [this.beams, this.tubeLo, this.tubeHi, this.plates, this.soles]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; group.add(m); }
@@ -86,6 +86,7 @@ export class SlabFormView {
         const row = (it) => { const s0 = sOf(it); let bi = 0, bd = Infinity; lines.forEach((k, i) => { const dd = Math.abs(k * MM(50) - s0); if (dd < bd) { bd = dd; bi = i; } }); return bi; };
         for (const it of items) {
           const prim = it.k === 'beam' && it.yTop !== F.yDeck;
+          it.row = row(it); it.prim = prim;
           it.o = it.k === 'prop' || prim ? row(it) * 1e6 + (prim ? 5e5 : 0) + dFar(it) : (it.k === 'beam' ? 1e9 : 2e9) + dFar(it);
         }
         items.sort((p1, p2) => p1.o - p2.o);
@@ -94,6 +95,8 @@ export class SlabFormView {
         this.revealKinds = { deck: 0, beam: 0, prop: 0 }; for (const it of items) this.revealKinds[it.k]++;
         const nf = items.length * Math.max(0, Math.min(1, reveal.u)), n = Math.ceil(nf - 1e-9);
         items.splice(n);
+        // (a prop whose row's primary beam is not on yet stands in a tripod — the realist: a 4 m telescopic prop never stands by itself)
+        { const rows = new Set(items.filter((it) => it.prim).map((it) => it.row)); for (const it of items) if (it.k === 'prop') it.lone = !rows.has(it.row); }
         const tip = items[n - 1];
         if (tip) { tip.down = Math.max(0, Math.min(1, nf - (n - 1))); this.revealTip = { k: tip.k, at: tip.at.slice(), r: tip.r?.slice(), frac: tip.down, n }; } else this.revealTip = null;
       }
@@ -184,6 +187,14 @@ export class SlabFormView {
           own.tubeLo[np] = own.tubeHi[np] = b.id ?? null; np++;
           // (the base plate; on top the fork head — a U the beam sits in: its plate and its two cheeks either side of the beam)
           { const y = f + pl / 2; this.plates.setMatrixAt(nq, m.compose(P.set(x, y, z), Q, Sv.set(MM(150), pl, MM(150)))); own.plates[nq++] = b.id ?? null; }
+          // (the tripod: three legs of tube Ø30, 0,65 m, from a clamp 0,55 m up the outer tube out to the ground at 120° — off once the beam is on)
+          if (it.lone && nq < this.max.props * 7 - 6) for (let k = 0; k < 3; k++) {
+            const a = yaw + k * 2 * Math.PI / 3 + 0.4, r = MM(420), yC = f + MM(550), L = Math.hypot(r, yC - f0), tilt = Math.atan2(r, yC - f0);
+            const Qt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, a, 0)).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), tilt));
+            this.plates.setMatrixAt(nq, m.compose(P.set(x + Math.cos(-a) * 0 + Math.sin(a) * 0, 0, z), Qt, Sv.set(MM(28), L, MM(28))));
+            // (its middle: half way from the clamp to the foot, the foot r out along the leg's own direction)
+            const dx = Math.cos(a) * r, dz = -Math.sin(a) * r; m.setPosition(x + dx / 2, (yC + f0) / 2, z + dz / 2); this.plates.setMatrixAt(nq, m); own.plates[nq++] = b.id ?? null;
+          }
           { const y = f + pl + hh + pl / 2, Qf = new THREE.Quaternion().setFromAxisAngle(_Y, yaw + Math.PI / 2);
             this.plates.setMatrixAt(nq, m.compose(P.set(x, y, z), Qf, Sv.set(MM(160), pl, MM(110)))); own.plates[nq++] = b.id ?? null;
             for (const sd of [-1, 1]) { const ox = -Math.sin(yaw + Math.PI / 2) * 0, oc = MM(SLAB.beamW / 2 + 5) * sd, dx = Math.cos(yaw) * oc, dz = -Math.sin(yaw) * oc;
