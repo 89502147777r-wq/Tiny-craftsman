@@ -1648,9 +1648,10 @@ if (want("2l³")) {
     const F = sail ? SL.slabForm(sail, (x, z) => SF.floorUnder(T, belts)(x, z, sail.top - MM(500))) : { props: [] };
     const inPool = F.props.filter(([x, z]) => x > MM(-5800) && x < MM(3800) && z > MM(-5500) && z < MM(-3300));
     const sunk = inPool.filter(([x, z, f0]) => f0 < T.heightAt(x, z) + MM(100)).length;
-    const RF = await import('/src/world/roof.js'), cr = tc.objects.all('roof').find((r) => r.slab === sail?.id);
+    const RF = await import('/src/world/roof.js'), YD = await import('/src/world/yard.js'), cr = tc.objects.all('roof').find((r) => r.slab === sail?.id);
+    const clash = YD.clashes(tc);
     return { stream, done: f.done, t: +f.t.toFixed(1), s: f.sail, H: sail && Math.round(sail.H / MM(1)), cants: sail?.cants, holes: sail?.holes?.length, stripped: !!sail?.stripped, pool: inPool.length, sunk,
-      cureOff: sail?.cureOff, cureDrawn: cr ? RF.CURE_BOARDS.get(cr.id) : null, cureLeft: cr?.cure?.length ?? 0, onSlab: Array.isArray(cr?.cureStack),
+      clash, cureOff: sail?.cureOff, cureDrawn: cr ? RF.CURE_BOARDS.get(cr.id) : null, cureLeft: cr?.cure?.length ?? 0, onSlab: Array.isArray(cr?.cureStack),
       units: tc.objects.all('unit').filter((u) => u.kind === 'block').length, roofs: tc.objects.all('belt').filter((q) => q.kind === 'slab').length,
       hook: f.marks?.hook != null && f.marks?.hookEnd > f.marks?.hook };
   });
@@ -1660,6 +1661,8 @@ if (want("2l³")) {
     o.units > 300 && o.roofs >= 2 && o.t > 40 && o.t < 90 && o.hook, JSON.stringify({ units: o.units, roofs: o.roofs, t: o.t, hook: o.hook }));
   check('film (sail): the curing film taken off the slab (none on it), to the ground with as many weights as held it down (the realist)',
     o.cureLeft === 0 && !o.onSlab && o.cureDrawn > 0 && o.cureOff === o.cureDrawn, JSON.stringify({ cureOff: o.cureOff, drawn: o.cureDrawn, left: o.cureLeft, onSlab: o.onSlab }));
+  check('film (sail): every stack on the ground clear of the others, the machines and the site\'s things (the owner: the film\'s roll and the bucket through the boards)',
+    Array.isArray(o.clash) && o.clash.length === 0, JSON.stringify(o.clash));
   check('film (sail): the slabs poured by the hose to the end, the stream seen while it works (≥ 90 %)', o.stream >= 0.9, JSON.stringify({ stream: o.stream }));
   check('film (sail): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();

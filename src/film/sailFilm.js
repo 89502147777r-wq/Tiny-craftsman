@@ -7,6 +7,8 @@ import { beltCage, beltContains, plan, toWorld, toFrame } from '../tools/belt.js
 import { findUpstand } from '../tools/upstand.js';
 import { slabRuns, findRail } from '../world/railing.js';
 import { roofArea, ROOF, CURE_BOARDS } from '../world/roof.js';
+import { freeSpot, YARD } from '../world/yard.js';
+const backYard = (x, z) => z > 5.5 / 10.4651;   // (the stacks at the plot's back, z > 5,5 m: behind the loop's and the wow's cameras, never in their frames)   // (a stack only on free ground, clear of the others and the machines — the owner)
 import { findOpenings } from '../tools/windowFit.js';
 import { ext, OFF, CELL, cutPiece, runsOf, ck, railCols, bracketRows, VENT_SUB } from '../world/facade.js';
 
@@ -315,7 +317,7 @@ export function* sailFilm(d, app) {
     const rr = O.all('roof').find((r) => r.slab === b.id); let off = 0;
     yield* d.lapse(7, 1.4, (u) => { app.clock += 9000 * d.dt / 1.4; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 });
       if (off < 1 && u > 0.35) { off = 1; if (rr) { const n = CURE_BOARDS.get(rr.id) || 0; O.update(rr.id, { cure: [] }); O.update(b.id, { cureOff: Math.max(1, n) }); } }   // (rolled up, down to the ground by the edge boards' stack, every board of it with it — the realist)
-      if (off < 2 && u > 0.6) { off = 2; app.journal.act('slab-sides', {}, app.clock, () => O.update(b.id, { sidesOff: true, sidesPile: [MM(-9800), MM(7600)] })); app.sfx?.seq?.(['crowbar', 'plank', 'plank']); } });
+      if (off < 2 && u > 0.6) { off = 2; app.journal.act('slab-sides', {}, app.clock, () => O.update(b.id, { sidesOff: true, sidesPile: freeSpot(app, [MM(-9800), MM(7600)], O.get(b.id)?.cureOff > 0 ? YARD.boardsCure : YARD.boards, b.id, backYard) })); app.sfx?.seq?.(['crowbar', 'plank', 'plank']); } });
     app.sky.setHour(9.5);
     d.kick('+7 DAYS', 1.0, 'top'); dim(1.0); billT = d.t;
     yield d.sec(1.05);
@@ -444,7 +446,7 @@ export function* sailFilm(d, app) {
     let off = 0; const ups = O.all('belt').find((q) => q.kind === 'upstand');
     yield* d.lapse(28, 0.9, (u) => { app.clock += 9000 * d.dt / 0.9; app.sfx?.play?.('tap', { vol: 0.25, gap: 0.11 });
       if (off < 1 && u > 0.1 && roof) { off = 1; app.journal.act('belt-strip', {}, app.clock, () => O.update(roof.id, { stripAt: +app.clock.toFixed(3) })); }
-      if (off < 2 && u > 0.3 && ups) { off = 2; app.journal.act('belt-strip', {}, app.clock, () => O.update(ups.id, { stripped: true, pile: [MM(-8500), MM(7600)] })); WV.dirty = true; }
+      if (off < 2 && u > 0.3 && ups) { off = 2; app.journal.act('belt-strip', {}, app.clock, () => O.update(ups.id, { stripped: true, pile: freeSpot(app, [MM(-8500), MM(7600)], YARD.boards, ups.id, backYard) })); WV.dirty = true; }
       if (roof && O.get(roof.id)?.stripAt != null && !O.get(roof.id).stripped) app.clock += 60 * d.dt; });
     app.sky.setHour(10);
     yield d.until(() => d.t >= billT + 1.95);   // (the bill's card gone before the big word: one text at a time)
