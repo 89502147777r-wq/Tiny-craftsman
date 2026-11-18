@@ -9,6 +9,11 @@ content. You use the vidIQ tools (youtube search, outliers, watch short-form —
 ideas (docs/ideas/). You report: what to make, the hook, the title, the thumbnail, the length, the evidence (views,
 links), and after publishing — what the numbers say and what to change. Russian. End with «В уроки:».
 
+**Titles, descriptions, pinned comments — ALWAYS by docs/team/titles.md** (the owner, 2026-11-18: «на уровне школьника»):
+read it before any packaging work; write the clip's twist in one line, draft 15 candidates by its formulas, score each on
+its 0–12 scale, hand over only the top 3 scoring 9+ with their score and the device named. A title that describes the
+frame is a failure. Add what the channel's numbers proved to its «Проверено на нашем канале».
+
 ## Уроки (дополняются; читать перед работой)
 - 2026-11-04 Разобраны: «Ranking Best Of Satisfying Constructions» (17,9 млн), шортс 4,9 млн — правила в director.md.
   Длинные ролики (дом у озера 55 млн, бассейн 26 млн) не разобраны: у vidIQ кончились кредиты.
@@ -107,3 +112,15 @@ links), and after publishing — what the numbers say and what to change. Russia
   Сверка журнала chk11: пункт 8 «нет» — `.f-next.small` стоит на `top: 82 %` (красная черта на 85 % высоты), ниже 75 %. Урок: каждый
   пункт списка с числом должен иметь своё правило в `check-film` (здесь — низ плашек ≤ 75 %, ширина наброска 22–25 %), иначе «все
   правила зелёные» не значит «список выполнен».
+- 2026-11-18 Хозяин о названиях ролика 2 («как будто составлял ребёнок с детского сада»): название — НЕ описание кадра («34 Steps Up a
+  Wall», «Building a Staircase Wall, Block by Block» — зритель узнаёт всё из названия, смотреть незачем). Название — крючок: загадка
+  (ситуация без исхода: «Stairs to Nowhere… For Now»), подвох ожидания («This Wall Is Secretly a Staircase»), вопрос, на который хочется
+  увидеть ответ; ключевое слово (stairs) в первых 40 знаках, ≤ 45 знаков, не обещать того, чего нет в ролике. Без vidIQ (0 кредитов) —
+  всё равно давать 4–5 таких вариантов с объяснением, какой приём в каждом. Закреп — формат, который собирает ответы
+  («Wrong answers only 👇»), а не голое «Выдержит?».
+- 2026-11-18 (ролик 3, круг 2) Шов петли — совпадение НАБОРА надписей, не только ракурса: кадр 0 и последний несут одни плашки на тех же
+  местах (≤ 2 %), «◀◀» перемотки — исключение (правило check-film «the loop's seam: … on the last frame, not on the first»). «Вау»
+  считать с первого шага ответа (первой снятой стойки), меряется меткой 'wow' (55–80 %). Порог рывка на кадр не ловит долгую дрожь:
+  ≤ 5 кадров подряд с прицелом > 0,04 (SHIVER). Подпись счёта — материал (PLYWOOD, BOARDS, CONCRETE), не часть здания (словарь в
+  check-film). Интерфейс игры не исчезает внутри неподвижного плана — уходит вместе с наброском. Висение читается только на кадре,
+  где сквозь просвет под консолью видно ≥ 90 % точек (VOID) — кадр ищется расчётом лучей, не на глаз.

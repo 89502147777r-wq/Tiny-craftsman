@@ -273,11 +273,12 @@ export function beltCage(b) {
     // the ends: on through a corner as far as the ring goes (≤ 600 mm), less the cover
     const ext = (a, sg) => { let e = 0; while (e < MM(600) && inside(...pt(a + sg * (e + b.c * 0.5), 0))) e += b.c * 0.5; return Math.max(0, e - cov); };
     const e0 = ext(a0, -1), e1 = ext(a1, 1);
-    const bx = h - cov - ds - d / 2, yb = y0 + cov + ds + d / 2, yt = y0 + H - cov - ds - d / 2, lift = par ? 0 : d;   // (the crossing bars ride on the others)
+    // (an upstand: its links are the slab's U-starters at its faces (±54) — its bars tied inside them (±42), no stirrups of its own)
+    const upst = b.kind === 'upstand', bx = upst ? h - cov - MM(12) - d / 2 : h - cov - ds - d / 2, yb = y0 + cov + ds + d / 2, yt = y0 + H - cov - ds - d / 2, lift = par ? 0 : d;   // (the crossing bars ride on the others)
     for (const y of [yb, yt]) for (const o of [-bx, bx]) bars.push([...W(...pt(a0 - e0, o), y + lift), ...W(...pt(a1 + e1, o), y + lift), +d.toFixed(6)]);
     const sx = h - cov - ds / 2, sb = y0 + cov + ds / 2, st = y0 + H - cov - ds / 2;
     const n = Math.max(1, Math.ceil((a1 - a0 - MM(100)) / MM(350)));
-    for (let k = 0; k <= n; k++) {
+    for (let k = 0; k <= n && !upst; k++) {
       const a = a0 + MM(50) + (a1 - a0 - MM(100)) * k / n;
       const q = [W(...pt(a, -sx), sb + lift), W(...pt(a, sx), sb + lift), W(...pt(a, sx), st + lift), W(...pt(a, -sx), st + lift)];
       for (let i = 0; i < 4; i++) bars.push([...q[i], ...q[(i + 1) % 4], +ds.toFixed(6)]);
@@ -288,6 +289,9 @@ export function beltCage(b) {
       }
     }
   }
+  // (an upstand's bars from the slab: left in the slab's cage before its concrete — or, on a slab cast without them, drilled and
+  // bonded in (post-installed rebar on resin), as on site)
+  if (b.kind === 'upstand' && b.starters && !b.startersInSlab) for (const q of b.starters) bars.push(q.slice());
   return { type: 'cage', outlineId: null, beltId: b.id, bars, chairs: [], frogs: [], ties, tied: true, stars, d };
 }
 
@@ -303,7 +307,7 @@ export class BeltChannel {
     this.inner = b.kind === 'pool' && b.part !== 'wall';   // (a pool's walls are a narrow gap like any wall: the owner saw a grey prism stand from the forms up to the hose)
     // (what may stand over the boards: a slab's rule pushes a heap on along them — 40; a pool's wall is a gap 250 wide: what comes over
     // its boards runs over them at once (the owner: «why do these 40 mm not run out?»))
-    this.over = b.part === 'wall' ? 0 : 40;
+    this.over = b.part === 'wall' || b.kind === 'upstand' ? 0 : 40;   // (an upstand 200 wide: a narrow gap too)
     if (this.inner) this.edge = this.P.nb.map((n) => n.some((q) => q < 0));
     this.spilt = 0;
   }

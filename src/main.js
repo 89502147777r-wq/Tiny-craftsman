@@ -93,7 +93,7 @@ async function main() {
   if (typeof app.settings.pump === 'number') app.settings.pump = PUMP.reduce((a, v) => (Math.abs(v - app.settings.pump) < Math.abs(a - app.settings.pump) ? v : a));   // the nearest step
   if (!PUMP.includes(app.settings.pump)) app.settings.pump = DEFAULT_SETTINGS.pump;   // BUILD 23: real pump rates
   if (!DELIVERY.includes(app.settings.delivery)) app.settings.delivery = DEFAULT_SETTINGS.delivery;   // BUILD 36: truck-sized deliveries
-  if (app.settings.wallKind && !['block', 'brick', 'cinder', 'blind', 'lform', 'studs', 'lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'pool', 'land', 'ext', 'column', 'rail', 'fascia'].includes(app.settings.wallKind)) app.settings.wallKind = 'brick';   // BUILD 45: free brickwork (no thickness modes)
+  if (app.settings.wallKind && !['block', 'brick', 'cinder', 'blind', 'lform', 'studs', 'lintel', 'prop', 'ublock', 'ucage', 'belt', 'slab', 'upstand', 'window', 'door', 'roof', 'facade', 'proof', 'rwin', 'pool', 'land', 'ext', 'column', 'rail', 'fascia'].includes(app.settings.wallKind)) app.settings.wallKind = 'brick';   // BUILD 45: free brickwork (no thickness modes)
   // URL overrides (handy for testing / recording): ?quality=low&dpr=1
   const params = new URLSearchParams(location.search);
   if (params.get('quality')) app.settings.quality = params.get('quality');
@@ -441,9 +441,11 @@ async function startFilm(name) {
   // (what a film needs fetched before its first frame — a machine's model: loading it while the film runs is a still frame)
   // (a stage film starts where the one before ended — the owner: «the same plot, the same records»: that film's last state,
   // made offline once — scripts/film-start.mjs — and shipped with the game)
-  if (script.start) {
+  // (a debug start: ?filmStart=<a saved plot> — a film's later part tried from where it begins, without playing what is before)
+  const startAt = new URLSearchParams(location.search).get('filmStart') || script.start;
+  if (startAt) {
     try {
-      const res = await fetch(script.start); let text;
+      const res = await fetch(startAt); let text;
       if (typeof DecompressionStream !== 'undefined') text = await new Response(res.body.pipeThrough(new DecompressionStream('gzip'))).text(); else throw new Error('no gzip');
       const p = fromJSON(text); applyProject(p);
       app.journal.done = []; app.journal.undone = []; app.journal.pending = null;

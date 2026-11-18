@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MODEL_SCALE } from '../config.js';
-import { toWorld, cellAt, plan } from '../tools/belt.js';
+import { toWorld, toFrame, cellAt, plan, beltContains } from '../tools/belt.js';
 import { SLAB, isSlab, slabForm, deckOf } from '../tools/slab.js';
 import { variant } from './assets.js';
 
@@ -27,7 +27,7 @@ export class SlabFormView {
     this.beams = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xd9a632, roughness: 0.72 }), this.max.beams);
     this.tubeLo = new THREE.InstancedMesh(cyl, new THREE.MeshStandardMaterial({ color: 0xc2401f, roughness: 0.5, metalness: 0.35 }), this.max.props);
     this.tubeHi = new THREE.InstancedMesh(cyl, new THREE.MeshStandardMaterial({ color: 0xa9adb1, roughness: 0.35, metalness: 0.85 }), this.max.props);
-    this.plates = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x7d8186, roughness: 0.45, metalness: 0.8 }), this.max.props * 2);
+    this.plates = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x7d8186, roughness: 0.45, metalness: 0.8 }), this.max.props * 7);
     // (each prop's foot on a timber sole 50 × 200 × 600 — on the ground it would sink in; the realist)
     this.soles = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0x9a7448, roughness: 0.85 }), this.max.props);
     for (const m of [this.beams, this.tubeLo, this.tubeHi, this.plates, this.soles]) { m.castShadow = m.receiveShadow = true; m.frustumCulled = false; m.count = 0; group.add(m); }
@@ -56,7 +56,10 @@ export class SlabFormView {
     this.stripping = false; this.done = [];
     for (const b of belts) {
       if (!isSlab(b) || b.stripped) continue;
-      const F = slabForm(b, (x, z) => floor(x, z, b.top - MM(500))), yaw = Math.atan2(-b.u[1], b.u[0]), ux = b.u[0], uz = -b.u[1];
+      // (a slab still propped under it: this one's props over those — line over line)
+      const [cx0, cz0] = toWorld(b, b.ni * b.c / 2, b.nj * b.c / 2), low = belts.filter((q) => isSlab(q) && q !== b && !q.stripped && q.stripAt == null && q.top < b.top - MM(1500) && beltContains(q, cx0, cz0)).sort((p, q) => q.top - p.top)[0];
+      const below = low ? slabForm(low, (x, z) => floor(x, z, low.top - MM(500))).props : null;
+      const F = slabForm(b, (x, z) => floor(x, z, b.top - MM(500)), below), yaw = Math.atan2(-b.u[1], b.u[0]), ux = b.u[0], uz = -b.u[1];
       // the pieces: plywood sheets 1220 × 2440, beams cut to their stock lengths (2,45 / 3,9 m), the props
       const items = [], SH = [MM(1220), MM(2440)];
       for (const [s0, t0, s1, t1] of F.deck) for (let s = s0; s < s1 - MM(1); s += SH[0]) for (let t = t0; t < t1 - MM(1); t += SH[1]) items.push({ k: 'deck', r: [s, t, Math.min(s1, s + SH[0]), Math.min(t1, t + SH[1])] });
@@ -71,10 +74,31 @@ export class SlabFormView {
       if (reveal && reveal.id === b.id && b.id != null) {
         // (the forest of props first — from the walls out, then the primaries on them, the secondaries, the sheets)
         const cx = items.reduce((a, it) => a + it.at[0], 0) / items.length, cz = items.reduce((a, it) => a + it.at[2], 0) / items.length;
-        const R = { prop: 0, beam: 1, deck: 3 };
-        for (const it of items) it.o = (R[it.k] + (it.k === 'beam' && it.yTop === F.yDeck ? 1 : 0)) * 1e6 - Math.hypot(it.at[0] - cx, it.at[2] - cz) / S;
+        // (as a crew works — the realist: a telescopic prop does not stand by itself; a row of props, at once its primary beam in their
+        // fork heads, the next row — from the corner farthest out (a cantilever's free corner) back toward the walls; then the
+        // secondaries across them, then the sheets)
+        // (reveal.from [x, z]: where the crew starts — a film starts at the cantilevers' free corner)
+        let far = items[0];
+        if (reveal.from) { for (const it of items) if (Math.hypot(it.at[0] - reveal.from[0], it.at[2] - reveal.from[1]) < Math.hypot(far.at[0] - reveal.from[0], far.at[2] - reveal.from[1])) far = it; }
+        else for (const it of items) if (Math.hypot(it.at[0] - cx, it.at[2] - cz) > Math.hypot(far.at[0] - cx, far.at[2] - cz)) far = it;
+        const sOf = (it) => (it.k === 'prop' ? toFrame(b, it.x, it.z)[0] : (it.r[0] + it.r[2]) / 2), sFar = sOf(far), dFar = (it) => Math.hypot(it.at[0] - far.at[0], it.at[2] - far.at[2]) / S;
+        const lines = [...new Set(items.filter((it) => it.k === 'beam' && it.yTop !== F.yDeck).map((it) => Math.round(sOf(it) / MM(50))))].sort((p, q) => Math.abs(p * MM(50) - sFar) - Math.abs(q * MM(50) - sFar));
+        const row = (it) => { const s0 = sOf(it); let bi = 0, bd = Infinity; lines.forEach((k, i) => { const dd = Math.abs(k * MM(50) - s0); if (dd < bd) { bd = dd; bi = i; } }); return bi; };
+        for (const it of items) {
+          const prim = it.k === 'beam' && it.yTop !== F.yDeck;
+          it.row = row(it); it.prim = prim;
+          it.o = it.k === 'prop' || prim ? row(it) * 1e6 + (prim ? 5e5 : 0) + dFar(it) : (it.k === 'beam' ? 1e9 : 2e9) + dFar(it);
+        }
         items.sort((p1, p2) => p1.o - p2.o);
-        items.splice(Math.round(items.length * Math.max(0, Math.min(1, reveal.u))));
+        // (the piece going on now — the last shown — is let down onto its place over its share of u: a sheet onto the beams, a
+        // prop set on its sole; the film's hammer and camera go to it: this.revealTip)
+        this.revealKinds = { deck: 0, beam: 0, prop: 0 }; for (const it of items) this.revealKinds[it.k]++;
+        const nf = items.length * Math.max(0, Math.min(1, reveal.u)), n = Math.ceil(nf - 1e-9);
+        items.splice(n);
+        // (a prop whose row's primary beam is not on yet stands in a tripod — the realist: a 4 m telescopic prop never stands by itself)
+        { const rows = new Set(items.filter((it) => it.prim).map((it) => it.row)); for (const it of items) if (it.k === 'prop') it.lone = !rows.has(it.row); }
+        const tip = items[n - 1];
+        if (tip) { tip.down = Math.max(0, Math.min(1, nf - (n - 1))); this.revealTip = { k: tip.k, at: tip.at.slice(), r: tip.r?.slice(), frac: tip.down, n }; } else this.revealTip = null;
       }
       let strip = null;
       if (b.stripAt != null) {
@@ -90,10 +114,12 @@ export class SlabFormView {
         strip = { u: now - b.stripAt, pile: this._pileSpot(b, items, terrain, floor), n: { deck: 0, beam: 0, prop: 0 } };
         items.forEach((it, i) => { it.t0 = i * STRIP.slot; });
         this.order = items.map((it) => it.bay);   // (for the tests: from the cantilever's edge back)
+        (this.propsLeft ||= {})[b.id] = items.filter((it) => it.k === 'prop' && strip.u < it.t0).map((it) => it.at.slice());   // (each slab's props still standing — a film's last one close)
         if (strip.u < items.length * STRIP.slot + STRIP.carry) this.stripping = true; else this.done.push(b.id);
       }
       // where a piece is now: in place, being carried (let down, lifted a little, walked over), or on the stack
       const pose = (it) => {
+        if (it.down != null && it.down < 1) return { p: [it.at[0], it.at[1] + (1 - it.down) * MM(260), it.at[2]], lie: 0 };
         if (!strip || strip.u < it.t0) return null;
         const tgt = this._stackPos(it, strip, yaw, ux, uz), v = Math.min(1, (strip.u - it.t0) / STRIP.carry);
         if (v >= 1) return { p: tgt, lie: 1 };
@@ -101,6 +127,8 @@ export class SlabFormView {
         const y0 = it.at[1] - MM(150) * dn, p = [it.at[0] + (tgt[0] - it.at[0]) * e, y0 + (tgt[1] - y0) * e + Math.sin(e * Math.PI) * MM(250), it.at[2] + (tgt[2] - it.at[2]) * e];
         return { p, lie: it.k === 'prop' ? Math.min(1, v / 0.35) : 0 };
       };
+      // (the piece being carried now — the film's camera follows it)
+      if (strip) { let cur = null; for (const it of items) if (strip.u >= it.t0 && strip.u < it.t0 + STRIP.carry) cur = it; const ps = cur ? pose(cur) : null; this.stripTip = ps ? ps.p.slice() : null; }
       // the deck: plywood 18 mm, its top under the concrete
       const pos = [], uv = [], idx = [], sheet = MM(1220);
       // (uvs: in the atlas — the sheet's own cell, the part of it a cut sheet is; without the atlas, the photo by the metre)
@@ -149,13 +177,28 @@ export class SlabFormView {
         if (it.k !== 'prop' || np >= this.max.props) continue;
         const { x, z, f0, top } = it, ps = pose(it);
         const sole = MM(50), f = f0 + sole, pl = MM(8), h0 = top - f - 2 * pl, h = ps ? Math.min(h0, MM(1800)) : h0, lo = h0 * 0.55;
-        if (!ps) {
+        if (!ps || it.down != null) {
+          // (a prop being set up: stood on its sole, its inner tube run up to the head — it.down of the way)
+          const hh = it.down != null ? lo + (h0 - lo) * it.down : h0;
           Q.setFromAxisAngle(_Y, yaw); this.soles.setMatrixAt(np, m.compose(P.set(x, f0 + sole / 2, z), Q, Sv.set(MM(600), sole, MM(200)))); own.soles[np] = b.id ?? null;
           Q.identity();
           this.tubeLo.setMatrixAt(np, m.compose(P.set(x, f + pl + lo / 2, z), Q, Sv.set(MM(30), lo, MM(30))));
-          this.tubeHi.setMatrixAt(np, m.compose(P.set(x, f + pl + lo + (h - lo) / 2, z), Q, Sv.set(MM(24), h - lo + MM(60), MM(24))));
+          this.tubeHi.setMatrixAt(np, m.compose(P.set(x, f + pl + lo + (hh - lo) / 2, z), Q, Sv.set(MM(24), hh - lo + MM(60), MM(24))));
           own.tubeLo[np] = own.tubeHi[np] = b.id ?? null; np++;
-          for (const y of [f + pl / 2, top - pl / 2]) { this.plates.setMatrixAt(nq, m.compose(P.set(x, y, z), Q, Sv.set(MM(150), pl, MM(150)))); own.plates[nq++] = b.id ?? null; }
+          // (the base plate; on top the fork head — a U the beam sits in: its plate and its two cheeks either side of the beam)
+          { const y = f + pl / 2; this.plates.setMatrixAt(nq, m.compose(P.set(x, y, z), Q, Sv.set(MM(150), pl, MM(150)))); own.plates[nq++] = b.id ?? null; }
+          // (the tripod: three legs of tube Ø30, 0,65 m, from a clamp 0,55 m up the outer tube out to the ground at 120° — off once the beam is on)
+          if (it.lone && nq < this.max.props * 7 - 6) for (let k = 0; k < 3; k++) {
+            const a = yaw + k * 2 * Math.PI / 3 + 0.4, r = MM(420), yC = f + MM(550), L = Math.hypot(r, yC - f0), tilt = Math.atan2(r, yC - f0);
+            const Qt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, a, 0)).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), tilt));
+            m.compose(P.set(0, 0, 0), Qt, Sv.set(MM(28), L, MM(28)));
+            // (its middle: half way from the clamp to the foot, the foot r out along the leg's own direction)
+            const dx = Math.cos(a) * r, dz = -Math.sin(a) * r; m.setPosition(x + dx / 2, (yC + f0) / 2, z + dz / 2); this.plates.setMatrixAt(nq, m); own.plates[nq++] = b.id ?? null;
+          }
+          { const y = f + pl + hh + pl / 2, Qf = new THREE.Quaternion().setFromAxisAngle(_Y, yaw + Math.PI / 2);
+            this.plates.setMatrixAt(nq, m.compose(P.set(x, y, z), Qf, Sv.set(MM(160), pl, MM(110)))); own.plates[nq++] = b.id ?? null;
+            for (const sd of [-1, 1]) { const ox = -Math.sin(yaw + Math.PI / 2) * 0, oc = MM(SLAB.beamW / 2 + 5) * sd, dx = Math.cos(yaw) * oc, dz = -Math.sin(yaw) * oc;
+              this.plates.setMatrixAt(nq, m.compose(P.set(x + dx + ox, y + MM(55), z + dz), Qf, Sv.set(MM(160), MM(100), MM(8)))); own.plates[nq++] = b.id ?? null; } }
           continue;
         }
         // (tipped from upright to lying along the stack's way, about its middle; the sole goes on the stack beside)

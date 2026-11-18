@@ -371,7 +371,7 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-steps.done { color: #ffd23f; }
 #film .f-rew { position: absolute; left: 6%; top: 13%; color: #fff; font-size: clamp(20px, 8cqw, 60px); font-weight: 900; letter-spacing: -0.08em; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.6); }   /* (the hook's rewind sign: no words — the owner) */
 #film .f-tack { position: absolute; left: 84.7%; top: 23.23%; width: 3.66%; height: auto; pointer-events: none; }
-#film .f-next.small { top: 69%; font-size: clamp(11px, 3.6cqw, 27px); }   /* (on the hook: under the thing, over the Shorts zone (75 %) — the analyst's release list) */
+#film .f-next.small { text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55), 0 4px 14px rgba(0, 0, 0, 0.75); top: 69%; font-size: clamp(11px, 3.6cqw, 27px); }   /* (on the hook: under the thing, over the Shorts zone (75 %) — the analyst's release list) */
 #film .f-kick.top { top: 26%; font-size: clamp(24px, 9cqw, 70px); }   /* (the hook's question: in the upper third, clear of the Shorts UI) */
 #film .f-kick.f-ask { width: auto; transform: translate(-50%, -110%); font-size: clamp(40px, 16cqw, 120px); }   /* (the hook's «?» on the stair's top, in the frame) */
 /* the game's face over a film: the chips' rows at the top, the round tool button at the bottom (as the quiet mode's) */
@@ -384,10 +384,13 @@ body.filming #view { transform-origin: 50% 50%; }
 #film .f-row b.on { background: #f2b134; color: #1c1509; border-color: rgba(0, 0, 0, 0); }
 #film .f-fab { position: absolute; right: 6%; bottom: 6.5%; width: clamp(44px, 14cqw, 104px); height: clamp(44px, 14cqw, 104px); border-radius: 50%; background: rgba(24, 19, 15, 0.55); border: 1px solid rgba(255, 255, 255, 0.22); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }
 #film .f-fab img { position: absolute; left: 25%; top: 25%; width: 50%; height: 50%; }
-#film .f-logo { position: absolute; left: 5%; top: calc(3.2% + 14px); margin-top: clamp(8px, 3.3cqw, 26px); width: 34%; max-width: 300px; opacity: 0.94; filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55)); }   /* (the owner: at the top, level with the budget) */
+#film .f-logo { position: absolute; left: 5%; top: calc(3.2% + 14px); margin-top: clamp(8px, 3.3cqw, 26px); width: 34%; max-width: 300px; opacity: 0.94; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7)) drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6)); }   /* (the owner: at the top, level with the budget; a tight dark edge: it reads on a bright sky — the analyst) */
 #film.hud .f-logo { top: 13.2%; margin-top: 0; }
 /* a stage's bill: what it was and what it cost */
 #film .f-stage { position: absolute; left: 50%; top: 66%; text-align: center; white-space: nowrap; padding: 0.4em 1.1em 0.5em; border-radius: 16px; background: rgba(12, 12, 12, 0.66); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); }
+#film .f-stage.hi { top: 25%; left: 42%; }   /* (a film's bills high, over the sky, clear of the sketch — film 3) */
+#film .f-steps.total { top: 20%; font-size: clamp(24px, 9cqw, 70px); color: #fff; text-shadow: 0 3px 0 rgba(0, 0, 0, 0.55), 0 6px 18px rgba(0, 0, 0, 0.7); }
+#film .f-steps.q { font-size: clamp(34px, 15cqw, 110px); color: #fff; text-shadow: 0 3px 0 rgba(0, 0, 0, 0.55), 0 6px 18px rgba(0, 0, 0, 0.7); }
 #film .f-stage small { display: block; font-size: clamp(11px, 3.5cqw, 26px); font-weight: 800; letter-spacing: 0.12em; color: #f4efe6; }
 #film .f-stage b { display: block; font-size: clamp(26px, 9.5cqw, 72px); font-weight: 900; color: #ff5b4a; font-variant-numeric: tabular-nums; line-height: 1.08; }
 #film .f-clock { position: absolute; left: 50%; top: 15%; transform: translateX(-50%); text-align: center; padding: 0.3em 1em 0.4em; border-radius: 16px; background: rgba(12, 12, 12, 0.6); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); color: #fff; }

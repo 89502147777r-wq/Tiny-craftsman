@@ -71,7 +71,15 @@ export class RebarView {
         const nB = Math.ceil(r.bars.length * part(0.12, 0.8)), nC = Math.ceil(r.chairs.length * part(0, 0.15)), nT = Math.ceil((r.ties?.length || 0) * part(0.72, 1));
         const nF = Math.ceil(r.frogs.length * part(0.35, 0.55)), nS = Math.ceil((r.stars?.length || 0) * part(0.3, 0.8));
         let kb = 0;
-        for (const b of r.bars) { if (kb++ >= nB) break; rod(b[0], b[1], b[2], b[3], b[4], b[5], b[6], r.id); }
+        // (the bar going on now — the last shown: let down onto the ones under it over its share of u; the film's hook and camera go
+        // to it: this.revealTip; reveal.lower — so in the films after stage 2, whose cages went in without it)
+        const fB = r.bars.length * part(0.12, 0.8), down = rv < 1 && nB > 0 && this.reveal?.lower ? Math.max(0, Math.min(1, fB - (nB - 1))) : 1, lift = (1 - down) * MM(180);
+        for (const b of r.bars) {
+          if (kb++ >= nB) break;
+          const up = kb === nB ? lift : 0;
+          rod(b[0], b[1] + up, b[2], b[3], b[4] + up, b[5], b[6], r.id);
+        }
+        if (rv < 1) { const b = nB ? r.bars[nB - 1] : null; this.revealTip = b ? { at: [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2], a: b.slice(0, 3), b: b.slice(3, 6), frac: down, n: nB } : null; }
         let kc = 0;
         for (const c of r.chairs) {
           if (kc++ >= nC) break;

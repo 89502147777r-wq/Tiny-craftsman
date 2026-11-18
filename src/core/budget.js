@@ -208,7 +208,7 @@ export class Budget {
       if (door) add(String(a.key).startsWith('gar') ? P.garage : P.door, String(a.key).startsWith('gar') ? 'Гаражные ворота · 1 шт' : 'Дверь · 1 шт');
       else add(m2 * (['pano', 'floor', 'corner', 'portal'].includes(a.key) ? P.windowBig : P.window), `Окно ${(a.w / 1000).toFixed(1)}×${(a.h / 1000).toFixed(1)} м`);
     } else if (type === 'rwin' && isNew) add(P.rwin, 'Мансардное окно');
-    else if (type === 'rail' && isNew) add(P.rail * (a.len || 2000) / 1000, 'Ограждение');
+    else if (type === 'rail' && isNew) { const m = a.len ? a.len / 1000 : Math.hypot(a.b[0] - a.a[0], a.b[1] - a.a[1]) * M1; add((a.fascia ? P.fascia ?? P.rail * 0.6 : P.rail) * m, a.fascia ? 'Кант' : 'Ограждение'); }   // (by its own length — every railing was priced as 2 m)
     else if (type === 'facade') this._priceFacade(b || {}, a || {}, add);
     else if (type === 'proof') this._priceRoof(b, a, add);
     else if (type === 'roof') {

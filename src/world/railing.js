@@ -13,7 +13,7 @@ import { boxOf } from '../tools/freeBrick.js';
 // A rail: { type: 'rail', slab, a: [x, z], b: [x, z], y (the slab's top), out: [x, z] (the edge's
 // outward normal) } — it runs along one straight edge of the slab where nothing stands on it.
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const RAIL = { H: 1100, shoe: [60, 110], back: 50, glass: 21.5, pane: 1500, gap: 10 };
+export const RAIL = { H: 1100, shoe: [110, 115], back: 50, glass: 21.5, pane: 1500, gap: 10 };   // (the shoe 110 wide: the glass with its wedges both sides — the realist)
 
 // the straight runs of a slab's edges (its outline and its holes), world: { a, b, out, y }
 export function slabRuns(b) {
@@ -93,6 +93,10 @@ export function findRail(app, p, fascia = null) {
   const A = [r.a[0] + u[0] * lo, r.a[1] + u[1] * lo], B = [r.a[0] + u[0] * hi, r.a[1] + u[1] * hi];
   const rec = { type: 'rail', slab: b.id, a: A.map((v) => +v.toFixed(6)), b: B.map((v) => +v.toFixed(6)), y: +r.y.toFixed(6), out: r.out.map((v) => +v.toFixed(5)) };
   if (fascia) { rec.fascia = fascia; rec.h = +b.H.toFixed(6); }
+  // (a terrace's concrete upstand on this edge: the railing's shoe on its top, the fascia up over its face)
+  { const m = [(A[0] + B[0]) / 2 - r.out[0] * b.c * 0.5, (A[1] + B[1]) / 2 - r.out[1] * b.c * 0.5], [fs, ft] = toFrame(b, m[0], m[1]), i = Math.floor(fs / b.c), j = Math.floor(ft / b.c);
+    const U = app.objects.all('belt').find((q) => q.kind === 'upstand' && q.slab === b.id && q.fill > 0.9 && i >= 0 && j >= 0 && i < q.ni && j < q.nj && plan(q).mask[j * q.ni + i]);
+    if (U) rec.up = +U.H.toFixed(6); }
   return { rec, len: Math.round((hi - lo) / S), why };
 }
 
@@ -100,7 +104,7 @@ let MATS = null;
 function mats() {
   if (MATS) return MATS;
   MATS = {
-    shoe: new THREE.MeshStandardMaterial({ color: 0x3a3d41, metalness: 0.5, roughness: 0.4 }),
+    shoe: new THREE.MeshStandardMaterial({ color: 0x8e9296, metalness: 1, roughness: 0.4 }),   // (anodised aluminium: a metal, not half of one)
     cap: new THREE.MeshStandardMaterial({ color: 0xd2d6da, metalness: 1, roughness: 0.22 }),
     // clear laminated glass: a faint green in its thickness, the edges greener
     glass: new THREE.MeshPhysicalMaterial({ color: 0xd8ece6, roughness: 0.04, metalness: 0.05, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide, envMapIntensity: 1.4 }),
@@ -125,22 +129,28 @@ function fmat(k) {
   // (coil-coated metal: a smooth, slightly glossy face — the light runs along it)
   return (FMATS[k] = { face: new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: 0.5 }), sub: new THREE.MeshStandardMaterial({ color: 0x9a9ea2, metalness: 0.8, roughness: 0.45 }), dark: new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.9 }), wool: new THREE.MeshStandardMaterial({ color: 0x8f8a72, roughness: 1 }) });
 }
-function buildFascia(r, ghost) {
+function buildFascia(r, ghost, reveal = 1) {
   const M = fmat(r.fascia), F = FASCIA, L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, H = (r.h || MM(200)) / S, G = { face: [], sub: [], dark: [], wool: [] };
   const box = (k, x0, x1, y0, y1, z0, z1) => G[k].push(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
-  const yb = -H - F.below, yt = F.over, z0 = F.gap, z1 = F.gap + F.t, ext = F.gap + F.t;   // (the slab's top at y 0, its face at z 0)
+  const yb = -H - F.below, yt = r.up ? r.up / S + 20 : F.over, z0 = F.gap, z1 = F.gap + F.t, ext = F.gap + F.t;   // (the slab's top at y 0, its face at z 0)
   // the subframe: brackets on the face, the rails along them (seen through the joints, in the shadow)
-  for (let x = 150; x < L - 100; x += F.bracket) { box('sub', x - 20, x + 20, -H + 40, -H + 100, 0, F.gap); box('sub', x - 20, x + 20, -60, -20, 0, F.gap); }
-  box('sub', 0, L, -H + 60, -H + 80, F.gap - 4, F.gap); box('sub', 0, L, -50, -30, F.gap - 4, F.gap);
-  // the mineral wool on the face (dowelled), the air gap in front of it: dark through the joints
-  box('wool', -F.wool, L + F.wool, yb + 10, yt - 10, 0, F.wool);
+  // (over an upstand the cassette is 570 taller: a row of brackets on its face too, ≤ 600 apart in height — the realist)
+  const up = (r.up || 0) / S, rowsY = up > 0 ? [[-H + 40, -H + 100], [-60, -20], [up - 130, up - 70]] : [[-H + 40, -H + 100], [-60, -20]];
+  for (let x = 150; x < L - 100; x += F.bracket) for (const [y0, y1] of rowsY) box('sub', x - 20, x + 20, y0, y1, 0, F.gap);
+  for (const [y0, y1] of rowsY) box('sub', 0, L, y0 + 20, y0 + 40, F.gap - 4, F.gap);
+  // the mineral wool on the face (dowelled), the air gap in front of it: dark through the joints — the wool up to the concrete's top
+  const wt = up > 0 ? up : yt - 10;
+  box('wool', -F.wool, L + F.wool, yb + 10, wt, 0, F.wool);
   box('dark', -ext, L + ext, yb + 10, yt - 10, F.wool + 1, F.wool + 3);
+  // (an upstand's top: a flashing over it from its inner face out past the cassette, a slight fall inward — under the railing's shoe)
+  if (up > 0) { box('face', -ext, L + ext, yt, yt + 2, -200, z1 + 20); box('face', -ext, L + ext, yt - 40, yt + 2, z1 + 18, z1 + 21); }
   // the cassettes: the face, its returns at the top and the bottom (back to the wall), the joints open
   const n = Math.max(1, Math.ceil((L + 2 * ext) / F.piece)), pw = (L + 2 * ext - (n - 1) * F.joint) / n;
   for (let k = 0; k < n; k++) {
+    if (k >= Math.ceil(reveal * n - 1e-9)) break;   // (the cassettes one after another — the brackets and the wool before them)
     const x0 = -ext + k * (pw + F.joint), x1 = x0 + pw;
     box('face', x0, x1, yb, yt, z0, z1);
-    box('face', x0, x1, yt - F.t, yt, 0, z1); box('face', x0, x1, yb, yb + F.t, 0, z1);
+    if (!(up > 0)) box('face', x0, x1, yt - F.t, yt, 0, z1); box('face', x0, x1, yb, yb + F.t, 0, z1);
   }
   const g = new THREE.Group();
   for (const [k, list] of Object.entries(G)) {
@@ -152,8 +162,10 @@ function buildFascia(r, ghost) {
   return g;
 }
 // the railing as a group (model scale, world placed): x along a→b, y up from the slab's top, z out
-export function buildRail(r, ghost = null) {
-  if (r.fascia) return place(buildFascia(r, ghost), r);
+// reveal: u of it put in, panel after panel as on site — the shoe first, each pane let down 250 into it (≈ 90 kg on a vacuum lifter),
+// the cap along the top last
+export function buildRail(r, ghost = null, reveal = 1) {
+  if (r.fascia) return place(buildFascia(r, ghost, reveal), r);
   const M = mats(), L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, G = { shoe: [], cap: [], glass: [], edge: [] };
   const box = (k, x0, x1, y0, y1, z0, z1) => G[k].push(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
   const [sw, sh] = RAIL.shoe, zc = -RAIL.back - sw / 2, t = RAIL.glass;
@@ -162,14 +174,15 @@ export function buildRail(r, ghost = null) {
   for (const z of [zc - sw / 2 + 3, zc + sw / 2 - 3]) box('shoe', 0, L, 0, sh, z - 3, z + 3);
   box('shoe', 0, 4, 0, sh, zc - sw / 2, zc + sw / 2); box('shoe', L - 4, L, 0, sh, zc - sw / 2, zc + sw / 2);
   // the glass in panels, wedged into the channel; the green edges
-  const n = Math.max(1, Math.ceil((L - 20) / RAIL.pane)), pw = (L - 20 - (n - 1) * RAIL.gap) / n;
+  const n = Math.max(1, Math.ceil((L - 20) / RAIL.pane)), pw = (L - 20 - (n - 1) * RAIL.gap) / n, nf = Math.min(n, reveal * (n + 0.5));
   for (let k = 0; k < n; k++) {
-    const x0 = 10 + k * (pw + RAIL.gap), x1 = x0 + pw;
-    box('glass', x0, x1, 25, RAIL.H - 25, zc - t / 2, zc + t / 2);
-    box('edge', x0, x0 + 2, 25, RAIL.H - 25, zc - t / 2, zc + t / 2); box('edge', x1 - 2, x1, 25, RAIL.H - 25, zc - t / 2, zc + t / 2);
+    if (k >= Math.ceil(nf - 1e-9)) break;
+    const x0 = 10 + k * (pw + RAIL.gap), x1 = x0 + pw, dy = k === Math.ceil(nf - 1e-9) - 1 ? (1 - Math.min(1, nf - k)) * 250 : 0;
+    box('glass', x0, x1, 25 + dy, RAIL.H - 25 + dy, zc - t / 2, zc + t / 2);
+    box('edge', x0, x0 + 2, 25 + dy, RAIL.H - 25 + dy, zc - t / 2, zc + t / 2); box('edge', x1 - 2, x1, 25 + dy, RAIL.H - 25 + dy, zc - t / 2, zc + t / 2);
   }
-  // the cap along the top: a stainless U over the glass, its ends closed
-  box('cap', 5, L - 5, RAIL.H - 27, RAIL.H, zc - t / 2 - 3, zc + t / 2 + 3);
+  // the cap along the top: a stainless U over the glass, its ends closed (once all its panes are in)
+  if (reveal >= 1) box('cap', 5, L - 5, RAIL.H - 27, RAIL.H, zc - t / 2 - 3, zc + t / 2 + 3);
   const g = new THREE.Group();
   for (const [k, list] of Object.entries(G)) {
     if (!list.length) continue;
@@ -182,9 +195,9 @@ export function buildRail(r, ghost = null) {
 }
 // its place: the basis along the edge, up, out (in the model's scale)
 function place(g, r) {
-  const L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S;
+  const L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) / S, up = r.fascia ? 0 : r.up || 0;   // (a railing on an upstand: on its top)
   const ux = (r.b[0] - r.a[0]) / (L * S), uz = (r.b[1] - r.a[1]) / (L * S);
   g.matrixAutoUpdate = false;
-  g.matrix.makeBasis(new THREE.Vector3(ux * S, 0, uz * S), new THREE.Vector3(0, S, 0), new THREE.Vector3(r.out[0] * S, 0, r.out[1] * S)).setPosition(r.a[0], r.y, r.a[1]);
+  g.matrix.makeBasis(new THREE.Vector3(ux * S, 0, uz * S), new THREE.Vector3(0, S, 0), new THREE.Vector3(r.out[0] * S, 0, r.out[1] * S)).setPosition(r.a[0], r.y + up, r.a[1]);
   return g;
 }

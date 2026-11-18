@@ -259,7 +259,9 @@ export function deckOf(b) {
 // The formwork under it, in the frame: the deck as rectangles of plywood, the secondary and
 // primary beams (runs over the deck), the props on the primaries (on the floor below).
 // floor(x, z): the height of what a prop stands on
-export function slabForm(b, floor) {
+// below: the props of a slab still propped under this one ([x, z, …] each) — the props of this one go over them, line over line, as
+// on site (the load of the upper floor's concrete straight down the props under it, never onto the lower slab's middle between them)
+export function slabForm(b, floor, below = null) {
   const D = deckOf(b), { ni, nj, c } = b, on = (i, j) => i >= 0 && j >= 0 && i < ni && j < nj && D[j * ni + i];
   const deck = [];
   // rows of deck cells merged into rectangles (the same run in the next rows joins it)
@@ -287,15 +289,21 @@ export function slabForm(b, floor) {
   // primary beams along t, every 1,5 m (the first 300 mm in), the props under them
   let s0 = Infinity, s1 = -Infinity;
   for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) if (on(i, j)) { s0 = Math.min(s0, i * c); s1 = Math.max(s1, (i + 1) * c); }
+  // (the props under, in this slab's frame: their lines along t — s rounded to 50 mm — and the t of each on its line)
+  const under = new Map();
+  if (below?.length) for (const q of below) { const [ps, pt] = toFrame(b, q[0], q[1]); if (ps < s0 + MM(150) || ps > s1 - MM(150)) continue; const key = Math.round(ps / MM(50)); const L = under.get(key) || under.set(key, { s: ps, ts: [] }).get(key); L.ts.push(pt); }
+  const lines = under.size >= 2 ? [...under.values()].sort((p, q) => p.s - q.s) : null;
   if (s1 > s0) {
     const n = Math.max(1, Math.round((s1 - s0 - MM(600)) / MM(SLAB.prim)));
-    for (let k = 0; k <= n; k++) {
-      const s = s0 + MM(300) + (s1 - s0 - MM(600)) * k / n;
+    const ss = lines || Array.from({ length: n + 1 }, (_, k) => ({ s: s0 + MM(300) + (s1 - s0 - MM(600)) * k / n, ts: null }));
+    for (const { s, ts: under1 } of ss) {
       for (const [a, e] of runsAlong(s, false)) {
         prim.push([s, a, s, e]);
+        const ts = under1 ? under1.filter((t) => t > a + MM(100) && t < e - MM(100)).sort((p, q) => p - q) : [];
         const m = Math.max(1, Math.round((e - a - MM(400)) / MM(SLAB.prop)));
-        for (let q = 0; q <= m; q++) {
-          const t = a + MM(200) + (e - a - MM(400)) * q / m, [x, z] = toWorld(b, s, t), f = floor(x, z);
+        const list = ts.length ? ts : Array.from({ length: m + 1 }, (_, q) => a + MM(200) + (e - a - MM(400)) * q / m);
+        for (const t of list) {
+          const [x, z] = toWorld(b, s, t), f = floor(x, z);
           if (yPrim - f > MM(300)) props.push([x, z, f, yPrim]);
         }
       }
