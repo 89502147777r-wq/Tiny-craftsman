@@ -275,7 +275,7 @@ export function buildRoof(b, units, rec, live) {
     const P2 = plan(b), slabAt = (i, j) => i >= 0 && j >= 0 && i < b.ni && j < b.nj && !!P2.mask[j * b.ni + i], kk = Math.ceil(MM(220) / c);
     const nearEdge = (i, j) => { for (let dj = -kk; dj <= kk; dj++) for (let di = -kk; di <= kk; di++) if (!slabAt(i + di, j + dj)) return true; return false; };
     const keep = cure.flatMap((rc) => cellsOf(b, rc).filter(([i, j]) => area.on(i, j) && !nearEdge(i, j)).map(([i, j]) => [i * c, j * c, (i + 1) * c, (j + 1) * c]));
-    add(sheet(keep, () => 0.6, (s, t2) => [mmS(s) / 1.2, mmS(t2) / 1.2], 0), new THREE.MeshStandardMaterial({ color: 0xb9bdbf, transparent: true, opacity: 0.12, depthWrite: false, roughness: 0.55, envMapIntensity: 0.2, metalness: 0, normalMap: photo("", "film_nor.jpg"), normalScale: new THREE.Vector2(0.8, 0.8), side: THREE.DoubleSide }), false);
+    add(sheet(keep, () => 0.6, (s, t2) => [mmS(s) / 1.2, mmS(t2) / 1.2], 0), new THREE.MeshStandardMaterial({ color: 0xcfd3d4, transparent: true, opacity: 0.22, depthWrite: false, roughness: 0.32, envMapIntensity: 0.35, metalness: 0, normalMap: photo("", "film_nor.jpg"), normalScale: new THREE.Vector2(1.3, 1.3), side: THREE.DoubleSide }), false);
     // (one board on each lap, in its middle, the boards of each strip staggered by half their spacing — the realist)
     const parts = [], yaw = Math.atan2(-b.u[1], b.u[0]);
     cure.forEach((rc, k) => { const t2 = rc[3] - MM(50), s00 = rc[0] + MM(500) + (k % 2) * MM(1400);

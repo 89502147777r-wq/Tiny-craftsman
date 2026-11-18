@@ -702,7 +702,7 @@ export class WallView {
       for (const dz of [-1100, 0, 1100]) { Q.identity(); this.wood.setMatrixAt(nw, m.compose(P.set(px, g + 20 * S, pz + dz * S), Q, Sv.set(6 * (bw + 4 * S) + 100 * S, 40 * S, 50 * S))); this.owner.wood[nw++] = b.id ?? null; }
       // (the curing film's boards-weights 1000 × 25 × 100: stacked four a layer beside the edge boards' stack)
       if (b.kind === 'slab' && b.cureOff > 0) for (let k = 0; k < b.cureOff && nw < this.max.wood - 4; k++) {
-        const lay = Math.floor(k / 4), i = k % 4, x = px + 1400 * S + (i - 1.5) * 104 * S, z = pz + 700 * S, gy = this.terrain.heightAt(x, z);
+        const lay = Math.floor(k / 4), i = k % 4, x = px + 1400 * S + (i - 1.5) * 104 * S, z = pz + 700 * S, X0 = px + 1190 * S, Z0 = pz + 200 * S, gy = Math.max(...[[0, 0], [420, 0], [0, 1000], [420, 1000]].map(([a, c]) => this.terrain.heightAt(X0 + a * S, Z0 + c * S)));   // (the stack on one level: the highest of its corners)
         Q.setFromAxisAngle(_Y, 0.03 * Math.sin(k * 5.3)); this.wood.setMatrixAt(nw, m.compose(P.set(x, gy + 12.5 * S + lay * 25 * S, z), Q, Sv.set(100 * S, 25 * S, 1000 * S))); this.owner.wood[nw++] = b.id ?? null;
       }
     }
@@ -773,11 +773,11 @@ export class WallView {
     for (const b of O.all('belt')) {
       if (b.kind !== 'slab' || !(b.cureOff > 0) || !b.sidesPile || !this.terrain) continue;
       const [px, pz] = b.sidesPile, x = px + 1400 * S, z = pz - 800 * S, gy = this.terrain.heightAt(x, z);
-      const g = new THREE.CylinderGeometry(125 * S, 125 * S, 1500 * S, 18, 6); g.rotateZ(Math.PI / 2);
+      const R = 190 * S, g = new THREE.CylinderGeometry(R, R, 1500 * S, 18, 8); g.rotateZ(Math.PI / 2);   // (Ø380: crumpled loose, 5–10 × its own volume — the realist)
       { const q = g.attributes.position; let sd = 11; const rn = () => ((sd = (sd * 16807) % 2147483647) / 2147483647 - 0.5);
-        for (let i = 0; i < q.count; i++) { const r = 1 + rn() * 0.22; q.setY(i, q.getY(i) * 0.6 * r); q.setZ(i, q.getZ(i) * r); q.setX(i, q.getX(i) * (1 + rn() * 0.04)); } }
-      g.computeVertexNormals(); g.rotateY(0.35); g.translate(x, gy + 125 * S * 0.6, z);
-      const mf = this._cureM || (this._cureM = new THREE.MeshStandardMaterial({ color: 0x8c9092, roughness: 0.6, envMapIntensity: 0.4, normalMap: new THREE.TextureLoader().load("assets/textures/film_nor.jpg"), normalScale: new THREE.Vector2(2.4, 2.4) }));
+        for (let i = 0; i < q.count; i++) { const r = 1 + rn() * 0.3; q.setY(i, q.getY(i) * 0.55 * r); q.setZ(i, q.getZ(i) * r); q.setX(i, q.getX(i) * (1 + rn() * 0.04)); } }
+      g.computeVertexNormals(); g.rotateY(0.35); g.translate(x, gy + R * 0.55, z);
+      const mf = this._cureM || (this._cureM = new THREE.MeshStandardMaterial({ color: 0xa9adad, roughness: 0.6, envMapIntensity: 0.4, normalMap: new THREE.TextureLoader().load("assets/textures/film_nor.jpg"), normalScale: new THREE.Vector2(2.4, 2.4) }));
       const mesh = new THREE.Mesh(g, mf); mesh.castShadow = true; this.spouts.add(mesh);
     }
     // the studs: from 40 mm over the bottom of the beam to 200 mm over its top (150 the wall

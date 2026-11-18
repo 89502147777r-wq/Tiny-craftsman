@@ -191,7 +191,7 @@ export class SlabFormView {
           if (it.lone && nq < this.max.props * 7 - 6) for (let k = 0; k < 3; k++) {
             const a = yaw + k * 2 * Math.PI / 3 + 0.4, r = MM(420), yC = f + MM(550), L = Math.hypot(r, yC - f0), tilt = Math.atan2(r, yC - f0);
             const Qt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, a, 0)).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), tilt));
-            this.plates.setMatrixAt(nq, m.compose(P.set(x + Math.cos(-a) * 0 + Math.sin(a) * 0, 0, z), Qt, Sv.set(MM(28), L, MM(28))));
+            m.compose(P.set(0, 0, 0), Qt, Sv.set(MM(28), L, MM(28)));
             // (its middle: half way from the clamp to the foot, the foot r out along the leg's own direction)
             const dx = Math.cos(a) * r, dz = -Math.sin(a) * r; m.setPosition(x + dx / 2, (yC + f0) / 2, z + dz / 2); this.plates.setMatrixAt(nq, m); own.plates[nq++] = b.id ?? null;
           }

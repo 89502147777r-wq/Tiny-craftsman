@@ -1632,7 +1632,8 @@ if (want("2l²")) {
 // ---- 2l³. «Ibiza» stages 3–5 in one (the owner, 2026-11-15): from stage 2's end — the «sail» 300 on the pavilion's walls with its two
 // cantilevers (3 m over the pool, 2,4 m to the left), the olive's opening and the notch round the fireplace's tower; its props over the
 // pool on the shell's floor (not through it); a week; the box; its roof slab; 28 days — the props out piece by piece from the
-// cantilever's edge back to the walls; the green roof, the fascias, the glass, the finish; the hook marked ----
+// cantilever's edge back to the walls — the owner's «в» (2026-11-18): it ends there, the sail hanging over the empty pool (the green
+// roof, the terrace, the glass, the finish — film 4); the curing film off to the ground with all its weights; the hook marked ----
 if (want("2l³")) {
   const { browser, page, errors } = await open(pw.chromium, '&film=sail&offline=1', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   await page.waitForFunction(() => window.__tc?.film, null, { timeout: 300000 });
@@ -1647,13 +1648,18 @@ if (want("2l³")) {
     const F = sail ? SL.slabForm(sail, (x, z) => SF.floorUnder(T, belts)(x, z, sail.top - MM(500))) : { props: [] };
     const inPool = F.props.filter(([x, z]) => x > MM(-5800) && x < MM(3800) && z > MM(-5500) && z < MM(-3300));
     const sunk = inPool.filter(([x, z, f0]) => f0 < T.heightAt(x, z) + MM(100)).length;
+    const RF = await import('/src/world/roof.js'), cr = tc.objects.all('roof').find((r) => r.slab === sail?.id);
     return { stream, done: f.done, t: +f.t.toFixed(1), s: f.sail, H: sail && Math.round(sail.H / MM(1)), cants: sail?.cants, holes: sail?.holes?.length, stripped: !!sail?.stripped, pool: inPool.length, sunk,
-      windows: tc.objects.all('window').length, facades: tc.objects.all('facade').length, hook: f.marks?.hook != null && f.marks?.hookEnd > f.marks?.hook };
+      cureOff: sail?.cureOff, cureDrawn: cr ? RF.CURE_BOARDS.get(cr.id) : null, cureLeft: cr?.cure?.length ?? 0, onSlab: Array.isArray(cr?.cureStack),
+      units: tc.objects.all('unit').filter((u) => u.kind === 'block').length, roofs: tc.objects.all('belt').filter((q) => q.kind === 'slab').length,
+      hook: f.marks?.hook != null && f.marks?.hookEnd > f.marks?.hook };
   });
   check('film (sail): the slab 300 with two cantilevers (3 m, 2,4 m), the olive\'s opening; its props over the pool on the shell\'s floor; stripped from the cantilever\'s edge back to the walls',
-    o.done && o.H === 300 && o.cants?.length === 2 && o.holes === 1 && o.pool > 3 && o.sunk === 0 && o.stripped && o.s?.order?.[0] > o.s.order[1], JSON.stringify(o));
-  check('film (sail): the box on it, its roof green, white fascias, the glass, the finish on the pavilion, the box and the spine; 40–80 s, the hook marked',
-    o.s?.box > 300 && o.s.roofGreen > 100 && o.s.fasc >= 4 && o.windows >= 5 && o.s.faces?.[0] >= 4 && o.s.faces[1] >= 4 && o.s.faces[2] > 10 && o.facades > 20 && o.t > 40 && o.t < 80 && o.hook, JSON.stringify(o));
+    o.done && o.H === 300 && o.cants?.length === 2 && o.holes === 1 && o.pool > 3 && o.sunk === 0 && o.stripped, JSON.stringify(o));
+  check('film (sail): the box\'s walls and its roof slab on the sail; 40–90 s, the hook marked',
+    o.units > 300 && o.roofs >= 2 && o.t > 40 && o.t < 90 && o.hook, JSON.stringify({ units: o.units, roofs: o.roofs, t: o.t, hook: o.hook }));
+  check('film (sail): the curing film taken off the slab (none on it), to the ground with as many weights as held it down (the realist)',
+    o.cureLeft === 0 && !o.onSlab && o.cureDrawn > 0 && o.cureOff === o.cureDrawn, JSON.stringify({ cureOff: o.cureOff, drawn: o.cureDrawn, left: o.cureLeft, onSlab: o.onSlab }));
   check('film (sail): the slabs poured by the hose to the end, the stream seen while it works (≥ 90 %)', o.stream >= 0.9, JSON.stringify({ stream: o.stream }));
   check('film (sail): no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
