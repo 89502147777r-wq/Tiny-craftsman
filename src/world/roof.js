@@ -283,6 +283,16 @@ export function buildRoof(b, units, rec, live) {
       } });
     if (parts.length) add(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ map: photo('raw_plank_wall', 'diff.jpg', true), normalMap: photo('raw_plank_wall', 'nor_gl.jpg'), roughness: 0.85 }));
   }
+  // (the film taken off at a week: folded into a bundle on the slab, its boards stacked by it — the realist: never just gone)
+  if (!cure.length && Array.isArray(r.cureStack)) {
+    const [s, t2, n = 12] = r.cureStack, yaw = Math.atan2(-b.u[1], b.u[0]), p0 = W(s, t2, 0);
+    const fg = new THREE.BoxGeometry(MM(1200), MM(110), MM(600)); { const q = fg.attributes.position; for (let i = 0; i < q.count; i++) if (q.getY(i) > 0) { q.setX(i, q.getX(i) * 0.94); q.setZ(i, q.getZ(i) * 0.9); } }
+    fg.rotateY(yaw); fg.translate(p0[0], p0[1] + MM(55), p0[2]);
+    add(fg, new THREE.MeshStandardMaterial({ color: 0xd9dee2, roughness: 0.35, normalMap: photo('', 'film_nor.jpg'), normalScale: new THREE.Vector2(1.4, 1.4) }));
+    const parts = []; for (let k = 0; k < n; k++) { const row = k % 4, lay = Math.floor(k / 4), g = new THREE.BoxGeometry(MM(1000), MM(25), MM(100));
+      g.translate(0, MM(12.5 + 25 * lay), MM(-150 + 100 * row)); g.rotateY(yaw + (lay % 2 ? 0.03 : -0.02)); const q = W(s + MM(1400), t2, 0); g.translate(...q); parts.push(g); }
+    add(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ map: photo('raw_plank_wall', 'diff.jpg', true), normalMap: photo('raw_plank_wall', 'nor_gl.jpg'), roughness: 0.85 }));
+  }
   const vap = L('vap');
   if (vap.length) { const t = vapTex(); add(sheet(vap, () => 0.5, (s, t2) => [mmS(s) / 1.5, mmS(t2) / 1.5], 0.25), new THREE.MeshStandardMaterial({ ...t, roughness: 0.4, metalness: 0.15, side: THREE.DoubleSide }), false); }
   // the boards (XPS, the wedges): boxes, cut to the roof; the top textured per board

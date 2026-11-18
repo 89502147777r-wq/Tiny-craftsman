@@ -513,7 +513,8 @@ export class Director {
   // the mode the film set before working), never typed in the film. path: group ids to open ['masonry']; on: a label lit when the
   // game's state has none lit (the pump past the game's own speeds). The last two levels shown; a long row — a window round the
   // chosen chip, as the game's row scrolls to it
-  menu(path = [], tool = this.app.tool, on = null) {
+  // one: only the last row (a film whose logo the second row would run into)
+  menu(path = [], tool = this.app.tool, on = null, one = false) {
     const ui = this.app.ui, rows = [];
     if (!ui?.chips) return this.hud(null);
     const name = (c) => trEn(c.label).trim(), app = this.app, t0 = app.tool;
@@ -531,7 +532,7 @@ export class Director {
     const fit = (r) => { const k = Math.max(0, r.findIndex((t) => t[0] === '*')); let a = k, b = k + 1, len = r[k].length;
       while (true) { const can = b < r.length && len + r[b].length <= 30 ? b : a > 0 && len + r[a - 1].length <= 30 ? a - 1 : -1; if (can < 0) break; if (can === b) { len += r[b].length; b++; } else { a--; len += r[a].length; } }
       return r.slice(a, b); };
-    this.hud(rows.slice(-2).map(fit), tool, true);
+    this.hud(rows.slice(one ? -1 : -2).map(fit), tool, true);
     this.menuRows = rows;   // (for the tests: what the frame shows came from the game)
   }
   // the game's name in the corner all the film long (the owner: «нужно добавить логотип») — small, out of the work's way
@@ -581,7 +582,7 @@ export class Director {
     yield this.until(() => {
       const u = clamp01((this.t - t0) / dur), h = h0 + u * days * 24;
       sky.setHour(h); each?.(u);
-      draw(h); day.textContent = `DAY ${1 + Math.floor((h - 0.001) / 24)}`;
+      draw(h); day.textContent = `${this.dayWord === false ? '' : 'DAY '}${1 + Math.floor((h - 0.001) / 24)}`;   // (dayWord false: the number only — no word on the clock)
       el.style.opacity = Math.min(1, u * 8, (1 - u) * 8 + 0.001).toFixed(3);
       return u >= 1;
     });

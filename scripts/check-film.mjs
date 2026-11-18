@@ -26,6 +26,7 @@ const rowsRaw = await page.evaluate(async (FPS) => {
   const objN = () => { let n = 0; for (const t of ['unit', 'belt', 'dpc', 'slab', 'column', 'pool']) n += tc.objects.all(t).length; return n; };
   const scr = (p) => { if (!p) return null; const v = p.clone().project(tc.camera); return v.z < 1 && Math.abs(v.x) <= 0.95 && Math.abs(v.y) <= 0.95 ? [v.x, v.y] : null; };
   // (the words' boxes on the screen: which overlap)
+  const hudBoxes = () => [...document.querySelectorAll('#film .f-hud .f-row b, #film .f-logo, #film .f-money')].filter((e) => !e.hidden && !e.closest('[hidden]') && e.getClientRects().length > 0 && +getComputedStyle(e).opacity > 0.35).map((e) => { const r = e.getBoundingClientRect(); return { k: e.tagName === 'B' ? 'chip' : e.className.split(' ')[0], x0: r.left, y0: r.top, x1: r.right, y1: r.bottom }; });
   const boxes = () => [...document.querySelectorAll('#film .f-bill, #film .f-head, #film .f-kick, #film .f-count, #film .f-steps, #film .f-rew, #film .f-stage, #film .f-sketch, #film .f-next, #film .f-pin span, #film .f-rcpt .paper, #film .f-card')]
     
     .filter((e) => getComputedStyle(e).visibility !== 'hidden' && +getComputedStyle(e.closest('.f-pin') || e).opacity > 0.35 && +getComputedStyle(e).opacity > 0.35 && e.getClientRects().length > 0)
@@ -36,13 +37,23 @@ const rowsRaw = await page.evaluate(async (FPS) => {
     for (const x of [B.min.x, B.max.x]) for (const y of [B.min.y, B.max.y]) for (const z of [B.min.z, B.max.z]) { const v = new tc.camera.position.constructor(x, y, z).project(tc.camera); if (v.z > 1) behind = true; const sx = (v.x + 1) / 2, sy = (1 - v.y) / 2; x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy); }
     const F = document.getElementById('film')?.getBoundingClientRect() || { left: 0, top: 0, width: innerWidth, height: innerHeight };
     return { x0, y0, x1, y1, behind, px: [F.left + x0 * F.width, F.top + y0 * F.height, F.left + x1 * F.width, F.top + y1 * F.height], fw: F.width, fl: F.left }; };
+  // (a film's void — d.voidPts(): points that must be seen through (under a cantilever: the hanging reads only with nothing behind them
+  // but the sky, the ground, the water) — the share of them a ray from the eye reaches with no masonry of the house past them, and their
+  // spread across the frame; measured from the finale on (the loop's frame), each frame)
+  const RAY = (await import('three')).Raycaster;
+  const shownM = () => { const m = []; tc.wallView?.group?.traverse((o) => { if (!o.isMesh) return; for (let q = o; q; q = q.parent) if (!q.visible) return; m.push(o); }); return m; };
+  const voids = () => { if (!f.voidPts || f.marks?.finale == null) return null; const P = f.voidPts(); if (!P?.length) return null;
+    const R = new RAY(), e = tc.camera.position, M = shownM(), T = tc.terrain, yb = P.yb;
+    let clear = 0, xs = [];
+    for (const p of P) { const d = p.clone().sub(e), L = d.length(); R.set(e, d.normalize()); R.far = L * 6; const hit = R.intersectObjects(M, false).some((q) => q.distance > L * 0.6 && q.point.y < yb && q.point.y > T.heightAt(q.point.x, q.point.z) + 0.006); if (!hit) { clear++; const v = p.clone().project(tc.camera); xs.push((v.x + 1) / 2); } }
+    return { k: clear / P.length, span: xs.length ? Math.max(...xs) - Math.min(...xs) : 0 }; };
   for (let i = 0; i < 6000 && !f.done; i++) {
     // (a real pause each frame, as the render's round trip: the models and sounds the film waits for load as they do when it is drawn)
     await new Promise((r) => setTimeout(r, 4));
     tc.filmStep(1 / FPS, performance.now() / 1000, false);
     const c = tc.camera.position, q = tc.rig.target;
     const tp = f.toolAt?.(), wv = tc.wallView?.reveal, rv = tc.rebarView?.reveal;
-    out.push({ t: +f.t.toFixed(3), n: f.shot?.n || 0, fx: f.fx.some((e) => e.kind !== 'shake'), title: f.stepName || '', e: [c.x, c.y, c.z], a: [q.x, q.y, q.z], d: tc.rig.dist, b: boxes(),
+    out.push({ t: +f.t.toFixed(3), n: f.shot?.n || 0, fx: f.fx.some((e) => e.kind !== 'shake'), title: f.stepName || '', e: [c.x, c.y, c.z], a: [q.x, q.y, q.z], d: tc.rig.dist, b: boxes(), hb: hudBoxes(), vd: voids(),
       tp: tp ? [tp.x, tp.y, tp.z] : null, ts: scr(tp), sub: subj(), sv: !!tc.concreteGear?.pump?.stream?.visible, hw: tc.concreteTools?.hose?.state === 'work' && !!tc.concreteGear?.pump?.ready, hm: (() => { const H = tc.handTools; if (H?.cur !== 'hammer' || !H.tools.hammer?.g.visible || !wv) return null; const p = H.tools.hammer.g.getWorldPosition(tc.camera.position.clone()), F = tc.wallView.boardFaces ? tc.wallView.boardFaces(tc.objects.get(wv.id)) : []; if (!F.length) return null; const nU = Math.max(1, Math.ceil(wv.u * F.length)); let m = Infinity; for (const f of F.slice(0, nU)) { const dx = f.x1 - f.x0, dz = f.z1 - f.z0, L2 = dx * dx + dz * dz, q = L2 > 0 ? Math.max(0, Math.min(1, ((p.x - f.x0) * dx + (p.z - f.z0) * dz) / L2)) : 0; m = Math.min(m, Math.hypot(p.x - f.x0 - dx * q, p.z - f.z0 - dz * q)); } return m * 10.4651; })(), on: objN() + (tc.objects.ver || 0) + (wv ? wv.u : 0) + (rv ? rv.u : 0), job: !!(tc.physJob || tc.wallTool?.dpc?.busy || tc.concreteTools?.hose?.state === 'work') });
   }
   return { out, snd, marks: f.marks || {}, typed: f.hudTyped || [], notes: (f.notes || []).map((n) => String(n[1])), bills: (f.stageBillsLog || []).map((q) => q.usd), spent: f.spentShown ?? null };
@@ -117,7 +128,7 @@ const two = uniq(rows.filter((r) => !inHook(r.t) && r.b.filter((b) => MEAN.inclu
 // (a text over the work: the tool on screen ≥ 70 % of the time it is up, never > 1 s without it)
 const txt = (r) => !inHook(r.t) && r.b.some((b) => b.k === 'f-stage' || b.k === 'f-kick'), txtRows = rows.filter(txt);
 const txtTool = txtRows.length ? txtRows.filter((r) => r.ts).length / txtRows.length : 1;
-const txtOff = fmt(runs((r) => txt(r) && !r.ts, 1.0), 'a text up without the tool on screen');
+const txtOff = fmt(runs((r) => txt(r) && !r.ts, 0.8), 'a text up without the tool on screen');   // (0,8 s: the analyst, film 3)
 if (txtTool < 0.7) txtOff.unshift(`the tool on screen under texts ${(txtTool * 100).toFixed(0)} % < 70 %`);
 // («TO BE CONTINUED» 2.5–3.5 s before the seam)
 const nx = rows.find((r) => r.t < H0 && r.b.some((b) => b.k === 'f-next')), nxt = [];
@@ -159,6 +170,9 @@ if (Number.isFinite(H0)) {
     const S = r.sub; if (S.behind || S.x0 < 0.02 || S.x1 > 0.98 || S.y0 < 0.1 || S.y1 > 0.75) list.push(`${nm}: the subject not whole in the frame's band — x ${S.x0.toFixed(2)}–${S.x1.toFixed(2)}, y ${S.y0.toFixed(2)}–${S.y1.toFixed(2)}`);
     for (const b of r.b) { if (b.k === 'f-sketch') continue; const w = Math.min(b.x1, S.px[2]) - Math.max(b.x0, S.px[0]), h = Math.min(b.y1, S.px[3]) - Math.max(b.y0, S.px[1]); if (w > 4 && h > 4) list.push(`${nm}: ${b.k} «${b.txt}» over the subject`); }
   }
+  // (the hanging reads: on the loop's frame ≥ 90 % of the void's points seen through, spread over ≥ 15 % of the frame's width — film 3)
+  for (const [nm, r] of [['first frame', h0], ['last frame', pre]]) if (r?.vd) console.log(`VOID ${nm}: seen through ${(r.vd.k * 100).toFixed(0)} %, across ${(r.vd.span * 100).toFixed(0)} % of the width`);
+  for (const [nm, r] of [['first frame', h0], ['last frame', pre]]) if (r?.vd && (r.vd.k < 0.9 || r.vd.span < 0.15)) list.push(`${nm}: the void under the cantilever seen through ${(r.vd.k * 100).toFixed(0)} % (≥ 90), across ${(r.vd.span * 100).toFixed(0)} % of the width (≥ 15)`);
   if (pre && h0) { const de = len(sub(pre.e, h0.e)) / h0.d, da = len(sub(pre.a, h0.a)) / h0.d; if (de > 0.02 || da > 0.02) list.push(`the loop's seam: the camera moved ${(Math.max(de, da) * 100).toFixed(1)} % of its distance`);
     const k = (r) => r.b.filter((b) => b.k === 'f-next').map((b) => `${Math.round(b.x0)},${Math.round(b.y0)},${Math.round(b.x1 - b.x0)}`).join(); if (k(pre) !== k(h0)) list.push(`the loop's seam: «TO BE CONTINUED» not the same both sides (${k(pre) || '–'} / ${k(h0) || '–'})`); }
   // (the rewind: its sign from the hook's first 0,1 s; its count changing at least every 0,3 s while it runs)
@@ -190,9 +204,13 @@ if (marks.wow != null && marks.wowEnd != null) {
 // (the bills add up to the sum the film shows at its end — the analyst: that sum goes into the title; no cost left out of every bill)
 if (spent != null && bills?.length) { const sum = bills.reduce((a, v) => a + v, 0); if (Math.abs(sum - spent) > 1) list.push(`the bills add up to $${sum}, the film shows $${spent}`); if (bills.some((v) => !(v > 0))) list.push('a bill of $0'); }
 console.log(`\nTHE RELEASE LIST (numbers):\n` + list.join('\n'));
+// (the game's menu in the frame never over the logo or the budget — the analyst, film 3: a chip under the logo reads as a glitch)
+const OVL = (p, q) => Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0) > 1 && Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0) > 1;
+const chipOver = uniq(rows.flatMap((r) => { const H = r.hb || [], ch = H.filter((b) => b.k === 'chip'), top = H.filter((b) => b.k === 'f-logo' || b.k === 'f-money'); return ch.some((c) => top.some((t) => OVL(c, t))) ? [`${r.t.toFixed(2)} s a menu chip over the logo / budget`] : []; }));
 const menu = [...new Set(typed)].map((r) => `menu typed by the film, not the game's: ${r}`).concat(notes.filter((n) => /FAILED/.test(n)));
+console.log(`\nMENU OVER LOGO:\n` + chipOver.join("\n"));
 console.log(`\nMENU / NOTES:\n` + menu.join('\n'));
-const fails = list.length + lowP.length + menu.length + still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
+const fails = chipOver.length + list.length + lowP.length + menu.length + still.length + off.length + cnt.length + billStill.length + first10.length + hook.length + shortCut.length + two.length + txtOff.length + nxt.length + noTool.length + wordy.length;
 console.log(`\nRULES: ${fails ? fails + ' problems' : 'all pass'}`);
 if (!fails) console.log('gate: rules passed for version ' + gateMark(film, 'rules')); else console.log('gate: version ' + filmHash(film) + ' NOT passed — no render');
 console.log('LOG ' + JSON.stringify(rows.reduce((a, r) => { if (!a.length || a.at(-1)[0] !== r.n) a.push([r.n, r.t, r.title]); return a; }, [])));
