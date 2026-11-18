@@ -417,7 +417,7 @@ export function* sailFilm(d, app) {
     // the rule over the box's roof (the pour finished at its cut) — its bill over it: the work going on under it
     { const RB = O.get(roof), y = RB.top + RB.H + MM(15), xs = [IN + 300, SL.x1 - 500], zr = SL.z0 + 900; let u = 0;
       G.set('screed', new V(MM(xs[0]), y, MM(zr)), Math.PI / 2, true); tool = () => G.pos.clone();
-      act([[1.3, [-1300, 900, -1400], 3]]);
+      act([[1.3, [-2600, 2300, -3200], 3]]);   // (over the roof from the front, outside the box: not against its wall)
       billSoon('ROOF SLAB', 0.15, true);
       const t1 = d.t; yield d.until(() => { u += d.dt * d.speed * 0.9 / ((xs[1] - xs[0]) / 1000); G.set('screed', new V(MM(xs[0] + (xs[1] - xs[0]) * Math.min(1, u)), y, MM(zr + 120 * Math.sin(u * 40))), Math.PI / 2); app.sfx?.play?.('screed', { vol: 0.4, gap: 0.35 }); return u >= 1 || d.t - t1 > 2.1; });
       G.set(null); still(); }
