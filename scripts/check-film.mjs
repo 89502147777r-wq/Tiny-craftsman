@@ -178,6 +178,15 @@ if (Number.isFinite(H0)) {
 { const far = rows.filter((r) => r.hm != null && r.hm > 0.6); if (far.length > 3) list.push(`the hammer ${Math.max(...far.map((r) => r.hm)).toFixed(1)} m from any board up (${far.length} frames, from ${far[0].t.toFixed(1)} s)`); }
 // (the stream seen while the hose pours — the owner: the formwork filled with no stream)
 { const w = rows.filter((r) => r.hw), v = w.filter((r) => r.sv); if (w.length > 20 && v.length < w.length * 0.9) list.push(`the stream seen ${(100 * v.length / w.length).toFixed(0)} % of the hose's pouring (≥ 90)`); }
+// (the analyst's lesson from film 1 — the fall at 4–6,5 s: in the first 10 s of the video the tool never off the screen > 0,5 s)
+{ const r10 = runs((r) => !r.ts && !inHook(r.t) && vt(r.t) > 1.6 && vt(r.t) < 10, 0.5); for (const [x, y] of r10) list.push(`video ${vt(x).toFixed(1)}–${vt(y).toFixed(1)} s: in the first 10 s no tool on screen ${(y - x).toFixed(1)} s > 0,5`); }
+// (the owner's retention formula, 2026-11-18 — the analyst's numbers: the «wow» starts at 55–80 % of the video, and after its end ≤ 25 %
+// of the video is left; a film marks them d.mark('wow') / d.mark('wowEnd'))
+if (marks.wow != null && marks.wowEnd != null) {
+  const V = (H1 - H0 < Infinity ? (H1 - H0) : 0) + (H0 < Infinity ? H0 : rows.at(-1).t), w0 = vt(marks.wow) / V, w1 = vt(marks.wowEnd) / V;
+  if (w0 < 0.55 || w0 > 0.8) list.push(`the «wow» starts at ${(w0 * 100).toFixed(0)} % of the video (55–80)`);
+  if (1 - w1 > 0.25) list.push(`after the «wow» ${((1 - w1) * 100).toFixed(0)} % of the video is left (≤ 25)`);
+}
 console.log(`\nTHE RELEASE LIST (numbers):\n` + list.join('\n'));
 const menu = [...new Set(typed)].map((r) => `menu typed by the film, not the game's: ${r}`).concat(notes.filter((n) => /FAILED/.test(n)));
 console.log(`\nMENU / NOTES:\n` + menu.join('\n'));

@@ -443,6 +443,7 @@ export class WallView {
     for (const m of [block, brick, this.lintels.material, this.fill.material, this.columns.concMat]) withBitumen(m);
     // corner U-blocks: the side wall cut where the channel across comes in (one mesh each)
     this.ucut = new THREE.Group(); this.group.add(this.ucut);
+    this.spouts = new THREE.Group(); this.group.add(this.spouts);   // (a terrace upstand's overflow spouts)
     this._uGeo = new Map();
     this.ublocks.count = 0;
     // the anchor studs in the ring beams (М12, a hook at the foot), the washers and the nuts
@@ -689,8 +690,10 @@ export class WallView {
     // (a stripped belt's boards stacked where its record says — b.pile [x, z]: flat, six a layer, the longest at the bottom — the realist:
     // boards don't vanish, they go onto a stack by the site)
     for (const b of O.all('belt')) {
-      if (!b.stripped || !b.pile || b.kind === 'slab' || !this.terrain) continue;
-      const n = Math.min(60, Math.max(6, Math.round(boardsOf(b).length * 2.5))), [px, pz] = b.pile, g = this.terrain.heightAt(px, pz), bw = 150 * S, bt = 25 * S, L = 3000 * S;
+      // (a slab's edge boards off at a week: in their own stack, b.sidesPile; a ring beam's, an upstand's — all of them, b.pile)
+      const pile = b.kind === 'slab' ? (b.sidesOff || b.stripAt != null || b.stripped ? b.sidesPile : null) : b.stripped ? b.pile : null;
+      if (!pile || !this.terrain) continue;
+      const n = Math.min(60, Math.max(6, Math.round(boardsOf(b).length * 2.5))), [px, pz] = pile, g = this.terrain.heightAt(px, pz), bw = 150 * S, bt = 25 * S, L = 3000 * S;
       for (let k = 0; k < n && nw < this.max.wood - 40; k++) {
         const lay = Math.floor(k / 6), i = k % 6, y = g + bt / 2 + lay * bt + 40 * S;
         Q.setFromAxisAngle(_Y, 0.02 * Math.sin(k * 7.1)); this.wood.setMatrixAt(nw, m.compose(P.set(px + (i - 2.5) * (bw + 4 * S), y, pz), Q, Sv.set(bw, bt, L))); this.owner.wood[nw++] = b.id ?? null;
@@ -710,16 +713,20 @@ export class WallView {
       const rv = this.reveal && b.id != null && this.reveal.id === b.id ? this.reveal.u : 1, faces = rv < 1 ? inOrder(boardsOf(b)) : boardsOf(b);
       const lim = rv >= 1 ? Infinity : Math.max(rv > 0 ? 1 : 0, Math.floor(rv * faces.length * Math.ceil((over + b.H) / (150.4 * S))));   // (the first board up at once: the hammer has one to nail)
       let shown = 0;
+      // (a terrace's upstand: the outer board laps down the slab's edge; a board over the slab stands on it — over 0, never in the concrete)
+      const slabU = b.kind === 'upstand' ? O.get(b.slab) : null, slabP = slabU ? plan(slabU) : null;
+      const onSlab = (s, t) => { if (!slabP) return false; const i = Math.floor(s / slabU.c), j = Math.floor(t / slabU.c); return i >= 0 && j >= 0 && i < slabU.ni && j < slabU.nj && !!slabP.mask[j * slabU.ni + i]; };
       for (const [s0, t0, s1, t1, ns, nt] of faces) {
         if (shown >= lim) break;
         if (nw >= this.max.wood - 40 || nbb >= this.max.beltBoards - 4) break;
         if ((ns < 0 && cl[0]) || (ns > 0 && cl[1])) continue;
+        const ov = slabU && onSlab((s0 + s1) / 2 + ns * slabU.c * 0.5, (t0 + t1) / 2 + nt * slabU.c * 0.5) ? 0 : over, hh0 = ov + b.H, yc0 = b.top - ov + hh0 / 2;
         const along = ns === 0, L = Math.hypot(s1 - s0, t1 - t0) + (along ? (2 - c0 - c1) : 2) * th;
         const cs = (s0 + s1) / 2 + ns * th / 2 + (along ? (c0 - c1) * th / 2 : 0), ct = (t0 + t1) / 2 + nt * th / 2, [x, z] = toWorld(b, cs, ct);
         Q.setFromAxisAngle(_Y, along ? yaw : yaw + Math.PI / 2);
         // boards 150 mm tall from the bottom up, the top one ripped to what is left
         const bh = 150 * S, aB = this.beltBoards.geometry.attributes.aBoard;
-        for (let y0 = b.top - over; y0 < b.top + b.H - 1e-5; y0 += bh + 0.4 * S) {
+        for (let y0 = b.top - ov; y0 < b.top + b.H - 1e-5; y0 += bh + 0.4 * S) {
           if (shown++ >= lim) break;
           const hh = Math.min(bh, b.top + b.H - y0);
           this.beltBoards.setMatrixAt(nbb, m.compose(P.set(x, y0 + hh / 2, z), Q, Sv.set(L, hh, th)));
@@ -730,9 +737,31 @@ export class WallView {
         for (let k = 0; k <= n && !b.lform; k++) {
           const f = k / n - 0.5, ss = cs + (along ? f * (L - 60 * S) : 0) + ns * (th / 2 + 20 * S), tt = ct + (along ? 0 : f * (L - 60 * S)) + nt * (th / 2 + 20 * S);
           const [sx, sz] = toWorld(b, ss, tt);
-          this.wood.setMatrixAt(nw, m.compose(P.set(sx, yc + 15 * S, sz), Q, Sv.set(40 * S, h + 30 * S, 40 * S))); this.owner.wood[nw++] = b.id ?? null;
+          this.wood.setMatrixAt(nw, m.compose(P.set(sx, yc0 + 15 * S, sz), Q, Sv.set(40 * S, hh0 + 30 * S, 40 * S))); this.owner.wood[nw++] = b.id ?? null;
         }
       }
+      // (an upstand's two boards tied over the top: a batten across every 500 mm, nailed to both — the realist)
+      if (slabU && shown >= lim && rv >= 1) for (const [a0, a1, l, hw, par] of b.segs || []) {
+        const n = Math.max(1, Math.round((a1 - a0) / (500 * S)));
+        for (let k = 0; k <= n && nw < this.max.wood - 2; k++) {
+          const a = a0 + (a1 - a0) * k / n, [x, z] = toWorld(b, par ? a : l, par ? l : a);
+          Q.setFromAxisAngle(_Y, par ? yaw + Math.PI / 2 : yaw);
+          this.wood.setMatrixAt(nw, m.compose(P.set(x, b.top + b.H + 20 * S, z), Q, Sv.set(2 * hw + 2 * th + 120 * S, 40 * S, 40 * S))); this.owner.wood[nw++] = b.id ?? null;
+        }
+      }
+    }
+    // a terrace upstand's overflow: a grey PVC pipe Ø110 through it, 30 over the membrane (≈ 280 over the slab), 150 out of its face
+    for (const c of [...this.spouts.children]) { c.geometry.dispose(); this.spouts.remove(c); }
+    for (const b of O.all('belt')) {
+      if (b.kind !== 'upstand' || !b.spout || !(b.fill > 0.5)) continue;
+      const sl = O.get(b.slab); if (!sl) continue;
+      // (out: from the slab's middle toward the spout's cell — through the upstand's width and on)
+      const cx = sl.o[0] + sl.u[0] * sl.ni * sl.c / 2 - sl.u[1] * sl.nj * sl.c / 2, cz = sl.o[1] + sl.u[1] * sl.ni * sl.c / 2 + sl.u[0] * sl.nj * sl.c / 2;
+      let ox = b.spout[0] - cx, oz = b.spout[1] - cz; const L = Math.hypot(ox, oz) || 1; ox /= L; oz /= L;
+      const len = 500 * S, g = new THREE.CylinderGeometry(55 * S, 55 * S, len, 20, 1, true);
+      g.rotateZ(Math.PI / 2); g.rotateY(-Math.atan2(oz, ox)); g.translate(b.spout[0] + ox * 150 * S, b.top + 280 * S, b.spout[1] + oz * 150 * S);
+      const mpvc = this._pvc || (this._pvc = new THREE.MeshStandardMaterial({ color: 0x8d9093, roughness: 0.55, side: THREE.DoubleSide }));
+      const mesh = new THREE.Mesh(g, mpvc); mesh.castShadow = true; this.spouts.add(mesh);
     }
     // the studs: from 40 mm over the bottom of the beam to 200 mm over its top (150 the wall
     // plate, 50 for the washer and the nut); a hook at the foot; the nut once the plate is on

@@ -6,6 +6,7 @@ import { wallLines, masonry, findOpenings } from '../tools/windowFit.js';
 import { beltContains } from '../tools/belt.js';
 import { gableWalls } from './pitched.js';
 import { houseOutside } from '../tools/pitchedTool.js';
+import { printLogo } from './brandPrint.js';
 
 // The facade (мокрый фасад / навесные панели), laid piece by piece as on site:
 //   eps  – the insulation: facade EPS boards 1000 × 500 × 100 on glue, staggered, cut at the
@@ -76,9 +77,7 @@ export function membraneTex() {
   const n = 512, c = canvas(n), g = c.getContext('2d');
   g.fillStyle = 'rgba(236,238,240,0.86)'; g.fillRect(0, 0, n, n);
   for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(${rnd() < 0.5 ? '255,255,255' : '160,165,175'},${0.08 + rnd() * 0.1})`; g.fillRect(rnd() * n, rnd() * n, 2 + rnd() * 10, 1 + rnd() * 2); }
-  g.fillStyle = 'rgba(40,90,170,0.75)'; g.font = 'bold 22px Arial';
-  for (let y = 40; y < n; y += 128) for (let x = (y / 128 % 2) * 120; x < n; x += 260) g.fillText('ВЕТРОЗАЩИТА', x, y);
-  const t = asTex(c);
+  const t = asTex(c); printLogo(c, t, { alpha: 0.7, tint: 'rgb(40,90,170)', w: 130 });   // (the maker's print: the game's logo)
   return (TEX.mb = { map: t, roughness: 0.75 });
 }
 
@@ -93,10 +92,11 @@ export function epsTex() {
     g.strokeStyle = `rgba(150,150,140,${0.12 + rnd() * 0.12})`; g.lineWidth = 0.6; g.beginPath(); g.arc(x, y, r, 0, 6.28); g.stroke();
     h.fillStyle = grey(0.5 + rnd() * 0.08); h.beginPath(); h.arc(x, y, r * 0.9, 0, 6.28); h.fill();
   }
-  g.fillStyle = 'rgba(30,90,170,0.6)'; g.font = 'bold 20px sans-serif'; g.fillText('ППС 16Ф · ФАСАД', 26, 46); g.font = '13px sans-serif'; g.fillText('1000×500×100  ГОСТ 15588', 26, 66);
+  g.fillStyle = 'rgba(30,90,170,0.6)'; g.font = '13px sans-serif'; g.fillText('1000×500×100', 26, 66);
   g.fillStyle = 'rgba(120,120,110,0.35)'; for (const [x, y, w, hh] of [[0, 0, n, 3], [0, m - 3, n, 3], [0, 0, 3, m], [n - 3, 0, 3, m]]) g.fillRect(x, y, w, hh);
   h.fillStyle = '#505050'; for (const [x, y, w, hh] of [[0, 0, n, 2], [0, m - 2, n, 2], [0, 0, 2, m], [n - 2, 0, 2, m]]) h.fillRect(x, y, w, hh);
-  return (TEX.eps = { map: asTex(c), normalMap: normalOf(hc, 2), roughness: 0.9 });
+  const te = asTex(c); printLogo(c, te, { alpha: 0.6, tint: 'rgb(30,90,170)', w: 150, dx: 2000, dy: 2000, y0: 40 });
+  return (TEX.eps = { map: te, normalMap: normalOf(hc, 2), roughness: 0.9 });
 }
 
 // ---- the base coat (a 500 mm tile): grey glue in the trowel's sweeps; with the mesh pressed in --
@@ -138,8 +138,7 @@ export function looseMeshTex() {
   // (strands thick enough that far off — the smaller mip levels — they still hold their alpha: thin
   // ones fade out under the cut-off and the mesh flickers away at a glancing angle)
   strands(g, n, () => `rgb(${226 + rnd() * 20},${128 + rnd() * 20},${58 + rnd() * 10})`, 2.6, 0.6);
-  g.fillStyle = 'rgba(40,40,40,0.8)'; g.font = 'bold 13px sans-serif'; g.fillText('ФАСАДНАЯ 160', 40, 30);
-  const t = asTex(c); t.anisotropy = 8;
+  const t = asTex(c); t.anisotropy = 8; printLogo(c, t, { alpha: 0.7, w: 90, dx: 2000, dy: 2000, y0: 26 });
   return (TEX.loose = { map: t });
 }
 // a smooth wet coat of the plaster (before the float): the colour, the trowel's sweeps

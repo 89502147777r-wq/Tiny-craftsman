@@ -381,9 +381,11 @@ export class Director {
   // stage is on, what its work costs is only added up — no pop-ups, the sum on the screen stands; at its end stageBill
   // names it, shows what it cost, rings the till, and the sum drops by that
   byStages(on = true) { this.byStage = !!on; this._billFrom = this._billShown = this.app.budget.money; this.stageBillsLog = []; }
-  stageBill(label) {
-    const now = this.app.budget.money, usd = Math.round((this._billFrom ?? now) - now);
-    this._billFrom = this._billShown = now;
+  // fixed: the sum taken when the stage's work ended (a film shows its bill a little later, over the next work — what that work
+  // costs by then goes into the next bill, not this one)
+  stageBill(label, fixed = null) {
+    const now = this.app.budget.money, usd = Math.round(fixed ?? ((this._billFrom ?? now) - now));
+    this._billFrom = fixed != null ? (this._billFrom ?? now) - fixed : now; this._billShown = this._billFrom;
     if (usd <= 0) return 0;
     this.stageBillsLog?.push({ label, usd });
     for (const q of this.items) if (q.stage) q.t1 = -1;

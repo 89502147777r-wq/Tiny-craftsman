@@ -11,9 +11,12 @@ const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
 export const UPSTAND = { H: 450, w: 200 };
 
 // → { rec, n, why } (rec null when there is no free edge)
-export function findUpstand(app, slab, { H = UPSTAND.H, w = UPSTAND.w } = {}) {
+// skip: [[x0, z0, x1, z1]…] (world) — the footprint of walls still to be built on the slab (a film knows its box before it is laid:
+// the upstand is cast first, the walls go on the slab beside it — never through it); cast: false — the mask only, for the slab's
+// starter bars before its concrete
+export function findUpstand(app, slab, { H = UPSTAND.H, w = UPSTAND.w, skip = [], cast = true, spoutNear = null } = {}) {
   const b = slab, P = plan(b), { ni, nj, c } = b, top = b.top + b.H;
-  if (!(b.fill > 0.9)) return { rec: null, why: 'Сначала залейте перекрытие' };
+  if (cast && !(b.fill > 0.9)) return { rec: null, why: 'Сначала залейте перекрытие' };
   const k = Math.max(1, Math.round(MM(w) / c));
   // the distance (in cells, 8 ways) of each slab cell from the nearest cell that is not the slab: the edge band is ≤ k
   const dist = new Int32Array(ni * nj).fill(1e9), q = [];
@@ -33,7 +36,9 @@ export function findUpstand(app, slab, { H = UPSTAND.H, w = UPSTAND.w } = {}) {
   const on = app.objects.all('unit').filter((u) => u.p && u.s && u.q && u.kind !== 'prop').map(boxOf).filter((x) => x.bot > top - MM(5) && x.bot < top + MM(80));
   const under = (i, j) => {
     const [x, z] = [b.o[0] + b.u[0] * (i + 0.5) * c - b.u[1] * (j + 0.5) * c, b.o[1] + b.u[1] * (i + 0.5) * c + b.u[0] * (j + 0.5) * c];
-    return on.some((u) => { const dx = x - u.x, dz = z - u.z; return Math.abs(dx * u.ux + dz * u.uz) < u.hl + c * 1.2 && Math.abs(-dx * u.uz + dz * u.ux) < u.hw + c * 1.2; });
+    // (the upstand runs up to the wall's face — flush: the membrane goes on from it up the wall's foot)
+    return on.some((u) => { const dx = x - u.x, dz = z - u.z; return Math.abs(dx * u.ux + dz * u.uz) < u.hl + c * 0.2 && Math.abs(-dx * u.uz + dz * u.ux) < u.hw + c * 0.2; })
+      || skip.some(([x0, z0, x1, z1]) => x > Math.min(x0, x1) && x < Math.max(x0, x1) && z > Math.min(z0, z1) && z < Math.max(z0, z1));
   };
   const m = new Uint8Array(ni * nj); let n = 0;
   for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) { const id = j * ni + i; if (P.mask[id] && dist[id] <= k && !under(i, j)) { m[id] = 1; n++; } }
@@ -51,8 +56,25 @@ export function findUpstand(app, slab, { H = UPSTAND.H, w = UPSTAND.w } = {}) {
       for (const key of runs) { if (open.has(key)) open.get(key)[1] = e; else open.set(key, [e, e]); }
     }
   }
+  // the starter bars out of the slab (left in its cage before the concrete — U-bars Ø12 every 250, two legs 60 each side of the
+  // upstand's middle, up 400 over the slab): [x0, y0, z0, x1, y1, z1, d]
+  const starters = [], d = MM(12);
+  for (const [a0, a1, l, , par] of segs) {
+    const n = Math.max(1, Math.floor((a1 - a0 - MM(100)) / MM(250)));
+    for (let q = 0; q <= n; q++) {
+      const a = a0 + MM(50) + (a1 - a0 - MM(100)) * q / n;
+      for (const o of [-MM(60), MM(60)]) {
+        const [s2, t2] = par ? [a, l + o] : [l + o, a], x = b.o[0] + b.u[0] * s2 - b.u[1] * t2, z = b.o[1] + b.u[1] * s2 + b.u[0] * t2;
+        starters.push([+x.toFixed(5), +(b.top + MM(40)).toFixed(5), +z.toFixed(5), +x.toFixed(5), +(top + MM(400)).toFixed(5), +z.toFixed(5), +d.toFixed(6)]);
+      }
+    }
+  }
+  // the overflow (аварийный перелив): a PVC spout Ø100 through the upstand 30 over the membrane, at its lowest corner — over the pool
+  let spout = null;
+  { let best = null; for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) { if (!m[j * ni + i]) continue; const sc = (i + 0.5) * c, tc = (j + 0.5) * c, x = b.o[0] + b.u[0] * sc - b.u[1] * tc, z = b.o[1] + b.u[1] * sc + b.u[0] * tc, key = spoutNear ? Math.hypot(x - spoutNear[0], z - spoutNear[1]) : sc + tc; if (!best || key < best.key) best = { key, sc, tc }; }
+    if (best) spout = [+(b.o[0] + b.u[0] * best.sc - b.u[1] * best.tc).toFixed(5), +(b.o[1] + b.u[1] * best.sc + b.u[0] * best.tc).toFixed(5)]; }
   const rec = {
-    type: 'belt', kind: 'upstand', slab: b.id, o: b.o.slice(), u: b.u.slice(), c: b.c, ni, nj, mask: rle(m), top: +top.toFixed(6), H: +MM(H).toFixed(6),
+    type: 'belt', kind: 'upstand', starters, ...(spout ? { spout } : {}), slab: b.id, o: b.o.slice(), u: b.u.slice(), c: b.c, ni, nj, mask: rle(m), top: +top.toFixed(6), H: +MM(H).toFixed(6),
     lv: new Array(n).fill(0), sm: new Array(n).fill(0.3), fill: 0, ...(b.clip ? { clip: b.clip.slice() } : {}),
     segs: segs.map((s) => s.map((v, i) => (i < 4 ? +v.toFixed(6) : v))),
   };

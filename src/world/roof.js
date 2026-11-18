@@ -4,6 +4,7 @@ import { MODEL_SCALE } from '../config.js';
 import { plan, toWorld, toFrame, snapS, beltContains } from '../tools/belt.js';
 import { boxOf } from '../tools/freeBrick.js';
 import { mats as winMats } from './windows.js';
+import { printLogo } from './brandPrint.js';
 
 // A flat roof (плоская кровля) on a floor slab, laid piece by piece as on site:
 //   vap  – the vapour barrier: rolls 1,5 m wide rolled out by hand, 100 mm overlaps,
@@ -40,7 +41,7 @@ const PHOTO = {};
 function photo(folder, file, srgb = false) {
   const key = folder + '/' + file;
   if (PHOTO[key]) return PHOTO[key];
-  const t = new THREE.TextureLoader().load(`assets/textures/${folder}/${file}`);
+  const t = new THREE.TextureLoader().load(`assets/textures/${folder ? folder + '/' : ''}${file}`);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return (PHOTO[key] = t);
 }
@@ -73,9 +74,8 @@ function vapTex() {
     h.save(); h.translate(x, y); h.rotate(a); const gr = h.createLinearGradient(0, -w, 0, w); gr.addColorStop(0, '#808080'); gr.addColorStop(0.5, rnd() < 0.5 ? '#b0b0b0' : '#555'); gr.addColorStop(1, '#808080'); h.fillStyle = gr; h.fillRect(-l / 2, -w, l, 2 * w); h.restore();
     g.save(); g.translate(x, y); g.rotate(a); g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(-l / 2, -1, l, 2); g.restore();
   }
-  g.fillStyle = 'rgba(40,70,120,0.45)'; g.font = 'bold 18px sans-serif';
-  for (let y = 40; y < n; y += 128) for (let x = (y / 128) % 2 ? 0 : 120; x < n; x += 260) g.fillText('ПАРОИЗОЛЯЦИЯ · В', x, y);
-  return (TEX.vap = { map: asTex(c), normalMap: normalOf(hc, 3) });
+  const t = asTex(c); printLogo(c, t, { alpha: 0.45, tint: 'rgb(40,70,120)', w: 120 });   // (the maker's print: the game's logo — no words)
+  return (TEX.vap = { map: t, normalMap: normalOf(hc, 3) });
 }
 // an XPS board 1200 × 600: orange, the fine cells, the stamp, the edges (a shiplap)
 function xpsTex() {
@@ -88,11 +88,12 @@ function xpsTex() {
   // the skin of the board: faint lines along it
   for (let y = 0; y < m; y += 3) { g.fillStyle = `rgba(255,255,255,${rnd() * 0.04})`; g.fillRect(0, y, n, 1); }
   // the stamp
-  g.fillStyle = 'rgba(70,40,120,0.55)'; g.font = 'bold 22px sans-serif'; g.fillText('XPS 300 · 150 мм', 30, 60); g.font = '14px sans-serif'; g.fillText('ТЕХНОПЛЕКС ЭКСТРУЗИЯ', 30, 82);
+  g.fillStyle = 'rgba(70,40,120,0.55)'; g.font = 'bold 22px sans-serif'; g.fillText('300 · 150', 30, 88);   // (the maker's stamp: the game's logo over the numbers, printed once the logo is in)
   // the edges: a darker band and a dip in the height (the step of the shiplap)
   g.fillStyle = 'rgba(110,50,10,0.45)'; for (const [x, y, w, hh] of [[0, 0, n, 6], [0, m - 6, n, 6], [0, 0, 6, m], [n - 6, 0, 6, m]]) g.fillRect(x, y, w, hh);
   h.fillStyle = '#404040'; for (const [x, y, w, hh] of [[0, 0, n, 4], [0, m - 4, n, 4], [0, 0, 4, m], [n - 4, 0, 4, m]]) h.fillRect(x, y, w, hh);
-  return (TEX.xps = { map: asTex(c), normalMap: normalOf(hc, 2) });
+  const tx = asTex(c); printLogo(c, tx, { alpha: 0.6, tint: 'rgb(70,40,120)', w: 170, dx: 2000, dy: 2000, y0: 52 });
+  return (TEX.xps = { map: tx, normalMap: normalOf(hc, 2) });
 }
 // a tapered board 1000 × 1000: light grey beads of EPS, the arrow of its fall
 function wedgeTex() {
@@ -263,9 +264,19 @@ export function buildRoof(b, units, rec, live) {
   const add = (geo, mat, shadow = true) => { if (!geo) return; const m = new THREE.Mesh(geo, mat); m.castShadow = shadow; m.receiveShadow = true; group.add(m); };
   const mmS = (v) => v / S / 1000;   // model → metres (for texture coordinates)
   // the vapour barrier: the strips, each a hair above the last (they overlap)
-  // (the curing film over fresh concrete: the same polyethylene, strips lapped — laid by a film, taken off at a week)
+  // (the curing film over fresh concrete — the realist: clear-milky polyethylene 200 µm, no print, the dark wet concrete seen through
+  // it, its creases (a photo's relief — ambientCG Foil003), strips lapped 100; the edges and the laps held down by short boards
+  // against the wind — taken off at a week)
   const cure = L('cure');
-  if (cure.length) { const t = vapTex(); add(sheet(cure, () => 0.6, (s, t2) => [mmS(s) / 1.5, mmS(t2) / 1.5], 0.25), new THREE.MeshStandardMaterial({ ...t, roughness: 0.35, metalness: 0.1, side: THREE.DoubleSide }), false); }
+  if (cure.length) {
+    add(sheet(cure, () => 0.6, (s, t2) => [mmS(s) / 1.2, mmS(t2) / 1.2], 0.25), new THREE.MeshStandardMaterial({ color: 0xe8ecef, transparent: true, opacity: 0.42, depthWrite: false, roughness: 0.22, metalness: 0, normalMap: photo('', 'film_nor.jpg'), normalScale: new THREE.Vector2(0.9, 0.9), side: THREE.DoubleSide }), false);
+    const parts = [], yaw = Math.atan2(-b.u[1], b.u[0]);
+    for (const rc of cure) for (const t2 of [rc[1] + MM(60), rc[3] - MM(60)]) for (let s = rc[0] + MM(500); s < rc[2] - MM(300); s += MM(2800)) {
+      const [i, j] = [Math.floor(s / c), Math.floor(t2 / c)]; if (!area.on(i, j)) continue;
+      const p = W(s, t2, 0.6 + 14), g = new THREE.BoxGeometry(MM(1000), MM(25), MM(100)); g.rotateY(yaw + ((Math.round(s / MM(100)) % 3) - 1) * 0.12); g.translate(...p); parts.push(g);
+    }
+    if (parts.length) add(mergeGeometries(parts, false), new THREE.MeshStandardMaterial({ map: photo('raw_plank_wall', 'diff.jpg', true), normalMap: photo('raw_plank_wall', 'nor_gl.jpg'), roughness: 0.85 }));
+  }
   const vap = L('vap');
   if (vap.length) { const t = vapTex(); add(sheet(vap, () => 0.5, (s, t2) => [mmS(s) / 1.5, mmS(t2) / 1.5], 0.25), new THREE.MeshStandardMaterial({ ...t, roughness: 0.4, metalness: 0.15, side: THREE.DoubleSide }), false); }
   // the boards (XPS, the wedges): boxes, cut to the roof; the top textured per board
@@ -459,7 +470,7 @@ export function buildRoof(b, units, rec, live) {
   if (live?.roll && live.rect) {
     const [a0, b0, a1, b1] = live.rect, A = live.roll.along, rad = MM(live.layer === 'vap' || live.layer === 'cure' ? 55 : 85), len = A ? b1 - b0 : a1 - a0;
     const s = A ? live.roll.end : (a0 + a1) / 2, t2 = A ? (b0 + b1) / 2 : live.roll.end, h = live.layer === 'vap' || live.layer === 'cure' ? 1 : top(s, t2) + ROOF.mem;
-    const P0 = W(s, t2, h), roll = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 24), new THREE.MeshStandardMaterial({ ...(live.layer === 'vap' || live.layer === 'cure' ? vapTex() : memTex(mc[1])), roughness: 0.45 }));
+    const P0 = W(s, t2, h), roll = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 24), new THREE.MeshStandardMaterial(live.layer === 'cure' ? { color: 0xdfe4e8, roughness: 0.3, normalMap: photo('', 'film_nor.jpg') } : { ...(live.layer === 'vap' ? vapTex() : memTex(mc[1])), roughness: 0.45 }));
     const yaw = Math.atan2(-b.u[1], b.u[0]);
     roll.rotation.set(Math.PI / 2, 0, 0); roll.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), yaw + (A ? 0 : Math.PI / 2));
     roll.position.set(P0[0], P0[1] + rad, P0[2]); roll.castShadow = true; group.add(roll);

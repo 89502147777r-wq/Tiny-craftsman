@@ -288,6 +288,9 @@ export function beltCage(b) {
       }
     }
   }
+  // (an upstand's bars from the slab: left in the slab's cage before its concrete — or, on a slab cast without them, drilled and
+  // bonded in (post-installed rebar on resin), as on site)
+  if (b.kind === 'upstand' && b.starters && !b.startersInSlab) for (const q of b.starters) bars.push(q.slice());
   return { type: 'cage', outlineId: null, beltId: b.id, bars, chairs: [], frogs: [], ties, tied: true, stars, d };
 }
 
@@ -303,7 +306,7 @@ export class BeltChannel {
     this.inner = b.kind === 'pool' && b.part !== 'wall';   // (a pool's walls are a narrow gap like any wall: the owner saw a grey prism stand from the forms up to the hose)
     // (what may stand over the boards: a slab's rule pushes a heap on along them — 40; a pool's wall is a gap 250 wide: what comes over
     // its boards runs over them at once (the owner: «why do these 40 mm not run out?»))
-    this.over = b.part === 'wall' ? 0 : 40;
+    this.over = b.part === 'wall' || b.kind === 'upstand' ? 0 : 40;   // (an upstand 200 wide: a narrow gap too)
     if (this.inner) this.edge = this.P.nb.map((n) => n.some((q) => q < 0));
     this.spilt = 0;
   }

@@ -49,6 +49,7 @@
 | `assets/textures/pool_mosaic_graphite/` — мозаика «графит» | Tiles 138 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Tiles138 |
 | `assets/textures/pool_mosaic_white/` — мозаика белая | Tiles 107 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Tiles107 |
 | `assets/textures/travertine/` — бортовой камень, травертин | Travertine 009 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Travertine009 |
+| `assets/textures/film_nor.jpg` — рельеф складок плёнки ухода (только карта нормалей, 512) | Foil 003 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Foil003 |
 | `assets/textures/pool_coat/` — обмазочная гидроизоляция, бортовой камень «керамогранит» | Concrete 034 | Lennart Demes (ambientCG) | CC0 | https://ambientcg.com/a/Concrete034 |
 
 ## Текстуры вентфасада (ambientCG, CC0 1.0)

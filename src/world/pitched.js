@@ -4,6 +4,7 @@ import { canvas, asTex, normalOf, gravelTex } from './roof.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { aeratedTexture } from './walls.js';
 import { buildRoofWindow, rwinSpan } from './roofWindows.js';
+import { printLogo } from './brandPrint.js';
 
 // A pitched roof (скатная крыша) over the house, built up layer by layer:
 //   plate   – the wall plate (мауэрлат) 150 × 150 on the top of the walls, and the masonry
@@ -75,10 +76,9 @@ function membTex() {
   const n = 512, c = canvas(n), g = c.getContext('2d');
   g.fillStyle = '#c9ced3'; g.fillRect(0, 0, n, n);
   for (let i = 0; i < 4000; i++) { g.fillStyle = `rgba(255,255,255,${rnd() * 0.08})`; g.fillRect(rnd() * n, rnd() * n, 2, 2); }
-  g.fillStyle = 'rgba(30,80,150,0.55)'; g.font = 'bold 22px sans-serif';
-  for (let y = 60; y < n; y += 170) for (let x = (y / 170) % 2 ? 10 : 140; x < n; x += 260) g.fillText('ИЗОСПАН · AM', x, y);
   g.fillStyle = 'rgba(30,80,150,0.4)'; g.fillRect(0, 8, n, 3);   // (the line for the overlap)
-  return (TEX.memb = asTex(c));
+  const t = asTex(c); printLogo(c, t, { alpha: 0.6, tint: 'rgb(30,80,150)', w: 130, dy: 170, y0: 60 });   // (the maker's print: the game's logo — no real brand)
+  return (TEX.memb = t);
 }
 function osbTex() {
   if (TEX.osb) return TEX.osb;
