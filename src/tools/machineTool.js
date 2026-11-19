@@ -1237,7 +1237,10 @@ export class MachineTool {
             { let cx = 0, cy = 0, cz = 0; for (const q of P) { cx += q.x; cy += q.y; cz += q.z; } const mo = E.mouthWorld ? E.mouthWorld(new THREE.Vector3()) : null;
               const nxm = mo ? mo.x - cx / P.length : 0, nzm = mo ? mo.z - cz / P.length : 0, nl = Math.hypot(nxm, nzm);
               let room = cap * E.holdShare() - g.load;
-              if (nl > 1e-9 && (nxm * f[0] + nzm * f[1]) / nl > 0.3 && room > 0) {
+              // (the opening's own way, all of it — not its level part alone: curled right in (120°, build 319) it faces up, and the little
+              // of it that is level, made a unit, read as «ahead» — the owner, 2026-11-19: driven into a heap it filled through its back)
+              const od = E.openDir?.(new THREE.Vector3()), ahead = od ? od.x * f[0] + od.z * f[1] : (nl > 1e-9 ? (nxm * f[0] + nzm * f[1]) / nl : 0);
+              if (nl > 1e-9 && ahead > 0.3 && room > 0) {
                 const hwB = (E.bucketW || R(1)) / 2; let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
                 for (let d = 0; d <= fr - bk && room > 0; d += t.cell * 0.7) for (let q2 = -hwB; q2 <= hwB && room > 0; q2 += t.cell * 0.7) {
                   const px = fx0 - f[0] * d - f[1] * q2, pz = fz0 - f[1] * d + f[0] * q2; if (!t.inside(px, pz)) continue;

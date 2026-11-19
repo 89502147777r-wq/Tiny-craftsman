@@ -311,6 +311,12 @@ export class Excavator {
     const t0 = this.teethWorld(new THREE.Vector3()), c = this.curl; this.bucketP.rotation.x = c + 0.02; const t1 = this.teethWorld(new THREE.Vector3()); this.bucketP.rotation.x = c; this.root.updateMatrixWorld(true);
     return out.copy(t1).sub(t0).normalize();
   }
+  // the way its opening faces (world): from the middle of its hollow out through the middle of the opening (teeth to back lip)
+  openDir(out = new THREE.Vector3()) {
+    if (!this.lips || !this._c) return null;
+    const [a, b] = this.lips, c = this._c; this.root.updateMatrixWorld(true);
+    return out.set(0, (a[0] + b[0]) / 2 - c[0], (a[1] + b[1]) / 2 - c[1]).transformDirection(this.bucketP.matrixWorld);
+  }
   // the way the cutting edge faces (world): from the bucket's hollow out through its teeth
   edgeDir(out = new THREE.Vector3()) { const t = this.teethWorld(), m = this.mouthWorld(); return out.copy(t).sub(m).normalize(); }
   // the bucket's opening faces down (the soil falls out) — its curl opened past the stick's line
