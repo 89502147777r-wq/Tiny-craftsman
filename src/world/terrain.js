@@ -497,14 +497,16 @@ export class Terrain {
     cells.box = [Math.max(0, bx0 - 2), Math.max(0, bz0 - 2), Math.min(this.rx, bx1 + 2), Math.min(this.rz, bz1 + 2)];
     this._stops.set(key, cells);
   }
-  // the same by cells (an excavator's bucket in the ground: its footprint), one way out (ox, oz) for all; null takes them away
+  // the same by cells (an excavator's bucket in the ground: its footprint), one way out (ox, oz) for all; null takes them away.
+  // These are marked 2: only the slumping soil keeps out of them (relax) — what is tipped or poured there lands as it would
+  // (on the bucket's place: the bucket is not a tyre standing on the ground)
   setStopCells(key, list, ox = 0, oz = 0) {
     const old = this._stops.get(key);
     if (old) { for (const i of old) { this.stop[i] = 0; this.stopDir[2 * i] = this.stopDir[2 * i + 1] = 0; } if (old.length) { const b = old.box; this._touch(b[0], b[1], b[2], b[3]); } }
     if (!list?.length) { this._stops.delete(key); return; }
     const cells = []; let bx0 = 1e9, bz0 = 1e9, bx1 = -1, bz1 = -1;
     for (const i of list) {
-      if (this.stop[i]) continue; this.stop[i] = 1; this.stopDir[2 * i] = Math.round(ox * 127); this.stopDir[2 * i + 1] = Math.round(oz * 127); cells.push(i);
+      if (this.stop[i]) continue; this.stop[i] = 2; this.stopDir[2 * i] = Math.round(ox * 127); this.stopDir[2 * i + 1] = Math.round(oz * 127); cells.push(i);
       const ix = i % this.nx, iz = (i / this.nx) | 0; if (ix < bx0) bx0 = ix; if (ix > bx1) bx1 = ix; if (iz < bz0) bz0 = iz; if (iz > bz1) bz1 = iz;
     }
     cells.box = [Math.max(0, bx0 - 2), Math.max(0, bz0 - 2), Math.min(this.rx, bx1 + 2), Math.min(this.rz, bz1 + 2)];
@@ -513,7 +515,7 @@ export class Terrain {
   // (x, z) on an obstacle: moved out of it the way out → [x, z]
   _outOfStop(x, z) {
     for (let k = 0; k < 60 && this.inside(x, z); k++) {
-      const i = this.index(x, z); if (!this.stop[i]) break;
+      const i = this.index(x, z); if (this.stop[i] !== 1) break;
       x += this.stopDir[2 * i] / 127 * this.cell; z += this.stopDir[2 * i + 1] / 127 * this.cell;
     }
     return [x, z];
@@ -522,7 +524,7 @@ export class Terrain {
     if (vol <= 0) return;
     const { nx: n, cell } = this;
     const stops = this._stops.size > 0;
-    if (stops && this.inside(x, z) && this.stop[this.index(x, z)]) [x, z] = this._outOfStop(x, z);
+    if (stops && this.inside(x, z) && this.stop[this.index(x, z)] === 1) [x, z] = this._outOfStop(x, z);   // (a tyre — not a bucket's footprint (2): what is tipped there lands on it)
     const r = Math.max(radius, cell * 0.8);
     const reach = r * 2.2;
     const ix0 = Math.max(0, Math.floor(this.toCellX(x - reach))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(x + reach)));
@@ -530,7 +532,7 @@ export class Terrain {
     let wsum = 0;
     const inv = 1 / (2 * r * r);
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
-      if (stops && this.stop[iz * n + ix]) continue;
+      if (stops && this.stop[iz * n + ix] === 1) continue;
       const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
       wsum += Math.exp(-(dx * dx + dz * dz) * inv);
     }
@@ -544,7 +546,7 @@ export class Terrain {
     }
     const k = vol / (wsum * this.cellArea);
     for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
-      if (stops && this.stop[iz * n + ix]) continue;
+      if (stops && this.stop[iz * n + ix] === 1) continue;
       const dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
       this._push(iz * n + ix, k * Math.exp(-(dx * dx + dz * dz) * inv), mat, depth);
     }
