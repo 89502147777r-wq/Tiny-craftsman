@@ -311,6 +311,29 @@ export class Excavator {
     const t0 = this.teethWorld(new THREE.Vector3()), c = this.curl; this.bucketP.rotation.x = c + 0.02; const t1 = this.teethWorld(new THREE.Vector3()); this.bucketP.rotation.x = c; this.root.updateMatrixWorld(true);
     return out.copy(t1).sub(t0).normalize();
   }
+  // its opening's points (world): along the chord between its lips, across its width
+  mouthPoints() {
+    if (!this._mPts) { const pts = []; if (this.lips) { const [a, b] = this.lips; for (let u = 0; u <= 6; u++) { const y = a[0] + (b[0] - a[0]) * u / 6, z = a[1] + (b[1] - a[1]) * u / 6; for (let k = -7; k <= 7; k++) pts.push(new THREE.Vector3((this.secX || 0) + (this.secW || 0) * 0.5 * k / 7, y, z)); } } this._mPts = pts; }
+    this.root.updateMatrixWorld(true); const m = this.bucketP.matrixWorld; return this._mPts.map((q) => q.clone().applyMatrix4(m));
+  }
+  // the way its opening faces (world): from its hollow's middle out through the opening's middle; and how much that is up
+  openVec(out = new THREE.Vector3()) {
+    if (!this.lips || !this._c) return null;
+    const [a, b] = this.lips, c = this._c; this.root.updateMatrixWorld(true);
+    return out.set(0, (a[0] + b[0]) / 2 - c[0], (a[1] + b[1]) / 2 - c[1]).transformDirection(this.bucketP.matrixWorld);
+  }
+  mouthUp() { return this.openVec(new THREE.Vector3())?.y ?? 0; }
+  // its hollow filled with points (world): a grid over its section, across its width — the bucket's own room; shoving, no soil may stand
+  // in it (the owner, 2026-11-19: «the sand shows inside the shut bucket», as once with the loader — mended by points over all its bucket)
+  interiorPoints() {
+    if (!this._inPts) {
+      const sec = this.sec || [], pts = []; if (sec.length) { let y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity; for (const [y, z] of sec) { y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+        const inP = (y, z) => { let c = false; for (let i = 0, j = sec.length - 1; i < sec.length; j = i++) { const [yi, zi] = sec[i], [yj, zj] = sec[j]; if ((zi > z) !== (zj > z) && y < (yj - yi) * (z - zi) / (zj - zi) + yi) c = !c; } return c; };
+        const nA = 10; for (let a = 0; a <= nA; a++) for (let b = 0; b <= nA; b++) { const y = y0 + (y1 - y0) * a / nA, z = z0 + (z1 - z0) * b / nA; if (inP(y, z)) for (let k = -7; k <= 7; k++) pts.push(new THREE.Vector3((this.secX || 0) + (this.secW || 0) * 0.5 * k / 7, y, z)); } }   // (15 across, ≤ 2 cells apart: no comb of soil left between — the realist)
+      this._inPts = pts;
+    }
+    this.root.updateMatrixWorld(true); const m = this.bucketP.matrixWorld; return this._inPts.map((q) => q.clone().applyMatrix4(m));
+  }
   // the way the cutting edge faces (world): from the bucket's hollow out through its teeth
   edgeDir(out = new THREE.Vector3()) { const t = this.teethWorld(), m = this.mouthWorld(); return out.copy(t).sub(m).normalize(); }
   // the bucket's opening faces down (the soil falls out) — its curl opened past the stick's line

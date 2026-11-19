@@ -1215,7 +1215,7 @@ export class MachineTool {
     // (the bucket's points before anything moves this step — driven too: the owner's screen recording, 2026-11-19 — driven into a heap,
     // it went through the bucket's walls: the shove took its «before» after the machine had moved, and saw no move)
     const lipOf = () => { const tp = E.teethWorld(new THREE.Vector3()), hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, out = []; for (let k = -4; k <= 4; k++) out.push(new THREE.Vector3(tp.x + ux * hw * k / 4, tp.y, tp.z + uz * hw * k / 4)); return out; };
-    const start0 = { hp: E.hardPoints(), lip: lipOf() }; start0.pp = E.pushPoints ? E.pushPoints() : start0.hp;
+    const start0 = { hp: E.hardPoints(), lip: lipOf(), ip: E.interiorPoints ? E.interiorPoints() : [] }; start0.pp = E.pushPoints ? E.pushPoints() : start0.hp;
     if (this.excMode === 'drive') {
       this.v += (-ly * R(1.3) - this.v) * (1 - Math.exp(-dt * 3));
       if (Math.abs(this.v) < R(0.01) && !ly) this.v = 0;
@@ -1278,12 +1278,19 @@ export class MachineTool {
     // (full, it still cuts while it is in no deeper than 85 % of its depth: what does not fit runs out over its lip —
     // a driver drags a full bucket on so; deeper, the ground holds it)
     const hold = cap * E.holdShare(), bucketDeep = R(1.0) * 0.8, full = g.load >= hold * 0.98;
-    const edge = E.cutDir(new THREE.Vector3()), cutting = moving && !E.open && (!full || tDeep0 < bucketDeep * 0.85) && mv.dot(edge) > mv.length() * 0.2;   // (the teeth going where they point — as the bucket curls in; its back first only pushes)
+    const edge = E.cutDir(new THREE.Vector3()), lead = E.edgeDir(new THREE.Vector3()), mvl = mv.length() || 1, ahx = p.x + mv.x / mvl * t.cell * 2, ahz = p.z + mv.z / mvl * t.cell * 2, teethIn = (t.inside(ahx, ahz) && t.heightAt(ahx, ahz) > p.y + R(0.01)) || (t.inside(p.x, p.z) && t.heightAt(p.x, p.z) > p.y + R(0.01)), cutting = moving && !E.open && teethIn && (!full || tDeep0 < bucketDeep * 0.85) && mv.dot(edge) > mv.length() * 0.2 && mv.dot(lead) > mv.length() * 0.42;   // (and its teeth in the ground, or the ground just ahead of them over them: over it all, they cut nothing)   // (the teeth going where they point — as the bucket curls in; its back first only pushes)
+    // (and its teeth leading the way it goes — within ~65° of it (the realist): the owner, 2026-11-19 — curled right in and drawn toward
+    // the cab, the teeth went the way they cut (their arc's tangent) though pointing up, across the way: it filled at once, shut. Curled
+    // and lifted at a stroke's end, or cutting a face upward, the teeth still lead: it cuts)
+    // (its mouth not facing the way it goes — curled so it faces up, drawn teeth first: it skims — what is over its teeth goes in, what
+    // its body meets below them is shoved, not taken (the owner, 2026-11-19: shut, drawn toward the cab, «it fills at once»); its mouth
+    // facing the way it goes, as it digs — all it goes through is the cut, into it)
+    const ov = E.openVec?.(new THREE.Vector3()), skim = cutting && !!ov && mv.dot(ov) < mv.length() * 0.35;
     this._excCut = cutting;   // (for a lump of concrete in its way: world/lumps.js)
     // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews; not cutting, its teeth too:
     // swung sideways through a heap, they go first)
     // (the bucket's back, bottom and sides shove what is over them — dense across its width (pushPoints), not the shell's sparse vertices)
-    { const pp1 = E.pushPoints ? E.pushPoints() : E.hardPoints(), st0 = E.stickPoints(); if (!cutting) this._excShove([...start0.pp, ...start0.hp, ...start0.lip], [...pp1, ...E.hardPoints(), ...lip()], p); else this._excPush(hp0, E.hardPoints(), p); }   // (shoving: all its shell, not its back, bottom and sides alone — the owner, 2026-11-19: a heap showed through the bucket's top and hood, outside the footprint)
+    { const pp1 = E.pushPoints ? E.pushPoints() : E.hardPoints(), st0 = E.stickPoints(); if (!cutting || skim) this._excShove([...start0.pp, ...start0.hp, ...start0.lip, ...start0.ip], [...pp1, ...E.hardPoints(), ...lip(), ...(E.interiorPoints ? E.interiorPoints() : [])], p, skim); else this._excPush(hp0, E.hardPoints(), p); }   // (shoving: all its shell, not its back, bottom and sides alone — the owner, 2026-11-19: a heap showed through the bucket's top and hood, outside the footprint)
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
@@ -1300,7 +1307,7 @@ export class MachineTool {
       // wide as the bucket, its walls straight)
       // (the bucket's body behind its teeth: its lowest line along it, bin by bin — the bins it leaves out filled
       // between their neighbours — cut across all its width: the cut is the bucket's own shape, smooth, no ribs)
-      { const lx = uz, lz = -ux, bin = t.cell, low = new Map();
+      if (!skim) { const lx = uz, lz = -ux, bin = t.cell, low = new Map();
         for (const c of [p, ...E.shellPoints()]) { if (!t.inside(c.x, c.z)) continue; const k = Math.round(((c.x - p.x) * lx + (c.z - p.z) * lz) / bin); low.set(k, Math.min(low.get(k) ?? Infinity, c.y)); }
         const ks = [...low.keys()].sort((a, b) => a - b);
         for (let n = 0; n + 1 < ks.length; n++) for (let k = ks[n] + 1; k < ks[n + 1]; k++) low.set(k, low.get(ks[n]) + (low.get(ks[n + 1]) - low.get(ks[n])) * (k - ks[n]) / (ks[n + 1] - ks[n]));
@@ -1654,7 +1661,7 @@ export class MachineTool {
   // The band: every point of its shell drawn along its whole way this step, the lowest of them over each cell (a cell round) — all
   // that is loose over that is cut (its layers kept: sand, stone, topsoil) and laid as a windrow just ahead of its leading wall,
   // along that wall; it slumps there to its angle (afterRelax, as the loader's), and once it has, the band is cleared again
-  _excShove(P0, P1, teeth) {
+  _excShove(P0, P1, teeth, noSpill = false) {
     const t = this.app.terrain, g = this.grader, c1 = t.cell, low = new Map(), foot = new Set();
     let sx = 0, sz = 0, n = 0;
     const surf = (x, z) => { const i = t.index(x, z); return t.nat[i] + t.loose[i]; };
@@ -1689,14 +1696,28 @@ export class MachineTool {
       }
       if (!(got > 0)) return 0;
       t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2));
-      // (laid against its leading wall, along it: a windrow there — it slumps to its angle out ahead and to the sides)
-      const ahead = fr + R(0.3), span = Math.max(R(0.2), v1 - v0), K = Math.max(2, Math.ceil(span / R(0.25)));
+      // (laid against its leading wall, along it — close to it, no gap (the realist): a windrow there; it slumps to its angle ahead and to the sides)
+      const ahead = fr + R(0.08), span = Math.max(R(0.2), v1 - v0), K = Math.max(2, Math.ceil(span / R(0.25)));
       for (let q = 0; q < K; q++) { const v = v0 + span * (q + 0.5) / K, ax = ux * ahead - uz * v, az = uz * ahead + ux * v; if (!t.inside(ax, az)) continue; for (let m = 0; m < 5; m++) if (acc[m] > 0) t.deposit(ax, az, acc[m] * t.cellArea / K, R(0.18), 0, m); }
       acc.fill(0);
       return got;
     };
+    // (its mouth under the heap's top as it goes: what lies over the mouth falls in by its own weight (the realist — a spoon drawn through
+    // sugar): the share of the column over the mouth that the mouth passes under this step, up to what the bucket holds; its mouth over
+    // the heap — nothing. Taken before the room is cleared: what is over its mouth goes in, not into the windrow)
+    { const E = this.exc, dg = this.digG, mp = E?.mouthPoints?.();
+      if (!noSpill && dg && mp?.length && E.mouthUp?.() > 0.3) {
+        // (the realist's measure: the mouth's width × its way this step × the mean height of soil over it — gathered from the cells over it,
+        // each its share of what lies there)
+        const cap = R(1) ** 3 * 0.4 / t.cellArea, room = cap * E.holdShare() - dg.load, cells = new Map(); let took = 0, sumO = 0, nO = 0;
+        for (const m of mp) { if (!t.inside(m.x, m.z)) continue; const i = t.index(m.x, m.z); nO++; if (cells.has(i) || !dg.free(i, m.x, m.z)) continue; const over = Math.min(t.nat[i] + t.loose[i] - m.y, t.loose[i]); if (over > 1e-7) { cells.set(i, over); sumO += over; } }
+        const meanO = nO ? [...cells.values()].reduce((q, v) => q + v, 0) / Math.max(1, cells.size) * Math.min(1, cells.size / Math.max(1, nO / 7)) : 0;   // (over the mouth's cells — the mouth's own points are 7 deep)
+        const want = Math.min(room, (E.secW || R(0.9)) * av * meanO / t.cellArea);   // (in cell heights × cellArea = volume)
+        if (want > 0 && sumO > 0) for (const [i, over] of cells) { const tk = Math.min(over, want * over / sumO); dg.cut(i, tk); took += tk; }
+        if (took > 0) { E.load = Math.min(1, dg.load / cap); this.app.sfx.play('soil_dump', { gap: 0.5, at: mp[0], vol: 0.25 }); }
+      } }
     const moved = clear();
-    this._slumpAt = [ux * (fr + R(0.3)) - uz * (v0 + v1) / 2, uz * (fr + R(0.3)) + ux * (v0 + v1) / 2];   // (afterRelax: the windrow slumps to its angle)
+    this._slumpAt = [ux * (fr + R(0.08)) - uz * (v0 + v1) / 2, uz * (fr + R(0.08)) + ux * (v0 + v1) / 2];   // (afterRelax: the windrow slumps to its angle)
     this._wallPass = clear;   // (and what slumped back into its band since: out again)
     this._pushStat = (this._pushStat || 0) + moved;   // (for the tests)
     this._pushLoad = (this._pushLoad || 0) + moved * t.cellArea * MODEL_SCALE ** 3;   // (m³ shoved lately: the slew slows under it)
