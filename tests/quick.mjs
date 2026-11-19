@@ -1136,19 +1136,23 @@ if (want("2i")) {
         { const keepE = [E.x, E.z, E.yaw], keepJ = ['swing', 'boom', 'stick', 'curl'].map((k) => [E[k], E[k + 'Goal']]), looseKeep = t.loose.slice(), g = mt.digG;
           const vol = () => { let v = 0; for (let i = 0; i < t.loose.length; i++) v += t.loose[i]; return v * t.cellArea / (M * M * M); };
           const poke = () => { let w = 0; for (const q of [...(E.pushPoints ? E.pushPoints() : []), ...E.hardPoints()]) if (t.inside(q.x, q.z)) { const i = t.index(q.x, q.z); w = Math.max(w, Math.min(t.heightAt(q.x, q.z) - q.y, t.loose[i])); } return w / M; };
+          // (the owner, 2026-11-19, step by step: the closed bucket down on the ground, 3 m³ of sand beside it one side, 3 m³ of crushed
+          // stone the other, slewed into each: build 320 raked thin furrows, the heaps' middles went 0,24 / 0,09 m, 0,5–0,7 m of soil over
+          // its shell. The realist: one band, 45–60 % of a heap ahead as a windrow, nothing through its steel, none lost)
           o.slewSide = [];
-          for (const sd of [1, -1]) {
-            t.loose.set(looseKeep); t._touch(0, 0, t.rx, t.rz); E.place(t, 0, 0, 0); E.swing = E.swingGoal = 0; E.curl = E.curlGoal = E.lim.curl[1]; E.stick = E.stickGoal = 0; frames(2);
-            { let lo2 = E.lim.boom[0], hi2 = E.lim.boom[1]; for (let k = 0; k < 30; k++) { const b2 = (lo2 + hi2) / 2; E.boom = E.boomGoal = b2; E._apply(); const q = E.teethWorld(new V()); if (low() - t.firmAt(q.x, q.z) > 0.05 * M) hi2 = b2; else lo2 = b2; } }   // (its lowest point 5 cm off the ground)
+          { t.loose.set(looseKeep); t._touch(0, 0, t.rx, t.rz); E.place(t, -8 * M, -6 * M, 0); E.swing = E.swingGoal = 0; E.curl = E.curlGoal = E.lim.curl[1]; E.stick = E.stickGoal = 0; frames(2);   // (on ground not dug by the tests before — inside the plot all round)
+            { let lo2 = E.lim.boom[0], hi2 = E.lim.boom[1]; for (let k = 0; k < 30; k++) { const b2 = (lo2 + hi2) / 2; E.boom = E.boomGoal = b2; E._apply(); const q = E.teethWorld(new V()); if (low() - t.firmAt(q.x, q.z) > 0.01 * M) hi2 = b2; else lo2 = b2; } }   // (down on the ground)
             frames(5); g.carry?.fill?.(0); g.load = 0;
-            const m0 = E.mouthWorld(new V()), c = E.root.position, rx = m0.x - c.x, rz = m0.z - c.z, rl = Math.hypot(rx, rz) || 1, tx = -rz / rl * sd, tz = rx / rl * sd;
-            const s0 = E.swing; E.swingGoal = s0 - 0.05 * sd; E._apply(); E.swing = E.swingGoal; E._apply(); const m1 = E.mouthWorld(new V()); E.swing = E.swingGoal = s0; E._apply();   // (the way it slews, lx = sd)
-            const dl = Math.hypot(m1.x - m0.x, m1.z - m0.z) || 1, H = { x: m0.x + (m1.x - m0.x) / dl * 1.0 * M, z: m0.z + (m1.z - m0.z) / dl * 1.0 * M }; void tx; void tz;
-            t.deposit(H.x, H.z, 0.6 * M * 2 * Math.PI * (0.4 * M) ** 2, 0.4 * M, 0); frames(3);
-            const v0 = vol(), L0 = g.load, sw0 = E.swing; let pk = 0;
-            mt.joystick('l', sd, 0); for (let i = 0; i < 60; i++) { tc.simulate(1 / 30); pk = Math.max(pk, poke()); } mt.joystick('l', 0, 0); frames(3);
-            o.slewSide.push({ sd, swung: +(E.swing - sw0).toFixed(2), over: +pk.toFixed(2), lost: +(v0 - vol()).toFixed(3), took: +((g.load - L0) * t.cellArea / (M * M * M)).toFixed(3) });
-          }
+            const m0 = E.mouthWorld(new V()), c = E.root.position, rx = m0.x - c.x, rz = m0.z - c.z, rl = Math.hypot(rx, rz) || 1, tx = -rz / rl, tz = rx / rl;
+            const s0 = E.swing; E.swing = s0 - 0.05; E._apply(); const m1 = E.mouthWorld(new V()); E.swing = s0; E._apply(); const sgn = Math.sign((m1.x - m0.x) * tx + (m1.z - m0.z) * tz) || 1;   // (lx = +1 slews toward +t when sgn = 1)
+            const v3 = 3 * M * M * M; t.deposit(m0.x + tx * 1.4 * M, m0.z + tz * 1.4 * M, v3, 0.9 * M, 0, 1); t.deposit(m0.x - tx * 1.4 * M, m0.z - tz * 1.4 * M, v3, 0.9 * M, 0, 3);   // (sand at +t, crushed stone at −t)
+            for (let i = 0; i < 40000 && t.active; i++) t.relax(1); t._touch(0, 0, t.rx, t.rz); frames(5);
+            const side = (sd) => { let v = 0, w = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const l = t.loose[iz * t.nx + ix]; if (l <= 0 || Math.hypot(t.toWorldX(ix) - m0.x, t.toWorldZ(iz) - m0.z) > 4 * M) continue; const d = (t.toWorldX(ix) - m0.x) * tx + (t.toWorldZ(iz) - m0.z) * tz;   /* (only these two heaps: within 4 m — the tests before left spoil about the plot) */ if (d * sd > 0) { v += l; w += l * d * sd; } } return { v: v * t.cellArea / (M * M * M), mid: w / Math.max(1e-12, v) / M }; };
+            for (const [sd, n2, name] of [[1, 75, 'sand'], [-1, 150, 'stone']]) {
+              const b0 = side(sd), v0 = vol(), L0 = g.load, sw0 = E.swing; let pk = 0;
+              mt.joystick('l', sd * sgn, 0); for (let i = 0; i < n2; i++) { tc.simulate(1 / 30); pk = Math.max(pk, poke()); } mt.joystick('l', 0, 0); frames(10);
+              o.slewSide.push({ name, swung: +(E.swing - sw0).toFixed(2), moved: +(side(sd).mid - b0.mid).toFixed(2), over: +pk.toFixed(2), lost: +((v0 - vol()) / Math.max(1e-9, v0)).toFixed(3), took: +((g.load - L0) * t.cellArea / (M * M * M)).toFixed(3) });
+            } }
           g.load = 0; g.carry?.fill?.(0); t.loose.set(looseKeep); t._touch(0, 0, t.rx, t.rz); E.place(t, ...keepE); ['swing', 'boom', 'stick', 'curl'].forEach((k, n) => { E[k] = keepJ[n][0]; E[k + 'Goal'] = keepJ[n][1]; }); frames(3); } }
     // (the owner: a drop of concrete on the ground stays a dab — not a pillar down when dug round; a bucket takes it whole)
     { const LV = tc.lumpView, mod = await import('./src/world/lumps.js'), b = E.teethWorld(new V()), i0 = t.index(b.x + 1.2 * M, b.z), nx = t.nx, ids = [];
@@ -1239,7 +1243,7 @@ if (want("2i")) {
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: the excavator\'s boom and bucket stop the loader and the truck where the arm is low; swung away, the spot is free (the owner)', o.arm && o.arm.low === true && o.arm.lowT === true && o.arm.inFits && o.arm.away === false && o.arm.lifted !== true, JSON.stringify(o.arm));
   check('machines: the excavator\'s bucket opens 40–50° past the stick\'s line and closes 115–125° to the cab, through its linkage (links fixed, the rod in its barrel and on the common pin, the rod lengthening as it closes, no link near straight, no jump) — the owner', o.curlOpen >= 40 && o.curlOpen <= 50 && o.curlShut >= 115 && o.curlShut <= 125 && o.linkage.linked && o.linkage.mono && o.linkage.jump < 0.012 && o.linkage.lk >= 20 && o.linkage.rodA >= 15 && o.linkage.idler < 0.002 && o.linkage.hlink < 0.002 && o.linkage.arm < 0.002 && o.linkage.rodOnPin < 0.002 && o.rodMin >= o.linkage.barrel[0] * 0.98 && o.rodMax <= o.linkage.barrel[1], JSON.stringify({ open: o.curlOpen, shut: o.curlShut, rod: [o.rodMin, o.rodMax], ...o.linkage }));
-  check('machines: the bucket curled, low, the house slewed — its side shoves a heap each way: ≤ 0,3 m of loose soil over its shell (it does not come in through its walls), none lost, none taken in (the owner)', o.slewSide?.length === 2 && o.slewSide.every((r) => Math.abs(r.swung) > 0.5 && r.over <= 0.3 && Math.abs(r.lost) <= 0.02 && r.took <= 0.005), JSON.stringify(o.slewSide));
+  check('machines: the bucket curled, low, the house slewed into 3 m³ of sand and 3 m³ of crushed stone: each heap shoved on ≥ 0,3 m, ≤ 0,25 m of loose soil over its shell (the windrow at its leading wall up to its rim + 0,15 — the realist; not through its walls), none lost (the owner)', o.slewSide?.length === 2 && o.slewSide.every((r) => Math.abs(r.swung) > 0.4 && r.moved >= 0.3 && r.over <= 0.25 && Math.abs(r.lost) <= 0.02 && r.took <= 0.005), JSON.stringify(o.slewSide));
   check('machines: the excavator\'s bucket standing in a heap 2 s keeps its footprint — the cut\'s sides do not run in through it (≤ 5 % more loose in it; the realist)', o.stand && o.stand.cells > 0 && o.stand.still && o.stand.grew <= 0.05, JSON.stringify(o.stand));
   check('machines: pushed, what stood over the bucket\'s underside in its band is gone — driven into a heap ≤ 20 % left, slewed through ≤ 20 % (the realist)', o.drivePush?.band?.share <= 0.2 && o.slewBand?.share <= 0.2 && o.drivePush.band.before > 0.01 && o.slewBand.before > 0.01, JSON.stringify({ drive: o.drivePush?.band, slew: o.slewBand, back: o.back?.band }));
   check('machines: the excavator\'s bucket, its back first (the stick out), shoves on what of a heap is over its way — its top down to it, not through it (the owner, 2026-11-19: it went 2 cm)', o.back && o.back.pushed > 0.1 && o.back.h1 < o.back.h0 - 0.35 && o.back.kept <= 0.65, JSON.stringify(o.back));
