@@ -1279,7 +1279,7 @@ export class MachineTool {
     // (the owner: its back, bottom and sides shove what is loose — heaps, spoil — as it moves or slews; not cutting, its teeth too:
     // swung sideways through a heap, they go first)
     // (the bucket's back, bottom and sides shove what is over them — dense across its width (pushPoints), not the shell's sparse vertices)
-    { const pp1 = E.pushPoints ? E.pushPoints() : E.hardPoints(), st0 = E.stickPoints(); if (!cutting) this._excPush([...pp0, ...hp0.slice(-st0.length), ...lip0], [...pp1, ...st0, ...lip()], p); else this._excPush(hp0, E.hardPoints(), p); }
+    { const pp1 = E.pushPoints ? E.pushPoints() : E.hardPoints(), st0 = E.stickPoints(); if (!cutting) this._excPush([...pp0, ...hp0, ...lip0], [...pp1, ...E.hardPoints(), ...lip()], p); else this._excPush(hp0, E.hardPoints(), p); }   // (shoving: all its shell, not its back, bottom and sides alone — the owner, 2026-11-19: a heap showed through the bucket's top and hood, outside the footprint)
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
