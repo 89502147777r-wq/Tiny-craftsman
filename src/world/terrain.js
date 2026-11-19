@@ -497,6 +497,19 @@ export class Terrain {
     cells.box = [Math.max(0, bx0 - 2), Math.max(0, bz0 - 2), Math.min(this.rx, bx1 + 2), Math.min(this.rz, bz1 + 2)];
     this._stops.set(key, cells);
   }
+  // the same by cells (an excavator's bucket in the ground: its footprint), one way out (ox, oz) for all; null takes them away
+  setStopCells(key, list, ox = 0, oz = 0) {
+    const old = this._stops.get(key);
+    if (old) { for (const i of old) { this.stop[i] = 0; this.stopDir[2 * i] = this.stopDir[2 * i + 1] = 0; } if (old.length) { const b = old.box; this._touch(b[0], b[1], b[2], b[3]); } }
+    if (!list?.length) { this._stops.delete(key); return; }
+    const cells = []; let bx0 = 1e9, bz0 = 1e9, bx1 = -1, bz1 = -1;
+    for (const i of list) {
+      if (this.stop[i]) continue; this.stop[i] = 1; this.stopDir[2 * i] = Math.round(ox * 127); this.stopDir[2 * i + 1] = Math.round(oz * 127); cells.push(i);
+      const ix = i % this.nx, iz = (i / this.nx) | 0; if (ix < bx0) bx0 = ix; if (ix > bx1) bx1 = ix; if (iz < bz0) bz0 = iz; if (iz > bz1) bz1 = iz;
+    }
+    cells.box = [Math.max(0, bx0 - 2), Math.max(0, bz0 - 2), Math.min(this.rx, bx1 + 2), Math.min(this.rz, bz1 + 2)];
+    this._stops.set(key, cells);
+  }
   // (x, z) on an obstacle: moved out of it the way out → [x, z]
   _outOfStop(x, z) {
     for (let k = 0; k < 60 && this.inside(x, z); k++) {
