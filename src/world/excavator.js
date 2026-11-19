@@ -131,6 +131,7 @@ export class Excavator {
     // rod on the stick, sliding out of its barrel as the bucket is curled in; the boom's and the stick's
     // cylinders join two parts and are aimed at each other's pins. The joints go only as far as the
     // cylinders' stroke lets them (the rod never out of its barrel, never through its end)
+    this._rigLinkage();
     this._rigCylinders();
     this.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this._aim();
@@ -501,7 +502,69 @@ export class Excavator {
     }
   }
   // the joints' limits (rad from the model's pose: the boom up, the stick hanging, the bucket curled)
-  static LIM = { boom: [-0.55, 0.5], stick: [-0.95, 0.55], curl: [-1.7, 1.25] };   // (the curl's own end: its cylinder's stroke — _rigCylinders)
+  // (the owner, 2026-11-19: «it opens too far and does not close all the way» — it went 63° past the stick's line and closed
+  // only 61° to the cab, 124° in all: the model had no linkage, its rod pinned straight on the bucket, so the stroke ran out.
+  // A 20 t machine's bucket (the realist): open 40–50° past the stick's line, closed 115–125° to the cab, 165° or so in all —
+  // the curl is 28,6° to the cab at 0 and 1 rad ≈ 57,3°: open −1,284 = 45° past, closed 1,595 = 120°)
+  static LIM = { boom: [-0.55, 0.5], stick: [-0.95, 0.55], curl: [-1.284, 1.595] };
+  // the bucket's linkage, as on the machine (the model has none): an idler link pinned on the stick a little above the
+  // bucket's pin, a power (H-) link from the bucket's lugs; they meet on one pin with the cylinder's rod — a four-bar, the
+  // stroke turned into the bucket's 165°. Its sizes (stick-frame units, the stick 1,73 long — fitted so that the rod's
+  // length goes 1,41 → 2,23 over the curl's range, inside its barrel, the two links ≥ 25° off a straight line and the rod
+  // ≥ 18° off either link (the realist: along one, the bucket «hangs on nothing» — the first fit had it 1° off the idler)):
+  // the idler's pin 0,30 up the stick from the bucket's and 0,09 toward the cylinder's face, the idler 0,48, the H-link 0,40,
+  // its pin on the lugs 0,38 from the bucket's pin, on the line to where the rod was pinned
+  static LINK = { up: 0.297, out: 0.09, idler: 0.48, hlink: 0.40, arm: 0.38 };
+  _rigLinkage() {
+    const cb = this.cyl.find((c) => c.r.name === 'cyl_bucket_r'); if (!cb) return;
+    this.root.updateMatrixWorld(true);
+    const S = this.stickP, inv = S.matrixWorld.clone().invert(), at = (o) => new THREE.Vector3().setFromMatrixPosition(o.matrixWorld).applyMatrix4(inv);
+    const B = at(this.bucketP), r0 = at(cb.r), K = Excavator.LINK;
+    // (the stick's frame: y up it, z toward the cylinder's face; the bucket turns about x — at curl 0 now)
+    const d = new THREE.Vector2(r0.y - B.y, r0.z - B.z), arm = d.clone().setLength(K.arm);
+    const along = new THREE.Vector2(-B.y, -B.z).normalize();   // (from the bucket's pin up the stick to its own)
+    const outN = new THREE.Vector2(-along.y, along.x); if (outN.y < 0) outN.negate();   // (toward the cylinder's face: +z)
+    const I = new THREE.Vector2(B.y, B.z).addScaledVector(along, K.up).addScaledVector(outN, K.out);
+    this._lk = { B: new THREE.Vector2(B.y, B.z), arm, I, x: r0.x, C: null };
+    // the rod's end now on the common pin: hung on the stick, put there every pose (its world place kept as it is moved)
+    S.attach(cb.r);
+    // the links: two steel plates a side (the idler outside the stick, the H-link inside the bucket's lugs), the pins across
+    // (painted as the arm — plain paint: the stick's photo texture smeared over the plates' own coordinates)
+    const steel = new THREE.MeshStandardMaterial({ color: 0xc08a1c, roughness: 0.62, metalness: 0 });
+    const pinM = new THREE.MeshStandardMaterial({ color: 0x8d8f91, metalness: 0.6, roughness: 0.4 });
+    let sx = 0.25; S.traverse((o) => { if (o.isMesh && !o.name.startsWith('cyl_') && o.geometry) { o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox.clone().applyMatrix4(inv.clone().multiply(o.matrixWorld)); if (bb.min.y < B.y + 0.1) sx = Math.max(sx, Math.min(0.32, Math.max(-bb.min.x, bb.max.x))); } });
+    const plate = (L, w, t) => {   // (a plate along +z from its pin (0) to the next (L), its width along y, its thickness along x)
+      const sh = new THREE.Shape(), r = w / 2; sh.absarc(0, 0, r, Math.PI / 2, Math.PI * 1.5, false); sh.absarc(L, 0, r, -Math.PI / 2, Math.PI / 2, false);
+      const g = new THREE.ExtrudeGeometry(sh, { depth: t, bevelEnabled: true, bevelThickness: t * 0.15, bevelSize: t * 0.15, bevelSegments: 1, curveSegments: 10 });
+      g.translate(0, 0, -t / 2); g.rotateY(-Math.PI / 2); return g;
+    };
+    const link = (name, L, w, t, xs) => { const g = new THREE.Group(); g.name = name; const geo = plate(L, w, t); for (const x of xs) { const m = new THREE.Mesh(geo, steel); m.name = name + '_m'; m.position.x = x; m.castShadow = m.receiveShadow = true; g.add(m); } S.add(g); return g; };
+    const pin = (name, len, rad) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 14).rotateZ(Math.PI / 2), pinM); m.name = name; m.castShadow = true; S.add(m); return m; };
+    const T = 0.022, W = 0.085;
+    this._lk.idler = link('cyl_link_idler', K.idler, W, T, [-(sx + T * 0.8), sx + T * 0.8]);
+    this._lk.h = link('cyl_link_h', K.hlink, W * 0.95, T, [-0.105, 0.105]);
+    this._lk.pinI = pin('cyl_link_pinI', 2 * (sx + T * 1.6), 0.03); this._lk.pinC = pin('cyl_link_pinC', 2 * (sx + T * 1.6), 0.028); this._lk.pinP = pin('cyl_link_pinP', 0.27, 0.028);
+    this._lk.rod = cb.r; this._linkPose();
+  }
+  // the four-bar for the bucket's curl now: its lug pin turned with it, the common pin where the idler's and the H-link's
+  // circles meet (one root throughout — no flip to the other side), the rod's end on it
+  _linkPose() {
+    const k = this._lk; if (!k) return;
+    const c = Math.cos(this.curl), s = Math.sin(this.curl), K = Excavator.LINK;
+    const P = new THREE.Vector2(k.B.x + k.arm.x * c - k.arm.y * s, k.B.y + k.arm.x * s + k.arm.y * c);
+    const D = P.clone().sub(k.I), dl = D.length(), r0 = K.idler, r1 = K.hlink;
+    if (dl < r0 + r1 && dl > Math.abs(r0 - r1)) {
+      const a = (r0 * r0 - r1 * r1 + dl * dl) / (2 * dl), h = Math.sqrt(Math.max(0, r0 * r0 - a * a)), e = D.clone().divideScalar(dl), m = k.I.clone().addScaledVector(e, a);
+      // (always the same root — the side the fit was made on: the links never come within 30° of a straight line over the
+      // curl's range, so it is the nearest to the last pose too; a pick by «nearest» from a first guess took the other one)
+      k.C = new THREE.Vector2(m.x + e.y * h, m.y - e.x * h);
+    }
+    if (!k.C) return;
+    const put = (o, A, Bv) => { o.position.set(0, A.x, A.y); o.rotation.set(Math.atan2(-(Bv.x - A.x), Bv.y - A.y), 0, 0); };
+    put(k.idler, k.I, k.C); put(k.h, k.C, P);
+    k.pinI.position.set(0, k.I.x, k.I.y); k.pinC.position.set(k.x, k.C.x, k.C.y); k.pinP.position.set(0, P.x, P.y);
+    k.rod.position.set(k.x, k.C.x, k.C.y);
+  }
   _rigCylinders() {
     // (a piece's length along its +Z from its pin, in its own frame — the meshes' boxes brought into it: their
     // positions may be quantized, scaled by their own nodes)
@@ -519,7 +582,7 @@ export class Excavator {
       this[j] = keep; this._applyJoints();
     }
   }
-  _applyJoints() { this.house.rotation.y = this.swing; this.boomP.rotation.x = -this.boom; this.stickP.rotation.x = this.stick; this.bucketP.rotation.x = this.curl; }
+  _applyJoints() { this.house.rotation.y = this.swing; this.boomP.rotation.x = -this.boom; this.stickP.rotation.x = this.stick; this.bucketP.rotation.x = this.curl; this._linkPose(); }
   update(dt) {
     if (!this.bucketP) return;
     const k = 1 - Math.exp(-dt * 6), L = this.lim || Excavator.LIM, cl = (v, [a, b]) => Math.max(a, Math.min(b, v));

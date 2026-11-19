@@ -302,6 +302,8 @@ export class MachineTool {
   }
 
   update(dt) {
+    // (the bucket's footprint is a wall only in a frame it went: a frame it was not worked, nothing is left standing there)
+    if (this._footSet && !this._footNow) { this.app.terrain.setStopCells?.('excBucket', null); this._footSet = false; } this._footNow = false;
     if (!this.loader && this.rec) this.ensure();   // (a project with the loader on its plot)
     if (!this.truck && this.recOf('truck')) this.ensureTruck();
     if (!this.exc && this.recOf('excavator')) this.ensureExc();
@@ -717,6 +719,7 @@ export class MachineTool {
     if (this.state !== 'drive') return;
     this._commitDrive();
     this.state = 'idle'; this.stick = { l: [0, 0], r: [0, 0] };
+    app.terrain.setStopCells?.('excBucket', null); this._footSet = false;   // (the bucket's footprint: no wall left behind)
     app.sfx.scrapeStop(); app.sfx.play('car_door', { vol: 0.8 });
     if (app.rig.shakeKeep != null) { app.rig.shake = app.rig.shakeKeep; app.rig.shakeKeep = null; }
     this._fov(null); this._mirrors(null); this._exitSigns(false);
@@ -1644,6 +1647,20 @@ export class MachineTool {
   _excPush(P0, P1, teeth) {
     const t = this.app.terrain, g = this.grader; let x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1, moved = 0;
     const touch = (c) => { const ix = c % t.nx, iz = (c / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); };
+    // (the owner, 2026-11-19: «it does not push anything with its back, bottom or sides» — a heap went 2 cm: what it shoved went
+    // 5 cm on from each point, inside the bucket's own outline still, and slumped back through it — the bucket was no wall to
+    // the soil. Now: the cells the bucket stands in (its points under the surface, the 3 × 3 round each) are its footprint — the
+    // soil lies against it, not through it (terrain stops, as a truck's tyres) — and what it shoves goes out past its face)
+    const foot = new Set(), sum = [0, 0, 0], lowY = new Map();
+    for (let k = 0; k < P1.length; k++) {
+      const b = P1[k]; if (!b || !t.inside(b.x, b.z)) continue; const i = t.index(b.x, b.z); if (b.y > t.nat[i] + t.loose[i] + t.cell * 0.5) continue;
+      const ix = i % t.nx, iz = (i / t.nx) | 0; for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const jx = ix + dx, jz = iz + dz; if (jx >= 0 && jz >= 0 && jx <= t.rx && jz <= t.rz) { const c = jz * t.nx + jx; foot.add(c); lowY.set(c, Math.min(lowY.get(c) ?? Infinity, b.y)); } }
+      const a = P0[k]; if (a) { sum[0] += b.x - a.x; sum[1] += b.z - a.z; sum[2]++; }
+    }
+    const past = (x, z, ux, uz) => {   // (from a point of the bucket, the way it goes: the first free cell out of its footprint, and 1,5 cells on)
+      for (let d = t.cell * 1.6; d < R(1.4); d += t.cell * 0.7) { const qx = x + ux * d, qz = z + uz * d; if (!t.inside(qx, qz)) return -1; const j = t.index(qx, qz); if (foot.has(j)) continue; const ex = qx + ux * t.cell * 1.5, ez = qz + uz * t.cell * 1.5; if (!t.inside(ex, ez)) return -1; const e = t.index(ex, ez); return g.free(e, ex, ez) && !foot.has(e) ? e : g.free(j, qx, qz) ? j : -1; }
+      return -1;
+    };
     // (each part's whole way this frame swept — a fast slew goes 0,2 m a frame — a band ±1,5 cells about it; what is loose over the
     // part's height there is carried on ahead of where the part is now)
     for (let k = 0; k < P1.length; k++) {
@@ -1651,18 +1668,32 @@ export class MachineTool {
       let dx = b.x - a.x, dz = b.z - a.z, h = Math.hypot(dx, dz), y = Math.min(a.y, b.y);
       if (h < t.cell * 0.02) { dx = b.x - teeth.x; dz = b.z - teeth.z; h = Math.hypot(dx, dz); if (h < 1e-9) continue; }   // (pressed down: squeezed out sideways)
       const ux = dx / h, uz = dz / h, n = Math.max(1, Math.ceil(Math.min(h, R(0.5)) / (t.cell * 0.7)));
-      const jx = b.x + ux * t.cell * 1.6, jz = b.z + uz * t.cell * 1.6; if (!t.inside(jx, jz)) continue;
-      const j = t.index(jx, jz); if (!g.free(j, jx, jz)) continue;
+      const j = past(b.x, b.z, ux, uz); if (j < 0) continue; const jx = t.toWorldX(j % t.nx), jz = t.toWorldZ((j / t.nx) | 0);
       for (let s = 0; s <= n; s++) for (let q = -1.5; q <= 1.5; q += 1) {
         const f = s / n, px = a.x + (b.x - a.x) * f - uz * q * t.cell, pz = a.z + (b.z - a.z) * f + ux * q * t.cell; if (!t.inside(px, pz)) continue;
         const i = t.index(px, pz); if (i === j || !g.free(i, px, pz) || t.comp[i] >= 0.9) continue;   // (a pressed base is not shoved)
         const over = Math.min(t.nat[i] + t.loose[i] - y, t.loose[i]); if (!(over > 1e-7)) continue;
-        // (the windrow before it loses a quarter to the sides as it goes — two low ridges along its way)
+        // (the windrow before it loses some to the sides as it goes — two low ridges along its way: ~20 % a metre of the way, not a
+        // quarter each step — at tens of steps a second that left nothing before it within half a metre)
         const sx = -uz * t.cell * 2.5, sz = ux * t.cell * 2.5, kL = t.inside(jx + sx, jz + sz) ? t.index(jx + sx, jz + sz) : j, kR = t.inside(jx - sx, jz - sz) ? t.index(jx - sx, jz - sz) : j;
-        t._move(i, j, over * 0.75); if (t.loose[i] > 0) { const rest = Math.min(t.loose[i], over * 0.25); t._move(i, kL, rest / 2); t._move(i, kR, rest / 2); touch(kL); touch(kR); }
+        const side = Math.min(0.25, 0.2 * h / R(1));
+        t._move(i, j, over * (1 - side)); if (t.loose[i] > 0) { const rest = Math.min(t.loose[i], over * side); t._move(i, kL, rest / 2); t._move(i, kR, rest / 2); touch(kL); touch(kR); }
         moved += over; touch(i); touch(j);
       }
     }
+    // (and all its footprint as it goes: what is loose there over the bucket's underside — between its points too, under its round
+    // bottom — goes out past its face the way it goes: the windrow before it; ~40 % of its way was left standing by the points)
+    { const sl = Math.hypot(sum[0], sum[1]), av = sl / Math.max(1, sum[2]);   // (the mean way its points went)
+      if (av > t.cell * 0.02 && av < R(0.5) && lowY.size) { const ux = sum[0] / sl, uz = sum[1] / sl;
+        for (const [i, y] of lowY) { if (!g.free(i, t.toWorldX(i % t.nx), t.toWorldZ((i / t.nx) | 0)) || t.comp[i] >= 0.9) continue;
+          const over = Math.min(t.nat[i] + t.loose[i] - y, t.loose[i]); if (!(over > 1e-7)) continue;
+          const x = t.toWorldX(i % t.nx), z = t.toWorldZ((i / t.nx) | 0), j = past(x, z, ux, uz); if (j < 0) continue;
+          t._move(i, j, over); moved += over; touch(i); touch(j); } } }
+    // (its footprint a wall to the slumping soil while it is in the ground, going or standing (the realist: the cut's sides do not
+    // run in through it) — out of it the way it last went; what is tipped there lands as it falls (terrain: stops of kind 2);
+    // lifted clear, or the machine put elsewhere (a jump), nothing: the soil is free again)
+    { const sl = Math.hypot(sum[0], sum[1]), av = sl / Math.max(1, sum[2]);
+      if (foot.size && av < R(0.5)) { if (av > t.cell * 0.02) this._footDir = [sum[0] / sl, sum[1] / sl]; const fd = this._footDir || [0, 0]; let key = foot.size; for (const c of foot) key = (key * 31 + c) % 1e9; if (key !== this._footKey || !this._footSet) t.setStopCells?.('excBucket', [...foot], fd[0], fd[1]); this._footKey = key; this._footSet = this._footNow = true; } else if (this._footSet) { t.setStopCells?.('excBucket', null); this._footSet = false; } }   // (a jump — the machine put elsewhere — is no going; the same footprint as last frame — a bucket standing — is not set again: the soil round it is not woken every frame)
     this._pushStat = (this._pushStat || 0) + moved;   // (for the tests)
     this._pushLoad = (this._pushLoad || 0) + moved * t.cellArea * MODEL_SCALE ** 3;   // (m³ shoved lately: the windrow it is driving — the slew slows under it)
     if (moved > 0) { t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); this.app.sfx.play('soil_dump', { gap: 0.6, at: P1[0], vol: 0.35 }); }

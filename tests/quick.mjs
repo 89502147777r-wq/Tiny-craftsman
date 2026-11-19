@@ -1042,6 +1042,21 @@ if (want("2i")) {
     // the excavator: in, the boom down into the ground, the bucket curled in — it fills; up, opened — empty
     mt.enter('excavator'); for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
     o.exc = mt.driving && mt.drv === 'excavator'; const E = mt.exc;
+    // (the owner, 2026-11-19: «the bucket opens too far and does not close all the way» — a 20 t machine's (the realist): open
+    // 40–50° past the stick's line, closed 115–125° to the cab, through a four-bar linkage: the links' lengths fixed, the rod in its
+    // barrel, no two links near a straight line, the common pin never jumping)
+    { const W = (n) => new V().setFromMatrixPosition(n.matrixWorld), cb = E.cyl.find((c) => c.b.name === 'cyl_bucket_b'), keep = [E.curl, E.curlGoal], sc = E.stickP.getWorldScale(new V()).x;
+      const ang = () => { E.root.updateMatrixWorld(true); const a = W(E.bucketP).sub(W(E.stickP)).normalize(), c = E.teethWorld(new V()).sub(W(E.bucketP)).normalize(), side = new V().setFromMatrixColumn(E.house.matrixWorld, 0); return Math.sign(side.dot(a.clone().cross(c))) * Math.acos(Math.max(-1, Math.min(1, a.dot(c)))) * 180 / Math.PI; };
+      const k = E._lk, rows = []; let prevC = null, jump = 0, mono = true, prevL = -1, lk = 180, rodA = 180;
+      for (let i = 0; i <= 160; i++) { E.curl = E.curlGoal = E.lim.curl[0] + (E.lim.curl[1] - E.lim.curl[0]) * i / 160; E._apply(); E.root.updateMatrixWorld(true);
+        const L = W(cb.b).distanceTo(W(cb.r)) / sc; if (L <= prevL) mono = false; prevL = L;
+        if (k) { const C = W(k.pinC), I = W(k.pinI), P = W(k.pinP); if (prevC) jump = Math.max(jump, C.distanceTo(prevC) / sc); prevC = C; rows.push([I.distanceTo(C) / sc, C.distanceTo(P) / sc, W(E.bucketP).distanceTo(P) / sc, W(cb.r).distanceTo(C) / sc]);
+          const a1 = I.clone().sub(C), a2 = P.clone().sub(C), g = a1.angleTo(a2) * 180 / Math.PI; lk = Math.min(lk, g, 180 - g);
+          const rd = W(cb.b).sub(C), g1 = rd.angleTo(a1) * 180 / Math.PI, g2 = rd.angleTo(a2) * 180 / Math.PI; rodA = Math.min(rodA, g1, 180 - g1, g2, 180 - g2); }   // (the realist: the rod not along either link — it would hold the bucket on nothing)
+        if (i === 0) o.curlOpen = +(-ang()).toFixed(1); if (i === 160) o.curlShut = +ang().toFixed(1); if (i === 0) o.rodMin = +L.toFixed(3); if (i === 160) o.rodMax = +L.toFixed(3); }
+      const spread = (j) => rows.length ? Math.max(...rows.map((r) => r[j])) - Math.min(...rows.map((r) => r[j])) : 1;
+      o.linkage = { linked: !!k, mono, jump: +jump.toFixed(3), lk: +lk.toFixed(1), rodA: +rodA.toFixed(1), idler: +spread(0).toFixed(4), hlink: +spread(1).toFixed(4), arm: +spread(2).toFixed(4), rodOnPin: +(rows.length ? Math.max(...rows.map((r) => r[3])) : 1).toFixed(4), barrel: [+Math.max(cb.Lb, cb.Lr).toFixed(3), +(cb.Lb + cb.Lr - 0.12 * cb.Lb).toFixed(3)] };
+      E.curl = keep[0]; E.curlGoal = keep[1]; E._apply(); }
     o.btns = [...document.querySelectorAll('#mbtns button')].map((b) => b.textContent).join('|');
     // a dig as a driver does it: the stick out, the bucket's teeth turned down, the boom down into the ground
     // (the teeth lead: it cuts), the bucket curled in — full, as much as came out of the ground; up, opened —
@@ -1049,6 +1064,12 @@ if (want("2i")) {
     // machine's front comes up on its tracks instead
     const soilV = () => { let v = 0; for (let i = 0; i < t.nat.length; i++) v += t.nat[i] + t.loose[i]; return v * t.cellArea; }, dug0 = soilV();
     const go = (n, l, r) => { mt.joystick('l', ...l); mt.joystick('r', ...r); frames(n); mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(3); };
+    // (the realist: a push measured in the band the bucket went through, over its own underside there — not over the whole heap.
+    // Each cell its points passed over: the lowest of them; what stood over that before, what stands over it after)
+    const band = { start() { this.h0 = new Float32Array(t.nat.length); for (let i = 0; i < t.nat.length; i++) this.h0[i] = t.nat[i] + t.loose[i]; this.u = new Map(); },
+      see() { for (const q of [...(E.pushPoints ? E.pushPoints() : []), ...E.hardPoints(), E.teethWorld(new V())]) { if (!t.inside(q.x, q.z)) continue; const i = t.index(q.x, q.z); if (q.y < (this.u.get(i) ?? Infinity)) this.u.set(i, q.y); } },
+      left() { let a = 0, b = 0; for (const [i, y] of this.u) { a += Math.max(0, this.h0[i] - y); b += Math.max(0, t.nat[i] + t.loose[i] - y); } return { before: +(a * t.cellArea / (M * M * M)).toFixed(3), share: +(b / Math.max(1e-12, a)).toFixed(2) }; } };
+    const goB = (n, l, r) => { mt.joystick('l', ...l); mt.joystick('r', ...r); for (let i = 0; i < n; i++) { tc.simulate(1 / 30); band.see(); } mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(3); };
     go(60, [0, -1], [0, 0]); go(12, [0, 0], [-1, 0]); go(40, [0, 0], [0, 1]);
     const teeth = E.teethWorld(new V()); o.teethLow = teeth.y < t.heightAt(teeth.x, teeth.z) + 0.3 * M;
     go(40, [0, 1], [0, 0]); go(40, [0, 1], [-1, 0]); go(30, [0, 0], [-1, 0]);
@@ -1070,27 +1091,34 @@ if (want("2i")) {
     go(8, [0, 0], [0, -1]);   // (the bucket lifted off the ground a little: pressed down on it, it would not slew — it bears on the firm ground)
     { // (lifted just clear of the firm ground along its way — in a dug hole its sides would hold it, as they should)
       const low = () => Math.min(E.teethWorld(new V()).y, ...E.hardPoints().map((q) => q.y));
-      const ring = () => { const b = E.teethWorld(new V()), c = E.root.position, rx = b.x - c.x, rz = b.z - c.z, rl = Math.hypot(rx, rz) || 1; return [b, -rz / rl, rx / rl]; };
+      const lowest = () => { let m = E.teethWorld(new V()); for (const q of E.hardPoints()) if (q.y < m.y) m = q; return m; };   // (the heaps on the arc its lowest point goes — not the teeth's: curled, its bottom goes nearer in)
+      const ring = () => { const b = lowest(), c = E.root.position, rx = b.x - c.x, rz = b.z - c.z, rl = Math.hypot(rx, rz) || 1; return [b, -rz / rl, rx / rl]; };
       const rim = () => { const [b, tx, tz] = ring(); let m = -Infinity; for (let s = -1.4; s <= 1.4; s += 0.2) m = Math.max(m, t.firmAt(b.x + tx * s * M, b.z + tz * s * M)); return m; };
       for (let k = 0; k < 120 && low() < rim() + 0.04 * M; k++) { mt.joystick("r", 0, -0.3); frames(1); } mt.joystick("r", 0, 0); frames(3);
       const [b, tx, tz] = ring(), hp = (s) => ({ x: b.x + tx * s * 1.1 * M, z: b.z + tz * s * 1.1 * M });
       const near = (q) => { let v = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - q.x, z - q.z) < 0.35 * M) v += t.loose[iz * t.nx + ix]; } return v; };
       const A = hp(1), B = hp(-1);
-      for (const H of [A, B]) { const r = 0.4 * M, ht = low() - t.firmAt(H.x, H.z) + 0.2 * M; t.deposit(H.x, H.z, ht * 2 * Math.PI * r * r, r, 0); }   // (each heap 0,2 m higher than the bucket's bottom: it goes through them)
+      for (const H of [A, B]) { const r = 0.4 * M, ht = low() - t.firmAt(H.x, H.z) + 0.35 * M; t.deposit(H.x, H.z, ht * 2 * Math.PI * r * r, r, 0); }   // (each heap well over the bucket's bottom — its round underside passes a heap's middle ~0,25 m over its lowest point: it goes through them)
       frames(5);
       o.pushLift = +((low() - rim()) / M).toFixed(2);
       mt._pushStat = 0; o.heapTop = +((t.heightAt(A.x, A.z) - t.firmAt(A.x, A.z)) / M).toFixed(2); o.lowRel = +((low() - t.firmAt(A.x, A.z)) / M).toFixed(2);
       const top = (H) => (t.heightAt(H.x, H.z) - t.firmAt(H.x, H.z)) / M, lowA = (low() - t.firmAt(A.x, A.z)) / M, lowB = (low() - t.firmAt(B.x, B.z)) / M, tA0 = top(A), tB0 = top(B);
       const a0 = near(A), b0 = near(B), s0 = E.swing;
-      go(45, [1, 0], [0, 0]); const s1 = E.swing; go(90, [-1, 0], [0, 0]); const s2 = E.swing;
+      // (the bucket's underside where it went over each heap's middle: slewed sideways, its round bottom passes there, not its lowest point)
+      const pass = { A: Infinity, B: Infinity }, seen = () => { for (const q of [...(E.pushPoints ? E.pushPoints() : []), ...E.hardPoints()]) for (const [k, H] of [['A', A], ['B', B]]) if (Math.hypot(q.x - H.x, q.z - H.z) < 0.12 * M) pass[k] = Math.min(pass[k], q.y); };
+      const goS = (n, lx) => { mt.joystick('l', lx, 0); for (let i = 0; i < n; i++) { tc.simulate(1 / 30); seen(); band.see(); } mt.joystick('l', 0, 0); frames(3); };
+      band.start(); goS(45, 1); const s1 = E.swing; goS(90, -1); const s2 = E.swing; o.slewBand = band.left();
+      o.passOver = [+((pass.A - t.firmAt(A.x, A.z)) / M).toFixed(2), +((pass.B - t.firmAt(B.x, B.z)) / M).toFixed(2)];
       o.push = { tA: [+tA0.toFixed(2), +top(A).toFixed(2), +lowA.toFixed(2)], tB: [+tB0.toFixed(2), +top(B).toFixed(2), +lowB.toFixed(2)], pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(A.x, A.z)) / M).toFixed(2), top: +((t.heightAt(A.x, A.z) - t.firmAt(A.x, A.z)) / M).toFixed(2), bad: mt._bad, a: +(near(A) / Math.max(1e-12, a0)).toFixed(2), b: +(near(B) / Math.max(1e-12, b0)).toFixed(2), sw1: +(s1 - s0).toFixed(2), sw2: +(s2 - s1).toFixed(2) };
       // (the owner, 2026-11-17: its back went through a heap — the stick out, the bucket's back first, shoves it on)
       { const [bb] = ring(), cc = E.root.position, rx = bb.x - cc.x, rz = bb.z - cc.z, rl = Math.hypot(rx, rz) || 1, H = { x: bb.x + rx / rl * 0.9 * M, z: bb.z + rz / rl * 0.9 * M };
         const r = 0.45 * M, ht = low() - t.firmAt(H.x, H.z) + 0.6 * M; t.deposit(H.x, H.z, ht * 2 * Math.PI * r * r, r, 0); frames(3);   // (its top well over the bucket's bottom all the way: the stick's arc lifts it)
         // (where the heap's mass is along the way out, within 1,5 m of it — shoved on, it moves out; gone through, it stays)
         const ux = rx / rl, uz = rz / rl, mid = () => { let m = 0, w = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - H.x, z - H.z) > 1.5 * M) continue; const l = t.loose[iz * t.nx + ix]; m += l; w += l * ((x - H.x) * ux + (z - H.z) * uz); } return w / Math.max(1e-12, m) / M; };
-        const h0 = top(H), n0 = near(H), c0 = mid(); mt._pushStat = 0; go(30, [0, -1], [0, 0]);
-        o.back = { shift: +(mid() - c0).toFixed(2), h0: +h0.toFixed(2), h1: +top(H).toFixed(2), kept: +(near(H) / Math.max(1e-12, n0)).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(H.x, H.z)) / M).toFixed(2) }; }
+        const h0 = top(H), n0 = near(H), c0 = mid(), tp0 = E.teethWorld(new V()); mt._pushStat = 0; band.start(); goB(30, [0, -1], [0, 0]); o.backBand = band.left(); const tp1 = E.teethWorld(new V()), trav = ((tp1.x - tp0.x) * ux + (tp1.z - tp0.z) * uz) / M;
+        o.back = { band: o.backBand, travel: +trav.toFixed(2), shift: +(mid() - c0).toFixed(2), h0: +h0.toFixed(2), h1: +top(H).toFixed(2), kept: +(near(H) / Math.max(1e-12, n0)).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3), low: +((low() - t.firmAt(H.x, H.z)) / M).toFixed(2) }; }
+        { frames(30);   // (still first: let go, its joints ease on to their goal for a while)
+          const ft = t._stops.get('excBucket') || [], lv = () => { let v = 0; for (const c of ft) v += t.loose[c]; return v; }, v0 = lv(); frames(60); o.stand = { cells: ft.length, grew: +((lv() - v0) / Math.max(1e-12, v0)).toFixed(3), still: t._stops.has('excBucket') }; }
         // (and driven into a heap, the bucket low before it: its back shoves it on — the owner's case)
         { E.swing = E.swingGoal = 0; E.update(0); frames(2);   // (the arm straight ahead of the tracks)
           const tp = E.teethWorld(new V()), sg = Math.sign((tp.x - E.x) * Math.cos(E.yaw) - (tp.z - E.z) * Math.sin(E.yaw)) || 1, fx = Math.cos(E.yaw) * sg, fz = -Math.sin(E.yaw) * sg, lo = low(), D = { x: tp.x + fx * 0.8 * M, z: tp.z + fz * 0.8 * M }, r2 = 0.8 * M, h2 = lo - t.firmAt(D.x, D.z) + 0.8 * M;
@@ -1099,8 +1127,9 @@ if (want("2i")) {
           const mid2 = () => { let m = 0, w = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz); if (Math.hypot(x - D.x, z - D.z) > 1.8 * M) continue; const l = t.loose[iz * t.nx + ix]; m += l; w += l * ((x - D.x) * fx + (z - D.z) * fz); } return w / Math.max(1e-12, m) / M; };
           const zone = (lo2, hi2, side = 1.5) => { let v = 0; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz), a = ((x - D.x) * fx + (z - D.z) * fz) / M, c = Math.abs((x - D.x) * -fz + (z - D.z) * fx) / M; if (a >= lo2 && a < hi2 && c < side) v += t.loose[iz * t.nx + ix]; } return v * t.cellArea / (M * M * M); };
           const zb0 = zone(-3, -0.3), zm0 = zone(-0.3, 0.3), zf0 = zone(0.3, 5), zs0 = zone(-3, 5, 3) - zone(-3, 5);
-          const d0 = mid2(), e0 = [E.x, E.z]; mt._pushStat = 0; mt.setExcMode('drive'); mt.joystick('l', 0, -sg); frames(30); mt.joystick('l', 0, 0); frames(3); mt.setExcMode('dig');
-          o.drivePush = { gain: +(zone(0.3, 5) - zf0).toFixed(3), lost: +(zm0 - zone(-0.3, 0.3)).toFixed(3), zones: [zb0, zm0, zf0, zs0].map((v) => +v.toFixed(3)).join('/') + ' → ' + [zone(-3, -0.3), zone(-0.3, 0.3), zone(0.3, 5), zone(-3, 5, 3) - zone(-3, 5)].map((v) => +v.toFixed(3)).join('/'), sg, ahead: +(Math.hypot(tp.x - E.x, tp.z - E.z) / M).toFixed(2), low: +((lo - t.firmAt(D.x, D.z)) / M).toFixed(2), shift: +(mid2() - d0).toFixed(2), drove: +(Math.hypot(E.x - e0[0], E.z - e0[1]) / M).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3) };  t.loose.set(looseKeep); t._touch(0, 0, t.rx, t.rz); E.place(t, ...eKeep); frames(3); } }
+          const abv = () => { let v = 0; const hw = (E.bucketW || 0.1) / 2 / M; for (let iz = 0; iz < t.nz; iz++) for (let ix = 0; ix < t.nx; ix++) { const x = t.toWorldX(ix), z = t.toWorldZ(iz), a = ((x - D.x) * fx + (z - D.z) * fz) / M, c = Math.abs((x - D.x) * -fz + (z - D.z) * fx) / M; if (a >= -0.8 && a < 0.2 && c < hw) v += Math.max(0, t.heightAt(x, z) - lo); } return +(v * t.cellArea / (M * M * M)).toFixed(3); }; const ab0 = abv();
+          const d0 = mid2(), e0 = [E.x, E.z]; mt._pushStat = 0; mt.setExcMode('drive'); band.start(); mt.joystick('l', 0, -sg); for (let i = 0; i < 30; i++) { tc.simulate(1 / 30); band.see(); } mt.joystick('l', 0, 0); frames(3); mt.setExcMode('dig'); o.driveBand = band.left();
+          o.drivePush = { band: o.driveBand, above: [ab0, abv()], gain: +(zone(0.3, 5) - zf0).toFixed(3), lost: +(zm0 - zone(-0.3, 0.3)).toFixed(3), zones: [zb0, zm0, zf0, zs0].map((v) => +v.toFixed(3)).join('/') + ' → ' + [zone(-3, -0.3), zone(-0.3, 0.3), zone(0.3, 5), zone(-3, 5, 3) - zone(-3, 5)].map((v) => +v.toFixed(3)).join('/'), sg, ahead: +(Math.hypot(tp.x - E.x, tp.z - E.z) / M).toFixed(2), low: +((lo - t.firmAt(D.x, D.z)) / M).toFixed(2), shift: +(mid2() - d0).toFixed(2), drove: +(Math.hypot(E.x - e0[0], E.z - e0[1]) / M).toFixed(2), pushed: +((mt._pushStat || 0) * t.cellArea / (M * M * M)).toFixed(3) };  t.loose.set(looseKeep); t._touch(0, 0, t.rx, t.rz); E.place(t, ...eKeep); frames(3); } }
     // (the owner: a drop of concrete on the ground stays a dab — not a pillar down when dug round; a bucket takes it whole)
     { const LV = tc.lumpView, mod = await import('./src/world/lumps.js'), b = E.teethWorld(new V()), i0 = t.index(b.x + 1.2 * M, b.z), nx = t.nx, ids = [];
       for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const i = i0 + dz * nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = 0.05 * M; t.cTime[i] = (tc.clock || 0) - 400; ids.push(i); }   /* (a spill on the ground's own level) */
@@ -1116,6 +1145,7 @@ if (want("2i")) {
         E.curl = -1.0; E.curlGoal = -1.0; mt._lumps(); o.lump.dropped = !LV.held && tc.objects.get(r.id)?.at === 'ground'; E.curl = E.curlGoal = kc; mt._excCut = false;
         // (sand tipped over it: it stays under it, unseen — not floated up onto the heap's top)
         for (let k = 0; k < 90; k++) LV.update(1 / 30); const q = tc.objects.get(r.id), ly = LV.meshes.get(r.id).position.y, h = mod.lumpSize(q).h;
+        frames(2);   // (a frame of the game first; the bucket standing in the ground keeps its footprint — what is tipped there lands all the same)
         t.deposit(q.x, q.z, 0.4 * M * M * M, 0.5 * M, 0, 1); for (let k = 0; k < 20; k++) LV.update(1 / 30);
         o.lump.buried = LV.meshes.get(r.id).position.y <= ly + 0.002 * M && ly + h < t.heightAt(q.x, q.z);
         tc.objects.remove(r.id); }
@@ -1188,12 +1218,15 @@ if (want("2i")) {
   });
   check('machines: «Техника» — the loader into the truck (an area), the loader, the truck, the excavator; nothing else', o.chips === 'Погрузчик в самосвал|Сесть в погрузчик|Сесть в самосвал|Сесть в экскаватор', JSON.stringify(o));
   check('machines: the excavator\'s boom and bucket stop the loader and the truck where the arm is low; swung away, the spot is free (the owner)', o.arm && o.arm.low === true && o.arm.lowT === true && o.arm.inFits && o.arm.away === false && o.arm.lifted !== true, JSON.stringify(o.arm));
-  check('machines: the excavator\'s bucket, its back first (the stick out), shoves on what of a heap is over its way — its top down', o.back && o.back.pushed > 0.1 && o.back.h1 < o.back.h0 - 0.1, JSON.stringify(o.back));
-  check('machines: the excavator driven into a heap, the bucket low before it, shoves it on (the owner)', o.drivePush && o.drivePush.gain > 0.1 && o.drivePush.lost > 0.1, JSON.stringify(o.drivePush));
+  check('machines: the excavator\'s bucket opens 40–50° past the stick\'s line and closes 115–125° to the cab, through its linkage (links fixed, the rod in its barrel and on the common pin, the rod lengthening as it closes, no link near straight, no jump) — the owner', o.curlOpen >= 40 && o.curlOpen <= 50 && o.curlShut >= 115 && o.curlShut <= 125 && o.linkage.linked && o.linkage.mono && o.linkage.jump < 0.012 && o.linkage.lk >= 20 && o.linkage.rodA >= 15 && o.linkage.idler < 0.002 && o.linkage.hlink < 0.002 && o.linkage.arm < 0.002 && o.linkage.rodOnPin < 0.002 && o.rodMin >= o.linkage.barrel[0] * 0.98 && o.rodMax <= o.linkage.barrel[1], JSON.stringify({ open: o.curlOpen, shut: o.curlShut, rod: [o.rodMin, o.rodMax], ...o.linkage }));
+  check('machines: the excavator\'s bucket standing in a heap 2 s keeps its footprint — the cut\'s sides do not run in through it (≤ 5 % more loose in it; the realist)', o.stand && o.stand.cells > 0 && o.stand.still && o.stand.grew <= 0.05, JSON.stringify(o.stand));
+  check('machines: pushed, what stood over the bucket\'s underside in its band is gone — driven into a heap ≤ 20 % left, slewed through ≤ 20 % (the realist)', o.drivePush?.band?.share <= 0.2 && o.slewBand?.share <= 0.2 && o.drivePush.band.before > 0.01 && o.slewBand.before > 0.01, JSON.stringify({ drive: o.drivePush?.band, slew: o.slewBand, back: o.back?.band }));
+  check('machines: the excavator\'s bucket, its back first (the stick out), shoves on what of a heap is over its way — its top down to it, not through it (the owner, 2026-11-19: it went 2 cm)', o.back && o.back.pushed > 0.1 && o.back.h1 < o.back.h0 - 0.35 && o.back.kept <= 0.65, JSON.stringify(o.back));
+  check('machines: the excavator driven into a heap, the bucket low before it, shoves it on — what of it stood over the bucket\'s bottom in its way, half gone at least (the owner)', o.drivePush && o.drivePush.gain > 0.1 && o.drivePush.lost > 0.1 && o.drivePush.above[1] <= o.drivePush.above[0] * 0.5, JSON.stringify(o.drivePush));
   check('machines: the excavator\'s own bucket swung at a standing truck stops at it — never in its cab or body\'s side; a tipped body counts higher (the realist)', o.armTruck && o.armTruck.a.max < 0.08 && o.armTruck.b.max < 0.08 && o.armTruck.tall1 > o.armTruck.tall0 + 0.1, JSON.stringify(o.armTruck));
   check('machines: the excavator driven the way its bucket\'s mouth faces takes what it meets into the bucket (the realist)', o.mouth && o.mouth.gain > 0.03 && o.mouth.drove > 0.2, JSON.stringify(o.mouth));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
-  check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.push.tA[2] + 0.12 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.push.tB[2] + 0.12 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify(o.push));
+  check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.passOver[0] + 0.05 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.passOver[1] + 0.05 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify({ ...o.push, passOver: o.passOver, band: o.slewBand }));
   check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 3 && o.lump.pieces <= 20 && o.lump.maxR <= 0.5 && o.lump.spread >= 1.5, JSON.stringify(o.lump));
   check('machines: the excavator stops at a site thing (a pallet) in its way, not through it (the owner)', o.prop && o.prop.clear && o.prop.moved < 2.6, JSON.stringify(o.prop));
   check('machines: the excavator stops at the loader in its way, not through it (the owner)', !o.block || (o.block.clear && o.block.moved < 2.2), JSON.stringify(o.block));
@@ -1257,7 +1290,11 @@ if (want("2i'")) {
     mt.joystick('r', -1, 0); frames(30); mt.joystick('r', 0, 0);
     g.carry.fill(0); g.carry[4] = 0.3 / S3 / t.cellArea; frames(2);
     mt.joystick('r', 0, -1); frames(60); mt.joystick('r', 0, 0); frames(3);
-    const held = g.load * t.cellArea * S3, lip = E.lipWorld(new V()), b = T.bedCentre(new V());
+    // (the body put under where it starts pouring — where a driver brings it: the bucket turns 165°, its lip sweeps a wide arc
+    // from closed, so not under the closed bucket's lip; the pose only, nothing stepped)
+    const held = g.load * t.cellArea * S3, c0 = [E.curl, E.curlGoal]; let lip = E.lipWorld(new V());
+    { let l0 = null; for (let c = E.curl; c >= E.lim.curl[0]; c -= 0.02) { E.curl = c; E._apply(); const hs = E.holdShare(); if (!l0 && hs < 0.9) l0 = E.lipWorld(new V()); if (l0 && hs < 0.1) { lip = l0.lerp(E.lipWorld(new V()), 0.5); o.pourArc = +(l0.distanceTo(E.lipWorld(new V())) / M).toFixed(2); break; } } if (l0 && o.pourArc == null) lip = l0; }   // (the middle of the arc it pours over)
+    E.curl = c0[0]; E.curlGoal = c0[1]; E._apply(); const b = T.bedCentre(new V());
     T.place(t, T.x + (lip.x - b.x), T.z + (lip.z - b.z), T.yaw); frames(2);
     mt.joystick('r', 1, 0); frames(70); mt.joystick('r', 0, 0); frames(30); rest();
     o.exc = +(T.load * T.cap * S3 / Math.max(1e-9, held)).toFixed(2); o.black = +T.mixW()[4].toFixed(2);
