@@ -1291,6 +1291,9 @@ export class MachineTool {
     // swung sideways through a heap, they go first)
     // (the bucket's back, bottom and sides shove what is over them — dense across its width (pushPoints), not the shell's sparse vertices)
     { const pp1 = E.pushPoints ? E.pushPoints() : E.hardPoints(), st0 = E.stickPoints(); if (!cutting || skim) this._excShove([...start0.pp, ...start0.hp, ...start0.lip, ...start0.ip], [...pp1, ...E.hardPoints(), ...lip(), ...(E.interiorPoints ? E.interiorPoints() : [])], p, skim); else this._excPush(hp0, E.hardPoints(), p); }   // (shoving: all its shell, not its back, bottom and sides alone — the owner, 2026-11-19: a heap showed through the bucket's top and hood, outside the footprint)
+    // (what goes in a step: no faster than the realist's rate — the mouth's width × its speed × the height cut, ~0,5 m³/s for a 0,4 m³
+    // bucket: a step's fill a jump otherwise, its heap leaping up)
+    let budget = R(1) ** 3 * 0.55 * dt / t.cellArea;
     if (cutting && t.inside(p.x, p.z)) {
       const hy = E.yaw + E.swing, ux = Math.sin(hy), uz = Math.cos(hy), hw = E.bucketW / 2, depth = R(1.0) * 0.8;
       let any = false, x0 = 1e9, z0 = 1e9, x1 = -1, z1 = -1;
@@ -1298,8 +1301,8 @@ export class MachineTool {
         const px = p.x + ux * q, pz = p.z + uz * q; if (!t.inside(px, pz)) continue;
         const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
         // (what lies over the teeth, as high as the bucket is deep: into it — what is higher stays)
-        const s = t.nat[i] + t.loose[i], d = Math.min(s - p.y, depth, cap * 1.3 - g.load);
-        if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
+        const s = t.nat[i] + t.loose[i], d = Math.min((s - p.y) * Math.min(1, mv.length() / t.cell), depth, cap * 1.3 - g.load, budget);   // (the column over its teeth as far as they went this step, not a whole cell's row each step)
+        if (d > 1e-7) { g.cut(i, d); budget -= d; any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
       }
       // (and what the bucket's body goes through behind its teeth on the stroke: into it too — the bucket
       // is the cut; not the stick's end, that is held by the ground)
@@ -1317,8 +1320,8 @@ export class MachineTool {
           for (let q = -hw; q <= hw; q += t.cell * 0.7) {
             const px = cx + ux * q, pz = cz + uz * q; if (!t.inside(px, pz)) continue;
             const i = t.index(px, pz); if (!g.free(i, px, pz)) continue;
-            const d = Math.min(t.nat[i] + t.loose[i] - y, cap * 1.3 - g.load);
-            if (d > 1e-7) { g.cut(i, d); any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
+            const d = Math.min(t.nat[i] + t.loose[i] - y, cap * 1.3 - g.load, budget);
+            if (d > 1e-7) { g.cut(i, d); budget -= d; any = true; const ix = i % t.nx, iz = (i / t.nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); }
           }
         } }
       if (any) { app.sfx.play('gravel_dig', { gap: 0.45, at: p }); t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); if (Math.random() < 0.3) app.particles?.emit(p.clone(), new THREE.Vector3((Math.random() - 0.5) * R(0.3), R(0.4), (Math.random() - 0.5) * R(0.3)), 0, R(0.03 + Math.random() * 0.03), 0, 0, 0); }
@@ -1711,8 +1714,9 @@ export class MachineTool {
         // each its share of what lies there)
         const cap = R(1) ** 3 * 0.4 / t.cellArea, room = cap * E.holdShare() - dg.load, cells = new Map(); let took = 0, sumO = 0, nO = 0;
         for (const m of mp) { if (!t.inside(m.x, m.z)) continue; const i = t.index(m.x, m.z); nO++; if (cells.has(i) || !dg.free(i, m.x, m.z)) continue; const over = Math.min(t.nat[i] + t.loose[i] - m.y, t.loose[i]); if (over > 1e-7) { cells.set(i, over); sumO += over; } }
-        const meanO = nO ? [...cells.values()].reduce((q, v) => q + v, 0) / Math.max(1, cells.size) * Math.min(1, cells.size / Math.max(1, nO / 7)) : 0;   // (over the mouth's cells — the mouth's own points are 7 deep)
-        const want = Math.min(room, (E.secW || R(0.9)) * av * meanO / t.cellArea);   // (in cell heights × cellArea = volume)
+        let sumP = 0; for (const m of mp) { if (!t.inside(m.x, m.z)) continue; const i = t.index(m.x, m.z); sumP += Math.max(0, Math.min(t.nat[i] + t.loose[i] - m.y, t.loose[i])); }
+        const meanO = nO ? sumP / nO : 0;   // (the mean height of soil over the mouth's points, those clear of it counted as none)
+        const want = Math.min(room, (E.secW || R(0.9)) * av * meanO / t.cellArea, R(1) ** 3 * 0.55 / 30 / t.cellArea);   // (in cell heights × cellArea = volume; no faster than ~0,5 m³/s)
         if (want > 0 && sumO > 0) for (const [i, over] of cells) { const tk = Math.min(over, want * over / sumO); dg.cut(i, tk); took += tk; }
         if (took > 0) { E.load = Math.min(1, dg.load / cap); this.app.sfx.play('soil_dump', { gap: 0.5, at: mp[0], vol: 0.25 }); }
       } }
