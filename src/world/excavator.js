@@ -510,10 +510,11 @@ export class Excavator {
   // the bucket's linkage, as on the machine (the model has none): an idler link pinned on the stick a little above the
   // bucket's pin, a power (H-) link from the bucket's lugs; they meet on one pin with the cylinder's rod — a four-bar, the
   // stroke turned into the bucket's 165°. Its sizes (stick-frame units, the stick 1,73 long — fitted so that the rod's
-  // length goes 1,43 → 2,26 over the curl's range, inside its barrel, and no two links come near a straight line, ≥ 30°):
-  // the idler's pin 0,26 up the stick from the bucket's and 0,05 toward the cylinder's face, the idler 0,44, the H-link 0,36,
+  // length goes 1,41 → 2,23 over the curl's range, inside its barrel, the two links ≥ 25° off a straight line and the rod
+  // ≥ 18° off either link (the realist: along one, the bucket «hangs on nothing» — the first fit had it 1° off the idler)):
+  // the idler's pin 0,30 up the stick from the bucket's and 0,09 toward the cylinder's face, the idler 0,48, the H-link 0,40,
   // its pin on the lugs 0,38 from the bucket's pin, on the line to where the rod was pinned
-  static LINK = { up: 0.26, out: 0.05, idler: 0.44, hlink: 0.36, arm: 0.38 };
+  static LINK = { up: 0.297, out: 0.09, idler: 0.48, hlink: 0.40, arm: 0.38 };
   _rigLinkage() {
     const cb = this.cyl.find((c) => c.r.name === 'cyl_bucket_r'); if (!cb) return;
     this.root.updateMatrixWorld(true);

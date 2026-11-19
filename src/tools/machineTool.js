@@ -1689,10 +1689,11 @@ export class MachineTool {
           const over = Math.min(t.nat[i] + t.loose[i] - y, t.loose[i]); if (!(over > 1e-7)) continue;
           const x = t.toWorldX(i % t.nx), z = t.toWorldZ((i / t.nx) | 0), j = past(x, z, ux, uz); if (j < 0) continue;
           t._move(i, j, over); moved += over; touch(i); touch(j); } } }
-    // (its footprint a wall to the slumping soil while it is in it and going — out of it the way it goes; standing (what is
-    // tipped on it then lands where it falls) or lifted clear, nothing: the soil is free again)
+    // (its footprint a wall to the slumping soil while it is in the ground, going or standing (the realist: the cut's sides do not
+    // run in through it) — out of it the way it last went; what is tipped there lands as it falls (terrain: stops of kind 2);
+    // lifted clear, or the machine put elsewhere (a jump), nothing: the soil is free again)
     { const sl = Math.hypot(sum[0], sum[1]), av = sl / Math.max(1, sum[2]);
-      if (foot.size && av > t.cell * 0.02 && av < R(0.5)) { t.setStopCells?.('excBucket', [...foot], sum[0] / sl, sum[1] / sl); this._footSet = this._footNow = true; } else if (this._footSet) { t.setStopCells?.('excBucket', null); this._footSet = false; } }   // (a jump — the machine put elsewhere — is no going)
+      if (foot.size && av < R(0.5)) { if (av > t.cell * 0.02) this._footDir = [sum[0] / sl, sum[1] / sl]; const fd = this._footDir || [0, 0]; let key = foot.size; for (const c of foot) key = (key * 31 + c) % 1e9; if (key !== this._footKey || !this._footSet) t.setStopCells?.('excBucket', [...foot], fd[0], fd[1]); this._footKey = key; this._footSet = this._footNow = true; } else if (this._footSet) { t.setStopCells?.('excBucket', null); this._footSet = false; } }   // (a jump — the machine put elsewhere — is no going; the same footprint as last frame — a bucket standing — is not set again: the soil round it is not woken every frame)
     this._pushStat = (this._pushStat || 0) + moved;   // (for the tests)
     this._pushLoad = (this._pushLoad || 0) + moved * t.cellArea * MODEL_SCALE ** 3;   // (m³ shoved lately: the windrow it is driving — the slew slows under it)
     if (moved > 0) { t._touch(Math.max(0, x0 - 2), Math.max(0, z0 - 2), Math.min(t.rx, x1 + 2), Math.min(t.rz, z1 + 2)); this.app.sfx.play('soil_dump', { gap: 0.6, at: P1[0], vol: 0.35 }); }
