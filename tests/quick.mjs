@@ -390,6 +390,54 @@ if (want("2")) {
 }
 console.log('—', sec());
 
+// ---- 2p. Concrete over the boards (the owner, 2026-11-20, a strip foundation: «почему такой большой зазор между бетоном и
+// опалубкой (его вообще быть не должно) и почему бетон набирается ровным слоем выше опалубки (после верхней точки доски он
+// должен переливаться)»; the realist: over a board's top only a 3–10 mm meniscus, the rest runs over; tau stays 250): the pit in
+// its formwork poured to 107 % of what it holds — by every board the concrete ≤ 10 mm over its top (median ≤ 5), what ran over
+// is outside (volume kept), and the surface shown reaches the board (no dark gap: the board's cell by the concrete at its level) ----
+if (want('2p')) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, t = tc.terrain, M = 1 / 10.4651, e = { clientX: 0, clientY: 0 }, o = {};
+    const r = tc.objects.all('outline').find((x) => x.kind === 'rect');
+    tc.setTool('form'); tc.formTool.setMode('outline'); tc.formTool.down(new V((r.x0 + r.x1) / 2, 0.1, r.z0), e); tc.simulate(0.1);
+    tc.setTool('hose'); tc.settings.pump = 0;
+    const h = tc.activeTool(), cx = (r.x0 + r.x1) / 2, H = (i) => t.nat[i] + t.loose[i] + t.conc[i] + t.top[i];
+    h.down(new V(cx, 0.1, r.z0 + 0.1)); tc.simulate(0.05);
+    let wT = 0; for (let i = 0; i < t.wall.length; i++) wT = Math.max(wT, t.wall[i]);
+    let cap = 0; for (let i = 0; i < t.wall.length; i++) { const x = t.toWorldX(i % t.nx), z = t.toWorldZ((i / t.nx) | 0); if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1 && !t.wall[i]) cap += Math.max(0, wT - t.nat[i] - t.loose[i]) * t.cellArea; }
+    for (let k = 0; k < 800 && t.concVolume() < cap * 1.07; k++) { h.move(new V(cx + (k % 10 - 4.5) * 0.08, 0.1, r.z0 + 0.1 + ((k / 10 | 0) % 8) * 0.08)); tc.simulate(0.5); }
+    const poured = t.concVolume(); h.up();
+    for (let i = 0; i < 600 && tc.busy(); i++) tc.simulate(1 / 15);
+    tc.simulate(0.5);
+    const enc = t._enclosed(), ex = []; let inV = 0, gap = 0;
+    for (let i = t.nx; i < t.conc.length - t.nx; i++) {
+      if (t.conc[i] > 1e-6 && enc[i]) inV += t.conc[i] * t.cellArea;
+      if (t.conc[i] <= 1e-6 || t.wall[i] || !enc[i]) continue;
+      let w = 0, wk = -1; for (const k of [i - 1, i + 1, i - t.nx, i + t.nx]) if (t.wall[k] > w) { w = t.wall[k]; wk = k; }
+      if (!w) continue;
+      ex.push((H(i) - w) / M * 1000);
+      // (the shown surface: the board's cell by it not lower than the concrete — up to the board's top)
+      gap = Math.max(gap, (Math.min(H(i), w) - t.aPos.array[wk * 3 + 1]) / M * 1000);
+    }
+    // (no step where the cut by the boards ends: the 4th cell in from a board no more than 5 mm over the 3rd — the realist)
+    let step = 0; const steps = [];
+    for (let i = 4 * t.nx; i < t.conc.length - 4 * t.nx; i++) {
+      if (!t.wall[i]) continue;
+      for (const d of [1, -1, t.nx, -t.nx]) { const a = i + d * 3, b = i + d * 4; if (t.wall[i + d] || t.wall[a] || t.wall[b] || !enc[a] || !enc[b] || t.conc[a] <= 1e-6 || t.conc[b] <= 1e-6) continue; const v = (H(b) - H(a)) / M * 1000; steps.push(v); step = Math.max(step, v); }
+    }
+    steps.sort((a, b) => a - b);
+    ex.sort((a, b) => a - b);
+    Object.assign(o, { stepMaxMm: +step.toFixed(1), stepP95Mm: +(steps[Math.floor(steps.length * 0.95)] || 0).toFixed(1), capM3: +(cap / M ** 3).toFixed(2), pouredM3: +(poured / M ** 3).toFixed(2), n: ex.length, maxMm: +ex.at(-1).toFixed(1), medMm: +ex[ex.length >> 1].toFixed(1), gapMm: +gap.toFixed(1),
+      outM3: +((t.concVolume() - inV) / M ** 3).toFixed(2), keptPct: +((t.concVolume() / poured - 1) * 100).toFixed(2) });
+    return o;
+  });
+  check('concrete over the boards: by every board ≤ 10 mm over its top (median ≤ 5), no step where the cut ends (95 % ≤ 10 mm), what ran over is outside, the volume kept (the owner, the realist)', o.n > 100 && o.maxMm <= 10 && o.medMm <= 5 && o.outM3 > 0.2 && Math.abs(o.keptPct) <= 1 && o.stepP95Mm <= 10, JSON.stringify(o));
+  check('concrete against the boards: no gap — the surface shown reaches the board (≤ 3 mm below the concrete by it)', o.gapMm <= 3, JSON.stringify(o));
+  check('concrete over the boards: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2a. The garden: a path, a lawn and a fence through all their stages -------------------------
 if (want("2a")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
