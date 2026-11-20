@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Cab, CAB } from '../world/cab.js';
-const CAB_BOX = { x0: CAB.right + 0.02, x1: CAB.left - 0.02, y0: CAB.floor + 0.01, y1: CAB.roof - 0.01, z0: CAB.back + 0.02, z1: CAB.front - 0.02 };
+const CAB_BOX = { x0: CAB.right - 0.005, x1: CAB.left + 0.005, y0: CAB.floor - 0.005, y1: CAB.roof - 0.01, z0: CAB.back - 0.005, z1: CAB.front + 0.005 };   // (to the walls' outer faces and under the floor's top: nothing of the machine shows in a crack between them — the owner: tracks through the floor)
 import { PROPS } from '../world/siteProps.js';
 import { lumpSize, breakLump, LUMP } from '../world/lumps.js';
 const UP3 = new THREE.Vector3(0, 1, 0);
@@ -746,7 +746,9 @@ export class MachineTool {
         // (more than half its points inside the cab's box: a part of the cab — its frame, glass, seat, levers)
         const pa = o.geometry.attributes.position, m = inv.clone().multiply(o.matrixWorld), v = new THREE.Vector3(); let n = 0, k = 0;
         for (let i = 0; i < pa.count; i += 3) { v.fromBufferAttribute(pa, i).applyMatrix4(m); n++; if (v.x > 0.12 && v.x < 1.3 && v.y > 0.66 && v.y < 1.75 && v.z > -0.35 && v.z < 1.3) k++; }
-        if (n && k / n > 0.5) this._cabParts.push(o); }); }
+        if (n && k / n > 0.5) this._cabParts.push(o); });
+      // (and the undercarriage: the tracks' top stands up into the cab's box, over its floor — the owner saw them through the floor)
+      E.root.traverse((o) => { if (!o.isMesh) return; for (let p = o; p; p = p.parent) if (p === E.house) return; for (const m of [o.material].flat()) if (m) this._cabMats.add(m); }); }
     if (on) this._cabClip();
     if (this._cabOn === on) return; this._cabOn = on;
     this.cab.group.visible = on; for (const o of this._cabParts) o.visible = !on;
