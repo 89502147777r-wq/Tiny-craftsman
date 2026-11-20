@@ -427,12 +427,15 @@ if (want('2p')) {
       for (const d of [1, -1, t.nx, -t.nx]) { const a = i + d * 3, b = i + d * 4; if (t.wall[i + d] || t.wall[a] || t.wall[b] || !enc[a] || !enc[b] || t.conc[a] <= 1e-6 || t.conc[b] <= 1e-6) continue; const v = (H(b) - H(a)) / M * 1000; steps.push(v); step = Math.max(step, v); }
     }
     steps.sort((a, b) => a - b);
+    // (outside the boards it never stands over the board it ran over: the realist)
+    let outOver = -1e9; for (let i = t.nx; i < t.conc.length - t.nx; i++) { if (enc[i] || t.wall[i] || t.conc[i] <= 1e-6) continue; for (const k of [i - 1, i + 1, i - t.nx, i + t.nx]) if (t.wall[k]) outOver = Math.max(outOver, (H(i) - t.wall[k]) / M * 1000); }
+    o.outOverMm = +outOver.toFixed(1);
     ex.sort((a, b) => a - b);
     Object.assign(o, { stepMaxMm: +step.toFixed(1), stepP95Mm: +(steps[Math.floor(steps.length * 0.95)] || 0).toFixed(1), capM3: +(cap / M ** 3).toFixed(2), pouredM3: +(poured / M ** 3).toFixed(2), n: ex.length, maxMm: +ex.at(-1).toFixed(1), medMm: +ex[ex.length >> 1].toFixed(1), gapMm: +gap.toFixed(1),
       outM3: +((t.concVolume() - inV) / M ** 3).toFixed(2), keptPct: +((t.concVolume() / poured - 1) * 100).toFixed(2) });
     return o;
   });
-  check('concrete over the boards: by every board ≤ 10 mm over its top (median ≤ 5), no step where the cut ends (95 % ≤ 10 mm), what ran over is outside, the volume kept (the owner, the realist)', o.n > 100 && o.maxMm <= 10 && o.medMm <= 5 && o.outM3 > 0.2 && Math.abs(o.keptPct) <= 1 && o.stepP95Mm <= 10, JSON.stringify(o));
+  check('concrete over the boards: by every board ≤ 10 mm over its top (median ≤ 5), no step where the cut ends (95 % ≤ 10 mm), what ran over is outside and not over the boards (≤ 3 mm), the volume kept (the owner, the realist)', o.n > 100 && o.maxMm <= 10 && o.medMm <= 5 && o.outM3 > 0.2 && Math.abs(o.keptPct) <= 1 && o.stepP95Mm <= 10 && o.outOverMm <= 3, JSON.stringify(o));
   check('concrete against the boards: no gap — the surface shown reaches the board (≤ 3 mm below the concrete by it)', o.gapMm <= 3, JSON.stringify(o));
   check('concrete over the boards: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();

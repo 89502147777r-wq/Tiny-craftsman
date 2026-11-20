@@ -238,7 +238,9 @@ const FRAG_SOIL = `
           soilC = mix(soilC, mix(soilC, vec3(lum), 0.25), cp) * (1.0 - 0.22 * cp);
         }
         // concrete: wet and dark when fresh, light grey once set; trowelled = even tone
-        float concW = smoothstep(0.00008, 0.0006, vConc.x);
+        // (a thin edge — a spill's rim — ragged in world space, not along the grid's cells: the owner saw «pixels»)
+        float concEdge = 0.5 + tcSNoise(vWPos.xz * ${RESCALE.toFixed(5)} * 9.0);
+        float concW = smoothstep(0.00008, 0.0006, vConc.x * concEdge);
         float cure = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
         {
           // fresh: an even, wet cement paste (only big soft patches of bleed water);
@@ -320,7 +322,7 @@ const ROUGH_TAIL = `
         roughnessFactor = mix(max(roughnessFactor, 0.94), 0.82, smoothstep(0.003, 0.02, vSoil.x)); // dry earth has no sheen
         {
           // fresh concrete has a wet sheen (glossy when trowelled), set concrete is matt
-          float cw = smoothstep(0.00008, 0.0006, vConc.x), cu = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
+          float cw = smoothstep(0.00008, 0.0006, vConc.x * (0.5 + tcSNoise(vWPos.xz * ${RESCALE.toFixed(5)} * 9.0))), cu = clamp((uClock - vConc.y) / uCure, 0.0, 1.0);
           float wetR = mix(0.8, 0.32, vConc.z), dryR = mix(0.9, 0.72, vConc.z);   // moist and matt as poured, the worked paste glistens
           roughnessFactor = mix(roughnessFactor, mix(wetR, dryR, smoothstep(0.1, 0.8, cu)), cw);
           // bitumen on a face shines
@@ -403,7 +405,7 @@ export function makeTerrainMaterial(tex) {
           vec3 off = (viewMatrix * vec4(mn.x, 0.0, mn.y, 0.0)).xyz;
           normal = normalize(mix(normal, normalize(normalize(vNormal) * faceDirection + off * 1.3), ms));
           // concrete: its own surface instead of the soil photo — lumpy as poured, flat when trowelled
-          float cw = smoothstep(0.00008, 0.0006, vConc.x);
+          float cw = smoothstep(0.00008, 0.0006, vConc.x * (0.5 + tcSNoise(vWPos.xz * ${RESCALE.toFixed(5)} * 9.0)));
           if (cw > 0.001) {
             // as poured: lumps and the stones of the aggregate; after vibrator and rule a
             // fine texture; trowelled almost flat

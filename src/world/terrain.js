@@ -16,6 +16,7 @@ import { makeNoise2 } from '../core/rand.js';
 // Loose soil slides at its angle of repose; native ground only collapses
 // when a wall is cut steeper than ~78°. Volume is conserved exactly.
 const MM_CHIP = 0.0005 / MODEL_SCALE;
+const BOARD_SHOW = 0.002 / MODEL_SCALE;   // (a board's cell is shown 2 mm under the board's top: its top face stays clean, not in the concrete)
 const OVER_BOARD = 0.005 / MODEL_SCALE;   // (concrete higher than a board's top by this — 5 mm real, a meniscus — runs over it: the realist)
 const TAU_JOLT = 45;   // (Pa: the concrete round where the stream falls, shaken by the pump's strokes — П4 is 300–800 still, the realist)   // (a crust thinner than 0,5 mm: gone)
 const TILE = 96;   // cells a side of a piece of the mesh (drawn or not as a whole)
@@ -885,10 +886,18 @@ export class Terrain {
     const OR = 4; // occlusion probe radius (cells)
     const ox0 = Math.max(0, b.x0 - OR - 1), ox1 = Math.min(rx, b.x1 + OR + 1);
     const oz0 = Math.max(0, b.z0 - OR - 1), oz1 = Math.min(rz, b.z1 + OR + 1);
+    // (a board's cell by the concrete is shown at the concrete's level, never over the board's top — see below; the normals
+    // are taken from the same heights, or the concrete by the board was lit as a slope down into it)
+    const wl = this.wall, lifted = (i) => {
+      const h = nat[i] + loose[i] + conc[i] + top[i];
+      if (!(wl[i] > 0)) return h;   // (a board's cell with concrete in it too — it got there before the board, or ran in: the same)
+      let hj = h; for (const k of [i - 1, i + 1, i - n, i + n]) { if (k < 0 || k >= wl.length || wl[k] > 0 || conc[k] <= 1e-6) continue; const hk = nat[k] + loose[k] + conc[k] + top[k]; if (hk > hj) hj = hk; }
+      return Math.max(h, Math.min(hj, wl[i] - BOARD_SHOW));
+    };
     const H = (ix, iz) => {
       ix = ix < 0 ? 0 : ix > rx ? rx : ix;
       iz = iz < 0 ? 0 : iz > rz ? rz : iz;
-      const i = iz * n + ix; return nat[i] + loose[i] + conc[i] + top[i];
+      return lifted(iz * n + ix);
     };
     const done = this._done, pass = this._pass, tiles = this.tiles, tnx = tiles ? Math.ceil(rx / TILE) : 0, tnz = tiles ? Math.ceil(rz / TILE) : 0;
     for (let iz = oz0; iz <= oz1; iz++) for (let ix = ox0; ix <= ox1; ix++) {
@@ -900,10 +909,10 @@ export class Terrain {
       // a cell short of the board and its surface fell into a dark gap there, the owner's photo: shown at the concrete's own
       // level up to the board, never over its top — inside the board it is hidden)
       let lift = -1;
-      if (this.wall[i] > 0 && conc[i] <= 1e-6 && ix > 0 && ix < rx && iz > 0 && iz < rz) {
+      if (this.wall[i] > 0 && ix > 0 && ix < rx && iz > 0 && iz < rz) {
         let hj = h;
         for (const k of [i - 1, i + 1, i - n, i + n]) { if (this.wall[k] > 0 || conc[k] <= 1e-6) continue; const hk = nat[k] + loose[k] + conc[k] + top[k]; if (hk > hj) { hj = hk; lift = k; } }
-        if (lift >= 0) h = Math.min(hj, this.wall[i]); if (h <= nat[i] + loose[i] + top[i]) lift = -1;
+        if (lift >= 0) { const hl = Math.min(hj, this.wall[i] - BOARD_SHOW); if (hl > h) h = hl; else lift = -1; }
       }
       pos[i * 3 + 1] = h;
       if (tiles) {
@@ -973,7 +982,7 @@ export class Terrain {
       for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
         const rx = this.toWorldX(ix) - ax, rz = this.toWorldZ(iz) - az;
         const u = rx * ux + rz * uz, v = rx * nx + rz * nz;
-        if (u >= -over && u <= L + over && v >= -pad && v <= w.t + pad) { const i = iz * n + ix; wall[i] = Math.max(wall[i], w.top); }
+        if (u >= -over && u <= L + over && v >= -cell * 0.1 && v <= w.t + pad * 1.6) { const i = iz * n + ix; wall[i] = Math.max(wall[i], w.top); }   // (the concrete side up to the board's face — half a cell of margin there kept the concrete off the board, a grey strip by it: the owner; the margin is on the far side, still a band past a cell's diagonal, nothing leaks)
       }
     }
     this._outside = null; this._enc = null;   // (what the boards enclose: worked out again when it is asked)
@@ -1194,7 +1203,7 @@ export class Terrain {
                   for (let q = 0; q < 8 && kx >= 0 && kx <= rx && kz >= 0 && kz <= rz && wall[kz * n + kx]; q++) { kx += NB[k][0]; kz += NB[k][1]; }
                   if (kx < 0 || kx > rx || kz < 0 || kz > rz) continue;
                   const m = Math.min((si - wall[j] - OVER_BOARD * 0.6) * 0.3, conc[i] - this.cBase[i]);
-                  if (m > 1e-9) { conc[i] -= m; this._overflow(kx, kz, m * this.cellArea, NB[k][0], NB[k][1]); moved = true; this.overBoards = true; }
+                  if (m > 1e-9) { const back = this._overflow(kx, kz, m * this.cellArea, NB[k][0], NB[k][1]) || 0; conc[i] -= m - back / this.cellArea; if (back < m * this.cellArea * 0.9) { moved = true; this.overBoards = true; } }
                 }
                 continue;
               }
@@ -1374,35 +1383,40 @@ export class Terrain {
   // what ran over a board at (kx, kz) — the first cell past it, (ox, oz) out — laid on the ground there as fresh concrete: a
   // pancake 5 cells along the board, 4 out from it (~0–12 cm, the most by the board; the realist), off the formwork only
   _spread(kx, kz, ox, oz, vol) {
-    const { nx: n, rx, rz, wall } = this, enc = this._enclosed(), cs = []; let ws = 0;
+    const { nx: n, rx, rz, wall, nat, loose, conc, top } = this, enc = this._enclosed(), ca = this.cellArea;
+    // (never higher outside than the board it ran over, less 5 mm — the realist: it does not rise over where it ran from)
+    const bx = kx - ox, bz = kz - oz, cap = (bx >= 0 && bx <= rx && bz >= 0 && bz <= rz && wall[bz * n + bx] > 0 ? wall[bz * n + bx] : nat[kz * n + kx] + 1) - OVER_BOARD;
     // (not into a pocket between the board and a stake or a brace — walled on two sides it cannot run out, it grew into a needle)
     const pocket = (j) => (wall[j - 1] ? 1 : 0) + (wall[j + 1] ? 1 : 0) + (wall[j - n] ? 1 : 0) + (wall[j + n] ? 1 : 0) >= 2;
     for (let q = 0; q < 6 && kx > 1 && kx < rx - 1 && kz > 1 && kz < rz - 1 && (wall[kz * n + kx] || pocket(kz * n + kx)); q++) { kx += ox; kz += oz; }
-    for (let a = -2; a <= 2; a++) for (let b = 0; b < 4; b++) {
-      const cx = kx + (oz ? a : 0) + ox * b, cz = kz + (ox ? a : 0) + oz * b;
-      if (cx <= 0 || cx >= rx || cz <= 0 || cz >= rz) continue;
-      const j = cz * n + cx; if (wall[j] || enc[j] || pocket(j)) continue;
-      const w = (3 - Math.abs(a)) * (4 - b); cs.push([j, w]); ws += w;
+    const ok = (cx, cz) => { if (cx <= 1 || cx >= rx - 1 || cz <= 1 || cz >= rz - 1) return -1; const j = cz * n + cx; return wall[j] || enc[j] || pocket(j) ? -1 : j; };
+    // a bead by the board: the most against it, thinning out over ~0,3–0,6 m (the realist: 40–60 mm by the board, coming to
+    // nothing away from it); each cell only up to the cap — what does not fit goes further out, ring by ring
+    const room = (j) => Math.max(0, cap - (nat[j] + loose[j] + conc[j] + top[j]));
+    let left = vol / ca;   // (in model height × a cell)
+    const put = (list) => {
+      let ws = 0; for (const c of list) ws += c[1];
+      for (let pass = 0; pass < 3 && left > 1e-9 && ws > 0; pass++) {
+        let used = 0, ws2 = 0;
+        for (const c of list) { const want = left * c[1] / ws, r = room(c[0]), m = Math.min(want, r); if (m > 0) { this._concAdd(c[0], m, 0, 0); used += m; } if (r - m > 1e-9) ws2 += c[1]; }
+        left -= used; ws = ws2;
+      }
+    };
+    const near = [];
+    for (let a = -3; a <= 3; a++) for (let b = 0; b < 10; b++) { const j = ok(kx + (oz ? a : 0) + ox * b, kz + (ox ? a : 0) + oz * b); if (j >= 0) near.push([j, (4 - Math.abs(a)) * Math.exp(-b / 3)]); }
+    put(near);
+    if (left > 1e-9) {
+      const ring = [];
+      for (let a = -20; a <= 20; a++) for (let b = -20; b <= 20; b++) { const d = Math.hypot(a, b); if (d > 20) continue; const j = ok(kx + a, kz + b); if (j >= 0) ring.push([j, 1 / (1 + d)]); }
+      put(ring);
     }
-    // (at a board's end or by a stake the pancake has little room: the free cells round it out to ~0,3 m take it — not one cell
-    // as a sharp pyramid: the realist)
-    if (cs.length < 10) for (let a = -10; a <= 10; a++) for (let b = -10; b <= 10; b++) {
-      const d = Math.hypot(a, b); if (d > 10 || d < 2.5) continue;
-      const cx = kx + a, cz = kz + b; if (cx <= 0 || cx >= rx || cz <= 0 || cz >= rz) continue;
-      const j = cz * n + cx; if (wall[j] || enc[j] || pocket(j)) continue;
-      const w = 2 / (1 + d); cs.push([j, w]); ws += w;
-    }
-    if (!ws) return false;
-    for (const [j, w] of cs) this._concAdd(j, vol / this.cellArea * w / ws, 0, 0);
-    this._concTouch(kx - 3, kz - 3, kx + 5, kz + 5);
-    return true;
+    this._concTouch(kx - 21, kz - 21, kx + 21, kz + 21);
+    return Math.max(0, left) * ca;   // (what found no room: it stays where it was)
   }
   _overflow(kx, kz, vol, ox, oz) {
     // (over a board: down its outer face as fresh concrete on the ground by it, the flow spreads it there — dropped as stiff
     // lumps they stacked into a tower by the board, or their splat reached back over it into the form: the owner, the realist)
-    if (this.OVER_DIRECT !== false) {
-      if (this._spread(kx, kz, ox, oz, vol)) return;
-    }
+    if (this.OVER_DIRECT !== false) return this._spread(kx, kz, ox, oz, vol);   // (the volume that found no room outside)
     const key = `${Math.floor(kx / 18)},${Math.floor(kz / 18)}`;   // ~19 cm (real) of board
     const bins = (this._ovf ||= new Map());
     const b = bins.get(key) || { vol: 0, x: 0, z: 0, w: 0, need: 0.8e-5 + Math.random() * 2.2e-5, ox, oz };   // 0.3 … 1.3 l (real)
@@ -1435,7 +1449,7 @@ export class Terrain {
   }
   drainOverBoards() {
     const { nx: n, rx, rz, wall, conc, cBase, cTime, nat, loose, top } = this, clock = this.clock || 0, stiffT = clock - CONCRETE.stiff * CONCRETE.cure;
-    const DIR = [[1, 0], [-1, 0], [0, 1], [0, -1]], keep = OVER_BOARD * 0.6;
+    const DIR = [[1, 0], [-1, 0], [0, 1], [0, -1]], keep = -0.001 / MODEL_SCALE;   // (level with the board, 1 mm under its top: the owner «вровень с опалубкой — окей»; 3 mm over it hid the board's top edge in the concrete)
     const enc = this._enclosed();
     let moved = 0;
     for (let iz = 2; iz < rz - 1; iz++) for (let ix = 2; ix < rx - 1; ix++) {
@@ -1459,7 +1473,7 @@ export class Terrain {
       // whose round spread reached back over the board into the form)
       conc[i] -= ex; moved++;
       // (down the outer face as fresh concrete on the ground by it — the flow spreads it there; as lumps it stacked into a tower)
-      if (!this._spread(kx, kz, best.dx, best.dz, ex * this.cellArea)) { conc[i] += ex; moved--; continue; }
+      const back = this._spread(kx, kz, best.dx, best.dz, ex * this.cellArea); conc[i] += back / this.cellArea; if (back >= ex * this.cellArea * 0.9) moved--;
       this._chg(ix - 1, iz - 1, ix + 1, iz + 1);
     }
     if (moved) this.version++;
@@ -1491,10 +1505,10 @@ export class Terrain {
   // flows as a softer mix for a moment — the heap under the hose slumps to the boards and runs over them there, not
   // elsewhere along them (the realist, 2026-11-20)
   joltAt(x, z, r) {
-    const b = this.cellBox(x, z, r), { nx: n, conc } = this, until = (this.clock || 0) + 0.4, r2 = r * r;
+    const b = this.cellBox(x, z, r), { nx: n, conc } = this, until = (this.clock || 0) + 0.4, r2 = r * r, enc = this._enclosed();
     for (let iz = b.z0; iz <= b.z1; iz++) for (let ix = b.x0; ix <= b.x1; ix++) {
       const i = iz * n + ix, dx = this.toWorldX(ix) - x, dz = this.toWorldZ(iz) - z;
-      if (conc[i] > 0 && dx * dx + dz * dz < r2) this.jolt[i] = until;
+      if (conc[i] > 0 && dx * dx + dz * dz < r2 && enc[i]) this.jolt[i] = until;   // (inside the boards only: what ran over them lies as the stiff mix it is — shaken there it spread into a thin sheet)
     }
     this._concTouch(b.x0, b.z0, b.x1, b.z1);
   }
