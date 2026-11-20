@@ -145,6 +145,8 @@ glTF 1k, текстуры ужаты до 512 px. Дрель — в руке ш�
 |---|---|---|---|---|
 | `assets/models/loader.glb` — мини-погрузчик | Skid Steer Loader | jeandiz | CC BY 4.0 | https://sketchfab.com/3d-models/91948c1f514141fc82fee40ea56cc8df |
 | `assets/models/excavator.glb` — экскаватор (переразвешен на настоящих шарнирах: ходовая, башня, стрела, рукоять, ковш; каждый гидроцилиндр — гильза и шток на своих пальцах; текстуры 512 webp, meshopt; в игре 0,8 размера; логотип производителя закрашен) | Excavator (CAT) | sarvesh777 (sarvesh903) | CC BY 4.0 | https://sketchfab.com/3d-models/excavator-cat-5f195244108c46e495a1e78040f02f7e |
+| `assets/models/operator.glb` — машинист в кабине экскаватора (скелет Mixamo, сгибается кодом: руки на джойстиках, ноги на педалях; голова в виде из кабины скрыта; webp 1024, meshopt) | Worker talk animation | Bazsi1986 | CC BY 4.0 | https://sketchfab.com/3d-models/620e27e5126f40d080c5d4bffab9eedb |
+| `assets/models/joystick.glb` — джойстики в кабине экскаватора (перекрашены, левый зеркальный; meshopt) | joy t | angeloraffaelecatalano | CC BY 4.0 | https://sketchfab.com/3d-models/7773ea0e21924b8ea5ff4a297caea324 |
 | `assets/models/canter.glb` — бортовой грузовик-самосвал | 1975 FUSO Canter T200 | thejinjinjin | CC BY 4.0 | https://sketchfab.com/3d-models/4fe39804350e463795bf5404aef22138 |
 | `assets/models/bucket.glb` — ведро для бетона | Plasticbucket | Alexander.Treiner | CC BY 4.0 | https://sketchfab.com/3d-models/10d60b25c7ac4c0c9de056686ed01002 |
 | `assets/models/trowel.glb` — кельма каменщика | Trowel | vcotta | CC BY 4.0 | https://sketchfab.com/3d-models/b22da70bd64a49539d6226950c5355ca |

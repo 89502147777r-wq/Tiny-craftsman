@@ -734,6 +734,7 @@ export class MachineTool {
   // the cab from inside: made once (with the excavator), hung on its house at the seat; on — the model's own cab parts hidden
   _cabInside(on) {
     const E = this.exc; if (!E?.house) return;
+    if (!this.cab && !on) return;   // (the cab and its driver loaded only when first looked out of)
     if (!this.cab) { this.cab = new Cab(this.app); this.cab.group.position.set(0.62, 1.2, 0.5); this.cab.group.scale.setScalar(1 / 0.8); E.house.add(this.cab.group);   // (the house's units are the model's metres at 0,8: 1 m = 1,25 of them)
       // (the model's cab: its parts inside the cab's box on the house — shown again when off)
       const inv = new THREE.Matrix4(); E.root.updateMatrixWorld(true); inv.copy(E.house.matrixWorld).invert(); this._cabParts = []; this._cabMats = new Set();
@@ -751,7 +752,7 @@ export class MachineTool {
     this.cab.group.visible = on; for (const o of this._cabParts) o.visible = !on;
     this.app.renderer.localClippingEnabled = on || this.app.renderer.localClippingEnabled;
     for (const m of this._cabMats) { m.clippingPlanes = on ? this._clip : null; m.clipIntersection = on; m.needsUpdate = true; }
-    if (!on) { this._lookSet = null; }
+    if (!on) { this._lookSet = null; const c = this.app.camera; if (this._near0 != null) { c.near = this._near0; this._near0 = null; c.updateProjectionMatrix(); } }
   }
   // the cab's box (its own metres, a little inside its walls) in the world now, as six planes facing out
   _cabClip() {
@@ -1186,16 +1187,26 @@ export class MachineTool {
     // the look (held where it is let go)
     if (ex && this.view === 'cab' && this.cab?.man) {
       const G = this.cab.group; G.updateMatrixWorld(true);
-      const e = G.getWorldPosition(new THREE.Vector3());
-      if (this._lookSet) { this.lookYaw = THREE.MathUtils.clamp((this.lookYaw || 0) + (rig.goal.yaw - this._lookSet[0]), -2.4, 2.4); this.lookPitch = THREE.MathUtils.clamp((this.lookPitch || 0) + (rig.goal.pitch - this._lookSet[1]), -0.9, 1.1); }
-      const Y = yawV + (this.lookYaw || 0), P = 0.4 + (this.lookPitch || 0), D = R(0.6), dir = new THREE.Vector3(Math.cos(Y) * Math.cos(P), -Math.sin(P), -Math.sin(Y) * Math.cos(P));
+      const sc = G.getWorldScale(new THREE.Vector3()).x;
+      if (this._lookSet) { this.lookYaw = THREE.MathUtils.clamp((this.lookYaw || 0) + (rig.goal.yaw - this._lookSet[0]), -1.9, 1.9); this.lookPitch = THREE.MathUtils.clamp((this.lookPitch || 0) + (rig.goal.pitch - this._lookSet[1]), -0.9, 0.9); }
+      // (looking at the bucket, not the knees: 0,3 down — the realist; the eye turns about the neck, 0,10 over it and 0,09 ahead of it, as
+      // a head does; down no further than 1,2 rad)
+      const Y = yawV + (this.lookYaw || 0), P = 0.3 + (this.lookPitch || 0), D = R(0.6), dir = new THREE.Vector3(Math.cos(Y) * Math.cos(P), -Math.sin(P), -Math.sin(Y) * Math.cos(P));
+      const up = new THREE.Vector3(Math.cos(Y) * Math.sin(P), Math.cos(P), -Math.sin(Y) * Math.sin(P)), neck = G.localToWorld(new THREE.Vector3(0, -0.1, -0.09));
+      const e = neck.addScaledVector(up, 0.1 * sc).addScaledVector(dir, 0.09 * sc);
       rig.setState({ target: [e.x + dir.x * D, e.y + dir.y * D, e.z + dir.z * D], yaw: Y - Math.PI / 2, pitch: P, dist: D }, true);
+      // (the near plane close: the hands and the shoulders a hand's width from the eye are not cut)
+      { const c = this.app.camera; this._near0 ??= c.near; if (c.near !== R(0.02)) { c.near = R(0.02); c.updateProjectionMatrix(); } }
       this._lookSet = [rig.goal.yaw, rig.goal.pitch];
       this._camYaw = null; rig.shakeKeep ??= rig.shake; rig.shake = false;
       // (wide, as the owner's photo from a cab: ~95° across — the bucket, the ground ahead, the hands and the knees in sight; on a tall phone the
       // height then is capped at 120°, past that the edges stretch)
       { const asp = Math.max(0.3, this.app.camera.aspect || 1), v = 2 * Math.atan(Math.tan(95 * Math.PI / 360) / asp) * 180 / Math.PI; this._fov(Math.min(120, Math.max(75, v))); }
-      this.cab.pose({ l: this.stick.l, r: this.stick.r });
+      // (travelling — the pedals and levers go with the tracks, the joysticks stay in the middle: the realist)
+      const drive = this.excMode === 'drive', [lx, ly] = this.stick.l, fw = THREE.MathUtils.clamp((this.v || 0) / R(1.3), -1, 1);
+      const pedals = drive ? [THREE.MathUtils.clamp(fw + lx, -1, 1), THREE.MathUtils.clamp(fw - lx, -1, 1)] : [0, 0];
+      this.cab.pose({ l: drive ? [0, 0] : this.stick.l, r: drive ? [0, 0] : this.stick.r, pedals, look: this.lookYaw || 0 }, Math.min(0.2, dt));
+      void ly;
       return;
     }
     if (this.view === 'cab' || this.view === 'roof') {

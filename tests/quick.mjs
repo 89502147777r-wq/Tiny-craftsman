@@ -390,6 +390,54 @@ if (want("2")) {
 }
 console.log('—', sec());
 
+// ---- 2p. Concrete over the boards (the owner, 2026-11-20, a strip foundation: «почему такой большой зазор между бетоном и
+// опалубкой (его вообще быть не должно) и почему бетон набирается ровным слоем выше опалубки (после верхней точки доски он
+// должен переливаться)»; the realist: over a board's top only a 3–10 mm meniscus, the rest runs over; tau stays 250): the pit in
+// its formwork poured to 107 % of what it holds — by every board the concrete ≤ 10 mm over its top (median ≤ 5), what ran over
+// is outside (volume kept), and the surface shown reaches the board (no dark gap: the board's cell by the concrete at its level) ----
+if (want('2p')) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, t = tc.terrain, M = 1 / 10.4651, e = { clientX: 0, clientY: 0 }, o = {};
+    const r = tc.objects.all('outline').find((x) => x.kind === 'rect');
+    tc.setTool('form'); tc.formTool.setMode('outline'); tc.formTool.down(new V((r.x0 + r.x1) / 2, 0.1, r.z0), e); tc.simulate(0.1);
+    tc.setTool('hose'); tc.settings.pump = 0;
+    const h = tc.activeTool(), cx = (r.x0 + r.x1) / 2, H = (i) => t.nat[i] + t.loose[i] + t.conc[i] + t.top[i];
+    h.down(new V(cx, 0.1, r.z0 + 0.1)); tc.simulate(0.05);
+    let wT = 0; for (let i = 0; i < t.wall.length; i++) wT = Math.max(wT, t.wall[i]);
+    let cap = 0; for (let i = 0; i < t.wall.length; i++) { const x = t.toWorldX(i % t.nx), z = t.toWorldZ((i / t.nx) | 0); if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1 && !t.wall[i]) cap += Math.max(0, wT - t.nat[i] - t.loose[i]) * t.cellArea; }
+    for (let k = 0; k < 800 && t.concVolume() < cap * 1.07; k++) { h.move(new V(cx + (k % 10 - 4.5) * 0.08, 0.1, r.z0 + 0.1 + ((k / 10 | 0) % 8) * 0.08)); tc.simulate(0.5); }
+    const poured = t.concVolume(); h.up();
+    for (let i = 0; i < 600 && tc.busy(); i++) tc.simulate(1 / 15);
+    tc.simulate(0.5);
+    const enc = t._enclosed(), ex = []; let inV = 0, gap = 0;
+    for (let i = t.nx; i < t.conc.length - t.nx; i++) {
+      if (t.conc[i] > 1e-6 && enc[i]) inV += t.conc[i] * t.cellArea;
+      if (t.conc[i] <= 1e-6 || t.wall[i] || !enc[i]) continue;
+      let w = 0, wk = -1; for (const k of [i - 1, i + 1, i - t.nx, i + t.nx]) if (t.wall[k] > w) { w = t.wall[k]; wk = k; }
+      if (!w) continue;
+      ex.push((H(i) - w) / M * 1000);
+      // (the shown surface: the board's cell by it not lower than the concrete — up to the board's top)
+      gap = Math.max(gap, (Math.min(H(i), w) - t.aPos.array[wk * 3 + 1]) / M * 1000);
+    }
+    // (no step where the cut by the boards ends: the 4th cell in from a board no more than 5 mm over the 3rd — the realist)
+    let step = 0; const steps = [];
+    for (let i = 4 * t.nx; i < t.conc.length - 4 * t.nx; i++) {
+      if (!t.wall[i]) continue;
+      for (const d of [1, -1, t.nx, -t.nx]) { const a = i + d * 3, b = i + d * 4; if (t.wall[i + d] || t.wall[a] || t.wall[b] || !enc[a] || !enc[b] || t.conc[a] <= 1e-6 || t.conc[b] <= 1e-6) continue; const v = (H(b) - H(a)) / M * 1000; steps.push(v); step = Math.max(step, v); }
+    }
+    steps.sort((a, b) => a - b);
+    ex.sort((a, b) => a - b);
+    Object.assign(o, { stepMaxMm: +step.toFixed(1), stepP95Mm: +(steps[Math.floor(steps.length * 0.95)] || 0).toFixed(1), capM3: +(cap / M ** 3).toFixed(2), pouredM3: +(poured / M ** 3).toFixed(2), n: ex.length, maxMm: +ex.at(-1).toFixed(1), medMm: +ex[ex.length >> 1].toFixed(1), gapMm: +gap.toFixed(1),
+      outM3: +((t.concVolume() - inV) / M ** 3).toFixed(2), keptPct: +((t.concVolume() / poured - 1) * 100).toFixed(2) });
+    return o;
+  });
+  check('concrete over the boards: by every board ≤ 10 mm over its top (median ≤ 5), no step where the cut ends (95 % ≤ 10 mm), what ran over is outside, the volume kept (the owner, the realist)', o.n > 100 && o.maxMm <= 10 && o.medMm <= 5 && o.outM3 > 0.2 && Math.abs(o.keptPct) <= 1 && o.stepP95Mm <= 10, JSON.stringify(o));
+  check('concrete against the boards: no gap — the surface shown reaches the board (≤ 3 mm below the concrete by it)', o.gapMm <= 3, JSON.stringify(o));
+  check('concrete over the boards: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2a. The garden: a path, a lawn and a fence through all their stages -------------------------
 if (want("2a")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -1294,6 +1342,56 @@ if (want("2i")) {
   check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), lifted it keeps it (crowned, lumpy), opened it is empty, the crumbs fall at g; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove && o.carried >= 0.95 && o.crown > 0.15 && o.fallAt04 && o.fallAt12, JSON.stringify(o));
   check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty; what is tipped into it heaps when it lands', o.signs && o.tip && o.inAir && o.landed, JSON.stringify(o));
   check('machines: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2i⁰. The excavator's cab from inside (the owner, 2026-11-19: «реалистичный вид с кабины … руки на настоящих джойстиках, чтобы
+// двигались за моим пальцем … ботинки на педалях, мониторы с логотипом … при повороте камеры руки не обрывались … большие пальцы не
+// вверх»): the driver seated, his head hidden, each hand on its grip as the sticks lean, the boots on the pedals, the thumbs not up;
+// the look turned by the finger keeps the eye where it is; out of the cab — the model's own cab back, nothing cut away ----
+if (want('2i⁰')) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {};
+    const frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
+    tc.setTool('machine'); await mt.ensure(); mt.enter('excavator');
+    for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
+    const E = mt.exc; E.place(t, 0, 0, 0); mt.setView('cab'); frames(3); await mt.cab?.ready; frames(3);
+    const C = mt.cab, G = C.group, L = (b) => G.worldToLocal(b.getWorldPosition(new V()));
+    o.man = !!C.man; o.shown = G.visible; o.parts = mt._cabParts.length; o.hidden = mt._cabParts.every((p) => !p.visible);
+    o.clip = [...mt._cabMats].every((m) => m.clippingPlanes?.length === 6);
+    let head = 0; C.man.traverse((m) => { if (m.isMesh && /Head/.test(m.material?.name || '') && m.visible) head++; }); o.headShown = head;
+    // the hands on the grips: at rest and with both sticks all the way over
+    const grip = (k) => G.worldToLocal(C.sticks[k].localToWorld(new V(0, C.gripH * 0.92, 0)));
+    const hands = () => ['l', 'r'].map((k) => +L(C.b[(k === 'l' ? 'Left' : 'Right') + 'Hand']).distanceTo(grip(k)).toFixed(3));
+    o.handRest = hands(); mt.joystick('l', 1, 1); mt.joystick('r', -1, 0); frames(2); o.handFull = hands();
+    o.tilt = +C.sticks.l.rotation.x.toFixed(3);
+    // the arms alive, not only the hands in place: the wrist near straight, the elbow bent ~90–115° (the realist)
+    const ang = (a, b) => +(a.angleTo(b) * 180 / Math.PI).toFixed(0);
+    o.wrist = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'HandIndex1']).sub(L(C.b[k + 'Hand']))));
+    o.elbow = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Arm']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm']))));
+    // the thumbs: their tips no higher over the hand than the fingers' roots (not up)
+    o.thumbUp = ['Left', 'Right'].map((k) => +(L(C.b[k + 'HandThumb4'] || C.b[k + 'HandThumb3']).y - L(C.b[k + 'HandIndex1']).y).toFixed(3));
+    o.feet = ['Left', 'Right'].map((k, i) => +L(C.b[k + 'Foot']).distanceTo(G.worldToLocal(C.pedals[i ? 'r' : 'l'].pv.localToWorld(new V(0, 0.105, 0.05)))).toFixed(3));
+    // travelling: the pedals go with the tracks, the joysticks stay in the middle
+    mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(8); const a0 = C.pedals.l.pv.rotation.x; mt.setExcMode('drive'); mt.joystick('l', 0, -1); frames(30); o.pedal = +(C.pedals.l.pv.rotation.x - a0).toFixed(3); o.stickDrive = +Math.abs(C.sticks.l.rotation.x).toFixed(3); mt.joystick('l', 0, 0); frames(20); mt.setExcMode('dig');
+    mt.joystick('l', 0, 0); mt.joystick('r', 0, 0);
+    // the look: turned by the finger (the rig's yaw), the eye stays in the cab
+    const eye = () => tc.camera.position.distanceTo(G.getWorldPosition(new V())) / G.getWorldScale(new V()).x;
+    frames(2); o.eye0 = +eye().toFixed(3); tc.rig.goal.yaw += 0.8; frames(3); o.look = +(mt.lookYaw || 0).toFixed(2); o.eye1 = +eye().toFixed(3);
+    // looked round as far as it goes: no shoulder in the eye (≥ 0,12 m)
+    tc.rig.goal.yaw += 3; frames(3); o.lookMax = +(mt.lookYaw || 0).toFixed(2);
+    { const ew = G.worldToLocal(tc.camera.position.clone()); o.shoulder = +Math.min(...['LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm'].filter((n) => C.b[n]).map((n) => L(C.b[n]).distanceTo(ew))).toFixed(3); }
+    tc.rig.goal.yaw -= 3.8; frames(3);
+    o.fov = tc.camera.fov;
+    // out of the cab
+    mt.setView('chase'); frames(3); o.off = !G.visible && mt._cabParts.every((p) => p.visible) && [...mt._cabMats].every((m) => !m.clippingPlanes);
+    return o;
+  });
+  check('machines: the cab from inside — the driver seated (no head in sight), the model\'s cab hidden and cut away (the owner)', o.man && o.shown && o.parts > 0 && o.hidden && o.clip && o.headShown === 0, JSON.stringify(o));
+  check('machines: the cab — the hands on the joysticks as they lean (≤ 0,1 m), the boots on the pedals (they go with the tracks, the joysticks still), the thumbs not up (the owner)', Math.max(...o.handRest, ...o.handFull) <= 0.1 && Math.abs(o.tilt) > 0.2 && Math.max(...o.feet) <= 0.05 && Math.max(...o.thumbUp) <= 0.03 && Math.max(...o.wrist) <= 30 && Math.min(...o.elbow) >= 80 && Math.max(...o.elbow) <= 135 && o.pedal > 0.15 && o.stickDrive <= 0.02, JSON.stringify(o));
+  check('machines: the cab — the look turned by the finger, the eye turning about the neck (≤ 0,15 m from the eye at rest); out of the cab the model as it was', o.look > 0.5 && o.lookMax <= 1.9 && o.shoulder >= 0.12 && o.eye0 < 0.15 && o.eye1 < 0.15 && o.fov >= 75 && o.off, JSON.stringify(o));
+  check('machines: the cab — no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 
