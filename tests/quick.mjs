@@ -1387,6 +1387,12 @@ if (want('2i⁰')) {
     { const ew = G.worldToLocal(tc.camera.position.clone()); o.shoulder = +Math.min(...['LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm'].filter((n) => C.b[n]).map((n) => L(C.b[n]).distanceTo(ew))).toFixed(3); }
     tc.rig.goal.yaw -= 3.8; frames(3);
     o.fov = tc.camera.fov;
+    // the soil in a full bucket: not rebuilt every frame as the arm moves a little (it flickered — the owner), and between rebuilds
+    // its top moves on smoothly (no jump of its clods)
+    { E.load = 1; frames(2); let n = 0; const f0 = E._fill.bind(E); E._fill = (sh) => { n++; return f0(sh); }; const tops = [];
+      E.load = 1; E.update(1 / 30); const b0 = E.boom; for (let k = 0; k < 60; k++) { E.load = 1; E.boomGoal = E.boom = b0 + 0.0015 * k; E.update(1 / 30); E.soil.geometry.computeBoundingBox(); tops.push(E.soil.geometry.boundingBox.max.y); } o.soilTurn = +(E.boom - b0).toFixed(3); o.soilKey = E._fillKey; o.soilVis = E.soil.visible; o.load = E.load;
+      E._fill = f0; let jump = 0; for (let k = 1; k < tops.length; k++) jump = Math.max(jump, Math.abs(tops[k] - tops[k - 1]));
+      o.soilRebuilds = n; o.soilJumpPct = +(jump / E.chord * 100).toFixed(2); E.load = 0; frames(2); }
     // out of the cab
     mt.setView('chase'); frames(3); o.off = !G.visible && mt._cabParts.every((p) => p.visible) && [...mt._cabMats].every((m) => !m.clippingPlanes);
     return o;
@@ -1394,6 +1400,7 @@ if (want('2i⁰')) {
   check('machines: the cab from inside — the driver seated (no head in sight), the model\'s cab hidden and cut away (the owner)', o.man && o.shown && o.parts > 0 && o.hidden && o.clip && o.headShown === 0, JSON.stringify(o));
   check('machines: the cab — the hands on the joysticks as they lean (≤ 0,1 m), the boots on the pedals (they go with the tracks, the joysticks still), the thumbs not up (the owner)', Math.max(...o.handRest, ...o.handFull) <= 0.1 && Math.abs(o.tilt) > 0.2 && Math.max(...o.feet) <= 0.05 && Math.max(...o.thumbUp) <= 0.03 && Math.max(...o.wrist) <= 30 && Math.min(...o.elbow) >= 80 && Math.max(...o.elbow) <= 135 && o.pedal > 0.15 && o.stickDrive <= 0.02, JSON.stringify(o));
   check('machines: the cab — the look turned by the finger, the eye turning about the neck (≤ 0,15 m from the eye at rest); out of the cab the model as it was', o.look > 0.5 && o.lookMax <= 1.9 && o.shoulder >= 0.12 && o.eye0 < 0.15 && o.eye1 < 0.15 && o.fov >= 75 && o.off, JSON.stringify(o));
+  check('machines: the soil in a full bucket steady as the arm moves a little — rebuilt ≤ 1 frame in 3, its top no jump over 3 % of the bucket (the owner: it flickered)', o.soilRebuilds <= 20 && o.soilRebuilds >= 2 && o.soilJumpPct <= 3, JSON.stringify({ n: o.soilRebuilds, jump: o.soilJumpPct, turn: o.soilTurn, key: o.soilKey, vis: o.soilVis, load: o.load }));
   check('machines: the cab — no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }

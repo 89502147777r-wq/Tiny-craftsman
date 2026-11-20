@@ -78,8 +78,10 @@ export class Cab {
     const box = (w, h, d, m, x, y, z, name, parent = G) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.name = name || ''; parent.add(o); return o; };
     const cyl = (r0, r1, h, m, x, y, z, parent = G) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, 12), m); o.position.set(x, y, z); parent.add(o); return o; };
     const C = CAB, H = C.roof - C.floor, W = C.left - C.right, D = C.front - C.back;
-    // floor: a ribbed rubber mat, dusty from the boots
-    box(W, 0.03, D, lit({ map: canvasTex(256, 256, (g, w, h) => { g.fillStyle = '#2a2a29'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 8) { g.fillStyle = '#383735'; g.fillRect(0, y, w, 3); } for (let i = 0; i < 2500; i++) { g.fillStyle = `rgba(150,128,100,${Math.random() * 0.18})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }), roughness: 0.95 }), 0, C.floor - 0.015, (C.front + C.back) / 2, 'floor');
+    // floor: a rubber mat on a steel floor plate, the whole cab's width and depth (nothing of the machine under it shows through — the
+    // owner: the ribs read as the tracks); a fine diamond tread, dusty from the boots
+    box(W, 0.03, D, lit({ map: canvasTex(256, 256, (g, w, h) => { g.fillStyle = '#242423'; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 16) for (let x = (y / 16) % 2 ? 8 : 0; x < w; x += 16) { g.fillStyle = '#2d2d2b'; g.beginPath(); g.moveTo(x, y - 4); g.lineTo(x + 3, y); g.lineTo(x, y + 4); g.lineTo(x - 3, y); g.fill(); } for (let i = 0; i < 1800; i++) { g.fillStyle = `rgba(150,128,100,${Math.random() * 0.12})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); } }), roughness: 0.95 }), 0, C.floor - 0.015, (C.front + C.back) / 2, 'floor');
+    box(W + 0.02, 0.01, D + 0.02, paint, 0, C.floor - 0.035, (C.front + C.back) / 2, 'floorplate');
     // the roof: a headliner round a window over the front half (tinted, its guard's bars)
     const rw = [-0.25, 0.25], rz = [0.15, 0.55];
     box(W, 0.03, rz[0] - C.back, head, 0, C.roof + 0.015, (rz[0] + C.back) / 2, 'roof');
@@ -104,10 +106,18 @@ export class Cab {
     const pane = (w, h, m, x, y, z, ry) => { const o = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m); o.position.set(x, y, z); o.rotation.y = ry; o.renderOrder = 5; G.add(o); return o; };
     // (the wiper's pivot at x 0,40: the pane is turned round, its u from +x — (0,47 − 0,40) / 0,94)
     pane(W - 0.1, C.roof - C.bar - 0.1, glassM((W / 2 - 0.05 - (C.left - 0.12)) / (W - 0.1)), 0, (C.roof + C.bar) / 2, C.front - 0.01, Math.PI);
-    pane(W - 0.1, C.bar - (C.floor + 0.32) - 0.05, glassM(0), 0, (C.bar + C.floor + 0.32) / 2, C.front - 0.01, Math.PI);
+    // (below the bar: a steel panel, not glass — the tracks under it are not seen from the seat: the owner)
+    box(W, C.bar - (C.floor + 0.32), 0.02, paint, 0, (C.bar + C.floor + 0.32) / 2, C.front - 0.01, 'lowfront');
     pane(W - 0.1, C.roof - 0.08 + 0.2, glassM(0), 0, (C.roof - 0.08 - 0.2) / 2, C.back + 0.002, 0);
     box(W, 0.32, 0.04, paint, 0, C.floor + 0.16, C.front - 0.02, 'kick');
-    for (const [x, ry] of [[C.left - 0.005, -Math.PI / 2], [C.right + 0.005, Math.PI / 2]]) pane(D - 0.18, H - 0.14, glassM(0), x, (C.roof + C.floor) / 2 + 0.02, (C.front + C.back) / 2, ry);
+    // the deck of the turntable on the right, from the cab to the boom's foot — the tracks under it are not seen through the right glass
+    // (the realist); dark steel with its anti-slip
+    { const dm = lit({ map: grainTex('#3b3c3d', 0.18, 80), roughness: 0.8, metalness: 0 });
+      box(0.9, 0.02, 2.6, dm, C.right - 0.47, C.floor - 0.06, 0.6, 'deck');
+      box(0.5, 0.02, 2.0, dm, C.left + 0.27, C.floor - 0.06, 0.4, 'step'); }   // (and the walkway under the door on the left)
+    // the side glass from the consoles' height up; under it the side walls (no tracks through them)
+    const SILL = -0.55;
+    for (const [x, ry] of [[C.left - 0.005, -Math.PI / 2], [C.right + 0.005, Math.PI / 2]]) { pane(D - 0.18, C.roof - 0.07 - SILL, glassM(0), x, (C.roof - 0.07 + SILL) / 2, (C.front + C.back) / 2, ry); box(0.02, SILL - C.floor, D, paint, x + Math.sign(x) * 0.01, (SILL + C.floor) / 2, (C.front + C.back) / 2, 'sidewall'); }
     // the wiper: outside the glass, parked down the left pillar, its arm and blade
     { const w = new THREE.Group(); w.position.set(C.left - 0.12, C.bar + 0.04, C.front + 0.02); const arm = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.62, 0.012), paint); arm.position.y = 0.31; w.add(arm); const blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 0.01), rubber); blade.position.set(0, 0.36, -0.005); w.add(blade); w.rotation.z = -0.32; G.add(w); }
     // the mirror outside the left pillar; vents on the pillars

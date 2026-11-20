@@ -750,6 +750,8 @@ export class MachineTool {
     if (on) this._cabClip();
     if (this._cabOn === on) return; this._cabOn = on;
     this.cab.group.visible = on; for (const o of this._cabParts) o.visible = !on;
+    // (the model's light flat covers by the boom's foot read as cardboard from the seat: the machine's yellow there — the realist)
+    E.house.traverse((o) => { if (!o.isMesh || !/^house_(6|18)$/.test(o.name)) return; const m = o.material; if (!m?.color) return; m.userData.c0 ??= m.color.clone(); if (on) m.color.copy(m.userData.c0).multiply(new THREE.Color(0.95, 0.68, 0.22)); else m.color.copy(m.userData.c0); });
     this.app.renderer.localClippingEnabled = on || this.app.renderer.localClippingEnabled;
     for (const m of this._cabMats) { m.clippingPlanes = on ? this._clip : null; m.clipIntersection = on; m.needsUpdate = true; }
     if (!on) { this._lookSet = null; const c = this.app.camera; if (this._near0 != null) { c.near = this._near0; this._near0 = null; c.updateProjectionMatrix(); } }
