@@ -120,7 +120,7 @@ class ConcreteTool {
     app.journal.begin(type, meta, app.clock);
     this.p.copy(p);
     this.last = p.clone();
-    this.started = false;
+    this.started = false; this._drainT = null;
     this.state = 'work';
   }
 
@@ -226,7 +226,15 @@ class ConcreteTool {
       // by frame until it holds (not all at once on the finger's release)
       const ch = this.uw?.ch || this.ch;
       if (ch) { const m = ch.step(dt); ch.show(this.app.wallView); if ((this.settleT > 0.3 && m < dt) || this.settleT > 12) this.finish(); }
-      else if (!this.app.terrain.cActive || this.settleT > 2.5) this.finish();
+      // (while it still runs over a board's top it goes on, up to 10 s — cut at 2,5 s it stood as a layer over the boards, the owner)
+      else if (!this.app.terrain.cActive || (this.settleT > 2.5 && !this.app.terrain.overBoards) || this.settleT > 10) {
+        // (first what still stands over the boards' tops goes over them — then 1,5 s more for it to settle on the ground
+        // outside, frame by frame: dropped at the very end it stood there as a tower)
+        const t = this.app.terrain;
+        if (this._drainT == null) { this._drainT = this.settleT; this._drainK = 0; if (t.drainOverBoards() + (t.flushOverflow() || 0) === 0) this.finish(); }
+        else if (this.settleT - this._drainT > 2 || !t.cActive) this.finish(true);
+        else if (this._drainK < 2 && this.settleT - this._drainT > 0.4 * (this._drainK + 1)) { this._drainK++; t.drainOverBoards(); }   // (what the flow brings to the edge goes over too, then 1,2 s for it to spread outside)
+      }
     }
     if (this.state === 'work') this.work(dt);
   }
@@ -234,7 +242,7 @@ class ConcreteTool {
   work() {}
 
   // let the concrete come to rest and commit
-  finish() {
+  finish(drained) {
     const app = this.app, t = app.terrain;
     if (this.state === 'idle') return;
     if (this.uw) {
@@ -251,6 +259,7 @@ class ConcreteTool {
     this.gear.pump.setStream(false);
     // (the concrete was let to settle frame by frame; whatever creep is left stops here —
     // a long settling loop at this point froze the game for seconds)
+    if (!drained) t.drainOverBoards();   // (the edge over a board's top rolls over it — not a layer standing on the boards: the owner; after the settling it has, frame by frame)
     t.flushOverflow();
     t.cActive = null;   // whatever creep is left stops here (it is recorded as it is)
     app.journal.commit(app.clock);
@@ -370,6 +379,7 @@ export class HoseTool extends ConcreteTool {
     const pump0 = this.gear.pump, land = pump0.ready ? pump0.setStream(true, (x, z) => t.heightAt(t.clampX(x), t.clampZ(z)), app.clock, dt) : null, lp = land || at;
     const vNow = vol * (pump0.ready ? pump0.pulse() : 1);   // (the pump's stroke: a lull, a surge — the same on the average)
     t.depositConc(t.clampX(lp.x), t.clampZ(lp.z), vNow, 0.014);
+    t.joltAt(t.clampX(lp.x), t.clampZ(lp.z), 0.6 / MODEL_SCALE);   // (the stroke and the fall shake it there — the realist)
     // full to the top of the formwork here? say so once per pour
     if (!this.warned) {
       const i = t.index(at.x, at.z), b = t.cellBox(at.x, at.z, 0.12);
