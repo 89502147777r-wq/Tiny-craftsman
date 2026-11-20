@@ -1297,6 +1297,56 @@ if (want("2i")) {
   await browser.close();
 }
 
+// ---- 2i⁰. The excavator's cab from inside (the owner, 2026-11-19: «реалистичный вид с кабины … руки на настоящих джойстиках, чтобы
+// двигались за моим пальцем … ботинки на педалях, мониторы с логотипом … при повороте камеры руки не обрывались … большие пальцы не
+// вверх»): the driver seated, his head hidden, each hand on its grip as the sticks lean, the boots on the pedals, the thumbs not up;
+// the look turned by the finger keeps the eye where it is; out of the cab — the model's own cab back, nothing cut away ----
+if (want('2i⁰')) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {};
+    const frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
+    tc.setTool('machine'); await mt.ensure(); mt.enter('excavator');
+    for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
+    const E = mt.exc; E.place(t, 0, 0, 0); mt.setView('cab'); frames(3); await mt.cab?.ready; frames(3);
+    const C = mt.cab, G = C.group, L = (b) => G.worldToLocal(b.getWorldPosition(new V()));
+    o.man = !!C.man; o.shown = G.visible; o.parts = mt._cabParts.length; o.hidden = mt._cabParts.every((p) => !p.visible);
+    o.clip = [...mt._cabMats].every((m) => m.clippingPlanes?.length === 6);
+    let head = 0; C.man.traverse((m) => { if (m.isMesh && /Head/.test(m.material?.name || '') && m.visible) head++; }); o.headShown = head;
+    // the hands on the grips: at rest and with both sticks all the way over
+    const grip = (k) => G.worldToLocal(C.sticks[k].localToWorld(new V(0, C.gripH * 0.92, 0)));
+    const hands = () => ['l', 'r'].map((k) => +L(C.b[(k === 'l' ? 'Left' : 'Right') + 'Hand']).distanceTo(grip(k)).toFixed(3));
+    o.handRest = hands(); mt.joystick('l', 1, 1); mt.joystick('r', -1, 0); frames(2); o.handFull = hands();
+    o.tilt = +C.sticks.l.rotation.x.toFixed(3);
+    // the arms alive, not only the hands in place: the wrist near straight, the elbow bent ~90–115° (the realist)
+    const ang = (a, b) => +(a.angleTo(b) * 180 / Math.PI).toFixed(0);
+    o.wrist = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'HandIndex1']).sub(L(C.b[k + 'Hand']))));
+    o.elbow = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Arm']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm']))));
+    // the thumbs: their tips no higher over the hand than the fingers' roots (not up)
+    o.thumbUp = ['Left', 'Right'].map((k) => +(L(C.b[k + 'HandThumb4'] || C.b[k + 'HandThumb3']).y - L(C.b[k + 'HandIndex1']).y).toFixed(3));
+    o.feet = ['Left', 'Right'].map((k, i) => +L(C.b[k + 'Foot']).distanceTo(G.worldToLocal(C.pedals[i ? 'r' : 'l'].pv.localToWorld(new V(0, 0.105, 0.05)))).toFixed(3));
+    // travelling: the pedals go with the tracks, the joysticks stay in the middle
+    mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(8); const a0 = C.pedals.l.pv.rotation.x; mt.setExcMode('drive'); mt.joystick('l', 0, -1); frames(30); o.pedal = +(C.pedals.l.pv.rotation.x - a0).toFixed(3); o.stickDrive = +Math.abs(C.sticks.l.rotation.x).toFixed(3); mt.joystick('l', 0, 0); frames(20); mt.setExcMode('dig');
+    mt.joystick('l', 0, 0); mt.joystick('r', 0, 0);
+    // the look: turned by the finger (the rig's yaw), the eye stays in the cab
+    const eye = () => tc.camera.position.distanceTo(G.getWorldPosition(new V())) / G.getWorldScale(new V()).x;
+    frames(2); o.eye0 = +eye().toFixed(3); tc.rig.goal.yaw += 0.8; frames(3); o.look = +(mt.lookYaw || 0).toFixed(2); o.eye1 = +eye().toFixed(3);
+    // looked round as far as it goes: no shoulder in the eye (≥ 0,12 m)
+    tc.rig.goal.yaw += 3; frames(3); o.lookMax = +(mt.lookYaw || 0).toFixed(2);
+    { const ew = G.worldToLocal(tc.camera.position.clone()); o.shoulder = +Math.min(...['LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm'].filter((n) => C.b[n]).map((n) => L(C.b[n]).distanceTo(ew))).toFixed(3); }
+    tc.rig.goal.yaw -= 3.8; frames(3);
+    o.fov = tc.camera.fov;
+    // out of the cab
+    mt.setView('chase'); frames(3); o.off = !G.visible && mt._cabParts.every((p) => p.visible) && [...mt._cabMats].every((m) => !m.clippingPlanes);
+    return o;
+  });
+  check('machines: the cab from inside — the driver seated (no head in sight), the model\'s cab hidden and cut away (the owner)', o.man && o.shown && o.parts > 0 && o.hidden && o.clip && o.headShown === 0, JSON.stringify(o));
+  check('machines: the cab — the hands on the joysticks as they lean (≤ 0,1 m), the boots on the pedals (they go with the tracks, the joysticks still), the thumbs not up (the owner)', Math.max(...o.handRest, ...o.handFull) <= 0.1 && Math.abs(o.tilt) > 0.2 && Math.max(...o.feet) <= 0.05 && Math.max(...o.thumbUp) <= 0.03 && Math.max(...o.wrist) <= 30 && Math.min(...o.elbow) >= 80 && Math.max(...o.elbow) <= 135 && o.pedal > 0.15 && o.stickDrive <= 0.02, JSON.stringify(o));
+  check('machines: the cab — the look turned by the finger, the eye turning about the neck (≤ 0,15 m from the eye at rest); out of the cab the model as it was', o.look > 0.5 && o.lookMax <= 1.9 && o.shoulder >= 0.12 && o.eye0 < 0.15 && o.eye1 < 0.15 && o.fov >= 75 && o.off, JSON.stringify(o));
+  check('machines: the cab — no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2i'. The truck takes any loose material, from anything (the owner: «грузить любой материал не только с погрузчика —
 // экскаватором или лопатами; куча выше борта — пересыпается на землю»): sand tipped in far over what it holds — the heap no
 // steeper than its angle, at the sides no higher than their tops, the rest on the ground by them (not under the body), nothing
