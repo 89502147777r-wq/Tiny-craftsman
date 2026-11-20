@@ -21,14 +21,12 @@ const TILT = 0.32;   // (the grip's lean at a stick pushed all the way, rad)
 
 function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d', { willReadFrequently: true }); draw(g, w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; }
 const rnd = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
-// the glass's dirt: dust thicker low and at the edges, the wiper's fan cleaner, a few drops' rings and streaks
-function dirtTex(wiper) {
+// the glass: clean (the owner, 2026-11-20: «реалистичные, но не заляпанные, хороший обзор») — a faint green-grey tint of the glass, a little
+// fine dust only in the last few centimetres at the edges (under the seals), no streaks, no drops
+function dirtTex() {
   return canvasTex(512, 512, (g, w, h) => {
-    g.clearRect(0, 0, w, h); g.fillStyle = 'rgba(191,212,207,0.06)'; g.fillRect(0, 0, w, h);   // (the dust light and thin: the ground behind the glass seen through it — the realist)
-    for (let i = 0; i < 9000; i++) { const x = rnd() * w, y = rnd() * h, e = Math.min(x, w - x, y, h - y) / (w / 2), a = 0.03 + 0.12 * (1 - e) * (0.5 + y / h); g.fillStyle = `rgba(184,165,138,${a * rnd()})`; g.fillRect(x, y, 1 + rnd() * 2, 1 + rnd() * 2); }
-    for (let i = 0; i < 40; i++) { const x = rnd() * w, y = rnd() * h * 0.6; g.strokeStyle = `rgba(184,165,138,${0.04 + rnd() * 0.06})`; g.lineWidth = 1 + rnd() * 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rnd() - 0.5) * 8, y + 30 + rnd() * 90); g.stroke(); }
-    for (let i = 0; i < 30; i++) { const x = rnd() * w, y = rnd() * h, r = 1 + rnd() * 2.5; g.strokeStyle = `rgba(184,165,138,${0.08 + rnd() * 0.1})`; g.lineWidth = 1; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke(); }
-    if (wiper) { g.globalCompositeOperation = 'destination-out'; const cx = w * wiper, cy = h * 1.0; for (let r = h * 0.3; r < h * 0.97; r += 2) { g.strokeStyle = `rgba(0,0,0,${0.55 + 0.25 * Math.sin(r * 0.05)})`; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, r, Math.PI * 1.5, Math.PI * 1.97); g.stroke(); } g.globalCompositeOperation = 'source-over'; }   // (the fan about the wiper's pivot by the left pillar: 85° from the pillar)
+    g.clearRect(0, 0, w, h); g.fillStyle = 'rgba(191,212,207,0.035)'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2500; i++) { const x = rnd() * w, y = rnd() * h, e = Math.min(x, w - x, y, h - y) / (w * 0.06); if (e > 1) continue; g.fillStyle = `rgba(184,170,150,${0.05 * (1 - e) * rnd()})`; g.fillRect(x, y, 1, 1); }
   });
 }
 // worn paint, rubber, plastic — small grain so they do not read as flat colour
@@ -94,7 +92,7 @@ export class Cab {
     box(W, 0.08, 0.03, head, 0, C.roof - 0.04, C.back - 0.015, 'back');
     // the pillars: the front two, the back two; the front glass's bar, the roof's front rail, the door's frame (left)
     for (const x of [C.left - 0.035, C.right + 0.035]) { box(0.07, H, 0.09, paint, x, (C.roof + C.floor) / 2, C.front - 0.045); box(0.07, H, 0.07, paint, x, (C.roof + C.floor) / 2, C.back + 0.05); }
-    box(W, 0.06, 0.06, paint, 0, C.bar, C.front - 0.03, 'bar');
+    // (no front bar across the glass — the owner, 2026-11-20: «убери эту перемычку»; one front pane from the kick panel to the rail)
     box(W, 0.08, 0.1, paint, 0, C.roof - 0.04, C.front - 0.05, 'rail');
     box(0.05, 0.05, D, paint, C.left - 0.025, C.bar, (C.front + C.back) / 2, 'doorbar');
     box(0.05, H, 0.05, paint, C.left - 0.025, (C.roof + C.floor) / 2, 0.05, 'doorpost');
@@ -105,24 +103,16 @@ export class Cab {
     // the glass: the front upper (wiped), the front lower, the sides, the back window
     const pane = (w, h, m, x, y, z, ry) => { const o = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m); o.position.set(x, y, z); o.rotation.y = ry; o.renderOrder = 5; G.add(o); return o; };
     // (the wiper's pivot at x 0,40: the pane is turned round, its u from +x — (0,47 − 0,40) / 0,94)
-    pane(W - 0.1, C.roof - C.bar - 0.1, glassM((W / 2 - 0.05 - (C.left - 0.12)) / (W - 0.1)), 0, (C.roof + C.bar) / 2, C.front - 0.01, Math.PI);
-    // (below the bar: glass again down to the kick panel — the owner, 2026-11-20: «стекло чуть больше»; the tracks under it are cut
-    // away inside the cab, outside it they are seen as from a real cab)
-    pane(W - 0.1, C.bar - (C.floor + 0.32) - 0.05, glassM(0), 0, (C.bar + C.floor + 0.32) / 2, C.front - 0.01, Math.PI);
+    pane(W - 0.1, C.roof - 0.09 - (C.floor + 0.32), glassM(0), 0, (C.roof - 0.09 + C.floor + 0.32) / 2, C.front - 0.01, Math.PI);
     pane(W - 0.1, C.roof - 0.08 + 0.2, glassM(0), 0, (C.roof - 0.08 - 0.2) / 2, C.back + 0.002, 0);
     box(W, 0.32, 0.04, paint, 0, C.floor + 0.16, C.front - 0.02, 'kick');
-    // the deck of the turntable on the right, from the cab to the boom's foot — the tracks under it are not seen through the right glass
-    // (the realist); dark steel with its anti-slip
-    { const dm = lit({ map: grainTex('#3b3c3d', 0.18, 80), roughness: 0.8, metalness: 0 });
-      box(0.9, 0.02, 2.6, dm, C.right - 0.47, C.floor - 0.06, 0.6, 'deck');
-      box(0.5, 0.02, 2.0, dm, C.left + 0.27, C.floor - 0.06, 0.4, 'step'); }   // (and the walkway under the door on the left)
-    // the side glass from the consoles' height up; under it the side walls (no tracks through them)
-    const SILL = -0.55;
-    for (const [x, ry] of [[C.left - 0.005, -Math.PI / 2], [C.right + 0.005, Math.PI / 2]]) { pane(D - 0.18, C.roof - 0.07 - SILL, glassM(0), x, (C.roof - 0.07 + SILL) / 2, (C.front + C.back) / 2, ry); box(0.02, SILL - C.floor, D, paint, x + Math.sign(x) * 0.01, (SILL + C.floor) / 2, (C.front + C.back) / 2, 'sidewall'); }
-    // the wiper: outside the glass, parked down the left pillar, its arm and blade
-    { const w = new THREE.Group(); w.position.set(C.left - 0.12, C.bar + 0.04, C.front + 0.02); const arm = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.62, 0.012), paint); arm.position.y = 0.31; w.add(arm); const blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 0.01), rubber); blade.position.set(0, 0.36, -0.005); w.add(blade); w.rotation.z = -0.32; G.add(w); }
+    // (no deck/walkway plates outside: they stuck out of the cab and went through the tracks as the house turned — the owner, 2026-11-20)
+    // the side glass and the door's glass full height, down to the floor (the owner, 2026-11-20: «низа двери тоже стеклянные»)
+    for (const [x, ry] of [[C.left - 0.005, -Math.PI / 2], [C.right + 0.005, Math.PI / 2]]) pane(D - 0.18, C.roof - 0.07 - (C.floor + 0.02), glassM(0), x, (C.roof - 0.07 + C.floor + 0.02) / 2, (C.front + C.back) / 2, ry);
+    // the wiper: outside the glass, its pivot on the frame over the kick panel (no bar now — the realist), parked up the left pillar
+    { const w = new THREE.Group(); w.position.set(C.left - 0.12, C.floor + 0.33, C.front + 0.02); const arm = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.62, 0.012), paint); arm.position.y = 0.31; w.add(arm); const blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 0.01), rubber); blade.position.set(0, 0.36, -0.005); w.add(blade); w.rotation.z = -0.32; G.add(w); }
     // the mirror outside the left pillar; vents on the pillars
-    { const m = new THREE.Group(); m.position.set(C.left + 0.16, C.bar + 0.1, C.front - 0.05); box(0.18, 0.004, 0.004, paint, -0.08, 0, 0, '', m); box(0.12, 0.2, 0.02, rubber, 0.02, 0, 0, '', m); const gl = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.18), std({ color: 0x9aa6ae, roughness: 0.05, metalness: 1 })); gl.position.set(0.02, 0, -0.011); gl.rotation.y = Math.PI; m.add(gl); m.rotation.y = 0.35; G.add(m); }
+    { const m = new THREE.Group(); m.position.set(C.left + 0.13, C.bar + 0.1, C.front - 0.05); box(0.18, 0.004, 0.004, paint, -0.08, 0, 0, '', m); box(0.12, 0.2, 0.02, rubber, 0.02, 0, 0, '', m); const gl = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.18), std({ color: 0x9aa6ae, roughness: 0.05, metalness: 1 })); gl.position.set(0.02, 0, -0.011); gl.rotation.y = Math.PI; m.add(gl); m.rotation.y = 0.35; G.add(m); }
     for (const x of [C.left - 0.08, C.right + 0.08]) { const v = cyl(0.03, 0.03, 0.02, rubber, x, C.bar + 0.12, C.front - 0.1); v.rotation.x = Math.PI / 2 - 0.3; }
     // the consoles each side, standing on the floor: their bodies, armrests (vinyl, on to the grips), the rubber boots under the grips
     const vinyl = lit({ map: grainTex('#262626', 0.12), roughness: 0.6 });
