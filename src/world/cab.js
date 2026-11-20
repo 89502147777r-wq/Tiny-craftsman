@@ -106,8 +106,9 @@ export class Cab {
     const pane = (w, h, m, x, y, z, ry) => { const o = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m); o.position.set(x, y, z); o.rotation.y = ry; o.renderOrder = 5; G.add(o); return o; };
     // (the wiper's pivot at x 0,40: the pane is turned round, its u from +x — (0,47 − 0,40) / 0,94)
     pane(W - 0.1, C.roof - C.bar - 0.1, glassM((W / 2 - 0.05 - (C.left - 0.12)) / (W - 0.1)), 0, (C.roof + C.bar) / 2, C.front - 0.01, Math.PI);
-    // (below the bar: a steel panel, not glass — the tracks under it are not seen from the seat: the owner)
-    box(W, C.bar - (C.floor + 0.32), 0.02, paint, 0, (C.bar + C.floor + 0.32) / 2, C.front - 0.01, 'lowfront');
+    // (below the bar: glass again down to the kick panel — the owner, 2026-11-20: «стекло чуть больше»; the tracks under it are cut
+    // away inside the cab, outside it they are seen as from a real cab)
+    pane(W - 0.1, C.bar - (C.floor + 0.32) - 0.05, glassM(0), 0, (C.bar + C.floor + 0.32) / 2, C.front - 0.01, Math.PI);
     pane(W - 0.1, C.roof - 0.08 + 0.2, glassM(0), 0, (C.roof - 0.08 - 0.2) / 2, C.back + 0.002, 0);
     box(W, 0.32, 0.04, paint, 0, C.floor + 0.16, C.front - 0.02, 'kick');
     // the deck of the turntable on the right, from the cab to the boom's foot — the tracks under it are not seen through the right glass
