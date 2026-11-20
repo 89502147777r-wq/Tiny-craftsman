@@ -1393,6 +1393,21 @@ if (want('2i⁰')) {
       E.load = 1; E.update(1 / 30); const b0 = E.boom; for (let k = 0; k < 60; k++) { E.load = 1; E.boomGoal = E.boom = b0 + 0.0015 * k; E.update(1 / 30); E.soil.geometry.computeBoundingBox(); tops.push(E.soil.geometry.boundingBox.max.y); } o.soilTurn = +(E.boom - b0).toFixed(3); o.soilKey = E._fillKey; o.soilVis = E.soil.visible; o.load = E.load;
       E._fill = f0; let jump = 0; for (let k = 1; k < tops.length; k++) jump = Math.max(jump, Math.abs(tops[k] - tops[k - 1]));
       o.soilRebuilds = n; o.soilJumpPct = +(jump / E.chord * 100).toFixed(2); E.load = 0; frames(2); }
+    // the turntable round a full turn: from the eye, no ray down meets the undercarriage inside the cab's box or under its floor (its
+    // tracks stood up into the cab, over its floor — the owner: «сквозь пол»)
+    { const T3 = await import('three'), rc = new T3.Raycaster(), man = C.man; let leaks = 0, rays = 0;
+      const isUnder = (q) => { for (let p = q; p; p = p.parent) { if (p === E.house) return false; if (p === E.root) return true; } return false; };
+      for (let sw = 0; sw < 360; sw += 30) {
+        E.swing = E.swingGoal = sw * Math.PI / 180; frames(2); G.updateMatrixWorld(true); const eye = G.localToWorld(new V(0, 0, 0));
+        for (let yaw = 0; yaw < 360; yaw += 20) for (let pit = 10; pit <= 86; pit += 12) {
+          const y = yaw * Math.PI / 180, p = pit * Math.PI / 180, dir = G.localToWorld(new V(Math.sin(y) * Math.cos(p), -Math.sin(p), Math.cos(y) * Math.cos(p))).sub(eye).normalize();
+          rc.set(eye, dir); rays++;
+          const h = rc.intersectObjects([E.root], true).find((x) => { for (let q = x.object; q; q = q.parent) { if (!q.visible || q === man) return false; } const m = x.object.material; if (m?.transparent) return false; if (m?.clippingPlanes?.length && mt._clip.every((pl) => pl.distanceToPoint(x.point) < 0)) return false; return true; });
+          if (!h || !isUnder(h.object)) continue;
+          const lp = G.worldToLocal(h.point.clone()); if (Math.abs(lp.x) < 0.53 && lp.z > -0.51 && lp.z < 0.81 && lp.y < 0.46) leaks++;
+        }
+      }
+      o.floorLeaks = leaks; o.floorRays = rays; E.swing = E.swingGoal = 0; frames(2); }
     // out of the cab
     mt.setView('chase'); frames(3); o.off = !G.visible && mt._cabParts.every((p) => p.visible) && [...mt._cabMats].every((m) => !m.clippingPlanes);
     return o;
@@ -1401,6 +1416,7 @@ if (want('2i⁰')) {
   check('machines: the cab — the hands on the joysticks as they lean (≤ 0,1 m), the boots on the pedals (they go with the tracks, the joysticks still), the thumbs not up (the owner)', Math.max(...o.handRest, ...o.handFull) <= 0.1 && Math.abs(o.tilt) > 0.2 && Math.max(...o.feet) <= 0.05 && Math.max(...o.thumbUp) <= 0.03 && Math.max(...o.wrist) <= 30 && Math.min(...o.elbow) >= 80 && Math.max(...o.elbow) <= 135 && o.pedal > 0.15 && o.stickDrive <= 0.02, JSON.stringify(o));
   check('machines: the cab — the look turned by the finger, the eye turning about the neck (≤ 0,15 m from the eye at rest); out of the cab the model as it was', o.look > 0.5 && o.lookMax <= 1.9 && o.shoulder >= 0.12 && o.eye0 < 0.15 && o.eye1 < 0.15 && o.fov >= 75 && o.off, JSON.stringify(o));
   check('machines: the soil in a full bucket steady as the arm moves a little — rebuilt ≤ 1 frame in 3, its top no jump over 3 % of the bucket (the owner: it flickered)', o.soilRebuilds <= 20 && o.soilRebuilds >= 2 && o.soilJumpPct <= 3, JSON.stringify({ n: o.soilRebuilds, jump: o.soilJumpPct, turn: o.soilTurn, key: o.soilKey, vis: o.soilVis, load: o.load }));
+  check('machines: the cab — the turntable round a full turn, no track seen through the floor or inside the cab (the owner)', o.floorRays > 1000 && o.floorLeaks === 0, JSON.stringify({ rays: o.floorRays, leaks: o.floorLeaks }));
   check('machines: the cab — no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
