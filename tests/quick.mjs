@@ -430,12 +430,23 @@ if (want('2p')) {
     // (outside the boards it never stands over the board it ran over: the realist)
     let outOver = -1e9; for (let i = t.nx; i < t.conc.length - t.nx; i++) { if (enc[i] || t.wall[i] || t.conc[i] <= 1e-6) continue; for (const k of [i - 1, i + 1, i - t.nx, i + t.nx]) if (t.wall[k]) outOver = Math.max(outOver, (H(i) - t.wall[k]) / M * 1000); }
     o.outOverMm = +outOver.toFixed(1);
+    // (the boards' outside: just past each board's outer face the surface drawn is the ground's (or what ran over) — not a concrete
+    // wedge up the board from the step inside it: the owner, «доски снаружи меняют цвет по мере наполнения»)
+    { const T3 = await import('three'), rc = new T3.Raycaster(); t.mesh.updateMatrixWorld(true); let wedge = 0, nW = 0;
+      for (let i = 0; i < t.wall.length; i += 7) { if (!t.wall[i] || t.wfOk?.[i] !== 2) continue;
+        const px = t.wfx[i] + t.wnx[i] * (t.wft[i] + 0.004 / 10.4651), pz = t.wfz[i] + t.wnz[i] * (t.wft[i] + 0.004 / 10.4651);
+        const ix = Math.round(t.toCellX(px)), iz = Math.round(t.toCellZ(pz)), j = iz * t.nx + ix; if (t.wall[j]) { /* (still under the band's far part: its own ground) */ }
+        rc.set(new T3.Vector3(px, 5, pz), new T3.Vector3(0, -1, 0)); const hit = rc.intersectObject(t.mesh, true)[0]; if (!hit) continue; nW++;
+        // (what is there: the ground or the concrete that ran over round that point, the highest of the cells about it)
+        let exp = -1e9; for (const k of [j, j - 1, j + 1, j - t.nx, j + t.nx]) if (!t.wall[k]) exp = Math.max(exp, H(k));
+        if (exp > -1e8) wedge = Math.max(wedge, (hit.point.y - exp) / M * 1000); }
+      o.wedgeMm = +wedge.toFixed(1); o.wedgeN = nW; }
     ex.sort((a, b) => a - b);
     Object.assign(o, { stepMaxMm: +step.toFixed(1), stepP95Mm: +(steps[Math.floor(steps.length * 0.95)] || 0).toFixed(1), capM3: +(cap / M ** 3).toFixed(2), pouredM3: +(poured / M ** 3).toFixed(2), n: ex.length, maxMm: +ex.at(-1).toFixed(1), medMm: +ex[ex.length >> 1].toFixed(1), gapMm: +gap.toFixed(1),
       outM3: +((t.concVolume() - inV) / M ** 3).toFixed(2), keptPct: +((t.concVolume() / poured - 1) * 100).toFixed(2) });
     return o;
   });
-  check('concrete over the boards: by every board ≤ 10 mm over its top (median ≤ 5), no step where the cut ends (95 % ≤ 10 mm), what ran over is outside and not over the boards (≤ 3 mm), the volume kept (the owner, the realist)', o.n > 100 && o.maxMm <= 10 && o.medMm <= 5 && o.outM3 > 0.2 && Math.abs(o.keptPct) <= 1 && o.stepP95Mm <= 10 && o.outOverMm <= 3, JSON.stringify(o));
+  check('concrete over the boards: by every board ≤ 10 mm over its top (median ≤ 5), no step where the cut ends (95 % ≤ 10 mm), what ran over is outside and not over the boards (≤ 3 mm), no concrete wedge up the boards’ outside (≤ 5 mm), the volume kept (the owner, the realist)', o.n > 100 && o.maxMm <= 10 && o.medMm <= 5 && o.outM3 > 0.2 && Math.abs(o.keptPct) <= 1 && o.stepP95Mm <= 10 && o.outOverMm <= 3 && o.wedgeN > 30 && o.wedgeMm <= 5, JSON.stringify(o));
   check('concrete against the boards: no gap — the surface shown reaches the board (≤ 3 mm below the concrete by it)', o.gapMm <= 3, JSON.stringify(o));
   check('concrete over the boards: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();

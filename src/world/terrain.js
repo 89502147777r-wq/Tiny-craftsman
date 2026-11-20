@@ -16,7 +16,8 @@ import { makeNoise2 } from '../core/rand.js';
 // Loose soil slides at its angle of repose; native ground only collapses
 // when a wall is cut steeper than ~78°. Volume is conserved exactly.
 const MM_CHIP = 0.0005 / MODEL_SCALE;
-const BOARD_SHOW = 0.002 / MODEL_SCALE;   // (a board's cell is shown 2 mm under the board's top: its top face stays clean, not in the concrete)
+const BOARD_SHOW = 0.002 / MODEL_SCALE;
+const MM_FACE = 0.001 / MODEL_SCALE;   // (1 mm real)   // (a board's cell is shown 2 mm under the board's top: its top face stays clean, not in the concrete)
 const OVER_BOARD = 0.005 / MODEL_SCALE;   // (concrete higher than a board's top by this — 5 mm real, a meniscus — runs over it: the realist)
 const TAU_JOLT = 45;   // (Pa: the concrete round where the stream falls, shaken by the pump's strokes — П4 is 300–800 still, the realist)   // (a crust thinner than 0,5 mm: gone)
 const TILE = 96;   // cells a side of a piece of the mesh (drawn or not as a whole)
@@ -908,13 +909,23 @@ export class Terrain {
       // (a board's cell by the concrete — the boards are walls with a margin of half a cell on its side, so the concrete stood
       // a cell short of the board and its surface fell into a dark gap there, the owner's photo: shown at the concrete's own
       // level up to the board, never over its top — inside the board it is hidden)
-      let lift = -1;
+      let lift = -1, edge = 0;   // (edge: −1 the concrete is by the board's inner face, +1 by its outer one — what ran over)
+      const onFace = this.wfOk && this.wall[i] > 0 && this.wfOk[i];
       if (this.wall[i] > 0 && ix > 0 && ix < rx && iz > 0 && iz < rz) {
         let hj = h;
-        for (const k of [i - 1, i + 1, i - n, i + n]) { if (this.wall[k] > 0 || conc[k] <= 1e-6) continue; const hk = nat[k] + loose[k] + conc[k] + top[k]; if (hk > hj) { hj = hk; lift = k; } }
+        for (const k of [i - 1, i + 1, i - n, i + n]) {
+          if (this.wall[k] > 0 || conc[k] <= 1e-6) continue;
+          const side = onFace ? Math.sign((k === i - 1 ? -1 : k === i + 1 ? 1 : 0) * this.wnx[i] + (k === i - n ? -1 : k === i + n ? 1 : 0) * this.wnz[i]) || -1 : -1;
+          if (edge === 0 || side < 0) edge = side;   // (inside wins)
+          const hk = nat[k] + loose[k] + conc[k] + top[k]; if (side === edge && hk > hj) { hj = hk; lift = k; } }
         if (lift >= 0) { const hl = Math.min(hj, this.wall[i] - BOARD_SHOW); if (hl > h) h = hl; else lift = -1; }
       }
+      // (under a board: the cell by the concrete on the board's inner face at the concrete's level, the rest just inside the face at
+      // the ground's — the step from the one to the other is the board's face itself, never a slope out past the board)
+      if (onFace && !edge) h = nat[i] + loose[i] + top[i];
       pos[i * 3 + 1] = h;
+      if (onFace) { const off = edge < 0 ? -0.6 * MM_FACE : edge > 0 ? this.wft[i] + 0.6 * MM_FACE : 0.6 * MM_FACE; pos[i * 3] = this.wfx[i] + this.wnx[i] * off; pos[i * 3 + 2] = this.wfz[i] + this.wnz[i] * off; }
+      else { pos[i * 3] = this.toWorldX(ix); pos[i * 3 + 2] = this.toWorldZ(iz); }
       if (tiles) {
         // (the height out of its piece's range: the range grows — the culling keeps seeing it)
         const tk = Math.min(tnx - 1, (ix / TILE) | 0) + Math.min(tnz - 1, (iz / TILE) | 0) * tnx, T = tiles[tk];
@@ -953,7 +964,10 @@ export class Terrain {
       ex[i * 2] = bit[i]; ex[i * 2 + 1] = conc[i] > 1e-6 ? 0 : comp[i];
       // the foot of a concrete face (e.g. after the boards are stripped): the face
       // belongs to the concrete, not to the soil below it
-      if (lift >= 0) { cc[i * 4] = conc[lift]; cc[i * 4 + 1] = cTime[lift]; cc[i * 4 + 2] = cSm[lift]; cc[i * 4 + 3] = nat[i] + loose[i]; ex[i * 2] = bit[lift]; soil[i * 4 + 1] = 0; mats[i * 4] = mats[i * 4 + 1] = mats[i * 4 + 2] = mats[i * 4 + 3] = 0; }
+      // (under a board, off the concrete's edge: the ground's look — the board hides it, but its triangles reach out under the board's
+      // lower edge: concrete-coloured there it read as a grey strip of concrete under the boards — the realist)
+      if (onFace && !edge) { cc[i * 4] = 0; cc[i * 4 + 3] = -1000; }
+      else if (lift >= 0) { cc[i * 4] = conc[lift]; cc[i * 4 + 1] = cTime[lift]; cc[i * 4 + 2] = cSm[lift]; cc[i * 4 + 3] = nat[i] + loose[i]; ex[i * 2] = bit[lift]; soil[i * 4 + 1] = 0; mats[i * 4] = mats[i * 4 + 1] = mats[i * 4 + 2] = mats[i * 4 + 3] = 0; }
       else if (conc[i] <= 1e-6 && ix > 0 && ix < rx && iz > 0 && iz < rz) {
         let j = -1, hj = h + 0.002;
         for (const k of [i - 1, i + 1, i - n, i + n]) { const hk = nat[k] + loose[k] + conc[k] + top[k]; if (conc[k] > 1e-5 && hk > hj) { hj = hk; j = k; } }
@@ -969,12 +983,17 @@ export class Terrain {
   setWalls(list) {
     const { wall, nx: n, cell } = this;
     wall.fill(0);
+    // (for each board's cell: the point on the board's inner face it is drawn at, and the way into the board — the mesh's vertices
+    // under a board are moved onto its face, so the step from the concrete down to the ground is the board's face itself; at 31 mm
+    // a cell, wider than a 25 mm board, the slope between them came out past the board's outer face as a concrete wedge up the
+    // boards' outside, growing as the form filled: the owner)
+    const N = wall.length; if (!this.wfx || this.wfx.length !== N) { this.wfx = new Float32Array(N); this.wfz = new Float32Array(N); this.wnx = new Float32Array(N); this.wnz = new Float32Array(N); this.wft = new Float32Array(N); this.wfOk = new Uint8Array(N); } else this.wfOk.fill(0);
     const pad = cell * 0.55;
     for (const w of list) {
       const [ax, az] = w.a, [bx, bz] = w.b, [nx, nz] = w.n;
       const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
       if (L < 1e-6) continue;
-      const ux = dx / L, uz = dz / L, over = w.t + pad;
+      const ux = dx / L, uz = dz / L, over = w.t + cell * 1.7;
       const xs = [ax - ux * over, bx + ux * over, ax - ux * over + nx * w.t, bx + ux * over + nx * w.t];
       const zs = [az - uz * over, bz + uz * over, az - uz * over + nz * w.t, bz + uz * over + nz * w.t];
       const ix0 = Math.max(0, Math.floor(this.toCellX(Math.min(...xs) - pad))), ix1 = Math.min(this.rx, Math.ceil(this.toCellX(Math.max(...xs) + pad)));
@@ -982,7 +1001,7 @@ export class Terrain {
       for (let iz = iz0; iz <= iz1; iz++) for (let ix = ix0; ix <= ix1; ix++) {
         const rx = this.toWorldX(ix) - ax, rz = this.toWorldZ(iz) - az;
         const u = rx * ux + rz * uz, v = rx * nx + rz * nz;
-        if (u >= -over && u <= L + over && v >= -cell * 0.1 && v <= w.t + pad * 1.6) { const i = iz * n + ix; wall[i] = Math.max(wall[i], w.top); }   // (the concrete side up to the board's face — half a cell of margin there kept the concrete off the board, a grey strip by it: the owner; the margin is on the far side, still a band past a cell's diagonal, nothing leaks)
+        if (u >= -over && u <= L + over && v >= -cell * 0.1 && v <= w.t + cell * 1.7) { const i = iz * n + ix; wall[i] = Math.max(wall[i], w.top); const ok = u >= 0 && u <= L ? 2 : 1; if (ok > this.wfOk[i]) { const uu = Math.max(0, Math.min(L, u)); this.wfx[i] = ax + ux * uu; this.wfz[i] = az + uz * uu; this.wnx[i] = nx; this.wnz[i] = nz; this.wft[i] = w.t; this.wfOk[i] = ok; } }   // (the concrete side up to the board's face — half a cell of margin there kept the concrete off the board, a grey strip by it: the owner; the margin is on the far side, at least two rows of cells under every board: the step down at its face stays inside it, nothing leaks)
       }
     }
     this._outside = null; this._enc = null;   // (what the boards enclose: worked out again when it is asked)
