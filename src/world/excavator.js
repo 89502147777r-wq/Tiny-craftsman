@@ -122,7 +122,7 @@ export class Excavator {
     const pa = geo.attributes.position, v = new THREE.Vector3();
     for (let i = 0; i < pa.count; i++) { v.fromBufferAttribute(pa, i); const n = 1 + 0.16 * Math.sin(v.x * 9.1 + v.y * 4.3) * Math.cos(v.z * 7.7 - v.y * 3.1) + 0.08 * Math.sin(v.x * 23 + v.z * 19); pa.setXYZ(i, v.x * n, v.y * n, v.z * n); }
     geo.computeVertexNormals();
-    this.soil = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x5e4630, roughness: 1, vertexColors: true, side: THREE.DoubleSide, flatShading: true }));
+    this.soil = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: 0x5e4630, roughness: 1, vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 })   /* (in front of the bucket's own faces where they meet: they fought and flickered — the realist) */);
     this.soil.visible = false; this.bucketP.add(this.soil); void geo;
     this._section();
     const ws = this.bucketP.getWorldScale(new THREE.Vector3()).x, bs = kb.getSize(new THREE.Vector3()), across = bs.z / ws;   // (its frame: x across, y up, z along the arm)
@@ -268,7 +268,7 @@ export class Excavator {
       const u = j / NX * 2 - 1, cr = 1 - u * u, S = [];
       for (let i = 0; i < n; i++) {
         const p = P[i]; if (!top[i]) { S.push(p); continue; }
-        const t = tt[i], end = Math.sin(Math.PI * t), lump = 0.5 * Math.sin(7.3 * u + 9.1 * t + ph[0]) + 0.3 * Math.sin(13.7 * t - 5.2 * u + ph[1]) + 0.25 * Math.sin(23 * u + 19 * t + ph[2]) * Math.sin(31 * t - 17 * u + ph[3]);
+        const t = tt[i], end = Math.sin(Math.PI * t), q0 = p[0] / L * 9, q1 = p[1] / L * 9, lump = 0.5 * Math.sin(7.3 * u + 1.1 * q0 + 0.7 * q1 + ph[0]) + 0.3 * Math.sin(1.6 * q1 - 5.2 * u + 0.9 * q0 + ph[1]) + 0.25 * Math.sin(23 * u + 2.3 * q0 + ph[2]) * Math.sin(3.1 * q1 - 17 * u + ph[3]);   // (by the place in the bucket, not along the outline: its points come and go as it tilts)
         // (the heap down to the plates' edge at the sides (1 : 1 off them), what it loses there in the middle; a crown over the level part; clods)
         const d = heapAt(p) * (1.5 * cr - 1) + domeA * (end * cr - 0.42) + lumpA * lump * Math.sqrt(end) * (0.4 + 0.6 * cr);
         S.push([p[0] + up[0] * d, p[1] + up[1] * d]);
@@ -285,7 +285,7 @@ export class Excavator {
       const S = slices[j], cy = S.reduce((a, p) => a + p[0], 0) / n, cz = S.reduce((a, p) => a + p[1], 0) / n;
       for (let i = 0; i < n; i++) { v(x, [cy, cz]); v(x, S[i]); v(x, S[(i + 1) % n]); }
     }
-    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.computeVertexNormals();
+    let geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo = mergeVertices(geo, 1e-6); geo.computeVertexNormals();   // (smooth: faceted, every rebuild's new facets flashed)
     this.soil.geometry.dispose(); this.soil.geometry = geo; this.soil.position.set(0, 0, 0); this.soil.scale.set(1, 1, 1); this.soil.visible = true;
   }
   get loaded() { return !!this.bucketP; }
@@ -612,7 +612,12 @@ export class Excavator {
     this.boomGoal = cl(this.boomGoal, L.boom); this.stickGoal = cl(this.stickGoal, L.stick); this.curlGoal = cl(this.curlGoal, L.curl);
     this.swing += (this.swingGoal - this.swing) * k; this.boom += (this.boomGoal - this.boom) * k; this.stick += (this.stickGoal - this.stick) * k; this.curl += (this.curlGoal - this.curl) * k;
     this._apply();
-    if (this.load > 0.02) this._fill(this.load); else this.soil.visible = false;
+    // (the heap rebuilt only when the load or the bucket's tilt has changed enough to see — rebuilt every frame its outline's points
+    // came and went and its clods jumped: it flickered, worst full — the owner)
+    if (this.load > 0.02) {
+      const up = this._upLocal(), f = this._fillKey;
+      if (!f || Math.abs(f[0] - this.load) > 0.004 || Math.abs(Math.atan2(up[0], up[1]) - f[1]) > 0.012 || !this.soil.visible) { this._fill(this.load); this._fillKey = [this.load, Math.atan2(up[0], up[1])]; }
+    } else { this.soil.visible = false; this._fillKey = null; }
   }
   _apply() {
     this._applyJoints();
