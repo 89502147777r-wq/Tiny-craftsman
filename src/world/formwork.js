@@ -165,7 +165,10 @@ export class FormworkView {
     }
     this.boards.count = nb; this.stakes.count = ns; this.braces.count = nr;
     // the boards hold the concrete
-    this.terrain.setWalls(runs.map((r) => ({ a: r.a, b: r.b, n: r.inside ? [-r.n[0], -r.n[1]] : r.n, t: T, top: r.y1 })));
+    // (the top of the boards as drawn: the boards go up from the ground, a strip of less than 15 % of a board at the top is not
+    // added — the form's top line can be ~2 cm over the last board; the concrete stood level with that line, over the boards: the owner)
+    const drawnTop = (r) => { let t0 = r.y0; for (let k = 0; ; k++) { const bottom = r.y0 + k * (H + 0.00004), h = Math.min(H, r.y1 - bottom); if (h < H * 0.15) break; t0 = bottom + h; if (bottom + h >= r.y1 - 1e-9) break; } return t0; };
+    this.terrain.setWalls(runs.map((r) => ({ a: r.a, b: r.b, n: r.inside ? [-r.n[0], -r.n[1]] : r.n, t: T, top: drawnTop(r) })));
     for (const im of [this.boards, this.stakes, this.braces]) { im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); }
     aB.needsUpdate = true;
   }
