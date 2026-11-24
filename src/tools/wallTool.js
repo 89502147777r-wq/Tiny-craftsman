@@ -53,7 +53,7 @@ const _ray = new THREE.Raycaster();
 // why a precast lintel can't go over an opening
 function lintelWhy(f) {
   return f.why === 'long' ? `проём ${f.gapMm} мм — шире, чем перекроет перемычка 3,9 м (с опорой по 250 мм): над таким проёмом — «Опалубка перемычки» (литая, до 6 м) или подпорка и U-блоки с каркасом`
-    : f.why === 'above' ? `над опорой уже лежит следующий ряд — перемычку кладут раньше него: снимите блоки над опорой (по ${Math.round((f.lenMm - f.gapMm) / 2)} мм с каждой стороны)`
+    : f.why === 'above' ? `над опорой уже лежит следующий ряд — перемычку кладут раньше него: снимите блоки над опорой (${f.bL ?? Math.round((f.lenMm - f.gapMm) / 2)} / ${f.bR ?? Math.round((f.lenMm - f.gapMm) / 2)} мм)`
     : f.why === 'clash' ? `на месте перемычки уже что-то лежит — снимите это («Удалить»)`
     : `опоры меньше 250 мм: по бокам проёма (${f.gapMm} мм) нужно по ${Math.round((f.lenMm - f.gapMm) / 2)} мм кладки в том же ряду`;
 }
@@ -1364,7 +1364,7 @@ export class WallTool {
       if (!app.budget.has(free.kind)) { app.budget.noStock(free.kind); return; }
       const u = { type: 'unit', free: true, kind: free.kind, ...this._face(free.kind), row: 0, i: 0, s0: 0, s1: 0, off: 0, bedT: +free.bedT.toFixed(6), s: free.s.toArray().map((x) => +x.toFixed(6)), ...(free.half ? { cut: true } : {}),
         ...(free.kind === 'lintel' ? { lintel: true } : {}), ...(free.post != null ? { post: +free.post.toFixed(6) } : {}) };
-      if (free.kind === 'lintel') app.ui.toast(`Перемычка ${free.lenMm} мм над проёмом ${free.gapMm} мм — опора по ${Math.round((free.lenMm - free.gapMm) / 2)} мм`);
+      if (free.kind === 'lintel') app.ui.toast(free.cut ? `Перемычка ${free.lenMm} мм (обрезана по месту — до соседнего блока) над проёмом ${free.gapMm} мм — опора ${free.bL} / ${free.bR} мм` : `Перемычка ${free.lenMm} мм над проёмом ${free.gapMm} мм — опора ${free.bL} / ${free.bR} мм`);
       if (free.kind === 'prop') app.ui.toast('Подпорка стоит — кладите на неё U-блоки (стыкуются с кладкой по бокам)');
       const pose = { p: free.p, q: free.q, s: free.s, bedY: free.bedY, bedT: free.bedT };
       // the next one goes the same way; «Повернуть» was for this one
