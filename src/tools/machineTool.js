@@ -1276,7 +1276,7 @@ export class MachineTool {
   _excStep(dt, lx, ly, rx, ry) {
     const app = this.app, t = app.terrain, E = this.exc;
     const g = (this.digG ||= new Grader(app));
-    g.free = (i, x, z) => t.zone[i] !== 1 && t.conc[i] <= 1e-6 && t.top[i] <= 0 && (!this.out || this.out(x, z) === true);
+    g.free = (i, x, z) => t.zone[i] !== 1 && (t.conc[i] <= 1e-6 || t.thinStain(i)) && t.top[i] <= 0 && (!this.out || this.out(x, z) === true);
     const cap = R(1) ** 3 * 0.4 / t.cellArea;   // (a 13 t machine's bucket: 0,4 m³)
     // (the bucket's points before anything moves this step — driven too: the owner's screen recording, 2026-11-19 — driven into a heap,
     // it went through the bucket's walls: the shove took its «before» after the machine had moved, and saw no move)

@@ -18,7 +18,9 @@ const TAN = Math.tan(LUMP.slope * Math.PI / 180), UP = new THREE.Vector3(0, 1, 0
 // the ground's firm spills → lumps, one per spill (called now and then: main.js)
 export function scanLumps(app) {
   const t = app.terrain, { nx, conc } = t, N = conc.length, firm = CONCRETE.stiff * 1.05, thin = MM(LUMP.thick * 1000), minT = MM(LUMP.minT * 1000);
-  const spill = (i) => conc[i] >= minT && t.cSpill[i] === 1 && conc[i] <= thin && t.curedAt(i) >= firm && t.zone?.[i] !== 1;
+  // (all of a lone heap or spill, its thin rim too — the rim left in the ground stood as spikes when a pit was dug round it: the owner,
+  // 2026-11-24; a heap on the open ground, not spilt off a formwork, is one too, up to 4 m² — larger, it is a slab cast there)
+  const spill = (i) => conc[i] > 1e-6 && conc[i] <= thin && t.loneConc(i) && t.curedAt(i) >= firm;
   const seen = new Uint8Array(N), made = [];
   for (let s = 0; s < N; s++) {
     if (seen[s] || conc[s] < minT || !spill(s)) continue;
@@ -31,6 +33,21 @@ export function scanLumps(app) {
       }
     }
     if (list.length * t.cellArea * MODEL_SCALE * MODEL_SCALE < LUMP.minA) continue;   // (a speck: a stain, crumbled with the soil)
+    if (!list.some((i) => conc[i] >= minT)) continue;   // (a crust all of it: crumbles with the soil — Terrain.thinStain)
+    if (!list.some((i) => t.cSpill[i] === 1) && list.length * t.cellArea * MODEL_SCALE * MODEL_SCALE > 4) continue;   // (poured there, wide: a slab)
+    // (something stands on it — masonry, a column, a lift's shaft, a damp course, a site's thing: a base poured for it, not a spill —
+    // the realist; it stays cast in the ground)
+    { let X0 = Infinity, X1 = -Infinity, Z0 = Infinity, Z1 = -Infinity; for (const i of list) { const x = t.toWorldX(i % nx), z = t.toWorldZ((i / nx) | 0); X0 = Math.min(X0, x); X1 = Math.max(X1, x); Z0 = Math.min(Z0, z); Z1 = Math.max(Z1, z); }
+      const inB = (x, z, r = 0) => x > X0 - r && x < X1 + r && z > Z0 - r && z < Z1 + r, O = app.objects;
+      if (O.all('unit').some((u) => inB(u.p[0], u.p[2], Math.max(u.s[0], u.s[2]) / 2)) || ['column', 'lift', 'siteprop'].some((ty) => O.all(ty).some((r) => r.x != null && inB(r.x, r.z, MM(300))))
+        || O.all('dpc').some((r) => r.a && (inB(r.a[0], r.a[1]) || inB(r.b[0], r.b[1])))) { for (const i of list) seen[i] = 1; continue; } }
+    // (the soil left standing under it where the ground round it was dug: it was held by the concrete only — it slumps now)
+    // (narrow: a column or a corner standing out — 5 of its 8 neighbours lower by > 0,15 m — down to its neighbours, three passes; a wider
+    // block of soil under the heap stays: undug ground, the bucket takes it now)
+    for (let pass = 0; pass < 3; pass++) for (const i of list) { const ix = i % nx, iz = (i / nx) | 0, hs = [];
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const jx = ix + dx, jz = iz + dz; if ((!dx && !dz) || jx < 0 || jz < 0 || jx > t.rx || jz > t.rz) continue; const j = jz * nx + jx; hs.push(t.nat[j] + t.loose[j]); }
+      hs.sort((a, b) => a - b); const me = t.nat[i] + t.loose[i], low = hs.filter((h) => h < me - MM(150)).length;
+      if (low >= 5) { const ex = t.nat[i] - Math.max(hs[Math.min(4, hs.length - 1)], t.nat[i] - (me - hs[0])); if (ex > 0) { t.nat[i] -= ex; t.deposit(t.toWorldX(ix), t.toWorldZ(iz), ex * t.cellArea, t.cell * 1.5, 0, 0); } } }
     let cx = 0, cz = 0, bot = Infinity;
     for (const i of list) { cx += t.toWorldX(i % nx); cz += t.toWorldZ((i / nx) | 0); bot = Math.min(bot, t.nat[i] + t.loose[i]); }
     cx /= list.length; cz /= list.length;
