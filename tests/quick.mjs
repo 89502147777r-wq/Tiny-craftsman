@@ -1261,14 +1261,14 @@ if (want("2i")) {
         // (the bucket's lip at it, scooping: taken; opened: let go, it falls)
         tc.objects.update(r.id, { x: b.x, z: b.z }); for (let k = 0; k < 40; k++) LV.update(1 / 30); const m = LV.meshes.get(r.id); m.position.y = b.y - 0.05 * M;
         mt._excCut = true; const kc = E.curl; E.curl = 0.3; mt._lumps(); o.lump.held = LV.held?.id === r.id;
-        E.curl = -1.0; E.curlGoal = -1.0; mt._lumps(); o.lump.dropped = !LV.held && tc.objects.get(r.id)?.at === 'ground'; E.curl = E.curlGoal = kc; mt._excCut = false;
+        mt._excCut = false; E.curl = -1.0; E.curlGoal = -1.0; mt._lumps(); o.lump.dropped = !LV.held && tc.objects.get(r.id)?.at === 'ground'; E.curl = E.curlGoal = kc; mt._excCut = false;
         // (sand tipped over it: it stays under it, unseen — not floated up onto the heap's top)
         for (let k = 0; k < 90; k++) LV.update(1 / 30); const q = tc.objects.get(r.id), ly = LV.meshes.get(r.id).position.y, h = mod.lumpSize(q).h;
         frames(2);   // (a frame of the game first; the bucket standing in the ground keeps its footprint — what is tipped there lands all the same)
         t.deposit(q.x, q.z, 0.4 * M * M * M, 0.5 * M, 0, 1); for (let k = 0; k < 20; k++) LV.update(1 / 30);
         o.lump.buried = LV.meshes.get(r.id).position.y <= ly + 0.002 * M && ly + h < t.heightAt(q.x, q.z);
         tc.objects.remove(r.id); }
-      // (a big dab — 1 × 1 m: one piece till the teeth hit it; then uneven pieces, none wider than the bucket takes — the realist)
+      // (a big dab — 1 × 1 m: one piece till it is broken; how it breaks — section 2q)
       { const ids2 = []; for (let dz = -16; dz <= 16; dz++) for (let dx = -16; dx <= 16; dx++) { const i = i0 + 40 + dz * nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = 0.06 * M; t.cTime[i] = (tc.clock || 0) - 400; ids2.push(i); }
         const big = mod.scanLumps(tc); o.lump.big = big.length;
         if (big.length === 1) { const ps = mod.breakLump(tc, big[0], 0.35 * M), sz = ps.map((id) => mod.lumpSize(tc.objects.get(id)));
@@ -1350,12 +1350,107 @@ if (want("2i")) {
   check('machines: the excavator driven the way its bucket\'s mouth faces takes what it meets into the bucket (the realist)', o.mouth && o.mouth.gain > 0.03 && o.mouth.drove > 0.2, JSON.stringify(o.mouth));
   check('machines: an area set out — the heap cut and loaded into the truck, the pit filled, the area level', o.area && o.state === 'work' && o.steps < 90000 && o.hauled > 0 && o.spread < 90 && o.pit > -60, JSON.stringify(o));
   check('machines: the excavator\'s bucket, slewed each way through a heap, shoves what is over its bottom on (the heap\'s top down to it; below it stays) — the owner', o.push && o.push.tA[0] > o.push.tA[2] + 0.12 && o.push.tA[1] < o.push.tA[0] - 0.06 && o.push.tA[1] < o.passOver[0] + 0.05 && o.push.tB[0] > o.push.tB[2] + 0.12 && o.push.tB[1] < o.push.tB[0] - 0.06 && o.push.tB[1] < o.passOver[1] + 0.05 && Math.abs(o.push.sw1) > 0.3 && Math.abs(o.push.sw2) > 0.3, JSON.stringify({ ...o.push, passOver: o.passOver, band: o.slewBand }));
-  check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 3 && o.lump.pieces <= 20 && o.lump.maxR <= 0.5 && o.lump.spread >= 1.5, JSON.stringify(o.lump));
+  check('machines: a firm drop of concrete on the ground is a lump — out of the ground, down when dug under, the bucket takes it whole and lets it go (the owner)', o.lump?.made >= 1 && o.lump.concLeft === 0 && o.lump.fell > 0.3 && o.lump.held && o.lump.dropped && o.lump.buried && o.lump.big === 1 && o.lump.pieces >= 2, JSON.stringify(o.lump));
   check('machines: the excavator stops at a site thing (a pallet) in its way, not through it (the owner)', o.prop && o.prop.clear && o.prop.moved < 2.6, JSON.stringify(o.prop));
   check('machines: the excavator stops at the loader in its way, not through it (the owner)', !o.block || (o.block.clear && o.block.moved < 2.2), JSON.stringify(o.block));
   check('machines: the excavator — the boom down, the bucket curled in fills it (as much as came out of the ground), not through the ground (held down: its front lifts), lifted it keeps it (crowned, lumpy), opened it is empty, the crumbs fall at g; it drives on its tracks', o.exc && o.btns.includes('Ход') && o.teethLow && o.full > 0.2 && o.deepest <= 40 && o.heave > 0.01 && o.inBucket > 0.9 && o.inBucket < 1.1 && o.after < 0.05 && o.drove && o.carried >= 0.95 && o.crown > 0.15 && o.fallAt04 && o.fallAt12, JSON.stringify(o));
   check('machines: the truck driven out past the plot\'s edge with a load — to the tip, back empty; what is tipped into it heaps when it lands', o.signs && o.tip && o.inAir && o.landed, JSON.stringify(o));
   check('machines: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
+// ---- 2q. Set concrete spilt on the ground and the buckets (the owner, 2026-11-24: «пробую разбить и захватить ковшом — очень слабо
+// и нереалистично»; the realist's list of 14): the bucket bears on it before it cracks, the front lifting; it cracks where it is hit —
+// wedges 3–6 thicknesses, the rest one slab; broken faces full height; crumbs stay (the volume kept); one that passes the mouth is
+// taken whole, rides on the teeth till the floor is steep, slides in, out one by one; its room counted in the load; shoved — turned,
+// a windrow before it; lifted — its imprint ----
+if (want('2q')) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {};
+    const { MODEL_SCALE } = await import('./src/config.js'), M = 1 / MODEL_SCALE, mod = await import('./src/world/lumps.js'), LV = tc.lumpView;
+    const frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
+    tc.setTool('machine'); await mt.ensure(); mt.enter('excavator');
+    for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
+    const E = mt.exc; E.place(t, 0, 0, 0); frames(3);
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    // (a spill lx × lz m, h m thick, centred at x, z: set — a lump)
+    const plate = (x, z, lx, lz, h) => { const ids = []; const nx = Math.round(lx * M / t.cell / 2), nz = Math.round(lz * M / t.cell / 2), i0 = t.index(x, z);
+      for (let dz = -nz; dz < nz; dz++) for (let dx = -nx; dx < nx; dx++) { const i = i0 + dz * t.nx + dx; t.orig[i] = t.nat[i]; t.cSpill[i] = 1; t.conc[i] = h * M; t.cTime[i] = (tc.clock || 0) - 900; ids.push(i); }
+      t._concTouch(0, 0, t.rx, t.rz); const made = mod.scanLumps(tc); for (let k = 0; k < 3; k++) LV.update(1 / 30); return made; };
+    const area = (r) => mod.lumpSize(r).area, vol = (id) => mod.lumpSize(tc.objects.get(id)).vol;
+    const clear = () => { for (const r of tc.objects.all('lump')) tc.objects.remove(r.id); LV.update(1 / 30); };
+    // (a) a 2 × 1 × 0,15 slab struck 0,3 m in from its end
+    { const [id] = plate(-6 * M, 3 * M, 2, 1, 0.15), r = tc.objects.get(id), v0 = mod.lumpSize(r).vol, n0 = tc.particles.items.length;
+      const at = new V(r.x - 0.7 * M, r.y, r.z), ps = mod.breakLump(tc, id, mod.chipR(r, 0.9 * M), rnd, at), L = mod.breakLump.last;
+      const recs = ps.map((i) => tc.objects.get(i)), ar = recs.map(area), tot = ar.reduce((a, b) => a + b, 0), big = Math.max(...ar);
+      const chips = recs.filter((q) => area(q) < big);
+      o.a = { pieces: ps.length, bigShare: +(big / tot).toFixed(2), far: +Math.max(0, ...chips.map((q) => Math.hypot(q.x - at.x, q.z - at.z) / M)).toFixed(2),
+        volErr: +(Math.abs(L.after + L.crumbs - v0) / v0 * 100).toFixed(2), crumbPct: +(L.crumbs / v0 * 100).toFixed(1), crumbs: tc.particles.items.length - n0,
+        broken: recs.every((q) => q.cells.some((c) => c[4])), tilted: chips.filter((q) => q.tilt).length };
+      // (broken faces stand full height: a broken cell's thickness ≥ 0,9 of its piece's mean)
+      o.a.faceH = +Math.min(...recs.map((q) => { const br = q.cells.filter((c) => c[4]), m = q.cells.reduce((a, c) => a + c[2], 0) / q.cells.length; return br.length ? br.reduce((a, c) => a + c[2], 0) / br.length / m : 1; })).toFixed(2);
+      frames(45); o.a.landed = tc.particles.clodList.filter((c) => Math.hypot(c.p ? c.p.x - at.x : (c.x ?? 1e9) - at.x, c.p ? c.p.z - at.z : (c.z ?? 1e9) - at.z) < 1.2 * M).length; o.a.chipCrumbPct = +(L.crumbs / Math.max(1e-9, v0 - recs.filter((q) => area(q) >= big).reduce((a, q) => a + mod.lumpSize(q).vol, 0) - 0) * 100).toFixed(1); clear(); }
+    // (b) the pieces 3–6 of its thicknesses: 30 mm and 150 mm
+    o.b = {};
+    for (const h of [0.03, 0.15]) { const [id] = plate(-6 * M, 3 * M, 2.4, 2.4, h), r = tc.objects.get(id), ps = mod.breakLump(tc, id, mod.chipR(r, 0.9 * M), rnd, new V(r.x, r.y, r.z));
+      const recs = ps.map((i) => tc.objects.get(i)), big = Math.max(...recs.map(area)), ex = recs.filter((q) => area(q) < big).map((q) => Math.max(mod.lumpExtent(q, 1, 0), mod.lumpExtent(q, 0, 1)) / M / h).sort((a, b) => a - b);
+      o.b[h] = +(ex[Math.floor(ex.length / 2)] || 0).toFixed(1); clear(); }
+    // (c) the boom pressed down on a 2 × 1 × 0,15 slab under the teeth: it bears, the front lifting, then cracks; the front comes down
+    { E.place(t, 0, 0, 0); mt.setExcMode?.('dig'); E.boom = E.boomGoal = 0.25; E.stick = E.stickGoal = 0.2; E.curl = E.curlGoal = 0.3; frames(3);
+      const b = E.teethWorld(new V()); plate(b.x, b.z, 2, 1, 0.15); frames(1);
+      let first = -1, broke = -1, hMax = 0, hAt = null, yAt = null; const n0 = tc.objects.all('lump').length;
+      mt.joystick('r', 0, 1);
+      for (let f = 0; f < 150; f++) { frames(1); const now = f / 30;
+        if (first < 0 && mt._bearing) first = now; if (broke < 0) hMax = Math.max(hMax, E.heave);
+        if (broke < 0 && tc.objects.all('lump').length !== n0) { broke = now; yAt = E.teethWorld(new V()).y; }
+        if (broke >= 0 && now - broke >= 0.12) mt.joystick('r', 0, 0);   /* (cracked and gone down: the driver lets go — the front back on its tracks) */
+        if (broke >= 0 && hAt == null && now - broke >= 0.5) hAt = E.heave;
+        if (broke >= 0 && now - broke >= 0.12 && o.cDrop == null) o.cDrop = +((yAt - E.teethWorld(new V()).y) / M * 1000).toFixed(0); }
+      mt.joystick('r', 0, 0); frames(2);
+      o.c = { first: +first.toFixed(2), broke: +broke.toFixed(2), wait: +(broke - first).toFixed(2), hMax: +hMax.toFixed(3), hAfter: hAt == null ? null : +hAt.toFixed(3), drop: o.cDrop }; clear(); }
+    // (d) a 0,6 × 0,6 × 0,1 dab at the teeth, scooped: taken whole (one record); its imprint left
+    { E.place(t, 0, 0, 0); E.boom = E.boomGoal = 0.1; E.stick = E.stickGoal = 0.1; E.curl = E.curlGoal = 0.3; frames(3);
+      const b = E.teethWorld(new V()), [id] = plate(b.x, b.z, 0.6, 0.6, 0.1); const m = LV.meshes.get(id); m.position.y = b.y - 0.02 * M;
+      const i = t.index(b.x, b.z), h0 = t.heightAt(b.x, b.z); mt._excCut = true; mt._lumps(1 / 30); mt._excCut = false;
+      o.d = { held: LV.isHeld(id), n: tc.objects.all('lump').length, w: +(E.bucketW / M).toFixed(2), imprintMm: +((t.heightAt(b.x, b.z) - h0) / M * 1000).toFixed(1), lumpL: +(mt._lumpL() / (M ** 3 * 0.4 / t.cellArea)).toFixed(2) };
+      // (e) riding on the teeth while the floor is flat (< 25°), in past ~35°, out one by one tipped
+      const alpha = () => { const a = E.teethWorld(new V()), c = E.mouthWorld(new V()), d = a.clone().sub(c); return Math.asin(d.y / d.length()); };
+      const curlFor = (want) => { let best = E.curl, bd = 9; for (let c = -1.28; c <= 1.59; c += 0.01) { E.curl = c; E._apply(); const d = Math.abs(alpha() - want); if (d < bd) bd = d, best = c; } E.curl = E.curlGoal = best; E._apply(); return +alpha().toFixed(2); };
+      const rel = () => m.position.distanceTo(E.teethWorld(new V()));
+      o.e = { aLow: curlFor(0.35) }; mt._lumps(1 / 30); const q0 = rel(); for (let k = 0; k < 30; k++) mt._lumps(1 / 30); o.e.lowMoveMm = +(Math.abs(rel() - q0) / M * 1000).toFixed(1);
+      o.e.aHigh = curlFor(1.0); for (let k = 0; k < 60; k++) mt._lumps(1 / 30); const h = LV.holds[0]; o.e.in = h ? +(h.s / h.len).toFixed(2) : null;
+      // (a second one taken, then both tipped out)
+      E.curl = E.curlGoal = 0.3; E._apply(); const b2 = E.teethWorld(new V()), [id2] = plate(b2.x + 1.2 * M, b2.z, 0.4, 0.4, 0.08); const m2 = LV.meshes.get(id2); m2.position.copy(b2).y -= 0.02 * M; mt._excCut = true; mt._lumps(1 / 30); mt._excCut = false;
+      curlFor(1.0); for (let k = 0; k < 60; k++) mt._lumps(1 / 30);
+      o.e.two = LV.holds.length; const out = {}; const sg = (() => { const a0 = alpha(); E.curl += 0.01; E._apply(); const d = alpha() - a0; E.curl -= 0.01; E._apply(); return Math.sign(d) || 1; })();
+      for (let k = 0; k < 400 && LV.holds.length; k++) { E.curl = E.curlGoal = E.curl - sg * 0.1745 / 30; E._apply(); mt._lumps(1 / 30); for (const x of [id, id2]) if (!LV.isHeld(x) && out[x] == null) out[x] = k / 30; }   /* (opened slowly — 10°/s) */ o.e.aOut = +alpha().toFixed(2);
+      o.e.outT = Object.values(out).map((x) => +x.toFixed(2)); o.e.gap = o.e.outT.length === 2 ? +Math.abs(o.e.outT[0] - o.e.outT[1]).toFixed(2) : null; frames(30); clear(); }
+    // (f) no room: a full bucket of soil takes no lump
+    { E.curl = E.curlGoal = 0.3; E._apply(); const g = mt.digG, cap = M ** 3 * 0.4 / t.cellArea; const keep = g ? [...g.carry] : null; if (g) { g.carry.fill(0); g.carry[0] = cap * 1.08; } const b = E.teethWorld(new V()), [id] = plate(b.x, b.z, 0.5, 0.5, 0.08); LV.meshes.get(id).position.y = b.y - 0.02 * M;
+      mt._excCut = true; mt._lumps(1 / 30); mt._excCut = false; o.f = { taken: LV.isHeld(id), soil: g ? +(g.load / cap).toFixed(2) : null }; if (g) keep.forEach((v, k) => { g.carry[k] = v; }); clear(); }
+    // (g) shoved by a corner 1 m: turned 15–45°, a windrow before it
+    { const [id] = plate(-6 * M, -4 * M, 1, 0.5, 0.1), r0 = tc.objects.get(id), m = LV.meshes.get(id), y0 = r0.yaw || 0, gx = r0.x + 0.75 * M, h0 = t.heightAt(gx, r0.z - 0.1 * M);
+      for (let k = 0; k < 50; k++) { const r = tc.objects.get(id), mm = LV.meshes.get(id), c = new V(r.x - 0.45 * M, mm.position.y + 0.03 * M, r.z - 0.22 * M); const ax = new V(-0.02 * M, 0, 0); mt._excPush([c.clone().sub(ax)], [c], c, true); mt._flushPush?.(); LV.update(1 / 30); }
+      const r = tc.objects.get(id); o.g = { moved: +((r.x - r0.x) / M).toFixed(2), turn: +(Math.abs((r.yaw || 0) - y0) * 180 / Math.PI).toFixed(0) };
+      let hi = 0; for (let d = 0.3; d < 1.2; d += 0.05) for (let q = -0.4; q <= 0.4; q += 0.1) { const x = r.x - d * M, z = r.z + q * M; hi = Math.max(hi, (t.heightAt(x, z) - t.nat[t.index(x, z)]) / M * 1000); } o.g.windrowMm = +hi.toFixed(0); clear(); }
+    // (h) a spill 0,3 m thick is a lump too
+    { const made = plate(-2 * M, 6 * M, 0.8, 0.8, 0.3); o.h = { made: made.length, thick: made.length ? +(mod.lumpThick(tc.objects.get(made[0])) / M).toFixed(2) : 0, need: made.length ? +mod.pressNeed(tc.objects.get(made[0])).toFixed(2) : 0 }; clear(); }
+    o.loaderW = mt.loader?.bucketW ? +(mt.loader.bucketW / M).toFixed(2) : null;
+    return o;
+  });
+  const J = (x) => JSON.stringify(x);
+  check('lumps: a slab cracks where it is struck — 3–8 pieces, the rest one slab ≥ 50 %, the wedges within 1 m of the blow, broken faces full height, tilted wedges (the realist)', o.a.pieces >= 3 && o.a.pieces <= 8 && o.a.bigShare >= 0.5 && o.a.far <= 1 && o.a.broken && o.a.faceH >= 0.9 && o.a.tilted >= 1, J(o.a));
+  check('lumps: the volume kept — pieces + crumbs = the slab ± 3 %; crumbs 4–16 % of what came off, ≥ 15 of them left on the ground', o.a.volErr <= 3 && o.a.chipCrumbPct >= 4 && o.a.chipCrumbPct <= 16 && o.a.landed >= 15, J(o.a));
+  check('lumps: the pieces 3–6 of its thicknesses (30 mm and 150 mm)', o.b[0.03] >= 3 && o.b[0.03] <= 6 && o.b[0.15] >= 3 && o.b[0.15] <= 6, J(o.b));
+  check('lumps: the boom pressed on a 150 mm slab — it bears ≥ 0,3 s (≤ 1,2) with the front up, cracks, the bucket goes down 30–80 mm, the front back down in 0,5 s', o.c.wait >= 0.3 && o.c.wait <= 1.2 && o.c.hMax > 0.005 && o.c.drop >= 30 && o.c.drop <= 80 && o.c.hAfter != null && o.c.hAfter <= 0.005, J(o.c));
+  check('lumps: a 0,6 × 0,6 dab that passes the mouth is taken whole (one record), its room in the load, its imprint 3–10 mm', o.d.held && o.d.n === 1 && o.d.lumpL > 0.05 && o.d.imprintMm >= 3 && o.d.imprintMm <= 10, J(o.d));
+  check('lumps: on the teeth while the floor is flat (< 25°: moves < 20 mm), in past ~35°, two taken, tipped slowly they come out one by one (≥ 0,15 s apart)', o.e.lowMoveMm < 20 && o.e.in >= 0.95 && o.e.two === 2 && o.e.outT.length === 2 && o.e.gap >= 0.15, J(o.e));
+  check('lumps: a bucket full of soil takes no more (soil + lumps ≤ 1,1 of it)', !o.f.taken, J(o.f));
+  check('lumps: shoved by a corner 1 m — turned 15–45°, a windrow ≥ 20 mm before it', Math.abs(o.g.moved) >= 0.8 && o.g.turn >= 15 && o.g.turn <= 45 && o.g.windrowMm >= 20, J(o.g));
+  check('lumps: a 0,3 m spill is a lump too, borne on longer (≥ 1,5 s)', o.h.made === 1 && o.h.need >= 1.5, J(o.h));
+  check('lumps: the loader takes a 2 × 1 m slab whole (its bucket ≥ 1,1 m: across ≤ 0,9 of it)', o.loaderW == null || o.loaderW * 0.9 >= 1.0, J({ w: o.loaderW }));
+  check('lumps: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 

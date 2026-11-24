@@ -14,6 +14,8 @@ const KIND = {
   // (a building come down: grey concrete dust, slow, hanging long — 5–10 s — and drifting with the wind)
   rubble: { color: 0xb8a58a, opacity: 0.55, size0: 2, size1: 10, rise: 0.5, life: 6 },
   // (the air pushed out from under a falling slab: a ring of dust running out along the ground — fast, stopping in a second)
+  // (concrete cracked by a bucket: a little grey dust, low, gone in a second — damp ground hardly dusts: the realist)
+  chip: { color: 0xa8a49c, opacity: 0.35, size0: 0.15, size1: 0.9, rise: 0.08, life: 0.9 },
   ring: { color: 0xb8a58a, opacity: 0.8, size0: 1.2, size1: 6, rise: 0.08, life: 3.5, damp: 2.6 },
 };
 

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MODEL_SCALE, CONCRETE } from '../config.js';
+import { MODEL_SCALE, CONCRETE, M_G5 } from '../config.js';
 import { mortarPhoto } from './terrainMaterial.js';
 
 // A lump of set concrete (the owner, 2026-11-16: «a drop of concrete on the ground is a dab — not a pillar down to the bottom when
@@ -12,7 +12,7 @@ import { mortarPhoto } from './terrainMaterial.js';
 // pieces 0,2–0,7 m (`breakLump`) — what fits, the bucket takes; tipped out, it falls; the truck's body tipping lets them slide out
 // with the load one after another and fly 0,5–1,5 m off the tailgate; to the tip — gone with the load.
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S, G = 9.81 / MODEL_SCALE;
-export const LUMP = { thick: 0.25, minT: 0.025, minA: 0.01, whole: 0.3, slope: 35 };
+export const LUMP = { thick: 0.5, minT: 0.025, minA: 0.01, whole: 0.3, slope: 35 };
 const TAN = Math.tan(LUMP.slope * Math.PI / 180), UP = new THREE.Vector3(0, 1, 0);
 
 // the ground's firm spills → lumps, one per spill (called now and then: main.js)
@@ -38,7 +38,7 @@ export function scanLumps(app) {
     let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
     for (const i of list) { const ix = i % nx, iz = (i / nx) | 0; x0 = Math.min(x0, ix); x1 = Math.max(x1, ix); z0 = Math.min(z0, iz); z1 = Math.max(z1, iz); conc[i] = 0; t.cBase[i] = 0; t.cSm[i] = 0; t.cSpill[i] = 0; }
     t._concTouch(x0, z0, x1, z1); t._touch(x0, z0, x1, z1);
-    made.push(app.objects.add({ type: 'lump', x: +cx.toFixed(6), z: +cz.toFixed(6), y: +bot.toFixed(6), yaw: 0, cells, cell: Math.round(t.cell / S), at: 'ground' }).id);
+    made.push(app.objects.add({ type: 'lump', x: +cx.toFixed(6), z: +cz.toFixed(6), y: +bot.toFixed(6), yaw: 0, cells, cell: +(t.cell / S).toFixed(3), at: 'ground' }).id);   // (its cell as it is, 31,4 mm — rounded, the cells' keys drifted over a metre: neighbours lost)
   }
   return made;
 }
@@ -50,37 +50,105 @@ export function lumpSize(r) {
   return { r: r2, h, vol: v, area: r.cells.length * a };
 }
 
-// the bucket's teeth hit a big one: it breaks into uneven pieces (a Voronoi of random seeds over its cells, the cut wavering), none
-// wider than maxR from its middle → the new ids (the old one gone)
-export function breakLump(app, id, maxR, rnd = Math.random) {
+// its extent along a world direction (ux, uz), model units — across a bucket's mouth, along it (the realist: what passes the mouth is
+// measured in the bucket's axes, not by the farthest corner)
+export function lumpExtent(r, ux, uz) {
+  const cs = Math.cos(r.yaw || 0), sn = Math.sin(r.yaw || 0), c = MM(r.cell || 30); let lo = Infinity, hi = -Infinity;
+  for (const [dx, dz] of r.cells) { const X = MM(dx) * cs + MM(dz) * sn, Z = -MM(dx) * sn + MM(dz) * cs, d = X * ux + Z * uz; lo = Math.min(lo, d); hi = Math.max(hi, d); }
+  return hi - lo + c;
+}
+// its mean thickness (model units) — what it breaks by
+export function lumpThick(r) { let s = 0; for (const c of r.cells) s += c[2]; return MM(s / Math.max(1, r.cells.length)); }
+// how long a bucket must bear on it before it cracks (s): 25 mm 0,1 s, 150 mm 0,7 s, thicker ~h² (250 mm ~1,9 s: 2–3 bearings) — the realist
+export function pressNeed(r) { const h = lumpThick(r) * MODEL_SCALE; return h <= 0.15 ? 0.1 + 0.6 * Math.max(0, h - 0.025) / 0.125 : Math.min(3.5, 0.7 * (h / 0.15) ** 2); }
+// the size its pieces break to: 3–6 of its thicknesses (4,5 h), not under 80 mm, none wider than what the bucket takes
+export function chipR(r, w) { return Math.max(MM(80), Math.min(4.5 * lumpThick(r), w * 0.45)); }
+
+// it breaks where it is hit (the realist, 2026-11-24): from the point `at` (world) 3–5 nearly straight cracks run out; what is within
+// 3–6 of its thicknesses of it comes off in wedges between them, the rest stays one slab (one through-crack across it now and then);
+// the broken faces marked (a cell's 5th: 1 — drawn full height, light, `_geo`); 5–15 % of what comes off is crumbs (crushed grit that
+// stays on the ground — the particles carry it); the pieces part 5–30 mm from the blow, the wedges tilted 3–10°; dust low and short.
+// → the new ids (the old one gone); `breakLump.last` — { crumbs (m³), before, after (m³) } for the tests
+export function breakLump(app, id, maxR, rnd = Math.random, at = null) {
   const O = app.objects, r = O.get(id); if (!r) return [];
-  const A = Math.pow((r.cell || 30) / 1000, 2), pieces = [];
-  const split = (cells, depth = 0) => {
-    const k = Math.max(2, Math.min(15, Math.round(cells.length * A / 0.12)));
-    const seeds = []; for (let n = 0; n < k; n++) seeds.push(cells[Math.floor(rnd() * cells.length)]);
-    const w = seeds.map(() => rnd() * 60), groups = seeds.map(() => []);   // (an added weight, not a factor: each piece one connected piece)
-    for (const c of cells) {
-      let best = 0, bd = Infinity;
-      for (let n = 0; n < k; n++) { const d = Math.hypot(c[0] - seeds[n][0], c[1] - seeds[n][1]) + w[n] + Math.sin(c[0] * 0.021 + c[1] * 0.013 + n * 1.7) * 25; if (d < bd) bd = d, best = n; }
-      groups[best].push(c);
-    }
-    for (const g of groups) {
-      if (!g.length) continue;
-      const mx = g.reduce((a, c) => a + c[0], 0) / g.length, mz = g.reduce((a, c) => a + c[1], 0) / g.length;
-      const rr = Math.max(...g.map((c) => Math.hypot(c[0] - mx, c[1] - mz))) + (r.cell || 30) / 2;
-      if (MM(rr) > maxR && g.length > 8 && depth < 6) split(g, depth + 1); else pieces.push({ g, mx, mz });
-    }
+  const C = r.cell || 30, A = Math.pow(C / 1000, 2), cs = Math.cos(r.yaw || 0), sn = Math.sin(r.yaw || 0);
+  const vol0 = r.cells.reduce((a, c) => a + c[2] / 1000 * A, 0), hMean = r.cells.reduce((a, c) => a + c[2], 0) / r.cells.length;
+  // (the blow in its own frame, mm; none given — its middle)
+  let H = [0, 0];
+  if (at) { const dx = at.x - r.x, dz = at.z - r.z; H = [(dx * cs - dz * sn) / S, (dx * sn + dz * cs) / S]; }
+  { let bd = Infinity, bc = null; for (const c of r.cells) { const d = Math.hypot(c[0] - H[0], c[1] - H[1]); if (d < bd) bd = d, bc = c; } if (bd > C * 2) H = [bc[0], bc[1]]; }
+  const Rc = Math.max(80, Math.min(4.5 * hMean, maxR / S));   // (mm: the wedges' reach)
+  const nRay = 3 + Math.floor(rnd() * 3), a0 = rnd() * Math.PI * 2, rays = [];
+  for (let k = 0; k < nRay; k++) rays.push(a0 + (k + 0.25 + rnd() * 0.5) * Math.PI * 2 / nRay);
+  const wob = rnd() * 10, reach = rays.map(() => 0.8 + rnd() * 0.45);
+  const sector = (c) => {   // (which wedge: between which rays its bearing lies — the cracks nearly straight, a little wavering)
+    const d = Math.hypot(c[0] - H[0], c[1] - H[1]), ang = Math.atan2(c[1] - H[1], c[0] - H[0]) + Math.sin(d * 0.012 + wob) * 0.05;
+    let best = nRay - 1; for (let k = 0; k < nRay; k++) { const lo = rays[k], hi = rays[(k + 1) % nRay] + (k + 1 === nRay ? Math.PI * 2 : 0); let a = ang; while (a < lo) a += Math.PI * 2; if (a < hi) { best = k; break; } }
+    return best;
   };
-  split(r.cells);
-  const cs = Math.cos(r.yaw || 0), sn = Math.sin(r.yaw || 0), ids = [];
-  O.remove(id);
-  for (const { g, mx, mz } of pieces) {
-    if (g.length * A < LUMP.minA) continue;   // (crumbs: gone into the soil)
-    const bmin = Math.min(...g.map((c) => c[3] || 0));
-    ids.push(O.add({ type: 'lump', x: +(r.x + MM(mx) * cs + MM(mz) * sn).toFixed(6), z: +(r.z - MM(mx) * sn + MM(mz) * cs).toFixed(6), y: +((r.y ?? 0) + MM(bmin)).toFixed(6), yaw: r.yaw || 0,
-      cells: g.map((c) => [Math.round(c[0] - mx), Math.round(c[1] - mz), c[2], (c[3] || 0) - bmin]), cell: r.cell, at: 'ground' }).id);
+  // (its cells' keys counted from its first cell: its cells lie half a cell off the round millimetres — rounded alone, neighbours merged)
+  const X0 = r.cells[0][0], Z0 = r.cells[0][1], group = new Map(), key = (c) => Math.round((c[0] - X0) / C) + ',' + Math.round((c[1] - Z0) / C);
+  const through = rnd() < 0.5 ? Math.floor(rnd() * nRay) : -1;
+  for (const c of r.cells) {
+    const d = Math.hypot(c[0] - H[0], c[1] - H[1]), k = sector(c), lim = Rc * (reach[k] + 0.12 * Math.sin(Math.atan2(c[1] - H[1], c[0] - H[0]) * 3 + wob));
+    if (d <= lim) group.set(key(c), 'w' + k);
+    else if (through >= 0) { const ra = rays[through], side = Math.cos(ra) * (c[1] - H[1]) - Math.sin(ra) * (c[0] - H[0]) + Math.sin(d * 0.01 + wob) * 15; group.set(key(c), side > 0 ? 'rA' : 'rB'); }
+    else group.set(key(c), 'r');
   }
-  app.sfx?.play?.('stone', { vol: 0.6 }); app.sfx?.play?.('debris', { vol: 0.35 });
+  // (the pieces: each group's connected parts)
+  const byKey = new Map(r.cells.map((c) => [key(c), c])), seen = new Set(), comps = [];
+  for (const c of r.cells) {
+    const k0 = key(c); if (seen.has(k0)) continue;
+    const g = group.get(k0), list = [], st = [c]; seen.add(k0);
+    while (st.length) { const q = st.pop(); list.push(q); const [a, b] = key(q).split(',').map(Number); for (const [u, v] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const kk = (a + u) + ',' + (b + v), n = byKey.get(kk); if (n && !seen.has(kk) && group.get(kk) === g) { seen.add(kk); st.push(n); } } }
+    comps.push({ g, list, rest: g[0] === 'r' });
+  }
+  // (a wedge still wider than the bucket takes: split again, unevenly)
+  const pieces = [];
+  const split = (cells, rest, depth = 0) => {
+    const mx = cells.reduce((a, c) => a + c[0], 0) / cells.length, mz = cells.reduce((a, c) => a + c[1], 0) / cells.length;
+    const rr = Math.max(...cells.map((c) => Math.hypot(c[0] - mx, c[1] - mz))) + C / 2;
+    if (rest || MM(rr) <= maxR || cells.length <= 8 || depth >= 5) { pieces.push({ g: cells, mx, mz, rest }); return; }
+    const sa = cells[Math.floor(rnd() * cells.length)], sb = cells[Math.floor(rnd() * cells.length)], A2 = [], B2 = [];
+    for (const c of cells) (Math.hypot(c[0] - sa[0], c[1] - sa[1]) + Math.sin(c[0] * 0.02 + c[1] * 0.013) * 20 < Math.hypot(c[0] - sb[0], c[1] - sb[1]) ? A2 : B2).push(c);
+    if (!A2.length || !B2.length) { pieces.push({ g: cells, mx, mz, rest }); return; }
+    split(A2, false, depth + 1); split(B2, false, depth + 1);
+  };
+  for (const p of comps) split(p.list, p.rest);
+  // (its broken faces: a cell whose neighbour went to another piece)
+  const pieceOf = new Map(); pieces.forEach((p, n) => { for (const c of p.g) pieceOf.set(key(c), n); });
+  const crack = [];
+  for (const p of pieces) for (const c of p.g) { const [a, b] = key(c).split(',').map(Number), n0 = pieceOf.get(key(c)); let br = c[4] || 0; for (const [u, v] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n = pieceOf.get((a + u) + ',' + (b + v)); if (n != null && n !== n0) { br = 1; if (n > n0) crack.push(c); } } c[4] = br; }
+  // (crumbs: off what came off — 10–15 % of a thin one, 5 % of a thick; specks under 0,01 m² crumble whole)
+  const frac = hMean < 50 ? 0.12 : 0.06; let crumbs = 0;
+  const cosY = Math.cos(r.yaw || 0), sinY = Math.sin(r.yaw || 0), wx = (dx, dz) => r.x + MM(dx) * cosY + MM(dz) * sinY, wz = (dx, dz) => r.z - MM(dx) * sinY + MM(dz) * cosY;
+  O.remove(id);
+  const ids = [];
+  for (const p of pieces) {
+    const vol = p.g.reduce((a, c) => a + c[2] / 1000 * A, 0);
+    if (p.g.length * A < LUMP.minA) { crumbs += vol; continue; }
+    let k = 1; if (!p.rest) { k = 1 - frac; crumbs += vol * frac; }
+    const bmin = Math.min(...p.g.map((c) => c[3] || 0));
+    // (parted from the blow 5–30 mm — the slab left 0–5; the wedges tilted 3–10° about a level axis)
+    const ox = p.mx - H[0], oz = p.mz - H[1], ol = Math.hypot(ox, oz) || 1, gap = p.rest ? rnd() * 5 : 5 + rnd() * 25, mx = p.mx + ox / ol * gap, mz = p.mz + oz / ol * gap;
+    const tl = p.rest ? 0 : (3 + rnd() * 7) * Math.PI / 180, ta = rnd() * Math.PI * 2;
+    const rec = { type: 'lump', x: +wx(mx, mz).toFixed(6), z: +wz(mx, mz).toFixed(6), y: +((r.y ?? 0) + MM(bmin)).toFixed(6), yaw: r.yaw || 0,
+      cells: p.g.map((c) => [Math.round(c[0] - p.mx), Math.round(c[1] - p.mz), Math.max(1, Math.round(c[2] * k)), (c[3] || 0) - bmin, c[4] || 0]), cell: C, at: 'ground' };
+    if (tl) rec.tilt = [+(Math.cos(ta) * tl).toFixed(4), +(Math.sin(ta) * tl).toFixed(4)];
+    ids.push(O.add(rec).id);
+  }
+  // (the crumbs onto the ground along the cracks: grit 10–50 mm, grey — they stay; each carries its share of the volume)
+  const P = app.particles, n = Math.max(20, Math.min(60, Math.round(crumbs / 0.0006))), top = (r.y ?? 0);
+  if (P && crumbs > 0) for (let q = 0; q < n; q++) {
+    const c = crack.length ? crack[Math.floor(rnd() * crack.length)] : r.cells[Math.floor(rnd() * r.cells.length)], e = (rnd() - 0.5) * C;
+    const pos = new THREE.Vector3(wx(c[0] + e, c[1] - e), top + MM((c[3] || 0) + c[2] * (0.3 + 0.7 * rnd())), wz(c[0] + e, c[1] - e));
+    P.emit(pos, new THREE.Vector3((rnd() - 0.5) * MM(900), MM(300 + rnd() * 600), (rnd() - 0.5) * MM(900)), crumbs / MODEL_SCALE ** 3 / n, MM(5 + rnd() * 20), 1, 0, M_G5, true);
+  } else if (crumbs > 0) app.terrain.deposit(r.x, r.z, crumbs / MODEL_SCALE ** 3, MM(300), 0, M_G5);
+  // (dust: a little, low, a second at most — concrete on damp ground hardly dusts)
+  const D = app.machineTool?.puffs; if (D) for (let q = 0; q < 5; q++) { const c = crack[Math.floor(rnd() * Math.max(1, crack.length))] || r.cells[0]; D.emit('chip', new THREE.Vector3(wx(c[0], c[1]), top + MM(c[2] + 60), wz(c[0], c[1])), new THREE.Vector3((rnd() - 0.5) * MM(400), 0, (rnd() - 0.5) * MM(400)), 0.6); }
+  const after = ids.reduce((a, i) => a + O.get(i).cells.reduce((b, c) => b + c[2] / 1000 * A, 0), 0);
+  breakLump.last = { crumbs, before: vol0, after, pieces: ids.length };
+  app.sfx?.play?.('stone', { vol: 0.7 }); app.sfx?.play?.('debris', { vol: 0.4 });
   return ids;
 }
 
@@ -99,15 +167,25 @@ export class LumpView {
   get held() { return this.holds[0] || null; }
   isHeld(id) { return this.holds.some((h) => h.id === id); }
   _geo(r) {
-    const C = r.cell || 30, cs = MM(C), key = (a, b) => a + ',' + b, cells = new Map();
-    for (const [dx, dz, h, b] of r.cells) cells.set(key(Math.round(dx / C), Math.round(dz / C)), [h, b || 0]);
+    const C = r.cell || 30, cs = MM(C), key = (a, b) => a + ',' + b, cells = new Map(), X0 = r.cells[0][0], Z0 = r.cells[0][1];   // (keyed from its first cell — see breakLump)
+    for (const [dx, dz, h, b, br] of r.cells) cells.set(key(Math.round((dx - X0) / C), Math.round((dz - Z0) / C)), [h, b || 0, br || 0]);
     // (corner vertices: the mean of the cells about them; on the rim, thin)
     const V = new Map();
     for (const k of cells.keys()) { const [a, b] = k.split(',').map(Number); for (const [u, w] of [[0, 0], [1, 0], [0, 1], [1, 1]]) if (!V.has(key(a + u, b + w))) V.set(key(a + u, b + w), null); }
     for (const k of V.keys()) {
-      const [a, b] = k.split(',').map(Number); let hs = 0, bs = 0, n = 0;
-      for (const [u, w] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) { const c = cells.get(key(a + u, b + w)); if (c) { hs += c[0]; bs += c[1]; n++; } }
-      V.set(k, { h: n === 4 ? hs / n : Math.max(6, hs / n * 0.18), b: bs / n, rim: n < 4 });
+      const [a, b] = k.split(',').map(Number); let hs = 0, bs = 0, n = 0, br = 0;
+      for (const [u, w] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) { const c = cells.get(key(a + u, b + w)); if (c) { hs += c[0]; bs += c[1]; n++; br = Math.max(br, c[2]); } }
+      // (its poured rim thins out to a skin; a broken edge stands its full height — a face, not a dab: the realist)
+      V.set(k, { h: n === 4 || br ? hs / n : Math.max(6, hs / n * 0.18), b: bs / n, rim: n < 4, br: n < 4 && br });
+    }
+    // (a broken edge in plan: not the cells' 31 mm stairs — a crack runs nearly straight: its rim corners eased toward their rim
+    // neighbours, three passes; the poured rim keeps its own outline)
+    for (const v of V.values()) { v.ox = 0; v.oz = 0; }
+    const rimN = (k) => { const [a, b] = k.split(',').map(Number), out = []; for (const [u, w] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const q = V.get(key(a + u, b + w)); if (q && q.rim) out.push([u, w, q]); } return out; };
+    for (let p = 0; p < 3; p++) {
+      const moves = [];
+      for (const [k, v] of V) { if (!v.br) continue; const nb = rimN(k); if (nb.length < 2) continue; let sx = 0, sz = 0; for (const [u, w, q] of nb) { sx += u + q.ox; sz += w + q.oz; } moves.push([v, 0.5 * (sx / nb.length - v.ox) + v.ox * 0.5, 0.5 * (sz / nb.length - v.oz) + v.oz * 0.5]); }
+      for (const [v, x, z] of moves) { v.ox = Math.max(-0.5, Math.min(0.5, x)); v.oz = Math.max(-0.5, Math.min(0.5, z)); }
     }
     for (let p = 0; p < 2; p++) {   // (the top smoothed: a poured skin, not steps)
       const nh = new Map();
@@ -116,12 +194,20 @@ export class LumpView {
     }
     const pos = [], col = [], idx = [], ti = new Map(), bi = new Map();
     const Pt = (k, top) => { const m = top ? ti : bi; if (m.has(k)) return m.get(k); const [a, b] = k.split(',').map(Number), v = V.get(k), y = MM(v.b) + (top ? MM(v.h) : 0);
-      pos.push((a - 0.5) * cs, y, (b - 0.5) * cs); const dirt = top ? (v.rim ? 0.72 : 1) : 0.55; col.push(dirt, dirt * 0.97, dirt * 0.93); m.set(k, pos.length / 3 - 1); return pos.length / 3 - 1; };
+      pos.push(MM(X0) + (a - 0.5 + (v.ox || 0)) * cs, y, MM(Z0) + (b - 0.5 + (v.oz || 0)) * cs); const dirt = top ? (v.rim && !v.br ? 0.72 : 1) : 0.55; col.push(dirt, dirt * 0.97, dirt * 0.93); m.set(k, pos.length / 3 - 1); return pos.length / 3 - 1; };
     for (const k of cells.keys()) {
       const [a, b] = k.split(',').map(Number), c = [key(a, b), key(a + 1, b), key(a + 1, b + 1), key(a, b + 1)];
       const t = c.map((q) => Pt(q, true)), u = c.map((q) => Pt(q, false));
       idx.push(t[0], t[2], t[1], t[0], t[3], t[2], u[0], u[1], u[2], u[0], u[2], u[3]);
-      for (const [e, [da, db]] of [[0, [0, -1]], [1, [1, 0]], [2, [0, 1]], [3, [-1, 0]]]) if (!cells.has(key(a + da, b + db))) { const i0 = e, i1 = (e + 1) % 4; idx.push(t[i0], t[i1], u[i1], t[i0], u[i1], u[i0]); }   // (its rim: the top down to the underside)
+      const brk = cells.get(key(a, b))[2];
+      for (const [e, [da, db]] of [[0, [0, -1]], [1, [1, 0]], [2, [0, 1]], [3, [-1, 0]]]) if (!cells.has(key(a + da, b + db))) {
+        const i0 = e, i1 = (e + 1) % 4;
+        if (!brk) { idx.push(t[i0], t[i1], u[i1], t[i0], u[i1], u[i0]); continue; }   // (its rim: the top down to the underside)
+        // (a broken face: its own vertices — a sharp edge, fresh and lighter than the weathered top (sRGB +20–40), rough ±3 mm across)
+        const q = [t[i0], t[i1], u[i1], u[i0]].map((vi, n) => { const x = pos[vi * 3], y = pos[vi * 3 + 1], z = pos[vi * 3 + 2], j = MM(3) * Math.sin(x * 9137 + z * 7331 + n * 1.7);
+          pos.push(x + (da ? j : 0), y, z + (db ? j : 0)); const L = n < 2 ? 1.32 : 1.05; col.push(L, L * 0.98, L * 0.95); return pos.length / 3 - 1; });
+        idx.push(q[0], q[1], q[2], q[0], q[2], q[3]);
+      }
     }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
     return g;
@@ -140,6 +226,8 @@ export class LumpView {
     const gr = Math.hypot(a, c), steep = Math.atan(gr); if (gr > TAN) { a *= TAN / gr; c *= TAN / gr; }
     let y = -Infinity; for (const [X, Z, v] of P) y = Math.max(y, v - a * X - c * Z);
     const nrm = new THREE.Vector3(-a, 1, -c).normalize(), q = new THREE.Quaternion().setFromUnitVectors(UP, nrm).multiply(new THREE.Quaternion().setFromAxisAngle(UP, r.yaw || 0));
+    // (a wedge broken off: tilted 3–10° in its bed, one edge up — its low edge pressed into the ground, not floating)
+    if (r.tilt) { const tq = new THREE.Quaternion().setFromEuler(new THREE.Euler(r.tilt[0], 0, r.tilt[1])); q.premultiply(tq); y += Math.sin(Math.hypot(r.tilt[0], r.tilt[1])) * lumpSize(r).r * 0.35; }
     return { y, q, steep };
   }
   update(dt = 1 / 60) {
@@ -196,6 +284,35 @@ export class LumpView {
     for (const [id, m] of this.meshes) if (!seen.has(id)) { this.group.remove(m); m.geometry.dispose(); this.meshes.delete(id); this.fall.delete(id); }
     this.holds = this.holds.filter((h) => O.get(h.id));
     this.shoved.clear();
+  }
+  // how deep a point (world) is in a lump lying on the ground — one big enough to bear on (≥ 0,2 m²), not held; the bucket is held by it
+  // like by firm ground (the realist: the teeth bear on it, the machine's front comes up, then it cracks). The lowest 35 % of its
+  // thickness is not counted: teeth there are under its edge, lifting it, not bearing on it. → { d, id, at } (d model units)
+  solidDepth(P, skip) {
+    let best = { d: 0, id: null, at: null };
+    for (const r of this.app.objects.all('lump')) {
+      if (r.at !== 'ground' || this.isHeld(r.id) || skip?.(r)) continue;
+      const m = this.meshes.get(r.id); if (!m || !m.userData.placed) continue;
+      let ud = m.userData; if (!ud.cm || ud.cmFor !== r.cells) { const C = r.cell || 30, X0 = r.cells[0][0], Z0 = r.cells[0][1]; ud.cm = new Map(r.cells.map((c) => [Math.round((c[0] - X0) / C) + ',' + Math.round((c[1] - Z0) / C), c])); ud.cmFor = r.cells; ud.sz = lumpSize(r); ud.o = [X0, Z0]; }
+      if (ud.sz.area < 0.2) continue;
+      const cx = m.position.x, cz = m.position.z, R0 = ud.sz.r + MM(100); let inv = null;
+      for (const q of P) {
+        if (Math.abs(q.x - cx) > R0 || Math.abs(q.z - cz) > R0) continue;
+        if (!inv) { m.updateMatrixWorld(true); inv = new THREE.Matrix4().copy(m.matrixWorld).invert(); }
+        const l = q.clone().applyMatrix4(inv), C = r.cell || 30, c = ud.cm.get(Math.round((l.x - MM(ud.o[0])) / MM(C)) + ',' + Math.round((l.z - MM(ud.o[1])) / MM(C))); if (!c) continue;
+        const b = MM(c[3] || 0), h = MM(c[2]), d = b + h - l.y;
+        if (l.y > b + h * 0.35 && d > 0 && d > best.d) best = { d: Math.min(d, MM(300)), id: r.id, at: q.clone() };
+      }
+    }
+    return best;
+  }
+  // lifted off the ground: where it lay stays marked — the cement that went into the ground a little lighter and gritty, the ground
+  // loosened (a thin grey grit layer 4–8 mm over its footprint, uneven: the realist's imprint)
+  stain(r) {
+    const t = this.app.terrain, m = this.meshes.get(r.id); if (!t || !m) return;
+    const cs = Math.cos(r.yaw || 0), sn = Math.sin(r.yaw || 0), step = Math.max(1, Math.round(100 / (r.cell || 30))), C = r.cell || 30;
+    for (let k = 0; k < r.cells.length; k += step) { const [dx, dz] = r.cells[k], X = MM(dx) * cs + MM(dz) * sn, Z = -MM(dx) * sn + MM(dz) * cs, x = m.position.x + X, z = m.position.z + Z; if (!t.inside(x, z)) continue;
+      const th = 0.004 + 0.004 * (0.5 + 0.5 * Math.sin(x * 731 + z * 977)); t.deposit(x, z, MM(C) * MM(C) * step * MM(th * 1000), MM(60), 0, M_G5); }   // (each one stands for `step` cells)
   }
   // let go at the mesh's present place (world): it falls from there
   drop(id, vx = 0, vz = 0) { const m = this.meshes.get(id); if (m) this.fall.set(id, { y: m.position.y, v: 0, vx, vz }); }
