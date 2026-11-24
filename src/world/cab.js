@@ -108,7 +108,15 @@ export class Cab {
     box(W, 0.32, 0.04, paint, 0, C.floor + 0.16, C.front - 0.02, 'kick');
     // (no deck/walkway plates outside: they stuck out of the cab and went through the tracks as the house turned — the owner, 2026-11-20)
     // the side glass and the door's glass full height, down to the floor (the owner, 2026-11-20: «низа двери тоже стеклянные»)
-    for (const [x, ry] of [[C.left - 0.005, -Math.PI / 2], [C.right + 0.005, Math.PI / 2]]) pane(D - 0.18, C.roof - 0.07 - (C.floor + 0.02), glassM(0), x, (C.roof - 0.07 + C.floor + 0.02) / 2, (C.front + C.back) / 2, ry);
+    // their glint (the owner, 2026-11-21: «давай блик»): clear face on, at a grazing angle a neutral sheen (from inside the glass mirrors the cab, not the sky — the realist) (Schlick, n 1,5)
+    const sideM = glassM(0); sideM.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `{
+      float cv = abs(dot(normalize(normal), normalize(vViewPosition))); float fr = 0.04 + 0.96 * pow(1.0 - cv, 5.0);
+      float sh = exp(-pow((vMapUv.x + vMapUv.y * 0.6 - 0.75 + normalize(vViewPosition).x * 1.5) * 4.0, 2.0)) * 0.22;   // (a soft diagonal sheen across the pane, sliding as the look turns — the realist)
+      float k = clamp(0.06 + fr * 1.6 + sh, 0.0, 0.8);
+      float a0 = diffuseColor.a, a1 = max(a0, k * 0.6); outgoingLight = mix(outgoingLight, vec3(0.80, 0.79, 0.77), (a1 - a0) / max(a1, 1e-3)); diffuseColor.a = a1;   // (the sheen's own alpha: the pane's tint alone is ~3 %)
+    }
+    #include <opaque_fragment>`); }; sideM.customProgramCacheKey = () => 'cab-side-glass';
+    for (const [x, ry] of [[C.left - 0.005, -Math.PI / 2], [C.right + 0.005, Math.PI / 2]]) pane(D - 0.18, C.roof - 0.07 - (C.floor + 0.02), sideM, x, (C.roof - 0.07 + C.floor + 0.02) / 2, (C.front + C.back) / 2, ry);
     // the wiper: outside the glass, its pivot on the frame over the kick panel (no bar now — the realist), parked up the left pillar
     { const w = new THREE.Group(); w.position.set(C.left - 0.12, C.floor + 0.33, C.front + 0.02); const arm = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.62, 0.012), paint); arm.position.y = 0.31; w.add(arm); const blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 0.01), rubber); blade.position.set(0, 0.36, -0.005); w.add(blade); w.rotation.z = -0.32; G.add(w); }
     // the mirror outside the left pillar; vents on the pillars
