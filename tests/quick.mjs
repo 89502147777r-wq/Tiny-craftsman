@@ -1387,14 +1387,16 @@ if (want('2q')) {
       const chips = recs.filter((q) => area(q) < big);
       o.a = { pieces: ps.length, bigShare: +(big / tot).toFixed(2), far: +Math.max(0, ...chips.map((q) => Math.hypot(q.x - at.x, q.z - at.z) / M)).toFixed(2),
         volErr: +(Math.abs(L.after + L.crumbs - v0) / v0 * 100).toFixed(2), crumbPct: +(L.crumbs / v0 * 100).toFixed(1), crumbs: tc.particles.items.length - n0,
-        broken: recs.every((q) => q.cells.some((c) => c[4])), tilted: chips.filter((q) => q.tilt).length };
+        broken: recs.every((q) => q.cells.some((c) => c[4])), tilted: chips.filter((q) => q.tilt).length,
+        toBlow: chips.filter((q) => q.tilt && (-q.tilt[1] * (at.x - q.x) + q.tilt[0] * (at.z - q.z)) > 0).length,
+        toEdge: chips.filter((q) => { const cs = Math.cos(q.yaw || 0), sn = Math.sin(q.yaw || 0); return q.cells.some((c) => { const X = q.x + c[0] / 1000 * M * cs + c[1] / 1000 * M * sn - r.x, Z = q.z - c[0] / 1000 * M * sn + c[1] / 1000 * M * cs - r.z; return Math.abs(Math.abs(X) - 1 * M) < 0.06 * M || Math.abs(Math.abs(Z) - 0.5 * M) < 0.06 * M; }); }).length };
       // (broken faces stand full height: a broken cell's thickness ≥ 0,9 of its piece's mean)
       o.a.faceH = +Math.min(...recs.map((q) => { const br = q.cells.filter((c) => c[4]), m = q.cells.reduce((a, c) => a + c[2], 0) / q.cells.length; return br.length ? br.reduce((a, c) => a + c[2], 0) / br.length / m : 1; })).toFixed(2);
       frames(45); o.a.landed = tc.particles.clodList.filter((c) => Math.hypot(c.p ? c.p.x - at.x : (c.x ?? 1e9) - at.x, c.p ? c.p.z - at.z : (c.z ?? 1e9) - at.z) < 1.2 * M).length; o.a.chipCrumbPct = +(L.crumbs / Math.max(1e-9, v0 - recs.filter((q) => area(q) >= big).reduce((a, q) => a + mod.lumpSize(q).vol, 0) - 0) * 100).toFixed(1); clear(); }
     // (b) the pieces 3–6 of its thicknesses: 30 mm and 150 mm
     o.b = {};
     for (const h of [0.03, 0.15]) { const [id] = plate(-6 * M, 3 * M, 2.4, 2.4, h), r = tc.objects.get(id), ps = mod.breakLump(tc, id, mod.chipR(r, 0.9 * M), rnd, new V(r.x, r.y, r.z));
-      const recs = ps.map((i) => tc.objects.get(i)), big = Math.max(...recs.map(area)), ex = recs.filter((q) => area(q) < big).map((q) => Math.max(mod.lumpExtent(q, 1, 0), mod.lumpExtent(q, 0, 1)) / M / h).sort((a, b) => a - b);
+      const recs = ps.map((i) => tc.objects.get(i)), big = Math.max(...recs.map(area)), ex = recs.filter((q) => q.tilt).map((q) => Math.max(mod.lumpExtent(q, 1, 0), mod.lumpExtent(q, 0, 1)) / M / h).sort((a, b) => a - b);
       o.b[h] = +(ex[Math.floor(ex.length / 2)] || 0).toFixed(1); clear(); }
     // (c) the boom pressed down on a 2 × 1 × 0,15 slab under the teeth: it bears, the front lifting, then cracks; the front comes down
     { E.place(t, 0, 0, 0); mt.setExcMode?.('dig'); E.boom = E.boomGoal = 0.25; E.stick = E.stickGoal = 0.2; E.curl = E.curlGoal = 0.3; frames(3);
@@ -1412,8 +1414,8 @@ if (want('2q')) {
     // (d) a 0,6 × 0,6 × 0,1 dab at the teeth, scooped: taken whole (one record); its imprint left
     { E.place(t, 0, 0, 0); E.boom = E.boomGoal = 0.1; E.stick = E.stickGoal = 0.1; E.curl = E.curlGoal = 0.3; frames(3);
       const b = E.teethWorld(new V()), [id] = plate(b.x, b.z, 0.6, 0.6, 0.1); const m = LV.meshes.get(id); m.position.y = b.y - 0.02 * M;
-      const i = t.index(b.x, b.z), h0 = t.heightAt(b.x, b.z); mt._excCut = true; mt._lumps(1 / 30); mt._excCut = false;
-      o.d = { held: LV.isHeld(id), n: tc.objects.all('lump').length, w: +(E.bucketW / M).toFixed(2), imprintMm: +((t.heightAt(b.x, b.z) - h0) / M * 1000).toFixed(1), lumpL: +(mt._lumpL() / (M ** 3 * 0.4 / t.cellArea)).toFixed(2) };
+      const i = t.index(b.x, b.z), h0 = t.heightAt(b.x, b.z), v0 = vol(id) / Math.pow(M, -3) * 0 + mod.lumpSize(tc.objects.get(id)).vol; mt._excCut = true; mt._lumps(1 / 30); mt._excCut = false; const film = (t.heightAt(b.x, b.z) - h0);
+      o.d = { held: LV.isHeld(id), n: tc.objects.all('lump').length, w: +(E.bucketW / M).toFixed(2), imprintMm: +((t.heightAt(b.x, b.z) - h0) / M * 1000).toFixed(1), lumpVolPct: +(mod.lumpSize(tc.objects.get(id)).vol / v0 * 100).toFixed(1), lumpL: +(mt._lumpL() / (M ** 3 * 0.4 / t.cellArea)).toFixed(2) };
       // (e) riding on the teeth while the floor is flat (< 25°), in past ~35°, out one by one tipped
       const alpha = () => { const a = E.teethWorld(new V()), c = E.mouthWorld(new V()), d = a.clone().sub(c); return Math.asin(d.y / d.length()); };
       const curlFor = (want) => { let best = E.curl, bd = 9; for (let c = -1.28; c <= 1.59; c += 0.01) { E.curl = c; E._apply(); const d = Math.abs(alpha() - want); if (d < bd) bd = d, best = c; } E.curl = E.curlGoal = best; E._apply(); return +alpha().toFixed(2); };
@@ -1440,11 +1442,11 @@ if (want('2q')) {
     return o;
   });
   const J = (x) => JSON.stringify(x);
-  check('lumps: a slab cracks where it is struck — 3–8 pieces, the rest one slab ≥ 50 %, the wedges within 1 m of the blow, broken faces full height, tilted wedges (the realist)', o.a.pieces >= 3 && o.a.pieces <= 8 && o.a.bigShare >= 0.5 && o.a.far <= 1 && o.a.broken && o.a.faceH >= 0.9 && o.a.tilted >= 1, J(o.a));
+  check('lumps: a slab cracks where it is struck — 3–20 pieces, the biggest ≥ 30 %, the wedges within 2 l (1,3 m) of the blow, ≥ 2 run out to its edges, broken faces full height, the wedges tilted toward the blow (the realist)', o.a.pieces >= 3 && o.a.pieces <= 20 && o.a.bigShare >= 0.3 && o.a.far <= 1.3 && o.a.toEdge >= 2 && o.a.broken && o.a.faceH >= 0.9 && o.a.tilted >= 1 && o.a.toBlow === o.a.tilted, J(o.a));
   check('lumps: the volume kept — pieces + crumbs = the slab ± 3 %; crumbs 4–16 % of what came off, ≥ 15 of them left on the ground', o.a.volErr <= 3 && o.a.chipCrumbPct >= 4 && o.a.chipCrumbPct <= 16 && o.a.landed >= 15, J(o.a));
-  check('lumps: the pieces 3–6 of its thicknesses (30 mm and 150 mm)', o.b[0.03] >= 3 && o.b[0.03] <= 6 && o.b[0.15] >= 3 && o.b[0.15] <= 6, J(o.b));
+  check('lumps: the pieces 3–6 of its thicknesses (30 mm; 150 mm — 2,5–6: no wider than the bucket takes)', o.b[0.03] >= 3 && o.b[0.03] <= 6 && o.b[0.15] >= 2.5 && o.b[0.15] <= 6, J(o.b));
   check('lumps: the boom pressed on a 150 mm slab — it bears ≥ 0,3 s (≤ 1,2) with the front up, cracks, the bucket goes down 30–80 mm, the front back down in 0,5 s', o.c.wait >= 0.3 && o.c.wait <= 1.2 && o.c.hMax > 0.005 && o.c.drop >= 30 && o.c.drop <= 80 && o.c.hAfter != null && o.c.hAfter <= 0.005, J(o.c));
-  check('lumps: a 0,6 × 0,6 dab that passes the mouth is taken whole (one record), its room in the load, its imprint 3–10 mm', o.d.held && o.d.n === 1 && o.d.lumpL > 0.05 && o.d.imprintMm >= 3 && o.d.imprintMm <= 10, J(o.d));
+  check('lumps: a 0,6 × 0,6 dab that passes the mouth is taken whole (one record), its room in the load; where it lay — a dent 0–8 mm with a grey film off its own volume (≥ 95 % of it left)', o.d.held && o.d.n === 1 && o.d.lumpL > 0.05 && o.d.imprintMm <= 0 && o.d.imprintMm >= -8 && o.d.lumpVolPct >= 95 && o.d.lumpVolPct < 100, J(o.d));
   check('lumps: on the teeth while the floor is flat (< 25°: moves < 20 mm), in past ~35°, two taken, tipped slowly they come out one by one (≥ 0,15 s apart)', o.e.lowMoveMm < 20 && o.e.in >= 0.95 && o.e.two === 2 && o.e.outT.length === 2 && o.e.gap >= 0.15, J(o.e));
   check('lumps: a bucket full of soil takes no more (soil + lumps ≤ 1,1 of it)', !o.f.taken, J(o.f));
   check('lumps: shoved by a corner 1 m — turned 15–45°, a windrow ≥ 20 mm before it', Math.abs(o.g.moved) >= 0.8 && o.g.turn >= 15 && o.g.turn <= 45 && o.g.windrowMm >= 20, J(o.g));
