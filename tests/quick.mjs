@@ -1456,6 +1456,54 @@ if (want('2q')) {
   await browser.close();
 }
 
+// ---- 2r. A lintel's formwork finds its height (the owner, 2026-11-24, screenshot: «шланг не видит опалубку … опалубка автоматически
+// вставала на шлакоблок, кирпич и газоблок и автоматически определяла высоту»): dragged to an opening at any course, it goes on top of
+// the jambs; the hose finds it from any side (through its open top too) and fills it ----
+if (want('2r')) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, o = { kinds: {} };
+    const { MODEL_SCALE } = await import('./src/config.js'), S = 1 / 1000 / MODEL_SCALE, L = await import('./src/tools/lintels.js');
+    const H = tc.concreteTools.hose, q = [0, 0, 0, 1];
+    // (cinder, aerated block, brick: two jambs of 6 courses an opening apart, the wall on the right stepped up 3 courses more)
+    const kinds = { cinder: { L: 400, h: 198, s: [390, 188, 190], bed: 10, z: 1.0 }, block: { L: 603, h: 253, s: [600, 250, 300], bed: 3, z: 2.2 }, brick: { L: 260, h: 77, s: [250, 65, 120], bed: 12, z: 3.4 } };
+    for (const [kind, K] of Object.entries(kinds)) {
+      const X0 = 1.0, Z0 = K.z, y0 = tc.terrain.heightAt(X0, Z0), rows = kind === 'brick' ? 15 : 6, recs = [];
+      for (let r = 0; r < rows + 3; r++) for (let k = 0; k < 20; k++) { const a = k * K.L + K.L / 2 + (r % 2) * K.L / 2; if (a > 4400) continue; if (a > 1500 - K.L / 2 && a < 2700 + K.L / 2) continue; if (r >= rows && a < 3500) continue;
+        recs.push({ type: 'unit', free: true, kind, p: [X0 + a * S, y0 + (12 + r * K.h + K.s[1] / 2) * S, Z0], q, s: K.s.map((v) => v * S), bedT: K.bed * S }); }
+      tc.journal.act('w', {}, tc.clock, () => { for (const r of recs) tc.objects.add(r); }); for (let i = 0; i < 5; i++) tc.simulate(1 / 30);
+      const jamb = Math.max(...tc.objects.all('unit').filter((u) => u.kind === kind && Math.abs(u.p[2] - Z0) < 0.001 && u.p[0] < X0 + 1500 * S).map((u) => u.p[1] + u.s[1] / 2));
+      // (the finger at the opening at the 3rd course)
+      const F = L.placeLintelForm(tc, new V(X0 + 2100 * S, y0 + (12 + 3 * K.h) * S, Z0), null, null);
+      o.kinds[kind] = { ok: !!F?.ok, why: F?.why, offMm: F?.rec ? Math.round((F.rec.top - jamb) / S) : null, hMm: F?.hMm };
+      if (F?.ok) tc.journal.act('lf', {}, tc.clock, () => tc.objects.add(F.rec));
+    }
+    // (a slot left up to a wall's top, 20 courses — 3,96 m: the formwork not over 3,3 m from the ground)
+    { const X0 = 6.0, Z0 = 1.0, y0 = tc.terrain.heightAt(X0, Z0), recs = [];
+      for (let r = 0; r < 20; r++) for (let k = 0; k < 12; k++) { const a = k * 400 + 200 + (r % 2) * 200; if (a > 4200 || (a > 1500 && a < 2700)) continue; recs.push({ type: 'unit', free: true, kind: 'cinder', p: [X0 + a * S, y0 + (12 + r * 198 + 94) * S, Z0], q, s: [390 * S, 188 * S, 190 * S], bedT: 10 * S }); }
+      tc.journal.act('w2', {}, tc.clock, () => { for (const r of recs) tc.objects.add(r); }); for (let i = 0; i < 5; i++) tc.simulate(1 / 30);
+      const F = L.placeLintelForm(tc, new V(X0 + 2100 * S, y0 + (12 + 3 * 198) * S, Z0), null, null); o.slot = F?.rec ? Math.round((F.rec.top - y0) / S) : null; }
+    for (let i = 0; i < 10; i++) tc.simulate(1 / 30);
+    // (the hose over the cinder one, from four sides — its open top seen down into, the side, high over it)
+    const b = tc.objects.all('belt').find((x) => x.lform && Math.abs(x.o[1] - 1.0) < 0.05);
+    if (b) { const c = new V(b.o[0] + b.u[0] * b.ni * b.c / 2, b.top, b.o[1] + b.u[1] * b.ni * b.c / 2 + b.nj * b.c / 2), cam = tc.camera; let hits = 0, n = 0;
+      for (const [dx, dy, dz] of [[0.3, 3, 2.5], [-1.5, 2.5, 2.5], [0, 4, 0.5], [0.2, 0.6, 3]]) { cam.position.set(c.x + dx * 1000 * S, c.y + dy * 1000 * S, c.z + dz * 1000 * S); cam.lookAt(c); cam.updateMatrixWorld(true); cam.updateProjectionMatrix();
+        for (const [ox, oz] of [[0, 0], [300, 0], [-300, 0], [0, 40]]) { const pt = new V(c.x + ox * S, c.y + 100 * S, c.z + oz * S).project(cam), rect = tc.renderer.domElement.getBoundingClientRect();
+          const got = H._uAt({ clientX: rect.left + (pt.x + 1) / 2 * rect.width, clientY: rect.top + (1 - pt.y) / 2 * rect.height }); n++; if (got?.id === b.id) hits++; } }
+      o.hose = { hits, n };
+      const pt = (k) => new V(b.o[0] + b.u[0] * (b.ni * b.c) * k - b.u[1] * b.nj * b.c / 2, b.top + b.H, b.o[1] + b.u[1] * (b.ni * b.c) * k + b.u[0] * b.nj * b.c / 2);
+      H.down(pt(0.5), { target: b.id, hit: pt(0.5) }); for (let f = 0; f < 240; f++) { const k = 0.2 + 0.6 * (0.5 + 0.5 * Math.sin(f / 20)); H.move(pt(k), { target: b.id, hit: pt(k) }); H.work(1 / 30); tc.simulate(1 / 30); } H.finish();
+      o.fill = +(tc.objects.get(b.id).fill || 0).toFixed(2); }
+    return o;
+  });
+  const J = (x) => JSON.stringify(x);
+  check('lintel formwork: dragged to the 3rd course of an opening it goes on top of the jambs (cinder, aerated block, brick), a course high (the owner)', Object.values(o.kinds).every((k) => k.ok && Math.abs(k.offMm) <= 15), J(o.kinds));
+  check('lintel formwork: a slot left to the top of a 3,96 m wall — the formwork no higher than 3,3 m from the ground (the realist)', o.slot != null && o.slot <= 3300 && o.slot >= 594, J({ slot: o.slot }));
+  check('lintel formwork: the hose finds it from every side (16 of 16 rays) and fills it', o.hose?.hits === o.hose?.n && o.hose?.n === 16 && o.fill >= 0.95, J({ hose: o.hose, fill: o.fill }));
+  check('lintel formwork: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+
 // ---- 2i⁰. The excavator's cab from inside (the owner, 2026-11-19: «реалистичный вид с кабины … руки на настоящих джойстиках, чтобы
 // двигались за моим пальцем … ботинки на педалях, мониторы с логотипом … при повороте камеры руки не обрывались … большие пальцы не
 // вверх»): the driver seated, his head hidden, each hand on its grip as the sticks lean, the boots on the pedals, the thumbs not up;

@@ -30,7 +30,7 @@ export function findOpening(app, p, screen, finger) {
   const yawK = (b) => Math.round((((b.yaw % Math.PI) + Math.PI) % Math.PI) / 0.04) % 79, bands = new Map();
   for (let i = 0; i < boxes.length; i++) { const b = boxes[i], k = yawK(b) * 100000 + Math.round(b.top / (60 * S)); if (!bands.has(k)) bands.set(k, []); bands.get(k).push(i); }
   const near = (b) => { const y = yawK(b), t = Math.round(b.top / (60 * S)), out = []; for (const dy of [-1, 0, 1]) for (const dt of [-2, -1, 0, 1, 2]) { const L = bands.get(((y + dy + 79) % 79) * 100000 + t + dt); if (L) out.push(...L); } return out; };
-  let best = null, bd = Infinity;
+  let best = null, bd = Infinity; const all = [];
   for (let i = 0; i < boxes.length; i++) {
     const a = boxes[i], NB = near(a);
     for (const j of NB) {
@@ -70,9 +70,15 @@ export function findOpening(app, p, screen, finger) {
       if (finger) { const sp = screen(new THREE.Vector3(cx, top, cz)); if (!sp.front) continue; d = Math.hypot(sp.x - finger.x, sp.y - finger.y); if (d > 160) continue; }
       else { const dp = Math.hypot(cx - p.x, cz - p.z); if (dp > (e1 - e0) / 2 + 0.05) continue; d = Math.hypot(dp, top - p.y); }
       d -= top * 1e-3;   // (stacked courses with the same gap: the top one — where a lintel goes)
-      if (d < bd) bd = d, best = { ux, uz, nx: -uz, nz: ux, yaw: Math.atan2(-uz, ux), o: [ox, oz], c0: e0, c1: e1, top, ty, width: Math.min(a.hw, b.hw) * 2, side: Math.abs(side), gap, kind: a.kind, a, b };
+      const cand = { ux, uz, nx: -uz, nz: ux, yaw: Math.atan2(-uz, ux), o: [ox, oz], c0: e0, c1: e1, top, ty, width: Math.min(a.hw, b.hw) * 2, side: Math.abs(side), gap, kind: a.kind, a, b, cx, cz };
+      all.push(cand); if (d < bd) bd = d, best = cand;
     }
   }
+  // (the same opening course after course: what spans it goes on top — where its jambs end, whichever course the finger was on; the
+  // owner, 2026-11-24: the formwork must find its height by itself)
+  // (not over 3,3 m from the ground there — a door 2,1–2,4, a window to 3,3: a slot left to the wall's top is no opening to span there — the realist)
+  const tg = app.terrain, low = (c) => c.top - (tg.inside(c.cx, c.cz) ? tg.heightAt(c.cx, c.cz) : 0) <= 3300 * S;
+  if (best) for (const c of all) if (c.top > best.top + 1e-6 && low(c) && Math.abs(Math.sin(c.yaw - best.yaw)) < 0.05 && Math.hypot(c.cx - best.cx, c.cz - best.cz) < Math.max(MM(150), best.gap * S * 0.25) && Math.abs(c.gap - best.gap) < 120) best = c;
   if (best) fullWidth(best, boxes);
   return best;
 }
