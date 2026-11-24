@@ -15,11 +15,10 @@ concurrency:
   cancel-in-progress: false   # (a deploy cut off half way leaves Pages on the old version)
 
 jobs:
-  deploy:
+  # (two jobs, as GitHub's own template: the artifact uploaded in one, deployed by the next — in one job deploy-pages often found
+  # «0 artifacts» right after the upload: builds 330, 332, 334, 335 never reached the site, 2026-11-24)
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Assemble site
@@ -29,5 +28,12 @@ jobs:
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
