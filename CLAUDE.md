@@ -54,6 +54,9 @@ Tiny Craftsman — браузерная 3D-игра-стройка на Three.js
 5. PR через `mcp__github__create_pull_request` (owner `89502147777r-wq`, repo `Tiny-craftsman`),
    тело заканчивается «🤖 Generated with [Claude Code](https://claude.com/claude-code)» + ссылка
    сессии; затем `mcp__github__merge_pull_request` (squash). Деплой на Pages — сам.
+5a. После merge — проверить, что деплой Pages прошёл (`mcp__github__actions_list`, list_workflow_runs, branch main): 2026-11-24 упали
+   деплои 330 и 332 (`deploy-pages` за 1 с — сбой GitHub), хозяин проверял старую сборку («шланг не видит опалубку»). Упал — сказать хозяину
+   и выпустить следующую сборку (или перезапуск), в отчёте — номер сборки, которая на сайте.
 6. Отчёт хозяину: что было не так, что сделано, цифры, что осталось.
 
 ## Перед показом хозяину (каждый ролик; хозяин согласился 2026-11-13)
