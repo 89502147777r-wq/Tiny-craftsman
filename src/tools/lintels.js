@@ -155,17 +155,37 @@ export function placeLintel(app, p, screen, finger) {
     else if (s - ha >= op.c1 - 0.0005) pr = Math.min(pr, s - ha);
     else inGap = true;
   }
-  if (len && !inGap && (pr - pl) / S < len + 2) {
-    // the pocket shorter than the lintel: one that fits it (with its bearing), the longest such
-    const fit = [...LINTEL_LENGTHS].reverse().find((l) => l <= (pr - pl) / S + 2 && l >= op.gap + 2 * MINB);
-    if (fit) len = fit;
+  // (its ends: to the unit already laid in its course beside the opening when that is within 600 mm of the jamb — its length cut to
+  // fit, a head joint short of it (precast lintels are cut with a disc saw on site): no slot left there that no block fills; the
+  // owner, 2026-11-24. Nothing laid there, or farther: 250 mm on the jamb — the course is laid up to it after)
+  const head = k.head * S, MAXB = 600 * S;
+  let e0 = op.c0 - BEAR * S, e1 = op.c1 + BEAR * S;
+  if (!inGap) {
+    // (farther than 600 mm: its bearing 250 mm or a little more — so that what is left to that unit is whole units and halves with
+    // their joints exactly: free masonry has no cut of any length; the realist)
+    const fit = (d) => { const u = k.L, h = (k.L - k.head) / 2, J = k.head; let best = null; for (let n = 0; n <= 12; n++) for (let m = 0; m <= 1; m++) { const R = n * u + m * h + (n + m + 1) * J, b = d - R; if (b >= BEAR - 0.5 && (best == null || b < best)) best = b; } return best; };
+    if (Number.isFinite(pl)) { const d = (op.c0 - pl) / S; if (d - k.head <= MAXB / S) e0 = pl + head; else { const b = fit(d); if (b != null) e0 = op.c0 - b * S; } if (pl + head > e0) e0 = pl + head; }   // (a unit nearer than 250: as far as it goes — ≥ 200 mm, or it does not go)
+    if (Number.isFinite(pr)) { const d = (pr - op.c1) / S; if (d - k.head <= MAXB / S) e1 = pr - head; else { const b = fit(d); if (b != null) e1 = op.c1 + b * S; } if (pr - head < e1) e1 = pr - head; }
   }
+  let short = false;
+  // (cut only to fit it to a unit already laid within 600 mm: nothing there, or farther — a length from the catalogue, as near the
+  // middle as it goes with ≥ 250 mm each side and what is left to a farther unit whole units and halves; the realist)
+  const nearL = !inGap && Number.isFinite(pl) && (op.c0 - pl) / S - k.head <= MAXB / S, nearR = !inGap && Number.isFinite(pr) && (pr - op.c1) / S - k.head <= MAXB / S;
+  let cat = 0;
+  if (len && !inGap && !nearL && !nearR) {
+    const whole = (R) => { const u = k.L, h = (k.L - k.head) / 2, J = k.head; for (let n = 0; n <= 12; n++) for (let m = 0; m <= 1; m++) if (Math.abs(R - (n * u + m * h + (n + m + 1) * J)) <= 2) return true; return false; };
+    for (const l of LINTEL_LENGTHS) { if (l < op.gap + 2 * BEAR) continue; let bestM = null;
+      scan: for (let off = 0; off <= (l - op.gap) / 2 - BEAR + 0.01; off += 2.5) for (const sg of off ? [1, -1] : [1]) {
+        const m0 = (op.c0 + op.c1) / 2 + sg * off * S, a = m0 - l * S / 2, b = m0 + l * S / 2;
+        if ((op.c0 - a) / S < BEAR - 0.5 || (b - op.c1) / S < BEAR - 0.5) continue;
+        if (Number.isFinite(pl) && !whole((a - pl) / S)) continue;
+        if (Number.isFinite(pr) && !whole((pr - b) / S)) continue;
+        bestM = m0; break scan; }
+      if (bestM != null) { cat = l; mid = bestM; break; } }
+  }
+  if (cat) len = cat;
+  else if (len) { len = Math.round((e1 - e0) / S / 10) * 10; mid = (e0 + e1) / 2; short = op.c0 - e0 < MINB * S - 1e-6 || e1 - op.c1 < MINB * S - 1e-6; if (len > LINTEL_LENGTHS[LINTEL_LENGTHS.length - 1]) len = 0; }
   const L = (len || 3000) * S;
-  if (len && !inGap && Number.isFinite(pl) && Number.isFinite(pr) && pr - pl >= L - 0.0002) {
-    // set into the pocket: as near the middle as it goes, ≥ 200 mm on each jamb
-    const lo = Math.max(pl + L / 2, op.c1 + MINB * S - L / 2), hi = Math.min(pr - L / 2, op.c0 - MINB * S + L / 2);
-    if (lo <= hi + 1e-6) mid = Math.min(hi, Math.max(lo, mid));
-  }
   const a0 = mid - L / 2, a1 = mid + L / 2;
   const sup = len ? bearsAt(app, op, a0 + 0.0001, a1 - 0.0001) : null, bear = sup != null;
   const x = op.o[0] + op.ux * mid, z = op.o[1] + op.uz * mid;
@@ -175,8 +195,8 @@ export function placeLintel(app, p, screen, finger) {
   const hit = unitBoxes(app).find((b) => me.bot < b.top - 1e-5 && me.top > b.bot + 1e-5 && overlap(me, b));
   // why it can't go: too wide / short of bearing / the next course already over its ends /
   // something else in its place
-  const why = !len ? 'long' : !bear ? 'bear' : hit ? (hit.bot > me.bot - (me.top - me.bot) * 0.5 ? 'above' : 'clash') : null;
-  return { ok: !why, why, how: 'lintel', kind: 'lintel', lenMm: len || 0, gapMm: Math.round(op.gap), p: new THREE.Vector3(x, bot + H / 2, z), q, s: new THREE.Vector3(L, H, op.width), bedY: op.top + bed / 2, bedT: bed };
+  const why = !len ? 'long' : !bear || short ? 'bear' : hit ? (hit.bot > me.bot - (me.top - me.bot) * 0.5 ? 'above' : 'clash') : null;
+  return { ok: !why, why, how: 'lintel', kind: 'lintel', lenMm: len || 0, gapMm: Math.round(op.gap), bL: Math.round((op.c0 - a0) / S), bR: Math.round((a1 - op.c1) / S), cut: !!len && !LINTEL_LENGTHS.includes(len), p: new THREE.Vector3(x, bot + H / 2, z), q, s: new THREE.Vector3(L, H, op.width), bedY: op.top + bed / 2, bedT: bed };
 }
 
 // a lintel cast in place in a timber formwork (опалубка перемычки) over the opening under
