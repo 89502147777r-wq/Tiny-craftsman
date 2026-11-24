@@ -1483,6 +1483,26 @@ if (want('2r')) {
       for (let r = 0; r < 20; r++) for (let k = 0; k < 12; k++) { const a = k * 400 + 200 + (r % 2) * 200; if (a > 4200 || (a > 1500 && a < 2700)) continue; recs.push({ type: 'unit', free: true, kind: 'cinder', p: [X0 + a * S, y0 + (12 + r * 198 + 94) * S, Z0], q, s: [390 * S, 188 * S, 190 * S], bedT: 10 * S }); }
       tc.journal.act('w2', {}, tc.clock, () => { for (const r of recs) tc.objects.add(r); }); for (let i = 0; i < 5; i++) tc.simulate(1 / 30);
       const F = L.placeLintelForm(tc, new V(X0 + 2100 * S, y0 + (12 + 3 * 198) * S, Z0), null, null); o.slot = F?.rec ? Math.round((F.rec.top - y0) / S) : null; }
+    // (a precast lintel: the course at its level laid either side — the left unit 300 mm off the jamb, the right one 480: it reaches
+    // both, a head joint short — no slot left; one side bare: 250 mm on it; a unit 900 mm off: 250 too — a cut block fills the rest)
+    o.pre = {};
+    for (const [kind, K] of Object.entries(kinds)) for (const [tag, gl, gr] of [['both', 300, 480], ['bare', null, null], ['far', 900, 300]]) {
+      const X0 = 10.0 + Object.keys(o.pre).length * 5.2, Z0 = 6.0, y0 = tc.terrain.heightAt(X0, Z0), rows = kind === 'brick' ? 15 : 6, recs = [], c0 = 1500, c1 = 2700, hl = K.s[0] / 2;
+      for (let r = 0; r < rows; r++) for (let k = 0; k < 20; k++) { const a = k * K.L + K.L / 2 + (r % 2) * K.L / 2; if (a > 4400 || (a > c0 - hl && a < c1 + hl)) continue; if (a + hl > c0 && a - hl < c0) continue; if (a - hl < c1 && a + hl > c1) continue;
+        recs.push({ type: 'unit', free: true, kind, p: [X0 + a * S, y0 + (12 + r * K.h + K.s[1] / 2) * S, Z0], q, s: K.s.map((v) => v * S), bedT: K.bed * S }); }
+      tc.journal.act('pj', {}, tc.clock, () => { for (const r of recs) tc.objects.add(r); }); for (let i = 0; i < 3; i++) tc.simulate(1 / 30);
+      const pt = new V(X0 + 2100 * S, y0 + (12 + rows * K.h) * S, Z0), op = L.findOpening(tc, pt, null, null);
+      if (!op) { o.pre[kind + ':' + tag] = null; continue; }
+      const jx0 = op.o[0] + op.ux * op.c0, jx1 = op.o[0] + op.ux * op.c1, sg = Math.sign(op.ux), side = [];   // (the jambs' faces, world x; the wall runs along x)
+      for (let hh = 0; hh < (kind === 'brick' ? 2 : 1); hh++) { const yy = op.top + (K.bed + hh * K.h + K.s[1] / 2) * S;
+        if (gl != null) side.push({ type: 'unit', free: true, kind, p: [jx0 - sg * (gl + hl) * S, yy, Z0], q, s: K.s.map((v) => v * S), bedT: K.bed * S });
+        if (gr != null) side.push({ type: 'unit', free: true, kind, p: [jx1 + sg * (gr + hl) * S, yy, Z0], q, s: K.s.map((v) => v * S), bedT: K.bed * S }); }
+      if (side.length) tc.journal.act('ps', {}, tc.clock, () => { for (const r of side) tc.objects.add(r); }); for (let i = 0; i < 3; i++) tc.simulate(1 / 30);
+      const P = L.placeLintel(tc, pt, null, null), a0 = P ? Math.min(P.p.x - P.s.x / 2 * sg, P.p.x + P.s.x / 2 * sg) : 0, a1 = P ? Math.max(P.p.x - P.s.x / 2 * sg, P.p.x + P.s.x / 2 * sg) : 0, j0 = Math.min(jx0, jx1), j1 = Math.max(jx0, jx1);
+      const fL = sg > 0 ? gl : gr, fR = sg > 0 ? gr : gl;
+      o.pre[kind + ':' + tag] = P ? { ok: P.ok, why: P.why, len: P.lenMm, cut: P.cut, bL: Math.round((j0 - a0) / S), bR: Math.round((a1 - j1) / S), gapL: fL != null ? Math.round((a0 - (j0 - fL * S)) / S) : null, gapR: fR != null ? Math.round(((j1 + fR * S) - a1) / S) : null } : null;
+      if (sg < 0) { const x = o.pre[kind + ':' + tag]; if (x) [x.bL, x.bR, x.gapL, x.gapR] = [x.bR, x.bL, x.gapR, x.gapL]; }
+    }
     for (let i = 0; i < 10; i++) tc.simulate(1 / 30);
     // (the hose over the cinder one, from four sides — its open top seen down into, the side, high over it)
     const b = tc.objects.all('belt').find((x) => x.lform && Math.abs(x.o[1] - 1.0) < 0.05);
@@ -1500,6 +1520,10 @@ if (want('2r')) {
   check('lintel formwork: dragged to the 3rd course of an opening it goes on top of the jambs (cinder, aerated block, brick), a course high (the owner)', Object.values(o.kinds).every((k) => k.ok && Math.abs(k.offMm) <= 15), J(o.kinds));
   check('lintel formwork: a slot left to the top of a 3,96 m wall — the formwork no higher than 3,3 m from the ground (the realist)', o.slot != null && o.slot <= 3300 && o.slot >= 594, J({ slot: o.slot }));
   check('lintel formwork: the hose finds it from every side (16 of 16 rays) and fills it', o.hose?.hits === o.hose?.n && o.hose?.n === 16 && o.fill >= 0.95, J({ hose: o.hose, fill: o.fill }));
+  { const P = o.pre || {}, hd = { cinder: 10, block: 3, brick: 10 }, okB = (k, x) => x && x.ok && x.gapL != null && x.gapR != null && Math.abs(x.gapL - hd[k]) <= 6 && Math.abs(x.gapR - hd[k]) <= 6, J2 = JSON.stringify;
+    check('precast lintel: the course laid either side (300 / 480 mm off) — it reaches both units, a head joint short, no slot left (cinder, aerated block, brick; the owner)', ['cinder', 'block', 'brick'].every((k) => okB(k, P[k + ':both'])), J2(P));
+    const U = { cinder: [390, 190, 10], block: [600, 298.5, 3], brick: [250, 120, 10] }, whole = (k, R) => { const [u, h, j] = U[k]; for (let n = 0; n <= 12; n++) for (let m = 0; m <= 1; m++) if (Math.abs(R - (n * u + m * h + (n + m + 1) * j)) <= 6) return true; return false; };
+    check('precast lintel: nothing laid beside — a catalogue length in the middle, uncut, ≥ 250 mm each side; a unit 900 mm off — 250 mm or a little more there, what is left to it whole units and a half with joints (free masonry has no other cut), to the unit on the other side', ['cinder', 'block', 'brick'].every((k) => { const b = P[k + ':bare'], f = P[k + ':far']; return b?.ok && b.cut === false && [1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 3600, 3900].includes(b.len) && b.bL >= 244 && b.bR >= 244 && Math.abs(b.bL - b.bR) <= 10 && f?.ok && f.bL >= 244 && f.bL <= 900 && whole(k, f.gapL) && Math.abs(f.gapR - hd[k]) <= 6; }), J2(P)); }
   check('lintel formwork: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
