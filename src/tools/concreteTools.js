@@ -143,6 +143,15 @@ class ConcreteTool {
     _ray.setFromCamera(app.gestures.ndc(e.clientX, e.clientY), app.camera);
     if (cols) { const f = this._postAt(); if (f) return f; }
     const hit = _ray.intersectObjects([v.ublocks, ...v.ucut.children, v.fill, v.wood, v.beltBoards, ...v.slabForm.decks.children, v.blocks, v.bricks, v.cinders, v.lintels, v.blinds, ...(cols && v.columns ? [v.columns.group] : [])], true)[0];
+    // (a ring beam's / a lintel's formwork by its open top: the ray through it, between its boards and clamps, met the deck, the floor
+    // under it or nothing it knows — the owner, 2026-11-24: «шланг не видит опалубку»; the first formwork top it crosses on its way)
+    { let best = null, bt = hit ? hit.distance + 0.002 : Infinity;
+      for (const b of app.objects.all('belt')) {
+        if (b.stripped || b.kind || isSlab(b) || !(b.H > 0)) continue;   // (ring beams and lintels: a pool's, a slab's — their own ways)
+        const pl = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(b.top + b.H)), q = _ray.ray.intersectPlane(pl, new THREE.Vector3()); if (!q) continue;
+        const d = q.distanceTo(_ray.ray.origin); if (d < bt && beltContains(b, q.x, q.z)) { bt = d; best = [b, q]; }
+      }
+      if (best && (!hit || (() => { const id = v.ownerOf(hit), r = id && app.objects.get(id); return r?.type !== 'belt' && r?.type !== 'column'; })())) { this._uHit = best[1]; return best[0]; } }
     if (!hit) {
       // (a pool's bottom slab: nothing but the bars over its lean concrete — its plane)
       for (const b of app.objects.all('belt')) {
