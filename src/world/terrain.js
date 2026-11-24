@@ -1021,6 +1021,11 @@ export class Terrain {
     return out;
   }
   // concrete arriving in an empty cell: a spill when it is off the formwork and on the open ground (not in a pit: a blinding)
+  // concrete on the open ground, not in a formwork, not in a dug pit or trench (where it is cast on purpose): a heap or a spill
+  loneConc(i) { return this.conc[i] > 1e-6 && this.zone?.[i] !== 1 && (this.cSpill[i] === 1 || (this._outsideMask()[i] && this.nat[i] >= this.orig[i] - 0.03 / MODEL_SCALE)); }
+  // a thin crust of such (< 25 mm): it crumbles with the soil under a bucket or a blade — not a cast slab the bucket stops at (the owner,
+  // 2026-11-24: a heap's thin rim stood as spikes all down a pit dug round it)
+  thinStain(i) { return this.conc[i] > 1e-6 && this.conc[i] < 0.025 / MODEL_SCALE && this.loneConc(i); }
   _spillAt(i) { return this._outsideMask()[i] && this.nat[i] >= this.orig[i] - 0.03 / MODEL_SCALE && this.loose[i] < 0.02 / MODEL_SCALE ? 1 : 0; }   // (on a laid base — stone, sand: poured there on purpose, cast)
 
   // the zones: inside(x, z) → 1 over the box [x0, z0, x1, z1] (the rest of the plot 0)

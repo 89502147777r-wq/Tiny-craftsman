@@ -1449,6 +1449,21 @@ if (want('2q')) {
       let hi = 0; for (let d = 0.3; d < 1.2; d += 0.05) for (let q = -0.4; q <= 0.4; q += 0.1) { const x = r.x - d * M, z = r.z + q * M; hi = Math.max(hi, (t.heightAt(x, z) - t.nat[t.index(x, z)]) / M * 1000); } o.g.windrowMm = +hi.toFixed(0); clear(); }
     // (h) a spill 0,3 m thick is a lump too
     { const made = plate(-2 * M, 6 * M, 0.8, 0.8, 0.3); o.h = { made: made.length, thick: made.length ? +(mod.lumpThick(tc.objects.get(made[0])) / M).toFixed(2) : 0, need: made.length ? +mod.pressNeed(tc.objects.get(made[0])).toFixed(2) : 0 }; clear(); }
+    // (i) the owner, 2026-11-24: a heap of concrete poured on the open ground (not spilt off a formwork), a thin rim round it, a pit
+    // dug round it — no spikes left: the heap with its rim one lump, the soil under it slumps; a crust alone crumbles with the soil
+    { const x = 6 * M, z = 6 * M, i0 = t.index(x, z), ids = [], rim = [];
+      for (let dz = -12; dz <= 12; dz++) for (let dx = -12; dx <= 12; dx++) { const r = Math.hypot(dx, dz); if (r > 12) continue; const i = i0 + dz * t.nx + dx;
+        t.orig[i] = t.nat[i]; t.cSpill[i] = 0; t.conc[i] = (r < 8 ? 0.12 * (1 - r / 10) : 0.012) * M; t.cTime[i] = (tc.clock || 0) - 900; (r < 8 ? ids : rim).push(i); }
+      for (let dz = -20; dz <= 20; dz++) for (let dx = -20; dx <= 20; dx++) if (Math.hypot(dx, dz) > 12.5) t.nat[i0 + dz * t.nx + dx] -= 1.0 * M;   /* (the pit dug round it) */
+      t._concTouch(0, 0, t.rx, t.rz); t._touch(0, 0, t.rx, t.rz);
+      const made = mod.scanLumps(tc), left = [...ids, ...rim].filter((i) => t.conc[i] > 1e-6).length;
+      let spike = 0; for (const i of [...ids, ...rim]) { const me = t.nat[i] + t.loose[i]; let low = 0; for (const d of [-1, 1, -t.nx, t.nx, -t.nx - 1, -t.nx + 1, t.nx - 1, t.nx + 1]) if (t.nat[i + d] + t.loose[i + d] < me - 0.15 * M) low++; if (low >= 5) spike++; }   /* (a narrow column or corner of soil standing out: 5 of 8 round it lower) */
+      // (a crust alone: crumbles under a bucket)
+      const j0 = t.index(-8 * M, 6 * M); t.orig[j0] = t.nat[j0]; t.cSpill[j0] = 0; t.conc[j0] = 0.01 * M; const crust = t.thinStain(j0); t.conc[j0] = 0;
+      // (a base poured on the ground for what stands on it — a block on it: no lump, it stays cast — the realist)
+      const k0 = t.index(-6 * M, -8 * M), ks = []; for (let dz = -10; dz <= 10; dz++) for (let dx = -10; dx <= 10; dx++) { const k = k0 + dz * t.nx + dx; t.orig[k] = t.nat[k]; t.cSpill[k] = 0; t.conc[k] = 0.1 * M; t.cTime[k] = (tc.clock || 0) - 900; ks.push(k); }
+      t._concTouch(0, 0, t.rx, t.rz); const bx = t.toWorldX(k0 % t.nx), bz = t.toWorldZ((k0 / t.nx) | 0), bu = tc.objects.add({ type: 'unit', free: true, kind: 'block', p: [bx, t.heightAt(bx, bz) + 0.125 * M, bz], q: [0, 0, 0, 1], s: [0.6 * M, 0.25 * M, 0.3 * M], bedT: 0.003 * M });
+      const madeB = mod.scanLumps(tc); o.i = { made: made.length, left, spikeM: spike, crust, base: madeB.length === 0 && ks.every((k) => t.conc[k] > 1e-6) }; tc.objects.remove(bu.id); for (const k of ks) t.conc[k] = 0; t._concTouch(0, 0, t.rx, t.rz); clear(); }
     o.loaderW = mt.loader?.bucketW ? +(mt.loader.bucketW / M).toFixed(2) : null;
     return o;
   });
@@ -1463,6 +1478,7 @@ if (want('2q')) {
   check('lumps: shoved by a corner 1 m — turned 15–45°, a windrow ≥ 20 mm before it', Math.abs(o.g.moved) >= 0.8 && o.g.turn >= 15 && o.g.turn <= 45 && o.g.windrowMm >= 20, J(o.g));
   check('lumps: a 0,3 m spill is a lump too, borne on longer (≥ 1,5 s)', o.h.made === 1 && o.h.need >= 1.5, J(o.h));
   check('lumps: the loader takes a 2 × 1 m slab whole (its bucket ≥ 1,1 m: across ≤ 0,9 of it)', o.loaderW == null || o.loaderW * 0.9 >= 1.0, J({ w: o.loaderW }));
+  check('lumps: a heap poured on the open ground with a thin rim, a pit dug round it — one lump, no concrete left in the ground, no narrow spike of soil (5 of 8 round it lower by 0,15 m); a crust alone crumbles; a base with a block on it stays cast (the owner, the realist)', o.i?.made === 1 && o.i.left === 0 && o.i.spikeM === 0 && o.i.crust && o.i.base, J(o.i));
   check('lumps: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
