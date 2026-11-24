@@ -1509,7 +1509,10 @@ if (want('2r')) {
     if (b) { const c = new V(b.o[0] + b.u[0] * b.ni * b.c / 2, b.top, b.o[1] + b.u[1] * b.ni * b.c / 2 + b.nj * b.c / 2), cam = tc.camera; let hits = 0, n = 0;
       for (const [dx, dy, dz] of [[0.3, 3, 2.5], [-1.5, 2.5, 2.5], [0, 4, 0.5], [0.2, 0.6, 3]]) { cam.position.set(c.x + dx * 1000 * S, c.y + dy * 1000 * S, c.z + dz * 1000 * S); cam.lookAt(c); cam.updateMatrixWorld(true); cam.updateProjectionMatrix();
         for (const [ox, oz] of [[0, 0], [300, 0], [-300, 0], [0, 40]]) { const pt = new V(c.x + ox * S, c.y + 100 * S, c.z + oz * S).project(cam), rect = tc.renderer.domElement.getBoundingClientRect();
-          const got = H._uAt({ clientX: rect.left + (pt.x + 1) / 2 * rect.width, clientY: rect.top + (1 - pt.y) / 2 * rect.height }); n++; if (got?.id === b.id) hits++; } }
+          // (a real pointer event, as a finger's — with its target, an element of the page: the owner's phone found nothing, a bare {clientX, clientY} did)
+          const ev = new PointerEvent('pointerdown', { clientX: rect.left + (pt.x + 1) / 2 * rect.width, clientY: rect.top + (1 - pt.y) / 2 * rect.height, pointerId: 7, pointerType: 'touch' }); document.body.dispatchEvent(ev);
+          const got = H._uAt(ev); n++; if (got?.id === b.id) hits++; } }
+      { const P = tc.concreteTools.pail, c2 = c.clone(); c2.y += b.H; const pt = c2.clone().project(cam), rect = tc.renderer.domElement.getBoundingClientRect(), ev = new PointerEvent('pointerdown', { clientX: rect.left + (pt.x + 1) / 2 * rect.width, clientY: rect.top + (1 - pt.y) / 2 * rect.height }); document.body.dispatchEvent(ev); o.pailSees = P._uAt(ev, true)?.id === b.id; }
       o.hose = { hits, n };
       const pt = (k) => new V(b.o[0] + b.u[0] * (b.ni * b.c) * k - b.u[1] * b.nj * b.c / 2, b.top + b.H, b.o[1] + b.u[1] * (b.ni * b.c) * k + b.u[0] * b.nj * b.c / 2);
       H.down(pt(0.5), { target: b.id, hit: pt(0.5) }); for (let f = 0; f < 240; f++) { const k = 0.2 + 0.6 * (0.5 + 0.5 * Math.sin(f / 20)); H.move(pt(k), { target: b.id, hit: pt(k) }); H.work(1 / 30); tc.simulate(1 / 30); } H.finish();
@@ -1519,7 +1522,7 @@ if (want('2r')) {
   const J = (x) => JSON.stringify(x);
   check('lintel formwork: dragged to the 3rd course of an opening it goes on top of the jambs (cinder, aerated block, brick), a course high (the owner)', Object.values(o.kinds).every((k) => k.ok && Math.abs(k.offMm) <= 15), J(o.kinds));
   check('lintel formwork: a slot left to the top of a 3,96 m wall — the formwork no higher than 3,3 m from the ground (the realist)', o.slot != null && o.slot <= 3300 && o.slot >= 594, J({ slot: o.slot }));
-  check('lintel formwork: the hose finds it from every side (16 of 16 rays) and fills it', o.hose?.hits === o.hose?.n && o.hose?.n === 16 && o.fill >= 0.95, J({ hose: o.hose, fill: o.fill }));
+  check('lintel formwork: the hose (a real touch: its pointer event) finds it from every side (16 of 16 rays) and fills it; the bucket finds it too (the owner)', o.hose?.hits === o.hose?.n && o.hose?.n === 16 && o.fill >= 0.95 && o.pailSees, J({ hose: o.hose, fill: o.fill, pail: o.pailSees }));
   { const P = o.pre || {}, hd = { cinder: 10, block: 3, brick: 10 }, okB = (k, x) => x && x.ok && x.gapL != null && x.gapR != null && Math.abs(x.gapL - hd[k]) <= 6 && Math.abs(x.gapR - hd[k]) <= 6, J2 = JSON.stringify;
     check('precast lintel: the course laid either side (300 / 480 mm off) — it reaches both units, a head joint short, no slot left (cinder, aerated block, brick; the owner)', ['cinder', 'block', 'brick'].every((k) => okB(k, P[k + ':both'])), J2(P));
     const U = { cinder: [390, 190, 10], block: [600, 298.5, 3], brick: [250, 120, 10] }, whole = (k, R) => { const [u, h, j] = U[k]; for (let n = 0; n <= 12; n++) for (let m = 0; m <= 1; m++) if (Math.abs(R - (n * u + m * h + (n + m + 1) * j)) <= 6) return true; return false; };
