@@ -66,6 +66,22 @@ export class StripJob {
       for (const pc of tr) Object.assign(pc, { carry: t0, tPull, tWalk, dur, ease: pc.k === 'board' && !pc.inside });
       free[w] = t0 + dur + 0.3;   // (and walks back meanwhile — the next one he picks up)
     }
+    // (in the game all of it in ≤ 2,5 s — the owner, 2026-11-24: «2–3 сек максимум». Not the crew's pace sped up (its short moves
+    // went under a frame: pieces jumped — the realist): each trip — a board, an armful of braces or stakes — its own whole move,
+    // 0,15 out, 0,15 up, the walk at ≤ 6 m/s (≥ 0,45 s), 0,15 down; the trips fanned out over the time, the lowest layer of the stack
+    // first so nothing is put down through what already lies there. The films keep the crew's own pace.)
+    if (!app.filmMode) {
+      // (bigger armfuls: ten stakes, six braces — fewer trips in the air at once, ≤ ~15)
+      trips.length = 0; const byY = (a, b) => a.target.y - b.target.y; chunk(pieces.filter((p) => p.k === 'brace').sort(byY), 6); chunk(pieces.filter((p) => p.k === 'stake').sort(byY), 10); chunk(pieces.filter((p) => p.k === 'board').sort((a, b) => b.s.x - a.s.x), 1);   // (each armful one layer of its bundle after another: the lower first)
+      const order = trips.map((tr) => ({ tr, y: Math.min(...tr.map((p) => p.target.y)), dist: Math.max(...tr.map((p) => Math.hypot(p.target.x - p.p.x, p.target.z - p.p.z))) }))   /* (an armful gathered from all round: its farthest piece's walk) */.sort((a, b) => a.y - b.y);
+      // (each trip's arrival by its place in the stack, evenly from 0,9 s to 2,3 s; its walk as long as that leaves — so a far one is
+      // not rushed: ≤ 6 m/s at its fastest where the time allows)
+      const T = 2.3, n = order.length;
+      order.forEach((o, i) => { const need0 = Math.max(0.45, 1.18 * o.dist / M(6)), arrive = Math.min(T, Math.max(n > 1 ? 0.9 + (T - 0.9) * i / (n - 1) : 0.9, 0.45 + need0)), need = Math.max(0.45, 1.18 * o.dist / M(6)), tWalk = Math.max(0.45, Math.min(need, arrive - 0.45)), dur = 0.45 + tWalk;
+        for (const pc of o.tr) Object.assign(pc, { carry: Math.max(0, arrive - dur), tPull: 0.15, tWalk, dur, lift: 0.15, put: 0.15, ease: pc.k === 'board' && !pc.inside }); });
+      free.length = 0; free.push(T);
+      this.quick = true;
+    }
     this.end = Math.max(...free, 0.1);
     this.t = 0;
     this.done = false;
@@ -112,6 +128,9 @@ export class StripJob {
   // what the workers do at this moment of the simulation: each trip — pulled / eased off, lifted clear, walked over, put down
   _script(time) {
     const ep = this.ep, sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+    // (quick: the walk at an even pace with a short start and stop — its peak ~1,15 × its mean, not the ease's 1,5)
+    const tr = (x) => { x = Math.max(0, Math.min(1, x)); const r = 0.15, v = 1 / (1 - r); return x < r ? v * x * x / (2 * r) : x > 1 - r ? 1 - v * (1 - x) * (1 - x) / (2 * r) : v * (x - r / 2); };
+    const wk = this.quick ? tr : sm, dtS = Math.max(0, time - (this._lastS ?? time)); this._lastS = time;
     for (const pc of this.pieces) {
       if (pc.dropped || time < pc.carry) continue;
       const b = pc.body, a = time - pc.carry;
@@ -123,10 +142,13 @@ export class StripJob {
       const u1 = sm(a / pc.tPull), ox = pc.from.x + pc.n[0] * e * u1, oz = pc.from.z + pc.n[1] * e * u1, oy = pc.from.y + up * u1;
       if (a < pc.tPull) { ep.moveTo(b, _p.set(ox, oy, oz), pc.fromQ); continue; }
       // 2 · lifted clear, turned to how it will lie; 3 · walked over; 4 · lowered into its place
-      const a2 = a - pc.tPull, lift = 0.4, walk = pc.tWalk, put = 0.5;
+      const a2 = a - pc.tPull, lift = pc.lift ?? 0.4, walk = pc.tWalk, put = pc.put ?? 0.5;
       if (a2 < lift) { const u = sm(a2 / lift); _p.set(ox, oy + (pc.safe - oy) * u, oz); _q.slerpQuaternions(pc.fromQ, pc.targetQ, u * 0.5); }
-      else if (a2 < lift + walk) { const u = sm((a2 - lift) / walk); _p.set(ox + (pc.target.x - ox) * u, pc.safe, oz + (pc.target.z - oz) * u); _q.slerpQuaternions(pc.fromQ, pc.targetQ, 0.5 + 0.5 * u); }
-      else { const u = sm((a2 - lift - walk) / put); _p.set(pc.target.x, pc.safe + (pc.target.y - pc.safe) * u, pc.target.z); _q.copy(pc.targetQ); }
+      else if (a2 < lift + walk) { const u = wk((a2 - lift) / walk); _p.set(ox + (pc.target.x - ox) * u, pc.safe, oz + (pc.target.z - oz) * u); _q.slerpQuaternions(pc.fromQ, pc.targetQ, 0.5 + 0.5 * u); }
+      else {
+        // (quick: what is to lie under it not down yet — it waits over its place: the stack built from the bottom up)
+        if (this.quick && this.pieces.some((o) => o !== pc && o.carry !== pc.carry && !o.dropped && o.target.y < pc.target.y - 1e-4 && Math.hypot(o.target.x - pc.target.x, o.target.z - pc.target.z) < M(0.3))) { pc.carry += dtS; _p.set(pc.target.x, pc.safe, pc.target.z); ep.moveTo(b, _p, pc.targetQ); continue; }
+        const u = sm((a2 - lift - walk) / put); _p.set(pc.target.x, pc.safe + (pc.target.y - pc.safe) * u, pc.target.z); _q.copy(pc.targetQ); }
       ep.moveTo(b, _p, _q);
       if (a2 >= lift + walk + put) { pc.dropped = true; ep.moveTo(b, pc.target, pc.targetQ); app_land(this, pc); }
     }
@@ -216,4 +238,4 @@ export class StripJob {
 }
 
 // a piece put down: the knock of wood on wood
-function app_land(job, pc) { job.app.sfx?.play?.('plank', { vol: pc.k === 'board' ? 0.6 : 0.4, at: pc.target, gap: 0.09 }); }
+function app_land(job, pc) { job.app.sfx?.play?.('plank', { vol: pc.k === 'board' ? 0.6 : 0.4, at: pc.target, gap: job.quick ? 0.3 : 0.09 }); }   // (quick: a clatter now and then, not a machine-gun — the realist)
