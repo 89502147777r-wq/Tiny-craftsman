@@ -39,7 +39,10 @@ export class SoilParticles {
     this.clods.castShadow = true; this.clods.receiveShadow = true;
     this.clods.frustumCulled = false;
     this.clods.count = 0;
-    this.clodList = [];
+    this.clodList = []; this.clodGrit = 0;
+    // (bits of their own colour — concrete crumbs: a plain grey stone material, not the soil photo the clods are drawn with)
+    this.grit = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, envMapIntensity: 0.3 }), 1500);
+    this.grit.castShadow = true; this.grit.receiveShadow = true; this.grit.frustumCulled = false; this.grit.count = 0;
     this._seenVersion = -1;
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._s = new THREE.Vector3(); this._e = new THREE.Euler();
   }
@@ -48,12 +51,13 @@ export class SoilParticles {
 
   // (real: vel is a real speed (m/s in model units, R()); else it was set for the old 10× gravity — scaled by 1/√k, its
   // drag and life with it: the same path in space as it was tuned, gone through at the real pace)
-  emit(pos, vel, vol, size, keep = 0.25, depth = 0, mat = 0, real = false) {
+  // (col: its own colour (linear RGB, may exceed 1 — the crumbs' texture is the soil's photo) — a crumb of concrete is concrete-grey)
+  emit(pos, vel, vol, size, keep = 0.25, depth = 0, mat = 0, real = false, col = null) {
     if (this.items.length >= this.max) { if (!this.tryCatch(pos, vol, mat, true)) this.terrain.deposit(pos.x, pos.z, vol, 0.002, depth, mat); return; }
     const r = this.rnd;
     this.items.push({
       p: pos.clone(), v: real ? vel.clone() : vel.clone().multiplyScalar(SLOW), drag: real ? 0.1 : 0.6 * SLOW, life: real ? 3 : 3 / SLOW, vol, size: size * (0.6 + r() * 0.8),
-      rot: new THREE.Euler(r() * 6, r() * 6, r() * 6), spin: (r() - 0.5) * 30, keep: r() < keep, age: 0, depth, mat,
+      rot: new THREE.Euler(r() * 6, r() * 6, r() * 6), spin: (r() - 0.5) * 30, keep: r() < keep, age: 0, depth, mat, col,
     });
   }
 
@@ -79,7 +83,7 @@ export class SoilParticles {
         if (gl < 0.45) break;
         x = t.clampX(x - gx / gl * d); z = t.clampZ(z - gz / gl * d);
       }
-      this.clodList.push({ x, z, size: it.size, rot: it.rot.clone(), sink: 0.35 + this.rnd() * 0.35, depth: it.depth || 0, mat: it.mat || 0 });
+      this.clodList.push({ x, z, size: it.size, rot: it.rot.clone(), sink: 0.35 + this.rnd() * 0.35, depth: it.depth || 0, mat: it.mat || 0, col: it.col });
       this._seenVersion = -1;
     }
   }
@@ -107,17 +111,21 @@ export class SoilParticles {
     }
     items.length = w;
     const m = this._m, q = this._q, s = this._s;
+    if (t.version !== this._seenVersion) this._refreshClods();   // (first: the flying bits go after the resting ones in the grit mesh)
+    let nm = 0, ng = 0; const G0 = this.grit;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       q.setFromEuler(it.rot);
       s.setScalar(it.size);
-      this.mesh.setMatrixAt(i, m.compose(it.p, q, s));
-      this.mesh.setColorAt(i, materialTint(it.mat, it.depth || 0, this._col));
+      if (it.col) { if (this.clodGrit + ng < 1500) { G0.setMatrixAt(this.clodGrit + ng, m.compose(it.p, q, s)); G0.setColorAt(this.clodGrit + ng, this._col.setRGB(...it.col)); ng++; } continue; }
+      this.mesh.setMatrixAt(nm, m.compose(it.p, q, s));
+      this.mesh.setColorAt(nm, materialTint(it.mat, it.depth || 0, this._col)); nm++;
     }
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    this.mesh.count = items.length;
+    this.mesh.count = nm;
     this.mesh.instanceMatrix.needsUpdate = true;
-    if (t.version !== this._seenVersion) this._refreshClods();
+    if (ng || this._ngPrev) { G0.count = Math.min(1500, this.clodGrit + ng); G0.instanceMatrix.needsUpdate = true; if (G0.instanceColor) G0.instanceColor.needsUpdate = true; }
+    this._ngPrev = ng;
   }
 
   // Clods ride on the surface; they vanish when their loose soil is dug away.
@@ -135,16 +143,19 @@ export class SoilParticles {
       this.clodList[w++] = c;
     }
     this.clodList.length = w;
+    let nc = 0, ng = 0;
     for (let i = 0; i < w; i++) {
       const c = this.clodList[i];
       p.set(c.x, t.heightAt(c.x, c.z) + c.size * (0.5 - c.sink), c.z);
       q.setFromEuler(c.rot);
       s.setScalar(c.size);
-      this.clods.setMatrixAt(i, m.compose(p, q, s));
-      this.clods.setColorAt(i, materialTint(c.mat, c.depth || 0, this._col));
+      if (c.col) { if (ng < 1400) { this.grit.setMatrixAt(ng, m.compose(p, q, s)); this.grit.setColorAt(ng, this._col.setRGB(...c.col)); ng++; } continue; }
+      this.clods.setMatrixAt(nc, m.compose(p, q, s));
+      this.clods.setColorAt(nc, materialTint(c.mat, c.depth || 0, this._col)); nc++;
     }
     if (this.clods.instanceColor) this.clods.instanceColor.needsUpdate = true;
-    this.clods.count = w;
+    this.clodGrit = ng; this.grit.count = ng; this.grit.instanceMatrix.needsUpdate = true; if (this.grit.instanceColor) this.grit.instanceColor.needsUpdate = true;
+    this.clods.count = nc;
     this.clods.instanceMatrix.needsUpdate = true;
   }
 

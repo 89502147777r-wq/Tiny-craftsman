@@ -119,7 +119,7 @@ async function main() {
   app.terrainMat = new URLSearchParams(location.search).get('soil') === 'light' ? (app.lightMat = makeLightTerrainMaterial(tex)) : makeTerrainMaterial(tex);
   scene.add(terrain.buildMesh(app.terrainMat));
   app.grass = new Grass(terrain); scene.add(app.grass.mesh);
-  app.particles = new SoilParticles(tex, terrain); scene.add(app.particles.mesh, app.particles.clods);
+  app.particles = new SoilParticles(tex, terrain); scene.add(app.particles.mesh, app.particles.clods, app.particles.grit);
   app.shovel = new Shovel(tex, app); scene.add(app.shovel.root);
   app.shovel.setType(app.settings.shovel);
   app.rake = new Rake(tex); scene.add(app.rake.root);
