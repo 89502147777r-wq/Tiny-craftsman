@@ -112,23 +112,25 @@ export class SlabFormView {
         items.sort((p1, p2) => p2.bay - p1.bay || ORD[p1.k] - ORD[p2.k] || p2.d - p1.d);
         // the stack: off the slab, on clear ground — out past the side nearest the plot's middle
         strip = { u: now - b.stripAt, pile: this._pileSpot(b, items, terrain, floor), n: { deck: 0, beam: 0, prop: 0 } };
-        items.forEach((it, i) => { it.t0 = i * STRIP.slot; });
+        const ST = stripTiming(items.length); strip.ST = ST;
+        items.forEach((it, i) => { it.t0 = i * ST.slot; });
         this.order = items.map((it) => it.bay);   // (for the tests: from the cantilever's edge back)
         (this.propsLeft ||= {})[b.id] = items.filter((it) => it.k === 'prop' && strip.u < it.t0).map((it) => it.at.slice());   // (each slab's props still standing — a film's last one close)
-        if (strip.u < items.length * STRIP.slot + STRIP.carry) this.stripping = true; else this.done.push(b.id);
+        if (strip.u < items.length * ST.slot + ST.carry) this.stripping = true; else this.done.push(b.id);
       }
       // where a piece is now: in place, being carried (let down, lifted a little, walked over), or on the stack
       const pose = (it) => {
         if (it.down != null && it.down < 1) return { p: [it.at[0], it.at[1] + (1 - it.down) * MM(260), it.at[2]], lie: 0 };
         if (!strip || strip.u < it.t0) return null;
-        const tgt = this._stackPos(it, strip, yaw, ux, uz), v = Math.min(1, (strip.u - it.t0) / STRIP.carry);
+        const tgt = this._stackPos(it, strip, yaw, ux, uz), v = Math.min(1, (strip.u - it.t0) / strip.ST.carry);
         if (v >= 1) return { p: tgt, lie: 1 };
+        if (strip.ST.lapse) return null;   // (in place till its turn — let down alone it went through the beams under it: the realist)
         const dn = Math.min(1, v / 0.25), w = Math.max(0, (v - 0.25) / 0.75), e = w * w * (3 - 2 * w);
         const y0 = it.at[1] - MM(150) * dn, p = [it.at[0] + (tgt[0] - it.at[0]) * e, y0 + (tgt[1] - y0) * e + Math.sin(e * Math.PI) * MM(250), it.at[2] + (tgt[2] - it.at[2]) * e];
         return { p, lie: it.k === 'prop' ? Math.min(1, v / 0.35) : 0 };
       };
       // (the piece being carried now — the film's camera follows it)
-      if (strip) { let cur = null; for (const it of items) if (strip.u >= it.t0 && strip.u < it.t0 + STRIP.carry) cur = it; const ps = cur ? pose(cur) : null; this.stripTip = ps ? ps.p.slice() : null; }
+      if (strip) { let cur = null; for (const it of items) if (strip.u >= it.t0 && strip.u < it.t0 + strip.ST.carry) cur = it; const ps = cur ? pose(cur) : null; this.stripTip = ps ? ps.p.slice() : null; }
       // the deck: plywood 18 mm, its top under the concrete
       const pos = [], uv = [], idx = [], sheet = MM(1220);
       // (uvs: in the atlas — the sheet's own cell, the part of it a cut sheet is; without the atlas, the photo by the metre)
@@ -279,7 +281,12 @@ function plyAtlas(img) {
 }
 
 // the crew's pace (game seconds): a piece after another, each let down and carried over
-export const STRIP = { slot: 0.2, carry: 1.4 };
+export const STRIP = { slot: 0.2, carry: 1.4, film: false, total: 2.5 };
+// (in the game the whole stripping takes ≤ 2,5 s however many pieces — the owner, 2026-11-24: «2–3 сек максимум»; the films keep
+// their own pace, piece by piece — STRIP.film, set by main.js)
+// (game: a timelapse — each piece in its place till its turn, then on the stack: hundreds carried at once read as a swarm
+// flying through the standing props — the realist; the bays one after another, from the cantilever's edge back)
+export const stripTiming = (n) => STRIP.film ? STRIP : { carry: 0.35, slot: Math.min(STRIP.slot, (STRIP.total - 0.35) / Math.max(1, n)), lapse: true };
 
 // what a prop stands on under a slab: the ground / the foundation, or a slab cast lower down
 export function floorUnder(terrain, belts) {

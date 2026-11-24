@@ -15,6 +15,7 @@ import { FormworkView } from './world/formwork.js';
 import { RebarView } from './world/rebar.js';
 import { SitePropView } from './world/siteProps.js';
 import { LumpView, scanLumps } from './world/lumps.js';
+import { STRIP as STRIP_TIMING } from './world/slabForm.js';
 import { DpcView } from './world/dpc.js';
 import { WallView } from './world/walls.js';
 import { kitsPending, onKits } from './world/openingKits.js';
@@ -100,6 +101,7 @@ async function main() {
   // the film mode (film/director.js): a short played out on a clean plot of its own — nothing is
   // read from the saved project or written over it; ?offline=1: drawn frame by frame by a script
   app.filmMode = params.get('film') || null;
+  STRIP_TIMING.film = !!app.filmMode;   // (a slab's stripping: ≤ 2,5 s in the game, piece by piece in a film)
   app.filmOffline = !!app.filmMode && params.get('offline') === '1';
   // (and the dice seeded: a film drawn frame by frame is the same every run — it can be drawn in
   // parts, by several workers, and taken up again where it stopped)

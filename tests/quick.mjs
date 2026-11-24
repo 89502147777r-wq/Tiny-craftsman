@@ -349,14 +349,17 @@ if (want("2")) {
       const running = !!tc.physJob;
       // (the realist, 302: two men, one trip each at a time — never a swarm in the air; a stake turned only once its point is out)
       let trips = 0, tilt = 0; const job = tc.physJob, up = new V(0, 1, 0), q0 = new tc.camera.quaternion.constructor();
-      for (let i = 0; i < 3600 && tc.physJob; i++) { tc.simulate(1 / 30);
-        if (job?.pieces) { const fly = new Set(job.pieces.filter((p) => p.from && !p.dropped).map((p) => p.carry)); trips = Math.max(trips, fly.size);
+      let stripF = 0, maxStep = 0, early = 0; const prevP = new Map(), downSet = new Set();
+      for (let i = 0; i < 3600 && tc.physJob; i++) { tc.simulate(1 / 30); stripF = i + 1;
+        if (job?.pieces && tc.physJob === job && !job.done) for (const p of job.pieces) { const tr = p.body.translation(), cur = [tr.x / 10.4651, tr.y / 10.4651, tr.z / 10.4651], pr = prevP.get(p); if (pr) { const st = Math.hypot(cur[0] - pr[0], cur[1] - pr[1], cur[2] - pr[2]) * 10.4651; if (st > maxStep) maxStep = st; } prevP.set(p, cur);
+          if (p.dropped && !downSet.has(p)) { downSet.add(p); if (job.pieces.some((o) => o !== p && o.carry !== p.carry && !o.dropped && o.target && o.target.y < p.target.y - 1e-4 && Math.hypot(o.target.x - p.target.x, o.target.z - p.target.z) < 0.3 / 10.4651)) early++; } }
+        if (job?.pieces && tc.physJob === job && !job.done) { const fly = new Set(job.pieces.filter((p) => p.from && !p.dropped).map((p) => p.carry)); trips = Math.max(trips, fly.size);
           for (const p of job.pieces) if (p.k === 'stake' && p.from && !p.dropped && p.body && Math.hypot(p.body.translation().x / 10.4651 - p.p.x, p.body.translation().z / 10.4651 - p.p.z) < 0.01) { const tr = p.body.translation(), r = p.body.rotation(); q0.set(r.x, r.y, r.z, r.w); const ax = up.clone().applyQuaternion(q0), tipY = tr.y / 10.4651 - Math.abs(ax.y) * p.s.y / 2; if (tipY < t.heightAt(tr.x / 10.4651, tr.z / 10.4651) - 1e-4) tilt = Math.max(tilt, Math.acos(Math.min(1, Math.abs(ax.y))) * 180 / Math.PI); } } }
       const pile = tc.objects.all('formpile')[0];
       const stripped = mine() === 0 && !!pile && pile.boards.length >= n0;
       tc.undo(); const back = mine() === n0 && !tc.objects.all('formpile').length; tc.redo();
       const bl = (pile?.items || []).filter((it) => it.k === 'board').sort((a, b) => a.p[1] - b.p[1]), layered = bl.every((it, k) => !k || it.s[0] <= bl[k - 1].s[0] + 1e-4 || it.p[1] - bl[k - 1].p[1] < 1e-4);
-      out.strip = { trips, tilt: +tilt.toFixed(1), layered, bearers: (pile?.items || []).filter((it) => it.bear).length, n0, warned, running, stripped, items: pile?.items?.length, still: !!pile?.items?.every((it) => it.p.every(Number.isFinite)), boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(concAll() - cv) < Math.max(1e-12, cv * 0.03) };
+      out.strip = { secs: +(stripF / 30).toFixed(2), maxStep: +maxStep.toFixed(2), early, trips, tilt: +tilt.toFixed(1), layered, bearers: (pile?.items || []).filter((it) => it.bear).length, n0, warned, running, stripped, items: pile?.items?.length, still: !!pile?.items?.every((it) => it.p.every(Number.isFinite)), boards: pile?.boards.length, stakes: pile?.stakes, back, conc: Math.abs(concAll() - cv) < Math.max(1e-12, cv * 0.03) };
     }
     tc.setTool('camera');
     await tc.saveNow();
@@ -380,7 +383,8 @@ if (want("2")) {
   await page.reload({ timeout: 120000 });   // (a loaded container: the load event can take more than 30 s)
   await page.waitForFunction(() => window.__tc?.ready, null, { timeout: 120000 });
   const after = await page.evaluate(() => { const tc = window.__tc; return { n: tc.journal.done.length, o: tc.objects.all().length, exc: +(tc.terrain.excavatedVolume() * 1e6).toFixed(3), sand: +(tc.terrain.materialVolumes()[1] * 1e6).toFixed(2), conc: +(tc.terrain.concVolume() * 1e6).toFixed(2) }; });
-  check('stripping as a crew does it (the realist): ≤ 3 trips in the hands at once (three men), a stake not turned while its point is in the ground (< 5°), the longest boards lowest, on 3 bearers', play.strip.trips <= 3 && play.strip.tilt < 5 && play.strip.layered && play.strip.bearers === 3, JSON.stringify(play.strip));
+  check('stripping as a crew does it, quick (the realist): ≤ 20 trips in the air at once, no piece jumping > 0,25 m a screen frame (1/60 s), nothing put down before what lies under it, a stake not turned while its point is in the ground (< 5°), the longest boards lowest, on 3 bearers', play.strip.trips <= 20 && play.strip.maxStep / 2 <= 0.25 && play.strip.early === 0 && play.strip.tilt < 5 && play.strip.layered && play.strip.bearers === 3, JSON.stringify(play.strip));
+  check('stripping: all of it in ≤ 3 s in the game (the owner: «2–3 сек максимум»)', play.strip.secs > 0 && play.strip.secs <= 3, JSON.stringify({ secs: play.strip.secs}));
   check('stripping: warns while soft, then boards come off into a stack, concrete stays, undo', play.strip.warned && play.strip.running && play.strip.still && play.strip.stripped && play.strip.back && play.strip.conc && play.strip.n0 > 0, JSON.stringify(play.strip));
   check('project restored after reload', JSON.stringify(after) === JSON.stringify(play.saved), `${JSON.stringify(play.saved)} → ${JSON.stringify(after)}`);
   check('no console errors while playing', errors.length === 0, errors.slice(0, 3).join(' | '));
@@ -715,6 +719,12 @@ if (want("2d")) {
       tc.objects.update(sl.id, { lv: sl.lv.map(() => Math.round(Hm)), fill: 1, castT: tc.clock - 1e6, pourT: tc.clock - 1e6, wetT: tc.clock - 1e6 }); tc.simulate(0.05);
       const kt = tc.settings.colType; tc.settings.colType = 'sq'; const top = sl.top + sl.H, over = col.plan(new V(r1.x, top, r1.z), null), off = col.plan(new V(r1.x + (cols()[0].x - r1.x) / 2, top, r1.z + (cols()[0].z - r1.z) / 2), null);
       o.up = { over: over && !over.why && over.snap, off: off && !off.why ? off.snap || 'ok' : off?.why }; tc.settings.colType = kt; }
+    // (its formwork stripped in the game: all of it in ≤ 3 s, piece by piece let down where it stood, onto the stack — the owner)
+    { const sl = tc.objects.all('belt').find((b) => b.kind === 'slab'), WV = tc.wallView, c0 = WV.clock ?? tc.clock;
+      tc.objects.update(sl.id, { stripAt: +c0.toFixed(3) }); WV.dirty = true; let f = 0; tc.simulate(1 / 30);
+      for (; f < 600 && !tc.objects.get(sl.id).stripped; f++) tc.simulate(1 / 30);
+      o.slabStrip = { secs: +(((WV.clock ?? tc.clock) - c0)).toFixed(2), frames: f, done: !!tc.objects.get(sl.id).stripped };
+      tc.objects.update(sl.id, { stripAt: null, stripped: false }); WV.dirty = true; tc.simulate(0.05); }
     // the piles' starter bars end inside the slab cast on them (200 thick, 40 cover over them)
     { const CM = await import('/src/world/columns.js'), T3 = await import('three'), sl = tc.objects.all('belt').find((b) => b.kind === 'slab'), bb = new T3.Box3();
       o.starter = Math.max(...cols().slice(0, 3).map((r) => { const g = CM.cageParts({ ...r, starter: CM.STARTER }).rebar; g.computeBoundingBox(); return Math.round((g.boundingBox.max.y - (sl.top + sl.H)) * 10465); })); void bb; }
@@ -748,6 +758,7 @@ if (want("2d")) {
   });
   check('columns: in «Фундамент» (sizes, formwork, cage, stripping), not under the walls; the tray holds the formwork', c.chips === 'Размеры|1 · Опалубка|2 · Каркас|3 · Распалубка|4 · Лифт-шахта|Удалить' && c.tray === 'Опалубка' && !c.wallCols, JSON.stringify(c));
   check('columns: three piles bored, their two-half formwork set; a column not on the bare soil; the cages carried in', c.formed === '2false,2false,2false' && c.sqOnSoil && c.caged, JSON.stringify(c));
+  check('slab on piles: its formwork stripped in ≤ 3 s in the game (the owner: «2–3 сек максимум»)', c.slabStrip?.done && c.slabStrip.secs <= 3, JSON.stringify(c.slabStrip));
   check('columns: the bucket and the hose fill them, stripped once strong; a brick and a slab on the piles (and with a cantilever); a column on the slab over a pile (its continuation)', c.pail > 0.03 && c.pail < 0.5 && c.cast === '3,3,3' && c.stripped === '4,4,4' && c.brick !== null && c.brick > 0 && c.brick < 25 && c.slab === '3' && c.starter < -30 && c.cant?.cant === 1500 && c.cant.grow >= 1400 && c.cant.grow <= 1600 && c.up?.over === 'over' && c.up.off && !/колонна/.test(c.up.off), JSON.stringify(c));
   check('columns: either order (a cage first, the formwork round it), tied into a foundation cage (no formwork till it is cast), the sliders resize the picked one', c.cageFirst === '0true' && c.formAfter === 2 && c.preview === 400 && c.resized === '400,4' && c.tied > 250 && c.tied < 450 && c.tiedStage === '0true' && c.tiedNoForm && c.boredCage === 'true|1200|true' && c.landing, JSON.stringify(c));
   check('black topsoil: delivered (1 m³), the soil shader builds', Math.abs(c.black - 1) < 0.05 && c.shader === 0, JSON.stringify(c));
