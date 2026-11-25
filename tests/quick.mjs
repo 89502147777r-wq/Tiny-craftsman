@@ -2215,6 +2215,32 @@ if (want("2s")) {
   check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
+// ---- 2t. What is loading (the owner, 2026-11-25: «неброская шкала с процентами загрузки … чтобы видел, когда что и как грузит, а после
+// загрузки чтобы она убиралась»): every file the game loads is counted (textures, the panorama, models, sounds); while a panorama
+// loads the label names it with its count and percent; when all is in it goes ----
+if (want("2t")) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, N = (await import('/src/ui/netLoad.js')).netLoad, o = {};
+    const kinds = (re) => N.log.filter((l) => l[0] === '+' && re.test(l[2])).length;
+    o.boot = { textures: kinds(/\/textures\//), hdri: kinds(/\/hdri\//), models: kinds(/\/models\//) };
+    const seen = new Set(); let label = '';
+    const watch = setInterval(() => { const t = document.querySelector('#netload span')?.textContent || ''; if (/\//.test(t)) { seen.add(t.split(' ')[0]); if (/Панорама|Panorama/.test(t)) label = t; } }, 10);
+    await tc.setBackdrop('beach');
+    await new Promise((r) => setTimeout(r, 300)); clearInterval(watch);
+    o.label = label; o.kinds = [...seen];
+    for (let i = 0; i < 100 && N.pending.length; i++) await new Promise((r) => setTimeout(r, 100));
+    o.left = N.pending.length;
+    await new Promise((r) => setTimeout(r, 2200));
+    o.shown = N.shown; o.opacity = getComputedStyle(document.querySelector('#netload')).opacity;
+    return o;
+  });
+  check('loading: every file counted from the start (the textures, the light, the tool models)', o.boot.textures >= 20 && o.boot.hdri >= 1 && o.boot.models >= 3, JSON.stringify(o.boot));
+  check('loading: a panorama on its way — the label names it, how many of how many, percent', /^(Панорама|Panorama) \d+\/\d+ · \d+ %/.test(o.label), JSON.stringify(o));
+  check('loading: all in — nothing left, the bar gone', o.left === 0 && !o.shown /* (fades by CSS: headless draws no frames to fade in) */, JSON.stringify(o));
+  check('loading: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 if (want("2m")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });

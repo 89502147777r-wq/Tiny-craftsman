@@ -1,3 +1,4 @@
+import './ui/netLoad.js';   // (first: it watches every file the game loads from here on)
 import { Pace, shadowDue } from './core/pace.js';
 import { upgrade } from './core/upgrade.js';
 import { Mirrors } from './render/mirrors.js';
