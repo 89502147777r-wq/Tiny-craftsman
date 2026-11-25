@@ -2157,6 +2157,64 @@ if (want("2p")) {
   check('terrace: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
+// ---- 2s. The 360° places round the plot (the owner, 2026-11-25, screenshot: from up high the site's fence lay on the ground in long
+// smeared streaks — «чтобы было со всех ракурсов красиво и не размыто, переход незаметный»): the photo's ground laid flat only out
+// to where things stand on it (PANOS[k].foot); there it stands upright, a wall all round, past the plot's edge + PANO_MARGIN; the
+// ground meets the wall's foot; every place builds and draws without errors ----
+if (want("2s")) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, B = await import('/src/world/backdrop.js'), { TRAY, MODEL_SCALE: S } = await import('/src/config.js');
+    const out = {};
+    for (const [k, cfg] of Object.entries(B.PANOS)) {
+      const g = B.panoShape(cfg), P = g.attributes.position, D = g.attributes.aDir, G = g.attributes.aGr, N = g.userData.N;
+      const rows = P.count / (N + 1), E = 1.7 / S, R0 = Math.max(cfg.R, cfg.far || 0) / S;
+      let inPlot = 0, gap = 0, flat = 0, upright = 0, far = 0, standsAt = 0, kMax = 0, missed = [];
+      for (let i = 0; i <= N; i++) {
+        const b = i * rows; let j = 0; while (G.getX(b + j) > 0.5) j++;
+        const foot = b + j - 1, w0 = b + j;   // (the ground's last vertex, the wall's first above it)
+        const th = Math.atan2(P.getZ(foot), P.getX(foot)), hx = Math.hypot(P.getX(foot), P.getZ(foot));
+        const c = Math.abs(Math.cos(th)), sn = Math.abs(Math.sin(th));
+        const plot = Math.min(c > 1e-6 ? TRAY.innerX / 2 / c : 1e9, sn > 1e-6 ? TRAY.innerZ / 2 / sn : 1e9);
+        if (hx < Math.min(plot + B.PANO_MARGIN / S, R0 * 0.9) - 0.1 / S) inPlot++;
+        if (hx > 32) inPlot++;   // (inside the camera's far plane, 40, from anywhere it can go)
+        // (the wall starts where the ground ends: the photo's foot direction on the ground, the wall up from there)
+        if (Math.abs(Math.hypot(P.getX(w0), P.getZ(w0)) - hx) * S > 0.05 || P.getY(w0) <= P.getY(foot)) gap++;
+        for (let q = b; q <= foot; q++) if (Math.abs(P.getY(q) + E) * S > 0.001) flat++;
+        // (upright from the foot to the horizon: the same distance out)
+        for (let q = w0; q < b + rows && D.getY(q) <= 0; q++) if (Math.abs(Math.hypot(P.getX(q), P.getZ(q)) - hx) * S > 0.05) upright++;
+        for (let q = b; q < b + rows; q++) if (Math.hypot(P.getX(q), P.getY(q), P.getZ(q)) > R0 * 1.001) far++;
+        kMax = Math.max(kMax, hx / Math.hypot(D.getX(foot), D.getZ(foot)));
+        // (what the photo shows standing — past its foot as read off it — is on the wall, not laid on the ground)
+        // (the foot read off the photo — its knots, linear in log distance as the code reads them; smoothed only nearer)
+        const deg = th * 180 / Math.PI, kn = cfg.foot; let ft = kn[0][1];
+        if (kn.length > 1) for (let n = 0; n < kn.length; n++) {
+          const [t0, d0] = kn[n], [t1r, d1] = kn[(n + 1) % kn.length], t1 = n + 1 < kn.length ? t1r : t1r + 360; let x = deg; if (x < t0) x += 360;
+          if (x >= t0 && x <= t1) { ft = Math.exp(Math.log(d0) + (Math.log(d1) - Math.log(d0)) * (x - t0) / Math.max(1e-6, t1 - t0)); break; }
+        }
+        const photoFoot = Math.hypot(D.getX(foot), D.getZ(foot)) * S;
+        if (photoFoot > Math.min(ft, R0 * S * 0.9) * 1.02 + 0.1) { standsAt++; if (missed.length < 3) missed.push([+deg.toFixed(0), +photoFoot.toFixed(1), ft]); }
+      }
+      out[k] = { inPlot, gap, flat, upright, far, standsAt, missed, kMax: +kMax.toFixed(2) };
+    }
+    // every place loads and draws: its shader builds
+    out.places = {};
+    for (const k of Object.keys(B.PANOS)) {
+      await tc.setBackdrop(k);
+      const sky = tc.backdrop.panos[k]?.sky; tc.renderer.render(tc.scene, tc.camera);
+      const prog = sky && tc.renderer.properties.get(sky.material).currentProgram;
+      out.places[k] = !!sky && !!sky.geometry.attributes.aGr && (!prog?.diagnostics || prog.diagnostics.runnable);
+    }
+    return out;
+  });
+  for (const k of ['site', 'beach', 'lake', 'forest', 'meadow', 'alps']) {
+    const r = o[k];
+    check(`surroundings «${k}»: the photo's ground flat out to its wall; the wall past the plot's edge + margin, up from the ground's end, upright to the horizon; what stands in the photo on the wall`,
+      r && r.inPlot === 0 && r.gap === 0 && r.flat === 0 && r.upright === 0 && r.far === 0 && r.standsAt === 0 && o.places[k], JSON.stringify(r));
+  }
+  check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 if (want("2m")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
