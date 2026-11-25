@@ -2205,6 +2205,11 @@ if (want("2s")) {
       const prog = sky && tc.renderer.properties.get(sky.material).currentProgram;
       out.places[k] = !!sky && !!sky.geometry.attributes.aGr && (!prog?.diagnostics || prog.diagnostics.runnable);
     }
+    // (the simple program — the fallback where the full one does not build, as on the owner's phone — builds too; no note shown here)
+    { const sky = tc.backdrop.panos.alps.sky, m = sky.material, gl = tc.renderer.getContext();
+      m.defines = { ...(m.defines || {}), PANO_SIMPLE: 1 }; m.needsUpdate = true; tc.renderer.compile(sky, tc.camera, tc.scene);
+      const prog = tc.renderer.properties.get(m).currentProgram?.program;
+      out.simple = !!prog && !!gl.getProgramParameter(prog, gl.LINK_STATUS); out.note = !!document.getElementById('pano-note'); out.err = tc.panoError || null; }
     return out;
   });
   for (const k of ['site', 'beach', 'lake', 'forest', 'meadow', 'alps']) {
@@ -2212,6 +2217,7 @@ if (want("2s")) {
     check(`surroundings «${k}»: the photo's ground flat out to its wall; the wall past the plot's edge + margin, up from the ground's end, upright to the horizon; what stands in the photo on the wall`,
       r && r.inPlot === 0 && r.gap === 0 && r.flat === 0 && r.upright === 0 && r.far === 0 && r.standsAt === 0 && o.places[k], JSON.stringify(r));
   }
+  check('surroundings: every place\'s program builds (no note on the screen); the simple fallback builds too', o.simple && !o.note && !o.err, JSON.stringify({ simple: o.simple, note: o.note, err: o.err }));
   check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
