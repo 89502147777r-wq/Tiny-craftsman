@@ -4,6 +4,7 @@ import { TRAY, SOIL_TILE, BACKDROP, MODEL_SCALE } from '../config.js';
 import { STOCHASTIC_GLSL, stochasticChunks } from '../render/stochastic.js';
 import { innerCorner } from './plotShape.js';
 import { seedProps } from '../tools/sitePropTool.js';
+import { LANG } from '../i18n/i18n.js';
 
 // Background / lighting modes:
 //   workshop – the diorama on the bench in the carpentry shop (HDRI + lamp)
@@ -34,6 +35,17 @@ export const PANOS = {
     foot: [[-180, 26], [-106, 26], [-94, 270], [94, 270], [106, 26]] },
 };
 export const isPano = (m) => !!PANOS[m];
+// (a note on the screen the owner can screenshot; a tap closes it)
+function panoNote(text) {
+  let el = document.getElementById('pano-note');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'pano-note'; el.setAttribute('data-notr', '');
+    el.style.cssText = 'position:fixed;left:10px;right:10px;bottom:120px;z-index:9998;font:11px/1.35 ui-monospace,monospace;color:#fff;background:rgba(120,20,20,.85);padding:8px 10px;border-radius:8px;word-break:break-word';
+    el.onclick = () => el.remove();
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+}
 const EYE = 1.7;   // the panoramas were shot about this high (m)
 
 export class Backdrop {
@@ -125,6 +137,7 @@ export class Backdrop {
     ws.tray.traverse((o) => { if (o.isMesh) o.visible = !pano; });
     this.ground.visible = pano;
     for (const p of Object.values(this.panos)) if (p.sky) p.sky.visible = pano && p === P;
+    if (pano && P?.sky) this._checkSky(P);
     // the camera stays inside the panorama (and a real camera's depth of field — no
     // miniature blur)
     const lim = app.rig?.limits;
@@ -237,6 +250,32 @@ export class Backdrop {
   // horizon; the photo on its sphere round the plot
   // (one load of a place at a time: two set()s at once — the start, a choice — loaded it twice, and the one dropped
   // the other's: no sky, black)
+  // (the owner, 2026-11-25: «панорамы превращаются в чёрный фон» on his phone, not in Chrome or Safari on a computer — the
+  // panorama's program did not build there. Checked here, once per panorama: built — fine; not — its log on the screen (for a
+  // screenshot) and the simpler program (no ground texture from up high) instead; that fails too — said so)
+  _checkSky(P) {
+    if (P.checked) return;
+    P.checked = true;
+    const r = this.app.renderer, gl = r.getContext(), m = P.sky.material;
+    const built = () => {
+      try { r.compile(P.sky, this.app.camera, this.app.scene); } catch (e) { return String(e); }
+      const prog = r.properties.get(m).currentProgram?.program;
+      if (!prog) return 'no program';
+      if (gl.getProgramParameter(prog, gl.LINK_STATUS)) return '';
+      const logs = [gl.getProgramInfoLog(prog)];
+      for (const sh of gl.getAttachedShaders(prog) || []) logs.push(gl.getShaderInfoLog(sh));
+      return logs.filter(Boolean).join(' | ').trim() || 'link failed';
+    };
+    let err = built();
+    if (!err) return;
+    console.warn('panorama program:', err);
+    const first = err;
+    m.defines = { ...(m.defines || {}), PANO_SIMPLE: 1 }; m.needsUpdate = true;
+    err = built();
+    this.app.panoError = { first, simple: err };
+    panoNote(`${LANG === 'en' ? 'Background shader' : 'Шейдер фона'}: ${first.slice(0, 240)}${err ? (LANG === 'en' ? ' — the simple one fails too' : ' — простой тоже не собрался') : (LANG === 'en' ? ' — the simple one is on' : ' — включён простой')}`);
+  }
+
   _loadPano(key) {
     if (this.panos[key]) return Promise.resolve(this.panos[key]);
     this._loading = this._loading || {};
@@ -557,7 +596,9 @@ function panoSphere(map, haze, cfg, exposure) {
       }`,
     fragmentShader: `uniform sampler2D tMap; uniform vec3 uHaze; varying vec3 vDir; varying vec3 vPos; varying float vGr; varying float vRoom;
       uniform sampler2D tDet; uniform float uDetTile; uniform float uDetK;
+      #ifndef PANO_SIMPLE
       ${STOCHASTIC_GLSL}
+      #endif
       uniform vec2 uHalf; uniform sampler2D tSoil; uniform float uSoilTile; uniform float uSoilK; uniform float uSite; uniform float uEdge;
       float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(gHash(i), gHash(i + vec2(1, 0)), f.x), mix(gHash(i + vec2(0, 1)), gHash(i + vec2(1, 1)), f.x), f.y); }
@@ -583,6 +624,7 @@ function panoSphere(map, haze, cfg, exposure) {
         // covers many pixels one way (smin: texels per pixel the thin way) — smeared streaks: there the place's own ground
         // texture, sharp, in the photo's own colours (the photo much blurred: its paths, its shadows, its hue stay). Not on
         // water (bluish): water is smooth anyway)
+        #ifndef PANO_SIMPLE
         if (vGr > 0.5 && uDetK > 0.0) {
           vec2 tx = gx * vec2(4096.0, 2048.0), ty = gy * vec2(4096.0, 2048.0);
           float a = dot(tx, tx), b = dot(tx, ty), cc = dot(ty, ty);
@@ -601,6 +643,7 @@ function panoSphere(map, haze, cfg, exposure) {
           float rip = gNoise(wq * vec2(1.3, 3.1)) * 0.5 + gNoise(wq * vec2(3.7, 7.9) + 3.1) * 0.3 + gNoise(wq * vec2(9.0, 17.0) + 7.7) * 0.2;
           c = mix(c, hueB * (0.86 + 0.3 * rip), mag * wet * uDetK);
         }
+        #endif
         // (round the plot, on the ground: the site's own soil trodden out over the place's ground — a wide ragged margin,
         // patchy, thinning out; and it takes on the place's own colour as it goes (the soil's grain, the photo's hue and
         // light): no line where the plot ends, no band, whichever way the camera looks)
