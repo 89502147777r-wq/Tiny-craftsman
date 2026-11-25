@@ -15,20 +15,26 @@ import { seedProps } from '../tools/sitePropTool.js';
 // the HDRI (1k) for the light. R — how far off the panorama stands (its sphere round the
 // plot, so it gets smaller with the plot as the camera draws back: the buildings, the trees
 // keep their size next to the house); ground — the ground round the plot (null: the plot's
-// own soil), going over into the photo's own ground further off.
+// own soil), going over into the photo's own ground further off. foot — where, looking along the direction θ = atan2(z, x)
+// (degrees, as the photo's columns), the photo's ground ends and what stands on it begins (m from its camera: a fence, a
+// wall, a pallet, trees; open water and fields — far): read off the photo (its rows below the horizon against the distance
+// they show from 1.7 m). Nearer than that the photo is laid flat; from there up it stands (panoShape) — laid flat, a fence
+// ran out from up high in long smeared streaks (the owner's screenshot, build 336). Nearer is safer than farther: a strip of
+// ground standing is hardly seen; the foot of a fence laid flat is.
 export const PANOS = {
-  site: { name: 'Стройплощадка 360°', id: 'construction_yard', R: 45, ground: null },
-  beach: { name: 'У моря', id: 'spiaggia_di_mondello', R: 120, ground: 'coast_sand_01', tile: 2.5 },
-  lake: { name: 'У озера', id: 'lakeside', R: 90, ground: 'coast_sand_01', tile: 2.5 },
-  forest: { name: 'В лесу', id: 'forest_slope', R: 35, ground: 'forest_leaves_04', tile: 2 },
-  meadow: { name: 'Луг', id: 'meadow_2', R: 45, ground: 'leafy_grass', tile: 2 },
-  alps: { name: 'Горы', id: 'alps_field', R: 90, ground: 'leafy_grass', tile: 2 },
+  site: { name: 'Стройплощадка 360°', id: 'construction_yard', R: 45, ground: null,
+    foot: [[-180, 13], [-152, 13], [-145, 16], [-128, 16], [-122, 19], [-100, 18], [-92, 15], [-60, 14], [-20, 15], [-5, 15], [5, 11], [20, 11], [28, 9.5], [60, 9.5], [68, 9], [138, 9], [146, 12], [155, 13]] },
+  beach: { name: 'У моря', id: 'spiaggia_di_mondello', R: 120, far: 300, ground: 'coast_sand_01', tile: 2.5,
+    foot: [[-180, 270], [-97, 270], [-85, 40], [100, 40], [114, 270]] },
+  lake: { name: 'У озера', id: 'lakeside', R: 90, far: 300, ground: 'coast_sand_01', tile: 2.5,
+    foot: [[-180, 270], [-120, 270], [-108, 14], [-10, 14], [0, 12], [22, 12], [32, 270]] },
+  forest: { name: 'В лесу', id: 'forest_slope', R: 35, ground: 'forest_leaves_04', tile: 2, foot: [[0, 10]] },
+  meadow: { name: 'Луг', id: 'meadow_2', R: 45, ground: 'leafy_grass', tile: 2, foot: [[0, 16]] },
+  alps: { name: 'Горы', id: 'alps_field', R: 90, far: 300, ground: 'leafy_grass', tile: 2,
+    foot: [[-180, 26], [-106, 26], [-94, 270], [94, 270], [106, 26]] },
 };
 export const isPano = (m) => !!PANOS[m];
 const EYE = 1.7;   // the panoramas were shot about this high (m)
-// how far above the panorama's camera ours is (0 … 1): from up high the photo's ground
-// (a bowl under the plot) would show — haze there
-const HIGH_GLSL = `smoothstep(${(3 * EYE / MODEL_SCALE).toFixed(4)}, ${(14 * EYE / MODEL_SCALE).toFixed(4)}, vUp)`;
 
 export class Backdrop {
   constructor(app) {
@@ -133,6 +139,12 @@ export class Backdrop {
       this.ground.visible = false;
       const g = this.gU; g.uTheme.value = 0; g.uOut.value.set(1e5, 1e5 + 1);
       const U = P.sky?.material.uniforms; if (U) { U.uLow.value = 0; U.tSoil.value = app.tex.top.diff; U.uSite.value = mode === 'site' ? 1 : 0; }
+      // (the grain over the photo's far ground seen from up high: the place's own ground texture — the site's, its soil)
+      if (U) {
+        const cfg = PANOS[mode];
+        if (cfg.ground) this._groundTex(cfg.ground).then((t) => { if (this.mode === mode) { U.tDet.value = t.diff; U.uDetTile.value = MODEL_SCALE / cfg.tile; U.uDetK.value = 1; } });
+        else { U.tDet.value = app.tex.top.diff; U.uDetTile.value = 1 / SOIL_TILE; U.uDetK.value = 1; }
+      }
       { const tu = app.terrainMat?.userData?.uniforms; if (tu?.uSite) { tu.uSite.value = mode === 'site' ? 1 : 0; tu.uHalf.value.set(TRAY.innerX / 2, TRAY.innerZ / 2); } }   // (the plot's ground trodden like a site's)
       seedProps(app);   // (the site furnished, once: the office, the mixer, the pallets … — the finger moves them)
     } else { const g = this.gU; g.uTheme.value = 0; g.uOut.value.set(1e5, 1e5 + 1); const tu = app.terrainMat?.userData?.uniforms; if (tu?.uSite) tu.uSite.value = 0; }   // (the berm of the photo sheet shares this material)
@@ -241,7 +253,7 @@ export class Backdrop {
     t.dispose();
     photo.colorSpace = THREE.SRGBColorSpace; photo.anisotropy = 4; photo.wrapS = THREE.RepeatWrapping; photo.needsUpdate = true;
     P.photo = photo;
-    P.sky = panoSphere(photo, P.haze, cfg.R / MODEL_SCALE, this.app.renderer.toneMappingExposure);
+    P.sky = panoSphere(photo, P.haze, cfg, this.app.renderer.toneMappingExposure);
     P.sky.position.set(0, TRAY.soil + EYE / MODEL_SCALE, 0);
     P.sky.visible = false;
     this.app.scene.add(P.sky);
@@ -446,34 +458,106 @@ function makeWrapSheet(aspect1, aspect2, sample1, sample2) {
   return g;
 }
 
-// The panorama on a sphere of radius R round the plot (centred where its camera stood):
-// each point shows the photo in its direction from the centre — from the centre it is the
-// photo; from elsewhere what is in it stands about R away (so it keeps its size next to
-// what is on the plot). Drawn behind everything. The photo is already tone-mapped: the
-// tone mapping of the picture is undone for it, so it comes out on the screen as it is.
-function panoSphere(map, haze, R, exposure) {
+// The panorama round the plot (centred where its camera stood, EYE over the ground): each point shows the photo in its
+// direction from that camera (attribute aDir) — the photo's ground laid flat on the ground out to where things stand on it
+// (cfg.foot), what stands there upright (a wall all round), leaning back as it rises to a sphere of radius R (the sky, the
+// hills stay far). From its camera it is the photo; from elsewhere what is in it keeps its place and size. Drawn behind
+// everything. The photo is already tone-mapped: the tone mapping of the picture is undone for it, so it comes out on the
+// screen as it is.
+//   Where the photo's ground ends inside the plot (or just past it: the site's yard is smaller than our plot) the wall is
+// set back to the plot's edge + MARGIN: the ground and the wall there scaled up about the photo's ground point (the
+// fence keeps its shape, stands on the ground, a little larger), going over into the true directions above the horizon.
+export const PANO_MARGIN = 5;   // m past the plot's edge, at the least (the trodden soil's ragged edge narrows to end before it: aRoom)
+export function panoShape(cfg) {
+  const S = MODEL_SCALE, E = EYE / S, R0 = Math.max(cfg.R, cfg.far || 0) / S, N = 512;   // (far: open water, a valley — the far shore, the hills stand that far off: from up high a straight line, not bent where the wall comes nearer)
+  const HX = TRAY.innerX / 2, HZ = TRAY.innerZ / 2, M = PANO_MARGIN / S, cap = R0 * 0.9;
+  const knots = (cfg.foot || [[0, 36]]).map(([t, d]) => [t, Math.log(Math.min(d / S, cap))]);
+  const at = (deg) => {   // (the knots, circular, linear in log distance)
+    if (knots.length === 1) return knots[0][1];
+    const k = knots.length;
+    for (let i = 0; i < k; i++) {
+      const [t0, v0] = knots[i], [t1r, v1] = knots[(i + 1) % k], t1 = i + 1 < k ? t1r : t1r + 360;
+      let x = deg; if (x < t0) x += 360;
+      if (x >= t0 && x <= t1) return v0 + (v1 - v0) * (x - t0) / Math.max(1e-6, t1 - t0);
+    }
+    return knots[0][1];
+  };
+  const blur = (a, sd) => {   // (circular gaussian, sd in columns)
+    const r = Math.ceil(sd * 3), w = []; let ws = 0;
+    for (let j = -r; j <= r; j++) { const v = Math.exp(-j * j / (2 * sd * sd)); w.push(v); ws += v; }
+    return a.map((_, i) => { let t = 0; for (let j = -r; j <= r; j++) t += a[(i + j + N) % N] * w[j + r]; return t / ws; });
+  };
+  const th = [], foot = [], wall = [];
+  for (let i = 0; i <= N; i++) th.push(-Math.PI + 2 * Math.PI * i / N);
+  let lf = [], lw = [];
+  for (let i = 0; i < N; i++) lf.push(at(th[i] * 180 / Math.PI));
+  // (smoothed only towards safety: the foot never farther than read off the photo — a min filter first; the wall never
+  // nearer than the plot's edge + margin — a max filter first)
+  const filt = (a, r, f) => a.map((_, i) => { let v = a[i]; for (let j = -r; j <= r; j++) v = f(v, a[(i + j + N) % N]); return v; });
+  lf = blur(filt(lf, Math.ceil(N / 360 * 16), Math.min), N / 360 * 6);   // (wide: from a near fence out to open water a gentle turn — a sharp one, seen from aside, drew out one column of the photo into a smeared sheet)
+  for (let i = 0; i < N; i++) {
+    const c = Math.abs(Math.cos(th[i])), s = Math.abs(Math.sin(th[i]));
+    const plot = Math.min(c > 1e-6 ? HX / c : 1e9, s > 1e-6 ? HZ / s : 1e9) + M;
+    lw.push(Math.log(Math.min(plot, cap)));
+  }
+  lw = blur(filt(lw, Math.ceil(N / 360 * 12), Math.max), N / 360 * 4);   // (the plot's edge + margin, its corners rounded outwards)
+  // (the wall stands at the photo's own foot, or set back past the plot: a fence nearer than that a little larger)
+  for (let i = 0; i < N; i++) { foot.push(Math.exp(lf[i])); wall.push(Math.max(Math.exp(lw[i]), Math.exp(lf[i]))); }
+  foot.push(foot[0]); wall.push(wall[0]);
+  const pos = [], dir = [], gr = [], room = [], idx = [];
+  const GROUND = [0, 0.15, 0.3, 0.45, 0.6, 0.72, 0.82, 0.9, 0.96, 1];
+  const NB = 6, NA = 56, BLEND = 12 * Math.PI / 180;
+  const rows = GROUND.length + NB + NA;
+  for (let i = 0; i <= N; i++) {
+    const t = th[i], cx = Math.cos(t), sz = Math.sin(t), D = foot[i], k = wall[i] / D;
+    const scaled = (x, y, z) => [x * k, -E + (y + E) * k, z * k];   // (about the photo's ground point under its camera)
+    const ex = Math.abs(cx) > 1e-6 ? HX / Math.abs(cx) : 1e9, ez = Math.abs(sz) > 1e-6 ? HZ / Math.abs(sz) : 1e9;
+    const rm = Math.max(0.5 / S, wall[i] - Math.min(ex, ez) - 0.5 / S);   // (the ground's room past the plot's edge before the wall)
+    for (const f of GROUND) { const h = D * f; pos.push(...scaled(h * cx, -E, h * sz)); dir.push(h * cx, -E, h * sz); gr.push(1); room.push(rm); }
+    const pf = -Math.atan(E / D);
+    for (let j = 1; j <= NB; j++) { const y = D * Math.tan(pf * (1 - j / NB)); pos.push(...scaled(D * cx, y, D * sz)); dir.push(D * cx, y, D * sz); gr.push(0); room.push(rm); }
+    for (let j = 1; j <= NA; j++) {
+      const ph = Math.PI / 2 * Math.pow(j / NA, 1.6) * 0.9999, cp = Math.cos(ph), sp = Math.sin(ph);
+      const d = [cp * cx, sp, cp * sz];
+      const H = wall[i] + (R0 - wall[i]) * smooth(0.45, 0.95, sp);   // (upright up to ~27°: a block of flats, a tree near by stay straight from aside, not bent back)
+      let r = H / Math.max(cp, 1e-4); if (r > R0) r = R0;
+      const pr = d.map((v) => v * r);
+      const b = smooth(0, BLEND, ph);
+      if (b < 1) { const ps = scaled(D * cx, D * Math.tan(ph), D * sz); pos.push(...ps.map((v, n) => v + (pr[n] - v) * b)); dir.push(D * cx, D * Math.tan(ph), D * sz); }
+      else { pos.push(...pr); dir.push(...pr); }
+      gr.push(0); room.push(rm);
+    }
+  }
+  for (let i = 0; i < N; i++) for (let j = 0; j < rows - 1; j++) {
+    const a = i * rows + j, b = a + 1, c = a + rows, d = c + 1;
+    idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aDir', new THREE.Float32BufferAttribute(dir, 3));
+  g.setAttribute('aGr', new THREE.Float32BufferAttribute(gr, 1));
+  g.setAttribute('aRoom', new THREE.Float32BufferAttribute(room, 1));
+  g.setIndex(idx);
+  g.userData = { foot, wall, N };
+  return g;
+}
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+function panoSphere(map, haze, cfg, exposure) {
+  const R = cfg.R / MODEL_SCALE;
   const m = new THREE.ShaderMaterial({
     // the time of day and the weather (sky.js): the light on the place, dusk, night, rain
-    uniforms: { tMap: { value: map }, uHaze: { value: haze }, uLow: { value: 0 }, uEye: { value: EYE / MODEL_SCALE }, uHalf: { value: new THREE.Vector2(TRAY.innerX / 2, TRAY.innerZ / 2) },
-      tSoil: { value: null }, uSoilTile: { value: 1 / SOIL_TILE }, uSoilK: { value: 1.75 }, uSite: { value: 0 }, uEdge: { value: 7 / MODEL_SCALE }, uFlat: { value: Math.min(R * 0.9, 36 / MODEL_SCALE) }, uDim: { value: new THREE.Color(1, 1, 1) }, uNight: { value: 0 }, uDusk: { value: 0 }, uOver: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) } },
-    // the photo's own ground below its horizon laid flat onto the ground (its camera stood EYE over it): the place's sand,
-    // grass, yard round the plot in true perspective as the camera moves — not a disc of other ground fading into the photo
-    vertexShader: `varying vec3 vDir; varying float vUp; varying float vGr; uniform float uEye; uniform float uFlat;
+    uniforms: { tMap: { value: map }, uHaze: { value: haze }, uLow: { value: 0 }, uHalf: { value: new THREE.Vector2(TRAY.innerX / 2, TRAY.innerZ / 2) },
+      tSoil: { value: null }, uSoilTile: { value: 1 / SOIL_TILE }, uSoilK: { value: 1.75 }, uSite: { value: 0 }, uEdge: { value: 7 / MODEL_SCALE }, uDim: { value: new THREE.Color(1, 1, 1) }, uNight: { value: 0 }, uDusk: { value: 0 }, uOver: { value: 0 }, uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      tDet: { value: null }, uDetTile: { value: 1 }, uDetK: { value: 0 } },
+    vertexShader: `attribute vec3 aDir; attribute float aGr; attribute float aRoom; varying vec3 vDir; varying vec3 vPos; varying float vGr; varying float vRoom;
       void main() {
-        vec3 p = position, d = normalize(position);
-        vGr = 0.0;
-        // (the photo's ground lies flat only near the plot — out to uFlat; what the photo shows farther than that — a bank,
-        // bushes, trunks, the far shore — stands upright there, as it stood: laid flat it ran out in long streaks, and any
-        // blur over them was a smeared band. The standing part leans back to the far sphere as it rises: the sky, the hills
-        // stay far)
-        float hl = max(length(d.xz), 1e-5), R0 = length(position);
-        if (d.y < -0.002 && uEye / -d.y * hl <= uFlat) { p = d * (uEye / -d.y); vGr = 1.0; }
-        else { float Dw = mix(uFlat, R0, smoothstep(0.0, 0.55, d.y)); p = d * (Dw / hl); if (length(p) > R0) p = d * R0; }
-        vDir = p;
-        vUp = cameraPosition.y - modelMatrix[3].y;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        vDir = aDir; vPos = position; vGr = aGr; vRoom = aRoom;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }`,
-    fragmentShader: `uniform sampler2D tMap; uniform vec3 uHaze; varying vec3 vDir; varying float vUp; varying float vGr;
+    fragmentShader: `uniform sampler2D tMap; uniform vec3 uHaze; varying vec3 vDir; varying vec3 vPos; varying float vGr; varying float vRoom;
+      uniform sampler2D tDet; uniform float uDetTile; uniform float uDetK;
+      ${STOCHASTIC_GLSL}
       uniform vec2 uHalf; uniform sampler2D tSoil; uniform float uSoilTile; uniform float uSoilK; uniform float uSite; uniform float uEdge;
       float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(gHash(i), gHash(i + vec2(1, 0)), f.x), mix(gHash(i + vec2(0, 1)), gHash(i + vec2(1, 1)), f.x), f.y); }
@@ -494,24 +578,36 @@ function panoSphere(map, haze, R, exposure) {
         vec2 gx = dFdx(uv), gy = dFdy(uv);
         gx.x -= floor(gx.x + 0.5); gy.x -= floor(gy.x + 0.5);
         vec3 c = unACES(textureGrad(tMap, uv, gx, gy).rgb);
-        // (the photo's own ground, laid flat: seen from about its camera's height it is the photo itself — sharp right up to
-        // the horizon, no seam with what stands over it. A blurred look-up used to stand in for all of it beyond a few
-        // metres: a dark smeared band under the trees (the owner's screenshot). Only from well above the photo's eye, where
-        // the far ground is stretched many times over, is it softened — a little, and only far off)
-        if (vGr > 0.5) {
-          float high = ${HIGH_GLSL}, far = 1.0 - smoothstep(0.03, 0.14, -d.y);
-          vec3 cb = unACES(textureGrad(tMap, uv, gx * 6.0, gy * 6.0).rgb);
-          c = mix(c, cb, high * far * 0.8);
+        // (the photo's own ground, laid flat, stays the photo where it is seen about as its camera saw it — sharp, no blur
+        // over it (a blur was the smeared band of the owner's screenshots). Seen from well above its camera, one texel of it
+        // covers many pixels one way (smin: texels per pixel the thin way) — smeared streaks: there the place's own ground
+        // texture, sharp, in the photo's own colours (the photo much blurred: its paths, its shadows, its hue stay). Not on
+        // water (bluish): water is smooth anyway)
+        if (vGr > 0.5 && uDetK > 0.0) {
+          vec2 tx = gx * vec2(4096.0, 2048.0), ty = gy * vec2(4096.0, 2048.0);
+          float a = dot(tx, tx), b = dot(tx, ty), cc = dot(ty, ty);
+          float smin = sqrt(max(0.5 * (a + cc - sqrt((a - cc) * (a - cc) + 4.0 * b * b)), 0.0));
+          vec3 hueB = unACES(textureGrad(tMap, uv, vec2(0.012, 0.0), vec2(0.0, 0.012)).rgb);
+          float mag = smoothstep(0.75, 0.3, smin), wet = smoothstep(0.0, 0.08, hueB.b - hueB.r);
+          float w = mag * (1.0 - wet) * uDetK;
+          vec2 dq = vPos.xz * uDetTile;
+          // (hex-tiled: a field seen from up high shows no repeat of the texture)
+          vec3 dm = textureGrad(tDet, dq, vec2(64.0, 0.0), vec2(0.0, 64.0)).rgb;
+          tcStochSetup(dq); vec3 dt = tcStoch(tDet, dq, vec4(dm, 1.0)).rgb;
+          vec3 g = hueB * clamp(dt / max(dm, vec3(0.02)), 0.3, 2.2);
+          c = mix(c, g, w);
+          // (water seen from up high: its colour, small wavelets over it — not the photo's waves drawn out into streaks)
+          vec2 wq = vPos.xz * ${(MODEL_SCALE).toFixed(3)};
+          float rip = gNoise(wq * vec2(1.3, 3.1)) * 0.5 + gNoise(wq * vec2(3.7, 7.9) + 3.1) * 0.3 + gNoise(wq * vec2(9.0, 17.0) + 7.7) * 0.2;
+          c = mix(c, hueB * (0.86 + 0.3 * rip), mag * wet * uDetK);
         }
-        // seen from high up the photo's ground below its horizon is a bowl: haze there
-        c = mix(c, uHaze, smoothstep(0.0, -0.12, d.y) * ${HIGH_GLSL} * (1.0 - vGr));
         // (round the plot, on the ground: the site's own soil trodden out over the place's ground — a wide ragged margin,
         // patchy, thinning out; and it takes on the place's own colour as it goes (the soil's grain, the photo's hue and
         // light): no line where the plot ends, no band, whichever way the camera looks)
         if (vGr > 0.5) {
-          vec2 q = vDir.xz; float e = max(abs(q.x) - uHalf.x, abs(q.y) - uHalf.y);
+          vec2 q = vPos.xz; float e = max(abs(q.x) - uHalf.x, abs(q.y) - uHalf.y);
           float n = gNoise(q * 2.3) * 0.45 + gNoise(q * 7.0) * 0.3 + gNoise(q * 23.0) * 0.17 + gNoise(q * 71.0) * 0.08;
-          float u = clamp(e / uEdge, 0.0, 1.0);
+          float u = clamp(e / min(uEdge, vRoom), 0.0, 1.0);   // (it ends before the wall's foot)
           float k = 1.0 - smoothstep(0.0, 1.0, u * 0.75 + (n - 0.5) * 1.5 * u + u * u * 0.5);
           vec3 soil = texture2D(tSoil, q * uSoilTile).rgb;
           float l = dot(soil, vec3(0.3, 0.59, 0.11)); soil = mix(soil, mix(soil, l * vec3(1.02, 0.9, 0.72), 0.42) * 0.88, uSite) * uSoilK;
@@ -548,7 +644,7 @@ function panoSphere(map, haze, R, exposure) {
       }`,
     side: THREE.DoubleSide, depthWrite: false, depthTest: false, toneMapped: true,
   });
-  const s = new THREE.Mesh(new THREE.SphereGeometry(R, 160, 96), m);
+  const s = new THREE.Mesh(panoShape(cfg), m);
   s.renderOrder = -100; s.frustumCulled = false;
   return s;
 }
