@@ -2208,8 +2208,19 @@ if (want("2s")) {
     // (no global variable handed to a function's «out» parameter: on an iPhone (Metal) such a program does not build — the panorama
     // went black, build 339's note on the owner's screen)
     { const { STOCHASTIC_GLSL } = await import('/src/render/stochastic.js'); out.outGlobal = /tcTriGrid\([^)]*\btcW\b/.test(STOCHASTIC_GLSL); }
+    // (the camera drawn back as far as it goes, low, from the plot's edge, every way round: never out past the wall the photo
+    // stands on — outside it the plot was a mound and the photo blocks of colour, the owner's screenshots on 340)
+    { await tc.setBackdrop('site'); const rig = tc.rig, l = rig.limits, wall = tc.backdrop.panos.site.sky.geometry.userData, S = 9000 / 860; let out1 = 0, worst = -1e9;
+      const upd = rig.update.bind(rig);
+      for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2;
+        rig.goal.target.set(Math.sign(Math.cos(a)) * l.boxX, 0.1, Math.sign(Math.sin(a)) * l.boxZ); rig.goal.yaw = a; rig.goal.pitch = 0.1; rig.goal.dist = l.maxDist;
+        for (let i = 0; i < 30; i++) upd(0.2);
+        const c = tc.camera.position, h = Math.hypot(c.x, c.z), th = Math.atan2(c.z, c.x);
+        const f = (th + Math.PI) / (2 * Math.PI) * wall.N, w = wall.wall[Math.floor(f) % wall.N];
+        worst = Math.max(worst, (h - w) * S); if (h > w - 1.5 / S) out1++; }
+      out.cam = { out: out1, worst: +worst.toFixed(2) }; }
     // (the simple program — the fallback where the full one does not build, as on the owner's phone — builds too; no note shown here)
-    { const sky = tc.backdrop.panos.alps.sky, m = sky.material, gl = tc.renderer.getContext();
+    { const sky = tc.backdrop.panos.site.sky, m = sky.material, gl = tc.renderer.getContext();
       m.defines = { ...(m.defines || {}), PANO_SIMPLE: 1 }; m.needsUpdate = true; tc.renderer.compile(sky, tc.camera, tc.scene);
       const prog = tc.renderer.properties.get(m).currentProgram?.program;
       out.simple = !!prog && !!gl.getProgramParameter(prog, gl.LINK_STATUS); out.note = !!document.getElementById('pano-note'); out.err = tc.panoError || null; }
@@ -2220,6 +2231,7 @@ if (want("2s")) {
     check(`surroundings «${k}»: the photo's ground flat out to its wall; the wall past the plot's edge + margin, up from the ground's end, upright to the horizon; what stands in the photo on the wall`,
       r && r.inPlot === 0 && r.gap === 0 && r.flat === 0 && r.upright === 0 && r.far === 0 && r.standsAt === 0 && o.places[k], JSON.stringify(r));
   }
+  check('surroundings: the camera drawn back as far as it goes never leaves the wall round the plot (≥ 1,5 m inside)', o.cam && o.cam.out === 0, JSON.stringify(o.cam));
   check('surroundings: every place\'s program builds (no note on the screen); the simple fallback builds too; no global as an out argument (Metal)', o.simple && !o.note && !o.err && !o.outGlobal, JSON.stringify({ simple: o.simple, note: o.note, err: o.err, outGlobal: o.outGlobal }));
   check('surroundings: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
