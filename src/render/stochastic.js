@@ -28,8 +28,11 @@ export const STOCHASTIC_GLSL = /* glsl */ `
   vec3 tcW; vec2 tcO1, tcO2, tcO3; float tcCell = 0.6;
   // call once per fragment with the base UV
   void tcStochSetup(vec2 uv) {
-    vec2 v1, v2, v3;
-    tcTriGrid(uv / tcCell, tcW, v1, v2, v3);
+    // (into a local, then the global: a global as an «out» argument does not build on iPhones — Metal: «reference to type
+    // 'thread float3' could not bind to an lvalue of type '__metal_generic float3'», the owner's screenshot, build 339)
+    vec2 v1, v2, v3; vec3 w0;
+    tcTriGrid(uv / tcCell, w0, v1, v2, v3);
+    tcW = w0;
     tcO1 = tcHash2(v1) * 7.31; tcO2 = tcHash2(v2) * 7.31; tcO3 = tcHash2(v3) * 7.31;
     vec3 w = tcW * tcW;
     tcW = w / (w.x + w.y + w.z);
