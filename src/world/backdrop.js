@@ -145,6 +145,10 @@ export class Backdrop {
       const Rm = pano ? PANOS[mode].R / MODEL_SCALE : Infinity;
       // (in a panorama: out over its ground to 40 % of its radius, never out of its sphere)
       lim.maxDist = pano ? Math.min(10, Rm * 0.7) : 5; lim.boxX = pano ? Math.max(Rm * 0.4, TRAY.innerX / 2) : 2.0; lim.boxZ = pano ? Math.max(Rm * 0.4, TRAY.innerZ / 2) : 1.6; lim.sphere = pano ? Rm * 0.85 : 0;
+      // (the camera stays inside the wall the photo stands on, 2 m short of it, whichever way it looks from)
+      lim.wallR = null;
+      if (pano && P?.sky) { const { wall, N } = P.sky.geometry.userData, m = 2 / MODEL_SCALE;
+        lim.wallR = (th) => { const f = ((th + Math.PI) / (2 * Math.PI)) * N, i = Math.floor(f) % N, t = f - Math.floor(f); return Math.max(0.2, wall[i] * (1 - t) + wall[(i + 1) % N] * t - m); }; }
       app.rig.goal.dist = Math.min(app.rig.goal.dist, lim.maxDist); app.rig.clampTarget();
     }
     if (pano) {

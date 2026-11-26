@@ -81,6 +81,9 @@ export class CameraRig {
     cam.position.y = Math.max(cam.position.y, 0.012);
     const l = this.limits, R = Math.hypot(cam.position.x, cam.position.y, cam.position.z);
     if (l.sphere && R > l.sphere) cam.position.multiplyScalar(l.sphere / R);
+    // (and never out past the panorama's wall round the plot (backdrop.js, panoShape): seen from outside, the plot was a mound
+    // and the photo blocks of colour — the owner's screenshots, build 340)
+    if (l.wallR) { const h = Math.hypot(cam.position.x, cam.position.z), w = l.wallR(Math.atan2(cam.position.z, cam.position.x)); if (h > w) { cam.position.x *= w / h; cam.position.z *= w / h; } }
     const look = this.target.clone();
     if (this.shake) {
       const t = this.t, a = this.dist * 0.0028;
