@@ -716,7 +716,7 @@ export class MachineTool {
       if (kind === 'truck') this._exitSigns(true);
       app.rig.goal.dist = R(kind === 'truck' ? 14 : 10); app.rig.goal.pitch = 0.5;
       app.sfx.play('car_door', { vol: 0.8 });
-      app.sfx.scrapeStart('screed'); app.sfx.scrapeLevel(0.15);
+      app.sfx.scrapeStart('screed'); app.sfx.scrapeLevel(0);   // (silent until the bucket works the ground: it scraped all the time, over the diesel — the owner)
       app.ui?.toast(kind === 'excavator' ? 'Вы в экскаваторе. Копание: левый джойстик — поворот башни и рукоять, правый — стрела и ковш. Кнопка «Ход» — ехать на гусеницах' : kind === 'truck' ? 'Вы в самосвале: левый джойстик — газ и руль, правый вверх/вниз — кузов. Вывоз грунта — выезжайте за край участка (стрелка «Вывоз»)' : 'Вы в погрузчике: левый джойстик — езда, правый: вверх/вниз — стрела, влево/вправо — ковш');
       app.ui?.refresh();
     });
@@ -991,7 +991,7 @@ export class MachineTool {
       // the body up: the soil runs out over the tailgate, a heap behind it
       this._tipOut(dt);
       this._offPlot();
-      app.sfx.scrapeLevel(0.1 + Math.min(0.4, Math.abs(this.v) / R(4) * 0.4));
+      app.sfx.scrapeLevel(0);   // (a truck going has no bucket on the ground: its engine only)
     } else {
       // the skid steer: on the spot or on, the left stick forward / round; the right one the arms (up /
       // down) and the bucket (left curls it back, right tips it)
@@ -1174,7 +1174,7 @@ export class MachineTool {
       { const natV = ((g.natCut || 0) - nat0) * t.cellArea * MODEL_SCALE ** 3; if (natV > 0) this._drag = Math.min(1, Math.max(this._drag, natV / Math.max(dt, 1e-3) / 0.1)); }
       L.soil.material.setMix?.(this._mixW());
       L.load = Math.min(1, g.load / this.cap);
-      app.sfx.scrapeLevel(0.15 + Math.min(0.5, Math.abs(this.v) / SPEED * 0.3 + L.load * 0.2));
+      app.sfx.scrapeLevel(this._drag > 0 ? 0.15 + Math.min(0.5, Math.abs(this.v) / SPEED * 0.3 + L.load * 0.2) : 0);   // (only the bucket cutting / pushing the soil scrapes)
       // (the grip: what is in front of the bucket, how full it is, how firm the ground it cuts)
       {
         let slip = 0;

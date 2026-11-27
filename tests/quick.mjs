@@ -2351,6 +2351,34 @@ if (want("2v")) {
     await browser.close();
   }
 }
+// ---- 2w. The owner, 2026-11-27: «после отделки фасада панелями со стен торчат кронштейны» (the bracket's slide reached 205 mm out,
+// the panels stand at 167–177: it came through them) and «в режиме техника постоянно скрежет вместо дизеля» (the scrape loop started
+// at sitting in and ran all the time, over the engine) ----
+if (want("2w")) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, mt = tc.machineTool, o = {};
+    const { bracketGeo, OFF } = await import('/src/world/facade.js');
+    const G = bracketGeo(); let z = 0; for (const g of [G.alu, G.dark]) { g.computeBoundingBox(); z = Math.max(z, g.boundingBox.max.z); }
+    o.brOut = +(z * 1000 * 10.4651).toFixed(1); o.rail = +(OFF.vent0 * 1000 * 10.4651).toFixed(1);
+    // (the sounds: what each loop is asked for, every frame)
+    const S = tc.sfx, last = {}, f = S.loop.bind(S); S.loop = (id, n, v, ...a) => { last[id] = [n, +(+v).toFixed(3)]; return f(id, n, v, ...a); };
+    const frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
+    tc.setTool('machine'); await mt.ensure();
+    for (const k of ['loader', 'excavator', 'truck']) {
+      mt.enter(k); for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
+      frames(30); const idle = { scrape: last.scrape?.[1] || 0, eng: last['eng-' + k]?.[1] || 0 };
+      mt.joystick('l', 0, 1); frames(45); mt.joystick('l', 0, 0);   // (driving on, the bucket off the ground)
+      o[k] = { idle, go: last.scrape?.[1] || 0, engGo: last['eng-' + k]?.[1] || 0 };
+      mt.exit(); frames(5);
+    }
+    return o;
+  });
+  check('facade brackets: the bracket ends at the rail, behind the panels — nothing through them', o.brOut < o.rail, JSON.stringify({ brOut: o.brOut, rail: o.rail }));
+  check('machines: sitting in, standing and driving with the bucket off the ground — the diesel heard, no scrape', ['loader', 'excavator', 'truck'].every((k) => o[k].idle.scrape <= 0.004 && o[k].go <= 0.004 && o[k].idle.eng > 0.05), JSON.stringify(o));
+  check('2w: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 if (want("2m")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });

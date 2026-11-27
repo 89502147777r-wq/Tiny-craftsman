@@ -1093,17 +1093,18 @@ let _brGeo = null;
 // a bracket of the subframe (кронштейн), as on site: the foot 50 × 110 × 3 aluminium on a paronite
 // pad (it breaks the cold bridge), dowelled through its slot with a facade anchor; the arm — a web
 // 2,5 mm tapering 80 → 60 mm out to 150 mm, a flange folded along its bottom; on its end the slide
-// (удлинитель) that sets the reach, two rivets through it. → { alu, dark } (local: x along the wall,
+// (удлинитель) that sets the reach, two rivets through it — its end at the rail's face, 4 mm short of the panels (it stood out 205 mm,
+// through them — the owner: «со стен торчат кронштейны»). → { alu, dark } (local: x along the wall,
 // y up, z out of it; the foot on the wall at z = 0)
-function bracketGeo() {
+export function bracketGeo() {
   if (_brGeo) return _brGeo;
   const b = (w, h, d, x, y, z) => new THREE.BoxGeometry(MM(w), MM(h), MM(d)).translate(MM(x), MM(y), MM(z));
   const web = (() => { const sh = new THREE.Shape([new THREE.Vector2(MM(3), MM(-40)), new THREE.Vector2(MM(150), MM(-30)), new THREE.Vector2(MM(150), MM(30)), new THREE.Vector2(MM(3), MM(40))]); const g = new THREE.ExtrudeGeometry(sh, { depth: MM(2.5), bevelEnabled: false }); g.rotateY(-Math.PI / 2); g.translate(MM(1.25), 0, 0); return g.toNonIndexed(); })();
   const cyl = (r, h, x, y, z, rotX = true) => { const g = new THREE.CylinderGeometry(MM(r), MM(r), MM(h), 10); if (rotX) g.rotateX(Math.PI / 2); else g.rotateZ(Math.PI / 2); g.translate(MM(x), MM(y), MM(z)); return g.toNonIndexed(); };
   const ni = (g) => (g.index ? g.toNonIndexed() : g);
   const strip = (g) => { for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k); return g; };
-  const alu = [b(50, 110, 3, 0, 0, 4.5), web, b(16, 2.5, 120, 8, -34, 90), b(2.5, 60, 70, -3, 0, 170)].map(ni).map(strip);
-  const dark = [b(54, 114, 3, 0, 0, 1.5), cyl(9, 2, 0, 18, 7), cyl(6.5, 6, 0, 18, 11), cyl(3.5, 3, -4.5, 12, 150, false), cyl(3.5, 3, -4.5, -12, 150, false)].map(ni).map(strip);
+  const alu = [b(50, 110, 3, 0, 0, 4.5), web, b(16, 2.5, 120, 8, -34, 90), b(2.5, 60, 70, -3, 0, 128)].map(ni).map(strip);
+  const dark = [b(54, 114, 3, 0, 0, 1.5), cyl(9, 2, 0, 18, 7), cyl(6.5, 6, 0, 18, 11), cyl(3.5, 3, -4.5, 12, 140, false), cyl(3.5, 3, -4.5, -12, 140, false)].map(ni).map(strip);
   return (_brGeo = { alu: mergeGeometries(alu), dark: mergeGeometries(dark) });
 }
 // a ventilated facade's corner: a folded aluminium angle 50 × 50 over the panels' ends, coated in
