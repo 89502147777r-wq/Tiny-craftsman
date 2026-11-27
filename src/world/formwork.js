@@ -49,7 +49,7 @@ export class FormworkView {
     const T = MAT.board.t, H = MAT.board.h;
     this.owner = { boards: [], stakes: [], braces: [] };
     for (const r of runs) {
-      const rnd = mulberry32(r.id * 7919);
+      const rnd = mulberry32(r.seed ?? r.id * 7919);   // (the seed: set while the run is put up, so the boards shown then are these ones)
       const [ax, az] = r.a, [bx, bz] = r.b, [nx, nz] = r.n;
       const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
       if (L < 1e-4) continue;
@@ -194,13 +194,17 @@ export function runPieces(r, terrain) {
   if (L < 1e-4) return out;
   const yaw = Math.atan2(-dz, dx), side = r.inside ? -1 : 1;
   const count = Math.max(1, Math.ceil((r.y1 - r.y0) / H - 0.2));
+  // (the same draws, in the same order, as the view: the boards seen while the run goes up are the very boards it shows after —
+  // each its own plank of the photo, not one picture stretched along a stick — the owner, 2026-11-27)
+  const rnd = mulberry32(r.seed ?? (r.id || 0) * 7919);
   for (let k = 0; k < count; k++) {
-    const over = r.inside ? -T : (k % 2 ? 1 : -1) * T * 0.5;
+    const over = r.inside ? -T : (k % 2 ? 1 : -1) * T * 0.5 + rnd() * 0.0006;
     const len = L + T + (r.inside ? over : Math.abs(over));
     const cx = (ax + bx) / 2 + side * nx * (T / 2) + (dx / L) * (r.inside ? 0 : over * 0.5), cz = (az + bz) / 2 + side * nz * (T / 2) + (dz / L) * (r.inside ? 0 : over * 0.5);
     const bottom = r.y0 + k * (H + 0.00004), h = Math.min(H, r.y1 - bottom);
     if (h < H * 0.15) break;
-    out.push({ k: 'board', p: new THREE.Vector3(cx, bottom + h / 2, cz), q: new THREE.Quaternion().setFromEuler(e.set(0, yaw, 0)), s: new THREE.Vector3(len, h, T) });
+    const q = new THREE.Quaternion().setFromEuler(e.set(0, yaw, (rnd() - 0.5) * 0.004)), u = rnd(), v = Math.floor(rnd() * BOARD_ROWS) / BOARD_ROWS + BOARD_IN;
+    out.push({ k: 'board', p: new THREE.Vector3(cx, bottom + h / 2, cz), q, s: new THREE.Vector3(len, h, T), u, v, rep: (len * MODEL_SCALE) / BOARD_TILE });
   }
   const nSt = r.inside ? 0 : Math.max(2, Math.round(L / MAT.stake.step) + 1);
   for (let k = 0; k < nSt; k++) {
@@ -208,7 +212,7 @@ export function runPieces(r, terrain) {
     const x = ax + dx * t + nx * (T + MAT.stake.s / 2), z = az + dz * t + nz * (T + MAT.stake.s / 2);
     const g = terrain.inside(x, z) ? terrain.heightAt(x, z) : r.y0;
     const top = r.y1 + 0.0015 * K, bottom = Math.min(g, r.y0) - 0.008 * K;
-    out.push({ k: 'stake', p: new THREE.Vector3(x, bottom, z), q: new THREE.Quaternion().setFromEuler(e.set(0, yaw, 0)), s: new THREE.Vector3(MAT.stake.s, top - bottom, MAT.stake.s), ground: g });
+    out.push({ k: 'stake', p: new THREE.Vector3(x, bottom, z), q: new THREE.Quaternion().setFromEuler(e.set(0, yaw + (rnd() - 0.5) * 0.05, 0)), s: new THREE.Vector3(MAT.stake.s, top - bottom, MAT.stake.s), ground: g });
     if (k % 2 === 0) {
       const reach = (r.y1 - g) + 0.012 * K;
       const fx = x + nx * reach, fz = z + nz * reach;
@@ -227,6 +231,14 @@ export function runsForEdges(edgeList, y0At, y1) {
   return edgeList.map((e) => ({ type: 'form', a: e.a, b: e.b, n: e.n, y0: y0At(e), y1 }));
 }
 
+// one board on its own (while a run is put up): the view's board material, its plank of the photo as an attribute of every vertex
+export function boardMesh(material, pc) {
+  const g = new THREE.BoxGeometry(1, 1, 1), n = g.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) a.set([pc.u ?? 0.3, pc.v ?? 0, pc.rep ?? 1], i * 3);
+  g.setAttribute('aBoard', new THREE.BufferAttribute(a, 3));
+  const m = new THREE.Mesh(g, material); m.position.copy(pc.p); m.quaternion.copy(pc.q); m.scale.copy(pc.s); m.castShadow = m.receiveShadow = true;
+  return m;
+}
 // the boards' photo (Poly Haven CC0 «Hinoki Planks», 1,89 m: 13 sawn planks ~145 mm, light, with knots): one plank of it per board
 const BOARD_ROWS = 13, BOARD_TILE = 1.89, BOARD_IN = 0.06 / 13, BOARD_H = 0.88 / 13;
 export function makeBoardMaterial(tex) {

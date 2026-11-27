@@ -2389,6 +2389,33 @@ if (want("2w")) {
   check('2w: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
+// ---- 2x. The owner, 2026-11-27: «опалубка сначала собирается некрасивыми палками и только потом превращается в текстурную доску»
+// (while a run went up its boards were boxes in the stakes' material, one picture stretched along each; the view's boards came
+// at the end): the boards put up are the view's own — its material, its plank of the photo, its place — nothing swaps at the end ----
+if (want("2x")) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, t = tc.terrain, F = tc.formTool, FV = tc.formView, o = {};
+    tc.setTool('form');
+    const y1 = t.heightAt(0, 0.1) + 0.04, runs = [F.run([-0.2, 0.1], [0.2, 0.1], [0, 1], y1)];
+    F._fitRuns(runs, true, () => tc.journal.act('formwork', {}, tc.clock, () => { for (const r of runs) tc.objects.add(r); }));
+    const J = tc.physJob, boards = J.parts.filter((m) => Math.abs(m.scale.z - 0.025 / 10.4651) < 1e-7 && m.scale.y > 0.035 / 10.4651);   // (25 mm thick, taller than a brace)
+    o.n = boards.length; o.mat = boards.every((m) => m.material === FV.boards.material);
+    const seen = boards.map((m) => { m.updateMatrix(); const a = m.geometry.attributes.aBoard; return { e: m.matrix.elements.slice(), b: a ? [a.getX(0), a.getY(0), a.getZ(0)] : null }; });
+    for (let i = 0; i < 900 && !J.done; i++) tc.simulate(1 / 30);
+    o.done = J.done; FV.update();
+    const id = tc.objects.all('form').pop()?.id, M = new (tc.camera.matrix.constructor)(), aB = FV.boards.geometry.attributes.aBoard;
+    const view = []; FV.owner.boards.forEach((r, i) => { if (r === id) { FV.boards.getMatrixAt(i, M); view.push({ e: M.elements.slice(), b: [aB.getX(i), aB.getY(i), aB.getZ(i)] }); } });
+    o.view = view.length;
+    // (each board seen while it went up = a board of the view: the same place (≤ 0,5 mm) and the same plank of the photo)
+    const d = (a, b) => Math.max(...a.map((v, k) => Math.abs(v - b[k])));
+    o.worst = +Math.max(...seen.map((s) => Math.min(...view.map((v) => d(s.e, v.e) * 10465 + (s.b && d(s.b, v.b) < 1e-5 ? 0 : 1e6))))).toFixed(3);
+    return o;
+  });
+  check('formwork: the boards put up are the view\'s own boards — its material, its plank, its place; nothing swaps at the end', o.n > 0 && o.mat && o.done && o.view === o.n && o.worst <= 0.5, JSON.stringify(o));
+  check('2x: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 if (want("2m")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
