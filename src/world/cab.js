@@ -95,7 +95,7 @@ function shaded(m, sh0 = SHADE, amb0 = AMB) {
   if (!m || m.transparent || m.userData.shaded) return m; m.userData.shaded = true;
   const prev = m.onBeforeCompile;
   m.onBeforeCompile = (sh, r) => { prev?.call(m, sh, r); sh.uniforms.uShade = sh0; sh.uniforms.uAmb = amb0; sh.fragmentShader = 'uniform float uShade;\nuniform float uAmb;\n' + sh.fragmentShader.replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n  reflectedLight.directDiffuse *= uShade; reflectedLight.directSpecular *= uShade; reflectedLight.indirectDiffuse *= uAmb; reflectedLight.indirectSpecular *= uAmb;'); };
-  m.customProgramCacheKey = () => 'cab-shaded' + (m.userData.glove ? '-glove' : ''); m.needsUpdate = true; return m;
+  m.customProgramCacheKey = () => 'cab-shaded' + (m.userData.glove ? '-glove' : '') + (m.userData.folds ? '-folds' : ''); m.needsUpdate = true; return m;
 }
 export class Cab {
   constructor(app, kind = 'exc') {
@@ -231,7 +231,7 @@ export class Cab {
     box(W, 0.03, rz[0] - C.back, head, 0, C.roof + 0.015, (rz[0] + C.back) / 2, 'roof');
     box(W, 0.03, C.front - rz[1], head, 0, C.roof + 0.015, (C.front + rz[1]) / 2, 'roof');
     for (const [a, b] of [[C.right, rw[0]], [rw[1], C.left]]) box(b - a, 0.03, rz[1] - rz[0], head, (a + b) / 2, C.roof + 0.015, (rz[0] + rz[1]) / 2, 'roof');
-    { const o = new THREE.Mesh(new THREE.PlaneGeometry(rw[1] - rw[0], rz[1] - rz[0]), tint); o.rotation.x = Math.PI / 2; o.position.set(0, C.roof + 0.03, (rz[0] + rz[1]) / 2); G.add(o); }   // (the pane under, its guard over it outside — the realist)
+    { const o = new THREE.Mesh(new THREE.PlaneGeometry(rw[1] - rw[0], rz[1] - rz[0]), new THREE.MeshBasicMaterial({ color: 0x55625c, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide })); o.rotation.x = Math.PI / 2; o.position.set(0, C.roof + 0.03, (rz[0] + rz[1]) / 2); o.name = 'skylight'; G.add(o); }   // (a light green-grey pane, ~60 % through, not shaded with the cab: the sky through it, the guard's bars black on it — the realist, round 2) (the pane under, its guard over it outside — the realist)
     const grid = (w, h) => { const t = meshTex(); t.repeat.set(w / (8 * MESH.cell), h / (8 * MESH.cell)); return t; };
     const meshM = (w, h) => lit({ map: grainTex('#1c1e20', 0.08), alphaMap: grid(w, h), alphaTest: 0.5, roughness: 0.5, side: THREE.DoubleSide });
     { const o = new THREE.Mesh(new THREE.PlaneGeometry(rw[1] - rw[0], rz[1] - rz[0]), meshM(rw[1] - rw[0], rz[1] - rz[0])); o.rotation.x = Math.PI / 2; o.position.set(0, C.roof + 0.06, (rz[0] + rz[1]) / 2); o.name = 'roof-mesh'; G.add(o); }
@@ -312,7 +312,7 @@ export class Cab {
      
       if (mn === 'Material.012') o.material.color.setRGB(0.3, 0.2, 0.13);  } });   // (linear: ×0,6 and ×0,45 in sRGB)
     this.b = bones;
-    if (this.kind === 'skid') this._gloves(man);
+    if (this.kind === 'skid') { this._shirt(man); this._gloves(man); }
     // his size: the model's rest height to 1,8 m
     // (by his bones — the mesh's own box is in other units than the skeleton that moves it: the head's top to a foot, 1,72 m in a 1,8 m man)
     this.group.updateMatrixWorld(true); const top = this.group.worldToLocal((bones.HeadTop_End || bones.Head).getWorldPosition(new V())), ft = this.group.worldToLocal(bones.LeftFoot.getWorldPosition(new V()));   // (in the cab's metres)
@@ -321,6 +321,22 @@ export class Cab {
     this.palm = {}; man.updateMatrixWorld(true); const down = new V(0, -1, 0).applyQuaternion(man.getWorldQuaternion(new Q()));
     for (const k of ['Left', 'Right']) this.palm[k] = down.clone().applyQuaternion(bones[k + 'Hand'].getWorldQuaternion(new Q()).invert());
     this.pose({ l: [0, 0], r: [0, 0] });
+  }
+  // the shirt in the skid steer's cab: darker and matt, soft folds (seen from above it read as a smooth light «ball» — the realist,
+  // round 2); its albedo and the folds' scale kept for the sleeves (_gloves)
+  _shirt(man) {
+    this._shirtAlb = 0.147; this._fold = 40;
+    man.traverse((o) => {
+      if (!o.isMesh || o.material?.name !== 'shirt') return;
+      const m = o.material, g = o.geometry; g.computeBoundingBox(); const h = g.boundingBox.max.y - g.boundingBox.min.y || 1;
+      m.color.setRGB(0.3, 0.3, 0.3); m.roughness = 0.92;   // (×0,49 of its map: ~0,147 linear, ~108 sRGB)
+      this._fold = 2 * Math.PI * 9 / h; const F = this._fold.toFixed(3); m.userData.folds = true;
+      m.onBeforeCompile = (sh) => {
+        sh.vertexShader = 'varying vec3 vFold;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vFold = position;');
+        sh.fragmentShader = 'varying vec3 vFold;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>\n  diffuseColor.rgb *= 0.8 + 0.25 * (0.5 + 0.5 * sin(dot(vFold, vec3(0.3, 1.0, 0.2)) * ${F} + 1.7 * sin(dot(vFold, vec3(1.0, 0.2, 0.6)) * ${F} * 0.7)));`);
+      };
+      m.needsUpdate = true;
+    });
   }
   // grey knitted work gloves (the owner's photo): the skin's vertices that move with the hands and fingers — greyed by vertex colour,
   // grime on the palms and the fingertips
@@ -332,10 +348,10 @@ export class Cab {
       const g = o.geometry, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, hand = o.skeleton.bones.map((b) => /Hand/.test(b.name)), n = si.count, a = new Float32Array(n);
       for (let i = 0; i < n; i++) { let w = 0; for (let j = 0; j < 4; j++) if (hand[si.getComponent(i, j)]) w += sw.getComponent(i, j); a[i] = Math.min(1, Math.max(0, (w - 0.35) / 0.3)); }
       g.setAttribute('aGlove', new THREE.BufferAttribute(a, 1));
-      const m = o.material; m.userData.glove = true;
+      const m = o.material; m.userData.glove = true; const sleeve = /Skin_Arm/.test(m.name), S = this._shirtAlb.toFixed(3), F = this._fold.toFixed(3);
       m.onBeforeCompile = (sh) => {
-        sh.vertexShader = 'attribute float aGlove;\nvarying float vGlove;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vGlove = aGlove;');
-        sh.fragmentShader = 'varying float vGlove;\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n  { float gr = 0.86 + 0.14 * fract(sin(dot(floor(vNormal.xy * 40.0), vec2(12.9898, 78.233))) * 43758.5453); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.30, 0.295, 0.28) * gr, vGlove); }');   // (knitted grey, a little grime)
+        sh.vertexShader = 'attribute float aGlove;\nvarying float vGlove;\nvarying vec3 vFold;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vGlove = aGlove; vFold = position;');
+        sh.fragmentShader = 'varying float vGlove;\nvarying vec3 vFold;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>\n  { float gr = 0.86 + 0.14 * fract(sin(dot(floor(vNormal.xy * 40.0), vec2(12.9898, 78.233))) * 43758.5453); vec3 base = diffuseColor.rgb;${sleeve ? `\n    base = vec3(${S}) * (0.8 + 0.25 * (0.5 + 0.5 * sin(dot(vFold, vec3(0.3, 1.0, 0.2)) * ${F} + 1.7 * sin(dot(vFold, vec3(1.0, 0.2, 0.6)) * ${F} * 0.7))));` : ''}\n    diffuseColor.rgb = mix(base, vec3(0.30, 0.295, 0.28) * gr, vGlove); }`);   // (knitted grey, a little grime; the arm's skin above the glove — the shirt's long sleeve, its grey and folds: no bare forearm — the realist, round 2)
       };
       m.needsUpdate = true;
     });

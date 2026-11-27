@@ -3,7 +3,7 @@ import { Cab, CAB, CAB_SKID } from '../world/cab.js';
 // the skid steer's: its eye in the loader's frame (+x ahead, m): 0,2 behind the cab's middle, 1,89 up — the cab's roof 2,24, its floor 0,74,
 // the door 0,46 ahead, the back window 0,82 behind (the model's own glass and frame there)
 const SKID_EYE = [-0.2, 1.89];
-const SKID_BOX = { x0: CAB_SKID.right - 0.04, x1: CAB_SKID.left + 0.04, y0: CAB_SKID.floor - 0.03, y1: CAB_SKID.roof - 0.005, z0: CAB_SKID.back - 0.06, z1: CAB_SKID.front + 0.22 };   // (forward past the door: the model's cab frame stands out to 0,65 m — a yellow band under the pane)
+const SKID_BOX = { x0: CAB_SKID.right - 0.04, x1: CAB_SKID.left + 0.04, y0: CAB_SKID.floor - 0.03, y1: CAB_SKID.roof + 0.6, z0: CAB_SKID.back - 0.06, z1: CAB_SKID.front + 0.22 };   // (forward past the door: the model's cab frame stands out to 0,65 m — a yellow band under the pane; up through the model's roof: its skylight shows the sky, our headliner is the ceiling — the realist, round 2)
 const CAB_BOX = { x0: CAB.right - 0.005, x1: CAB.left + 0.005, y0: CAB.floor - 0.005, y1: CAB.roof - 0.01, z0: CAB.back - 0.005, z1: CAB.front + 0.005 };   // (to the walls' outer faces and under the floor's top: nothing of the machine shows in a crack between them — the owner: tracks through the floor)
 import { PROPS } from '../world/siteProps.js';
 import { lumpSize, breakLump, LUMP, lumpExtent, lumpThick, pressNeed, chipR } from '../world/lumps.js';
