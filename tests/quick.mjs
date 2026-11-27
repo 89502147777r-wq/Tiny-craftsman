@@ -1585,7 +1585,20 @@ if (want('2i⁰')) {
     o.elbow = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Arm']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm']))));
     // the thumbs: their tips no higher over the hand than the fingers' roots (not up)
     o.thumbUp = ['Left', 'Right'].map((k) => +(L(C.b[k + 'HandThumb4'] || C.b[k + 'HandThumb3']).y - L(C.b[k + 'HandIndex1']).y).toFixed(3));
-    o.feet = ['Left', 'Right'].map((k, i) => +L(C.b[k + 'Foot']).distanceTo(G.worldToLocal(C.pedals[i ? 'r' : 'l'].pv.localToWorld(new V(0, 0.105, 0.05)))).toFixed(3));
+    // (the boots on the floor beside the pedals — the left stick drives: the pedals free, ≥ 30 mm off a sole — the realist)
+    o.feet = ['Left', 'Right'].map((k, i) => +L(C.b[k + 'Foot']).distanceTo(C.feetAt[i ? 'r' : 'l']).toFixed(3));
+    o.pedalGap = Math.min(...['Left', 'Right'].flatMap((k) => ['l', 'r'].map((p) => { const f = L(C.b[k + 'Foot']), q = G.worldToLocal(C.pedals[p].pv.localToWorld(new V(0, 0.01, 0.1))); return Math.abs(f.x - q.x) - 0.045 - 0.05; }))) * 1000 | 0;
+    // (the knees under the lap bar by ≥ 12 cm; the panels standing on the armrests; the grip's top over the fist by 40–60 mm)
+    const bar = G.getObjectByName('lapbar'); bar.geometry.computeBoundingBox(); const barLow = Math.min(...[0, 0.5].map(() => 0)) + (() => { const P = bar.geometry.attributes.position; let lo = 9; for (let i = 0; i < P.count; i++) if (Math.abs(P.getX(i)) < 0.25) lo = Math.min(lo, P.getY(i)); return lo; })();
+    o.kneeGap = +(barLow - Math.max(L(C.b.LeftLeg).y, L(C.b.RightLeg).y)).toFixed(3);
+    o.panelLow = Math.min(...['l', 'r'].map((k) => { const pn = G.getObjectByName('panel-' + k); const b = new (tc.camera.position.constructor === V ? (pn.geometry.boundingBox?.constructor || Object) : Object)(); void b; pn.parent.updateMatrixWorld(true); return G.worldToLocal(pn.parent.localToWorld(new V(0, -0.085, 0))).y; }));
+    o.gripOver = ['l', 'r'].map((k) => +(G.worldToLocal(C.sticks[k].localToWorld(new V(0, C.gripH, 0))).y - Math.max(...['Index1', 'Index2', 'Index3'].map((j) => L(C.b[(k === 'l' ? 'Left' : 'Right') + 'Hand' + j]).y))).toFixed(3));
+    // (the door's pane ~0,6 of the width between the posts)
+    { const gl = G.getObjectByName('door-glass'); gl.geometry.computeBoundingBox(); const bb = gl.geometry.boundingBox; o.pane = +((bb.max.x - bb.min.x) / 0.94).toFixed(2); }
+    // (gloves: the hands' skin grey)
+    { let g = 0; C.man.traverse((m) => { const a = m.isSkinnedMesh && m.geometry.attributes.aGlove; if (a) for (let i = 0; i < a.count; i++) if (a.getX(i) > 0.5) g++; }); o.glove = g; }
+    // (the bucket let down: on the ground, its bottom level, after the entry settles)
+    for (let i = 0; i < 90; i++) tc.simulate(1 / 30); o.arm = +mt.loader.arm.toFixed(3); o.tiltB = +mt.loader.tilt.toFixed(3);
     // travelling: the pedals go with the tracks, the joysticks stay in the middle
     mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(8); const a0 = C.pedals.l.pv.rotation.x; mt.setExcMode('drive'); mt.joystick('l', 0, -1); frames(30); o.pedal = +(C.pedals.l.pv.rotation.x - a0).toFixed(3); o.stickDrive = +Math.abs(C.sticks.l.rotation.x).toFixed(3); mt.joystick('l', 0, 0); frames(20); mt.setExcMode('dig');
     mt.joystick('l', 0, 0); mt.joystick('r', 0, 0);
@@ -2272,7 +2285,7 @@ if (want("2u")) {
     const frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
     tc.setTool('machine'); await mt.ensure(); mt.enter('loader');
     for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
-    mt.loader.place(t, 0, 0, 0); mt.setView('cab'); frames(3); await mt.lcab?.ready; frames(3);
+    mt.loader.place(t, 0, 0, 0); o.goal = [mt.loader.armGoal, mt.loader.tiltGoal]; mt.setView('cab'); frames(3); await mt.lcab?.ready; frames(3);
     const C = mt.lcab, G = C.group, L = (b) => G.worldToLocal(b.getWorldPosition(new V()));
     o.man = !!C.man; o.shown = G.visible; o.mats = [...mt._lcabMats].map((m) => m.name).sort().join(',');
     o.clip = [...mt._lcabMats].every((m) => m.clippingPlanes?.length === 6);
@@ -2280,7 +2293,7 @@ if (want("2u")) {
     o.parts = ['door', 'door-glass', 'seal', 'side-mesh', 'roof-mesh', 'lapbar', 'console', 'armrest', 'panel', 'pedal', 'latch', 'hinge'].filter((n) => !names.has(n));
     // the eye: inside the model's cab (the cab's box between the model's side covers, under its roof)
     const e = mt.loader.root.worldToLocal(tc.camera.position.clone()), S = 9000 / 860; o.eye = [e.x * S, e.y * S, e.z * S].map((v) => +v.toFixed(2));
-    const grip = (k) => G.worldToLocal(C.sticks[k].localToWorld(new V(0, C.gripH * 0.92, 0)));
+    const grip = (k) => G.worldToLocal(C.sticks[k].localToWorld(new V(0, C.gripH * C.gripAt, 0)));
     const hands = () => ['l', 'r'].map((k) => +L(C.b[(k === 'l' ? 'Left' : 'Right') + 'Hand']).distanceTo(grip(k)).toFixed(3));
     o.handRest = hands(); mt.joystick('l', 0, -1); mt.joystick('r', 1, 0); frames(3); o.handFull = hands(); o.tilt = +Math.abs(C.sticks.l.rotation.x).toFixed(3);
     // (the arms alive: the wrist near straight, the elbow bent ~90–115°, as in the excavator's cab — the realist)
@@ -2288,7 +2301,20 @@ if (want("2u")) {
     o.wrist = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'HandIndex1']).sub(L(C.b[k + 'Hand']))));
     o.elbow = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Arm']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm']))));
     mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(6);
-    o.feet = ['Left', 'Right'].map((k, i) => +L(C.b[k + 'Foot']).distanceTo(G.worldToLocal(C.pedals[i ? 'r' : 'l'].pv.localToWorld(new V(0, 0.105, 0.05)))).toFixed(3));
+    // (the boots on the floor beside the pedals — the left stick drives: the pedals free, ≥ 30 mm off a sole — the realist)
+    o.feet = ['Left', 'Right'].map((k, i) => +L(C.b[k + 'Foot']).distanceTo(C.feetAt[i ? 'r' : 'l']).toFixed(3));
+    o.pedalGap = Math.min(...['Left', 'Right'].flatMap((k) => ['l', 'r'].map((p) => { const f = L(C.b[k + 'Foot']), q = G.worldToLocal(C.pedals[p].pv.localToWorld(new V(0, 0.01, 0.1))); return Math.abs(f.x - q.x) - 0.045 - 0.05; }))) * 1000 | 0;
+    // (the knees under the lap bar by ≥ 12 cm; the panels standing on the armrests; the grip's top over the fist by 40–60 mm)
+    const bar = G.getObjectByName('lapbar'); bar.geometry.computeBoundingBox(); const barLow = Math.min(...[0, 0.5].map(() => 0)) + (() => { const P = bar.geometry.attributes.position; let lo = 9; for (let i = 0; i < P.count; i++) if (Math.abs(P.getX(i)) < 0.25) lo = Math.min(lo, P.getY(i)); return lo; })();
+    o.kneeGap = +(barLow - Math.max(L(C.b.LeftLeg).y, L(C.b.RightLeg).y)).toFixed(3);
+    o.panelLow = Math.min(...['l', 'r'].map((k) => { const pn = G.getObjectByName('panel-' + k); const b = new (tc.camera.position.constructor === V ? (pn.geometry.boundingBox?.constructor || Object) : Object)(); void b; pn.parent.updateMatrixWorld(true); return G.worldToLocal(pn.parent.localToWorld(new V(0, -0.085, 0))).y; }));
+    o.gripOver = ['l', 'r'].map((k) => +(G.worldToLocal(C.sticks[k].localToWorld(new V(0, C.gripH, 0))).y - Math.max(...['Index1', 'Index2', 'Index3'].map((j) => L(C.b[(k === 'l' ? 'Left' : 'Right') + 'Hand' + j]).y))).toFixed(3));
+    // (the door's pane ~0,6 of the width between the posts)
+    { const gl = G.getObjectByName('door-glass'); gl.geometry.computeBoundingBox(); const bb = gl.geometry.boundingBox; o.pane = +((bb.max.x - bb.min.x) / 0.94).toFixed(2); }
+    // (gloves: the hands' skin grey)
+    { let g = 0; C.man.traverse((m) => { const a = m.isSkinnedMesh && m.geometry.attributes.aGlove; if (a) for (let i = 0; i < a.count; i++) if (a.getX(i) > 0.5) g++; }); o.glove = g; }
+    // (the bucket let down: on the ground, its bottom level, after the entry settles)
+    for (let i = 0; i < 90; i++) tc.simulate(1 / 30); o.arm = +mt.loader.arm.toFixed(3); o.tiltB = +mt.loader.tilt.toFixed(3);
     let head = 0; C.man.traverse((m) => { if (m.isMesh && /Head/.test(m.material?.name || '') && m.visible) head++; }); o.headShown = head;
     // out of the cab: the model's own cab drawn again, the inside hidden
     mt.setView('chase'); frames(3); o.offShown = G.visible; o.offClip = [...mt._lcabMats].some((m) => m.clippingPlanes?.length);
@@ -2296,10 +2322,43 @@ if (want("2u")) {
   });
   check('loader cab: the model\'s own cab cut away (body, its side covers, back glass), the real-size cab shown with every part', o.man && o.shown && o.clip && /body/.test(o.mats) && /window_cover/.test(o.mats) && /back_window/.test(o.mats) && o.parts.length === 0, JSON.stringify(o));
   check('loader cab: the eye inside its cab (between the side covers, under the roof, behind the door)', o.eye[0] > -0.85 && o.eye[0] < 0.4 && o.eye[1] > 1.6 && o.eye[1] < 2.2 && Math.abs(o.eye[2]) < 0.4, JSON.stringify(o.eye));
-  check('loader cab: the hands on the grips (the wrist ≤ 0,1 m from the knob, at rest and pushed — as in the excavator), the wrist near straight, the elbow bent, the grip leans with the stick, the boots on the pedals, no head', Math.max(...o.handRest, ...o.handFull) <= 0.1 && Math.max(...o.wrist) <= 30 && Math.min(...o.elbow) >= 80 && Math.max(...o.elbow) <= 135 && o.tilt > 0.2 && Math.max(...o.feet) <= 0.05 && o.headShown === 0, JSON.stringify(o));
+  check('loader cab: the hands round the grips (the wrist ≤ 0,1 m), the wrist near straight, the elbow bent, the grip leans; the grip\'s top 40–60 mm over the fist; grey gloves; the boots on the floor beside the free pedals (≥ 30 mm); the knees ≥ 12 cm under the lap bar; the panels on the armrests; the pane ~0,6 of the width; no head; the bucket let down', Math.max(...o.handRest, ...o.handFull) <= 0.1 && Math.max(...o.wrist) <= 30 && Math.min(...o.elbow) >= 80 && Math.max(...o.elbow) <= 135 && o.tilt > 0.2 && Math.min(...o.gripOver) >= 0.035 && Math.max(...o.gripOver) <= 0.062 && o.glove > 50 && Math.max(...o.feet) <= 0.05 && o.pedalGap >= 30 && o.kneeGap >= 0.12 && o.panelLow >= -0.645 && o.pane >= 0.55 && o.pane <= 0.7 && o.headShown === 0 && o.goal[0] === 0 && o.goal[1] === 0 && Math.abs(o.arm) < 0.03, JSON.stringify(o));
   check('loader cab: off — the model\'s cab back, the inside hidden', !o.offShown && !o.offClip, JSON.stringify({ offShown: o.offShown, offClip: o.offClip }));
   check('loader cab: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
+}
+// ---- 2v. Quiet mode's fan readable (the owner, 2026-11-27, screenshot: «кнопки одна на одной в куче … читабельными, не в каше, но так же
+// мало места»): the groups on two arcs, undo and «all panels» by the button; no button or label over another, all on the screen — in
+// Russian and in English ----
+if (want("2v")) {
+  for (const loc of ['ru-RU', 'en-US']) {
+    const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }, loc);
+    const o = await page.evaluate(async () => {
+      const ui = window.__tc.ui; ui.setQuiet(true, false); ui.fan(true);
+      await new Promise((r) => setTimeout(r, 600));
+      const R = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+      const boxes = [];
+      for (const { el, group, act } of ui.fanItems) { const n = group || act; boxes.push({ n, k: 'btn', ...R(el) }); const sp = el.querySelector('span'); if (sp) boxes.push({ n, k: 'label', ...R(sp) }); }
+      const fab = document.getElementById('fab'); boxes.push({ n: 'fab', k: 'btn', ...R(fab) });
+      const hit = [];
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], b = boxes[j], ox = Math.min(a.r, b.r) - Math.max(a.l, b.l), oy = Math.min(a.b, b.b) - Math.max(a.t, b.t);
+        // (buttons are round: two buttons by their centres; a label and a button — the label's box against the circle)
+        const circ = (q) => ({ x: (q.l + q.r) / 2, y: (q.t + q.b) / 2, r: (q.r - q.l) / 2 });
+        let over = ox > 1 && oy > 1;
+        if (over && a.k === 'btn' && b.k === 'btn') { const p = circ(a), q = circ(b); over = Math.hypot(p.x - q.x, p.y - q.y) < p.r + q.r - 1; }
+        else if (over && (a.k === 'btn') !== (b.k === 'btn')) { const c = circ(a.k === 'btn' ? a : b), r = a.k === 'btn' ? b : a, px = Math.max(r.l, Math.min(c.x, r.r)), py = Math.max(r.t, Math.min(c.y, r.b)); over = Math.hypot(px - c.x, py - c.y) < c.r - 1; }
+        if (over && a.n !== b.n) hit.push(`${a.n}.${a.k}×${b.n}.${b.k}`);
+      }
+      const W = innerWidth, H = innerHeight, out = boxes.filter((q) => q.l < 0 || q.t < 0 || q.r > W || q.b > H).map((q) => q.n + '.' + q.k);
+      const all = boxes.filter((q) => q.n !== 'fab'), area = (Math.max(...all.map((q) => q.r)) - Math.min(...all.map((q) => q.l))) * (Math.max(...all.map((q) => q.b)) - Math.min(...all.map((q) => q.t)));
+      const fb = fab.getBoundingClientRect(), acts = ui.fanItems.filter((x) => x.act).map((x) => { const b = x.el.getBoundingClientRect(); return Math.hypot(b.x + b.width / 2 - fb.x - fb.width / 2, b.y + b.height / 2 - fb.y - fb.height / 2); });
+      return { n: ui.fanItems.length, hit: hit.slice(0, 8), hits: hit.length, out, area: Math.round(area / (W * H) * 100), acts: acts.map(Math.round) };
+    });
+    check(`quiet mode fan (${loc}): no button or label over another, all on the screen; undo and all panels by the button (≤ 100 px)`, o.n >= 10 && o.hits === 0 && o.out.length === 0 && Math.max(...o.acts) <= 100, JSON.stringify(o));
+    check(`quiet mode fan (${loc}): no console errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
+    await browser.close();
+  }
 }
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 if (want("2m")) {

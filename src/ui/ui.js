@@ -370,33 +370,66 @@ export class UI {
       { svg: $('btn-undo').innerHTML, label: 'Отменить', fn: () => app.undo(), keep: true, id: 'undo' },
       { svg: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>', label: 'Все панели', fn: () => this.setQuiet(false), id: 'exit' },
     ];
-    const place = (el, r, a) => { el.style.setProperty('--x', `${-r * Math.cos(a)}px`); el.style.setProperty('--y', `${-r * Math.sin(a)}px`); };
-    const R1 = 180, R2 = 92;
+    // (the owner, 2026-11-27: «кнопки одна на одной в куче — читабельными, не в каше, но так же мало места»: the groups on two arcs — the
+    // first ones (the early stages) on the inner, «lowered» one, the rest on the outer; undo and «all panels» by the button, low on its
+    // left; every label outward from the button, on a dark pill — never over a neighbour or its label (measured as the fan opens: fan())
+    const R_IN = 140, R_OUT = 240, R_ACT = 85, nIn = Math.round(this.groups.length * 0.41), inner = this.groups.slice(0, nIn), outer = this.groups.slice(nIn);
     this.fanItems = [];
-    // outer ring: the groups; a group with several tools or with modes keeps the fan
-    // open — its tools and modes show at the top of the screen
-    this.groups.forEach((g, k) => {
+    const add = (el, r, a, size, item, k = 0) => { queueMicrotask(() => { const sp = el.querySelector('span'); if (sp) this._fanRO?.observe(sp); }); el.dataset.r = r; el.dataset.a = a; el.dataset.k = k; el.style.setProperty('--x', `${-r * Math.cos(a)}px`); el.style.setProperty('--y', `${-r * Math.sin(a)}px`); el.style.setProperty('--s', `${size}px`); box.appendChild(el); this.fanItems.push({ el, ...item }); };
+    for (const [ring, R, size] of [[inner, R_IN, 32], [outer, R_OUT, 34]]) ring.forEach((g, k) => {
       const el = document.createElement('button');
       el.className = 'fan-item';
       el.innerHTML = this.groupSvg(g) + `<span>${g.label}</span>`;
-      place(el, R1, (k / Math.max(1, this.groups.length - 1)) * Math.PI / 2);
       el.addEventListener('click', () => {
         this.openGroup(g.id);
         this.toast(g.label);
         if (this.groupTools(g.id).length < 2 && !this.chips().length) this.fan(false);
         this.refresh();
       });
-      box.appendChild(el);
-      this.fanItems.push({ el, group: g.id });
+      add(el, R, (k / Math.max(1, ring.length - 1)) * Math.PI / 2, size, { group: g.id }, k);
     });
+    // (a label's size changes when it is put into the device's language, after this: set again then)
+    this._fanRO?.disconnect();
+    if (window.ResizeObserver) { let q = 0; this._fanRO = new ResizeObserver(() => { if (q) return; q = requestAnimationFrame(() => { q = 0; if (this.fanOpen) this._fanLabels(); }); }); }
     acts.forEach((a, k) => {
       const el = document.createElement('button');
-      el.className = 'fan-item';
+      el.className = 'fan-item act';
       el.innerHTML = a.svg + `<span>${a.label}</span>`;
-      place(el, R2, (0.12 + k * 0.38) * Math.PI / 2 / 0.88);
       el.addEventListener('click', () => { a.fn(); if (!a.keep) this.fan(false); this.refresh(); });
-      box.appendChild(el);
-      this.fanItems.push({ el, act: a.id });
+      add(el, R_ACT, [0.35, 1.22][k], 32, { act: a.id });
+    });
+  }
+  // each label set outward from its button (its near edge 4 px off the button's rim), by its own size — the language may change it;
+  // the two by the button keep theirs below
+  _fanLabels() {
+    const its = this.fanItems || []; if (!its.length) return;
+    const fb = $('fab').getBoundingClientRect(), fx = fb.left + fb.width / 2, fy = fb.top + fb.height / 2;
+    // the buttons where they open to (circles), then each label next to its own button, pushed out along its way only as far as
+    // it clears every button and every label set before it, and kept on the screen
+    const circ = its.map(({ el }) => { const r = +el.dataset.r, a = +el.dataset.a; return { x: fx - r * Math.cos(a), y: fy - r * Math.sin(a), r: (parseFloat(el.style.getPropertyValue('--s')) || 36) / 2 }; });
+    circ.push({ x: fx, y: fy, r: fb.width / 2 });
+    const placed = [], hitC = (q, skip) => circ.some((c, i) => { if (i === skip) return false; const px = Math.max(q.l, Math.min(c.x, q.r)), py = Math.max(q.t, Math.min(c.y, q.b)); return Math.hypot(px - c.x, py - c.y) < c.r + 2; });
+    const hitL = (q) => placed.some((p) => Math.min(p.r, q.r) - Math.max(p.l, q.l) > -2 && Math.min(p.b, q.b) - Math.max(p.t, q.t) > -2);
+    its.forEach(({ el, act }, i) => {
+      const sp = el.querySelector('span'); if (!sp) return;
+      const a = +el.dataset.a, c = circ[i], w = sp.offsetWidth, h = sp.offsetHeight;
+      // (outward first; where that runs into the screen's edge or the others — under the button, then over it)
+      const ways = act ? [[0, 1], [-1, 0]] : [[-Math.cos(a), -Math.sin(a)], [0, 1], [0, -1]];
+      let q = null, first = null;
+      for (const [dx, dy] of ways) {
+        let d = c.r + 4 + (w / 2) * Math.abs(dx) + (h / 2) * Math.abs(dy), ok = false;
+        for (let n = 0; n < 30; n++, d += 3) {
+          let x = c.x + dx * d; if (x + w / 2 > innerWidth - 4) x = innerWidth - 4 - w / 2; if (x - w / 2 < 4) x = 4 + w / 2;
+          const y = c.y + dy * d; q = { l: x - w / 2, r: x + w / 2, t: y - h / 2, b: y + h / 2 };
+          first ||= q;
+          if (q.b > innerHeight - 4) break;
+          if (!hitC(q, i) && !hitL(q)) { ok = true; break; }
+        }
+        if (ok) break; q = null;
+      }
+      q ||= first;
+      placed.push(q);
+      sp.style.setProperty('--lx', `${(q.l + w / 2 - c.x).toFixed(1)}px`); sp.style.setProperty('--ly', `${(q.t + h / 2 - c.y).toFixed(1)}px`);
     });
   }
 
@@ -415,6 +448,7 @@ export class UI {
   fan(open) {
     this.fanOpen = !!open && !!this.app.settings.quiet;
     $('fan').classList.toggle('open', this.fanOpen);
+    if (this.fanOpen) { this._fanLabels(); setTimeout(() => requestAnimationFrame(() => this._fanLabels()), 0); }   // (again once the labels are in the device's language)
     $('fan-shade').hidden = !this.fanOpen;
     $('ui').classList.toggle('fan-open', this.fanOpen);
   }
