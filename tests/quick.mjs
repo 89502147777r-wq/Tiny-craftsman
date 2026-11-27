@@ -2262,6 +2262,45 @@ if (want("2t")) {
   check('loading: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
+// ---- 2u. The skid steer's cab from inside (the owner, 2026-11-27, a photo from one: «вид из кабины погрузчика по методам экскаватора»): its
+// own cab (one mesh with the body) cut away inside the cab's box, the real-size cab on the seat: a door pane in a frame, mesh sides, the
+// lap bar, the driver's hands on the grips (at rest and pushed), his boots on the pedals; through the door the ground ahead ----
+if (want("2u")) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, V = tc.camera.position.constructor, mt = tc.machineTool, t = tc.terrain, o = {};
+    const frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
+    tc.setTool('machine'); await mt.ensure(); mt.enter('loader');
+    for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
+    mt.loader.place(t, 0, 0, 0); mt.setView('cab'); frames(3); await mt.lcab?.ready; frames(3);
+    const C = mt.lcab, G = C.group, L = (b) => G.worldToLocal(b.getWorldPosition(new V()));
+    o.man = !!C.man; o.shown = G.visible; o.mats = [...mt._lcabMats].map((m) => m.name).sort().join(',');
+    o.clip = [...mt._lcabMats].every((m) => m.clippingPlanes?.length === 6);
+    const names = new Set(); G.traverse((m) => { if (m.isMesh && m.name) names.add(m.name.replace(/-[lr]$/, '')); });
+    o.parts = ['door', 'door-glass', 'seal', 'side-mesh', 'roof-mesh', 'lapbar', 'console', 'armrest', 'panel', 'pedal', 'latch', 'hinge'].filter((n) => !names.has(n));
+    // the eye: inside the model's cab (the cab's box between the model's side covers, under its roof)
+    const e = mt.loader.root.worldToLocal(tc.camera.position.clone()), S = 9000 / 860; o.eye = [e.x * S, e.y * S, e.z * S].map((v) => +v.toFixed(2));
+    const grip = (k) => G.worldToLocal(C.sticks[k].localToWorld(new V(0, C.gripH * 0.92, 0)));
+    const hands = () => ['l', 'r'].map((k) => +L(C.b[(k === 'l' ? 'Left' : 'Right') + 'Hand']).distanceTo(grip(k)).toFixed(3));
+    o.handRest = hands(); mt.joystick('l', 0, -1); mt.joystick('r', 1, 0); frames(3); o.handFull = hands(); o.tilt = +Math.abs(C.sticks.l.rotation.x).toFixed(3);
+    // (the arms alive: the wrist near straight, the elbow bent ~90–115°, as in the excavator's cab — the realist)
+    const ang = (a, b) => +(a.angleTo(b) * 180 / Math.PI).toFixed(0);
+    o.wrist = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'HandIndex1']).sub(L(C.b[k + 'Hand']))));
+    o.elbow = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Arm']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm']))));
+    mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(6);
+    o.feet = ['Left', 'Right'].map((k, i) => +L(C.b[k + 'Foot']).distanceTo(G.worldToLocal(C.pedals[i ? 'r' : 'l'].pv.localToWorld(new V(0, 0.105, 0.05)))).toFixed(3));
+    let head = 0; C.man.traverse((m) => { if (m.isMesh && /Head/.test(m.material?.name || '') && m.visible) head++; }); o.headShown = head;
+    // out of the cab: the model's own cab drawn again, the inside hidden
+    mt.setView('chase'); frames(3); o.offShown = G.visible; o.offClip = [...mt._lcabMats].some((m) => m.clippingPlanes?.length);
+    return o;
+  });
+  check('loader cab: the model\'s own cab cut away (body, its side covers, back glass), the real-size cab shown with every part', o.man && o.shown && o.clip && /body/.test(o.mats) && /window_cover/.test(o.mats) && /back_window/.test(o.mats) && o.parts.length === 0, JSON.stringify(o));
+  check('loader cab: the eye inside its cab (between the side covers, under the roof, behind the door)', o.eye[0] > -0.85 && o.eye[0] < 0.4 && o.eye[1] > 1.6 && o.eye[1] < 2.2 && Math.abs(o.eye[2]) < 0.4, JSON.stringify(o.eye));
+  check('loader cab: the hands on the grips (the wrist ≤ 0,1 m from the knob, at rest and pushed — as in the excavator), the wrist near straight, the elbow bent, the grip leans with the stick, the boots on the pedals, no head', Math.max(...o.handRest, ...o.handFull) <= 0.1 && Math.max(...o.wrist) <= 30 && Math.min(...o.elbow) >= 80 && Math.max(...o.elbow) <= 135 && o.tilt > 0.2 && Math.max(...o.feet) <= 0.05 && o.headShown === 0, JSON.stringify(o));
+  check('loader cab: off — the model\'s cab back, the inside hidden', !o.offShown && !o.offClip, JSON.stringify({ offShown: o.offShown, offClip: o.offClip }));
+  check('loader cab: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 if (want("2m")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });

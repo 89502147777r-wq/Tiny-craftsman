@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { Cab, CAB } from '../world/cab.js';
+import { Cab, CAB, CAB_SKID } from '../world/cab.js';
+// the skid steer's: its eye in the loader's frame (+x ahead, m): 0,2 behind the cab's middle, 1,89 up — the cab's roof 2,24, its floor 0,74,
+// the door 0,46 ahead, the back window 0,82 behind (the model's own glass and frame there)
+const SKID_EYE = [-0.2, 1.89];
+const SKID_BOX = { x0: CAB_SKID.right - 0.04, x1: CAB_SKID.left + 0.04, y0: CAB_SKID.floor - 0.03, y1: CAB_SKID.roof - 0.005, z0: CAB_SKID.back - 0.06, z1: CAB_SKID.front + 0.22 };   // (forward past the door: the model's cab frame stands out to 0,65 m — a yellow band under the pane)
 const CAB_BOX = { x0: CAB.right - 0.005, x1: CAB.left + 0.005, y0: CAB.floor - 0.005, y1: CAB.roof - 0.01, z0: CAB.back - 0.005, z1: CAB.front + 0.005 };   // (to the walls' outer faces and under the floor's top: nothing of the machine shows in a crack between them — the owner: tracks through the floor)
 import { PROPS } from '../world/siteProps.js';
 import { lumpSize, breakLump, LUMP, lumpExtent, lumpThick, pressNeed, chipR } from '../world/lumps.js';
@@ -723,7 +727,7 @@ export class MachineTool {
     this._commitDrive();
     this.state = 'idle'; this.stick = { l: [0, 0], r: [0, 0] };
     app.terrain.setStopCells?.('excBucket', null); this._footSet = false;   // (the bucket's footprint: no wall left behind)
-    this._cabInside?.(false);   // (the cab from inside: off with the driver)
+    this._cabInside?.(false); this._loaderCab?.(false);   // (the cab from inside: off with the driver)
     app.sfx.scrapeStop(); app.sfx.play('car_door', { vol: 0.8 });
     if (app.rig.shakeKeep != null) { app.rig.shake = app.rig.shakeKeep; app.rig.shakeKeep = null; }
     this._fov(null); this._mirrors(null); this._exitSigns(false);
@@ -750,7 +754,7 @@ export class MachineTool {
         if (n && k / n > 0.5) this._cabParts.push(o); });
       // (and the undercarriage: the tracks' top stands up into the cab's box, over its floor — the owner saw them through the floor)
       E.root.traverse((o) => { if (!o.isMesh) return; for (let p = o; p; p = p.parent) if (p === E.house) return; for (const m of [o.material].flat()) if (m) this._cabMats.add(m); }); }
-    if (on) this._cabClip();
+    if (on) this._cabClip(this.cab, CAB_BOX, this._clip);
     if (this._cabOn === on) return; this._cabOn = on;
     this.cab.group.visible = on; for (const o of this._cabParts) o.visible = !on;
     // (the model's light flat covers by the boom's foot read as cardboard from the seat: the machine's yellow there — the realist)
@@ -760,11 +764,28 @@ export class MachineTool {
     if (!on) { this._lookSet = null; const c = this.app.camera; if (this._near0 != null) { c.near = this._near0; this._near0 = null; c.updateProjectionMatrix(); } }
   }
   // the cab's box (its own metres, a little inside its walls) in the world now, as six planes facing out
-  _cabClip() {
-    const G = this.cab.group, b = CAB_BOX; G.updateMatrixWorld(true);
+  // the skid steer's cab from inside (the owner, 2026-11-27, a photo from one): made once, hung on the loader at the seat; on — the model's
+  // own cab (its body is one mesh: cut away inside the cab's box, its side covers and back glass with it) not drawn
+  _loaderCab(on) {
+    const L = this.loader; if (!L?.loaded) return;
+    if (!this.lcab && !on) return;
+    if (!this.lcab) {
+      const c = (this.lcab = new Cab(this.app, 'skid')); c.group.position.set(R(SKID_EYE[0]), R(SKID_EYE[1]), 0); c.group.rotation.y = Math.PI / 2; c.group.scale.setScalar(R(1)); L.root.add(c.group);
+      this._lclip = Array.from({ length: 6 }, () => new THREE.Plane()); this._lcabMats = new Set();
+      L.root.traverse((o) => { if (!o.isMesh) return; for (let p = o; p; p = p.parent) if (p === c.group || p === L.armP) return; for (const m of [o.material].flat()) if (m && /body|window|roof_light/.test(m.name || '')) this._lcabMats.add(m); });
+    }
+    if (on) this._cabClip(this.lcab, SKID_BOX, this._lclip);
+    if (this._lcabOn === on) return; this._lcabOn = on;
+    this.lcab.group.visible = on;
+    this.app.renderer.localClippingEnabled = on || this.app.renderer.localClippingEnabled;
+    for (const m of this._lcabMats) { m.clippingPlanes = on ? this._lclip : null; m.clipIntersection = on; m.needsUpdate = true; }
+    if (!on) { this._lookSet = null; const cm = this.app.camera; if (this._near0 != null) { cm.near = this._near0; this._near0 = null; cm.updateProjectionMatrix(); } }
+  }
+  _cabClip(cab, b, clip) {
+    const G = cab.group; G.updateMatrixWorld(true);
     const o = G.getWorldPosition(new THREE.Vector3()), q = G.getWorldQuaternion(new THREE.Quaternion()), s = G.getWorldScale(new THREE.Vector3()).x;
     const faces = [[1, 0, 0, b.x1], [-1, 0, 0, -b.x0], [0, 1, 0, b.y1], [0, -1, 0, -b.y0], [0, 0, 1, b.z1], [0, 0, -1, -b.z0]];
-    faces.forEach(([x, y, z, d], i) => { const n = new THREE.Vector3(x, y, z).applyQuaternion(q); this._clip[i].set(n, -(n.dot(o) + d * s)); });
+    faces.forEach(([x, y, z, d], i) => { const n = new THREE.Vector3(x, y, z).applyQuaternion(q); clip[i].set(n, -(n.dot(o) + d * s)); });
   }
   _mirrors(M, f) {
     const mr = this.app.mirrors;
@@ -1186,12 +1207,15 @@ export class MachineTool {
     }
     const M = this.drv === 'truck' ? T : this.drv === 'excavator' ? this.exc : L, rig = app.rig, ex = this.drv === 'excavator', yawV = M.yaw + (ex ? this.exc.swing : 0);
     if (ex) this._cabInside(this.view === 'cab');
+    if (this.drv === 'loader') this._loaderCab(this.view === 'cab');
     if (this.view === 'free') { this._mirrors(null); return; }   // (the camera left where it is)
     // the excavator's cab from inside (the owner, 2026-11-19): its own cab hidden, the real-size one round the driver's eyes shown, he
     // seated with his hands on the joysticks (as the sticks on the screen go) and his boots on the pedals; a finger off the sticks turns
     // the look (held where it is let go)
-    if (ex && this.view === 'cab' && this.cab?.man) {
-      const G = this.cab.group; G.updateMatrixWorld(true);
+    const IC = ex ? this.cab : this.drv === 'loader' ? this.lcab : null;
+    if (IC && this.view === 'cab' && IC.man) {
+      if (!ex) this._mirrors(null);   // (no mirror over a skid steer's door)
+      const G = IC.group; G.updateMatrixWorld(true);
       const sc = G.getWorldScale(new THREE.Vector3()).x;
       if (this._lookSet) { this.lookYaw = THREE.MathUtils.clamp((this.lookYaw || 0) + (rig.goal.yaw - this._lookSet[0]), -1.9, 1.9); this.lookPitch = THREE.MathUtils.clamp((this.lookPitch || 0) + (rig.goal.pitch - this._lookSet[1]), -0.9, 0.9); }
       // (looking at the bucket, not the knees: 0,3 down — the realist; the eye turns about the neck, 0,10 over it and 0,09 ahead of it, as
@@ -1210,7 +1234,9 @@ export class MachineTool {
       // (travelling — the pedals and levers go with the tracks, the joysticks stay in the middle: the realist)
       const drive = this.excMode === 'drive', [lx, ly] = this.stick.l, fw = THREE.MathUtils.clamp((this.v || 0) / R(1.3), -1, 1);
       const pedals = drive ? [THREE.MathUtils.clamp(fw + lx, -1, 1), THREE.MathUtils.clamp(fw - lx, -1, 1)] : [0, 0];
-      this.cab.pose({ l: drive ? [0, 0] : this.stick.l, r: drive ? [0, 0] : this.stick.r, pedals, look: this.lookYaw || 0 }, Math.min(0.2, dt));
+      // (a skid steer: the left stick drives, the right one works the arms and the bucket — both grips go as on the screen; the pedals stay)
+      if (!ex) IC.pose({ l: this.stick.l, r: this.stick.r, pedals: [0, 0], look: this.lookYaw || 0 }, Math.min(0.2, dt));
+      else IC.pose({ l: drive ? [0, 0] : this.stick.l, r: drive ? [0, 0] : this.stick.r, pedals, look: this.lookYaw || 0 }, Math.min(0.2, dt));
       void ly;
       return;
     }
