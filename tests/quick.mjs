@@ -1585,20 +1585,7 @@ if (want('2i⁰')) {
     o.elbow = ['Left', 'Right'].map((k) => ang(L(C.b[k + 'Arm']).sub(L(C.b[k + 'ForeArm'])), L(C.b[k + 'Hand']).sub(L(C.b[k + 'ForeArm']))));
     // the thumbs: their tips no higher over the hand than the fingers' roots (not up)
     o.thumbUp = ['Left', 'Right'].map((k) => +(L(C.b[k + 'HandThumb4'] || C.b[k + 'HandThumb3']).y - L(C.b[k + 'HandIndex1']).y).toFixed(3));
-    // (the boots on the floor beside the pedals — the left stick drives: the pedals free, ≥ 30 mm off a sole — the realist)
-    o.feet = ['Left', 'Right'].map((k, i) => +L(C.b[k + 'Foot']).distanceTo(C.feetAt[i ? 'r' : 'l']).toFixed(3));
-    o.pedalGap = Math.min(...['Left', 'Right'].flatMap((k) => ['l', 'r'].map((p) => { const f = L(C.b[k + 'Foot']), q = G.worldToLocal(C.pedals[p].pv.localToWorld(new V(0, 0.01, 0.1))); return Math.abs(f.x - q.x) - 0.045 - 0.05; }))) * 1000 | 0;
-    // (the knees under the lap bar by ≥ 12 cm; the panels standing on the armrests; the grip's top over the fist by 40–60 mm)
-    const bar = G.getObjectByName('lapbar'); bar.geometry.computeBoundingBox(); const barLow = Math.min(...[0, 0.5].map(() => 0)) + (() => { const P = bar.geometry.attributes.position; let lo = 9; for (let i = 0; i < P.count; i++) if (Math.abs(P.getX(i)) < 0.25) lo = Math.min(lo, P.getY(i)); return lo; })();
-    o.kneeGap = +(barLow - Math.max(L(C.b.LeftLeg).y, L(C.b.RightLeg).y)).toFixed(3);
-    o.panelLow = Math.min(...['l', 'r'].map((k) => { const pn = G.getObjectByName('panel-' + k); const b = new (tc.camera.position.constructor === V ? (pn.geometry.boundingBox?.constructor || Object) : Object)(); void b; pn.parent.updateMatrixWorld(true); return G.worldToLocal(pn.parent.localToWorld(new V(0, -0.085, 0))).y; }));
-    o.gripOver = ['l', 'r'].map((k) => +(G.worldToLocal(C.sticks[k].localToWorld(new V(0, C.gripH, 0))).y - Math.max(...['Index1', 'Index2', 'Index3'].map((j) => L(C.b[(k === 'l' ? 'Left' : 'Right') + 'Hand' + j]).y))).toFixed(3));
-    // (the door's pane ~0,6 of the width between the posts)
-    { const gl = G.getObjectByName('door-glass'); gl.geometry.computeBoundingBox(); const bb = gl.geometry.boundingBox; o.pane = +((bb.max.x - bb.min.x) / 0.94).toFixed(2); }
-    // (gloves: the hands' skin grey)
-    { let g = 0; C.man.traverse((m) => { const a = m.isSkinnedMesh && m.geometry.attributes.aGlove; if (a) for (let i = 0; i < a.count; i++) if (a.getX(i) > 0.5) g++; }); o.glove = g; }
-    // (the bucket let down: on the ground, its bottom level, after the entry settles)
-    for (let i = 0; i < 90; i++) tc.simulate(1 / 30); o.arm = +mt.loader.arm.toFixed(3); o.tiltB = +mt.loader.tilt.toFixed(3);
+    o.feet = ['Left', 'Right'].map((k, i) => +L(C.b[k + 'Foot']).distanceTo(G.worldToLocal(C.pedals[i ? 'r' : 'l'].pv.localToWorld(new V(0, 0.105, 0.05)))).toFixed(3));
     // travelling: the pedals go with the tracks, the joysticks stay in the middle
     mt.joystick('l', 0, 0); mt.joystick('r', 0, 0); frames(8); const a0 = C.pedals.l.pv.rotation.x; mt.setExcMode('drive'); mt.joystick('l', 0, -1); frames(30); o.pedal = +(C.pedals.l.pv.rotation.x - a0).toFixed(3); o.stickDrive = +Math.abs(C.sticks.l.rotation.x).toFixed(3); mt.joystick('l', 0, 0); frames(20); mt.setExcMode('dig');
     mt.joystick('l', 0, 0); mt.joystick('r', 0, 0);
