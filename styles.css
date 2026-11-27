@@ -217,14 +217,14 @@ select { font: inherit; color: var(--ink); background: rgba(255,255,255,.08); bo
 .fab svg { width: 24px; height: 24px; }
 .fan.open .fab { opacity: 1; background: var(--glass-strong); }
 .fan-item {
-  position: absolute; left: 4px; top: 4px; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line);
+  --s: 42px; position: absolute; left: calc(25px - var(--s) / 2); top: calc(25px - var(--s) / 2); width: var(--s); height: var(--s); border-radius: 50%; border: 1px solid var(--line);
   background: var(--glass-strong); display: grid; place-items: center; padding: 0; color: var(--ink);
   transform: translate(0, 0) scale(.3); opacity: 0; pointer-events: none; transition: transform .22s cubic-bezier(.2,.9,.3,1.2), opacity .18s;
 }
-.fan-item svg { width: 21px; height: 21px; }
+.fan-item svg { width: calc(var(--s) * .5); height: calc(var(--s) * .5); }
 .fan-item span {
-  position: absolute; top: 44px; left: 50%; transform: translateX(-50%); font-size: 9.5px; white-space: nowrap; color: var(--ink);
-  text-shadow: 0 1px 3px #000, 0 0 6px #000;
+  position: absolute; top: 50%; left: 50%; transform: translate(calc(-50% + var(--lx, 0px)), calc(-50% + var(--ly, 26px))); font-size: 10px; line-height: 13px;
+  white-space: nowrap; color: var(--ink); background: rgba(20, 16, 12, .62); padding: 0 5px; border-radius: 7px; pointer-events: none;
 }
 .fan-item.active { background: var(--accent); color: var(--accent-ink); }
 .fan-item.on { color: var(--accent); }
