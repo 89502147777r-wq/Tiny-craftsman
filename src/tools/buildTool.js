@@ -6,7 +6,7 @@ import { loadPhysics, physicsReady } from '../world/physics.js';
 import { StripJob } from './stripJob.js';
 import { RebarJob } from './rebarJob.js';
 import { FitJob, hammer } from './fitJob.js';
-import { runPieces } from '../world/formwork.js';
+import { runPieces, boardMesh } from '../world/formwork.js';
 
 const MM = (v) => v / 1000 / MODEL_SCALE;
 
@@ -143,9 +143,10 @@ export class BuildTool {
   _fitRuns(runs, one, save) {
     const app = this.app, t = app.terrain, mat = app.formView.stakes.material, steps = [], parts = [], up = new THREE.Vector3(0, 1, 0);
     const box = new THREE.BoxGeometry(1, 1, 1), stakeGeo = app.formView.stakes.geometry;
+    for (const r of runs) r.seed ??= (Math.random() * 2 ** 31) | 0;   // (its boards drawn now as the view will draw them after)
     const all = runs.map((r) => runPieces(r, t)), nPieces = all.reduce((a, p) => a + p.length, 0);
     const T = one ? 1 : Math.min(1, 4 / (nPieces * 0.09));
-    const mk = (pc) => { const m = new THREE.Mesh(pc.k === 'stake' ? stakeGeo : box, mat); m.position.copy(pc.p); m.quaternion.copy(pc.q); m.scale.copy(pc.s); m.castShadow = true; m.visible = false; m.userData.keepGeo = true; parts.push(m); return m; };
+    const mk = (pc) => { const m = pc.k === 'board' ? boardMesh(app.formView.boards.material, pc) : new THREE.Mesh(pc.k === 'stake' ? stakeGeo : box, mat); if (pc.k !== 'board') { m.position.copy(pc.p); m.quaternion.copy(pc.q); m.scale.copy(pc.s); m.castShadow = true; m.userData.keepGeo = true; } m.visible = false; parts.push(m); return m; };
     runs.forEach((r, ri) => {
       const ps = all[ri], n = new THREE.Vector3(r.n[0], 0, r.n[1]);
       // the stakes first (driven down), then the boards from the bottom, then the braces
