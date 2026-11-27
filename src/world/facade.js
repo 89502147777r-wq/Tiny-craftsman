@@ -1093,18 +1093,33 @@ let _brGeo = null;
 // a bracket of the subframe (кронштейн), as on site: the foot 50 × 110 × 3 aluminium on a paronite
 // pad (it breaks the cold bridge), dowelled through its slot with a facade anchor; the arm — a web
 // 2,5 mm tapering 80 → 60 mm out to 150 mm, a flange folded along its bottom; on its end the slide
-// (удлинитель) that sets the reach, two rivets through it. → { alu, dark } (local: x along the wall,
+// (удлинитель) that sets the reach, two rivets through it — its end at the rail's face, 4 mm short of the panels (it stood out 205 mm,
+// through them — the owner: «со стен торчат кронштейны»). → { alu, dark } (local: x along the wall,
 // y up, z out of it; the foot on the wall at z = 0)
-function bracketGeo() {
+export function bracketGeo() {
   if (_brGeo) return _brGeo;
   const b = (w, h, d, x, y, z) => new THREE.BoxGeometry(MM(w), MM(h), MM(d)).translate(MM(x), MM(y), MM(z));
-  const web = (() => { const sh = new THREE.Shape([new THREE.Vector2(MM(3), MM(-40)), new THREE.Vector2(MM(150), MM(-30)), new THREE.Vector2(MM(150), MM(30)), new THREE.Vector2(MM(3), MM(40))]); const g = new THREE.ExtrudeGeometry(sh, { depth: MM(2.5), bevelEnabled: false }); g.rotateY(-Math.PI / 2); g.translate(MM(1.25), 0, 0); return g.toNonIndexed(); })();
+  // (a pack side by side, as on site — the realist: the arm | the slide | the rail's web (x −1…+1, on the rail's line); the arm and
+  // its foot K off the line, the rivets through all three)
+  const K = -4.75;
+  const web = (() => { const sh = new THREE.Shape([new THREE.Vector2(MM(3), MM(-40)), new THREE.Vector2(MM(150), MM(-30)), new THREE.Vector2(MM(150), MM(30)), new THREE.Vector2(MM(3), MM(40))]); const g = new THREE.ExtrudeGeometry(sh, { depth: MM(2.5), bevelEnabled: false }); g.rotateY(-Math.PI / 2); g.translate(MM(1.25 + K), 0, 0); return g.toNonIndexed(); })();
   const cyl = (r, h, x, y, z, rotX = true) => { const g = new THREE.CylinderGeometry(MM(r), MM(r), MM(h), 10); if (rotX) g.rotateX(Math.PI / 2); else g.rotateZ(Math.PI / 2); g.translate(MM(x), MM(y), MM(z)); return g.toNonIndexed(); };
   const ni = (g) => (g.index ? g.toNonIndexed() : g);
   const strip = (g) => { for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k); return g; };
-  const alu = [b(50, 110, 3, 0, 0, 4.5), web, b(16, 2.5, 120, 8, -34, 90), b(2.5, 60, 70, -3, 0, 170)].map(ni).map(strip);
-  const dark = [b(54, 114, 3, 0, 0, 1.5), cyl(9, 2, 0, 18, 7), cyl(6.5, 6, 0, 18, 11), cyl(3.5, 3, -4.5, 12, 150, false), cyl(3.5, 3, -4.5, -12, 150, false)].map(ni).map(strip);
-  return (_brGeo = { alu: mergeGeometries(alu), dark: mergeGeometries(dark) });
+  // the rivets (light metal, not dark holes): two at 140 through the rail's web, the slide and the arm (the set head on the rail's side,
+  // the flare on the arm's); two at 108 through the slide and the arm only (the slide's own fixing in its slot)
+  const rivets = [12, -12].flatMap((y) => [cyl(2.5, 7, -2.5, y, 140, false), cyl(4.5, 1, 1.5, y, 140, false), cyl(3.5, 1.5, -6.75, y, 140, false),
+    cyl(2.5, 5, -3.5, y, 108, false), cyl(4.5, 1, -0.5, y, 108, false), cyl(3.5, 1.5, -6.75, y, 108, false)]);
+  // (the foot an «L» in plan: the arm on its edge, the anchor in its slot beside the arm, its head 13,5 mm off it for the key; the flange
+  // folded along the arm's sloping bottom (−40 at the wall → −30 at 150), not level — the realist)
+  const flange = new THREE.BoxGeometry(MM(16), MM(2.5), MM(120)).rotateX(-Math.atan(10 / 147)).translate(MM(-14), MM(-35.33), MM(90));
+  const alu = [b(50, 110, 3, 19, 0, 4.5), web, flange, b(2.5, 60, 70, -2.25, 0, 128), cyl(9, 2, 19, 0, 7), cyl(6.5, 6, 19, 0, 11), ...rivets].map(ni).map(strip);
+  const dark = [b(54, 114, 3, 19, 0, 1.5)].map(ni).map(strip);   // (the paronite pad; the anchor's head — zinc, with the aluminium)
+  // (the parts' boxes in mm, for the tests: the pack against the rail's web)
+  const mm = (g) => { g.computeBoundingBox(); const q = g.boundingBox, k = 1 / MM(1); return { x0: q.min.x * k, x1: q.max.x * k, z0: q.min.z * k, z1: q.max.z * k }; };
+  const ends = (g) => { const P = g.attributes.position, k = 1 / MM(1), e = []; for (let i = 0; i < P.count; i++) e.push([P.getZ(i) * k, P.getY(i) * k]); return e; };   // (its corners [z, y])
+  const parts = { arm: mm(web), flange: mm(alu[2]), slide: mm(alu[3]), foot: mm(alu[0]), anchor: mm(alu[4]), flangeTop: ends(alu[2]), rivets: [0, 6, 3, 9].map((i) => mm(rivets[i]))   /* (the two at 140 first) */ };
+  return (_brGeo = { alu: mergeGeometries(alu), dark: mergeGeometries(dark), parts });
 }
 // a ventilated facade's corner: a folded aluminium angle 50 × 50 over the panels' ends, coated in
 // their colour

@@ -2351,6 +2351,44 @@ if (want("2v")) {
     await browser.close();
   }
 }
+// ---- 2w. The owner, 2026-11-27: «после отделки фасада панелями со стен торчат кронштейны» (the bracket's slide reached 205 mm out,
+// the panels stand at 167–177: it came through them) and «в режиме техника постоянно скрежет вместо дизеля» (the scrape loop started
+// at sitting in and ran all the time, over the engine) ----
+if (want("2w")) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, mt = tc.machineTool, o = {};
+    const { bracketGeo, OFF } = await import('/src/world/facade.js');
+    const G = bracketGeo(); let z = 0; for (const g of [G.alu, G.dark]) { g.computeBoundingBox(); z = Math.max(z, g.boundingBox.max.z); }
+    o.brOut = +(z * 1000 * 10.4651).toFixed(1); o.rail = +(OFF.vent0 * 1000 * 10.4651).toFixed(1);
+    // (the pack, as on site — the realist: arm | slide | the rail's web (x −1…+1, z from the rail's line − 20 to the panels' back); nothing
+    // through the web, the parts touching, the rivets at 140 through all three with an edge ≥ 10 mm)
+    { const P = G.parts, web = { x0: -1, x1: 1, z0: (OFF.rl * 1000 * 10.4651) - 20, z1: o.rail }, r2 = (v) => +v.toFixed(2);
+      const cross = (q) => (Math.min(q.z1, web.z1) > Math.max(q.z0, web.z0) ? Math.max(0, Math.min(q.x1, web.x1) - Math.max(q.x0, web.x0)) : 0);
+      o.pack = { armX: r2(cross(P.arm)), flangeX: r2(cross(P.flange)), slideX: r2(cross(P.slide)), gapWeb: r2(web.x0 - P.slide.x1), gapArm: r2(P.slide.x0 - P.arm.x1),
+        rivet: P.rivets.slice(0, 2).map((q) => { const zc = (q.z0 + q.z1) / 2; return [r2(q.x0), r2(q.x1), r2(Math.min(zc - web.z0, P.slide.z1 - zc, P.arm.z1 - zc))]; }),
+        // (the anchor in the foot's slot beside the arm, ≥ 10 mm off it for the key; the flange along the arm's sloping bottom ≤ 0,3 mm)
+        anchorGap: r2(P.anchor.x0 - P.arm.x1), anchorOn: P.anchor.x0 >= P.foot.x0 && P.anchor.x1 <= P.foot.x1,
+        flange: r2(Math.max(...[(z) => z < 90, (z) => z > 90].map((end) => Math.abs(Math.max(...P.flangeTop.filter(([z]) => end(z)).map(([z, y]) => y - (-40 + 10 * (z - 3) / 147))))))) }; }   // (each end: its top on the arm's bottom)
+    // (the sounds: what each loop is asked for, every frame)
+    const S = tc.sfx, last = {}, f = S.loop.bind(S); S.loop = (id, n, v, ...a) => { last[id] = [n, +(+v).toFixed(3)]; return f(id, n, v, ...a); };
+    const frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
+    tc.setTool('machine'); await mt.ensure();
+    for (const k of ['loader', 'excavator', 'truck']) {
+      mt.enter(k); for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
+      frames(30); const idle = { scrape: last.scrape?.[1] || 0, eng: last['eng-' + k]?.[1] || 0 };
+      mt.joystick('l', 0, 1); frames(45); mt.joystick('l', 0, 0);   // (driving on, the bucket off the ground)
+      o[k] = { idle, go: last.scrape?.[1] || 0, engGo: last['eng-' + k]?.[1] || 0 };
+      mt.exit(); frames(5);
+    }
+    return o;
+  });
+  check('facade brackets: the bracket ends at the rail, behind the panels — nothing through them', o.brOut < o.rail, JSON.stringify({ brOut: o.brOut, rail: o.rail }));
+  check('facade brackets: a pack side by side — arm | slide | rail web, nothing through the web, touching (≤ 0,3 mm), the rivets through all three (edge ≥ 10 mm); the anchor beside the arm (≥ 10 mm), the flange along the arm\'s bottom', o.pack.armX === 0 && o.pack.flangeX === 0 && o.pack.slideX === 0 && Math.abs(o.pack.gapWeb) <= 0.3 && Math.abs(o.pack.gapArm) <= 0.3 && o.pack.rivet.every(([x0, x1, e]) => x0 <= -6 + 0.01 && x1 >= 1 - 0.01 && e >= 9.99) && o.pack.anchorGap >= 10 && o.pack.anchorOn && o.pack.flange <= 0.3, JSON.stringify(o.pack));
+  check('machines: sitting in, standing and driving with the bucket off the ground — the diesel heard, no scrape', ['loader', 'excavator', 'truck'].every((k) => o[k].idle.scrape <= 0.004 && o[k].go <= 0.004 && o[k].idle.eng > 0.05), JSON.stringify(o));
+  check('2w: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 if (want("2m")) {
   const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
