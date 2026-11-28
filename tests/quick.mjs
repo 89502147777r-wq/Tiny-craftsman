@@ -108,17 +108,18 @@ for (const variant of ['full', 'light']) {
       const quiet = !vis('.tools') && !document.getElementById('fan').hidden;
       ui.fan(true);
       [...document.querySelectorAll('.fan-item')].find((e) => e.textContent.includes('Фундамент')).click();
-      const toolrow = vis('#toolrow') && ui.fanOpen;
+      // (a tile pressed: the grid folds away, the group's tabs stay at the top — the owner, 2026-11-28)
+      const toolrow = vis('#toolrow') && !ui.fanOpen;
       document.querySelector('#toolrow [data-tool="rebar"]').click();
       const modes = [...document.querySelectorAll('#subbar .chip-btn')].map((b) => b.textContent);
-      const shown = vis('#subbar') && ui.fanOpen;
+      const shown = vis('#subbar') && !ui.fanOpen;
       [...document.querySelectorAll('#subbar .chip-btn')].find((b) => b.textContent === 'Сетка').click();
-      const picked = tc.rebarTool.mode === 'mesh' && !ui.fanOpen && !vis('#subbar');
+      const picked = tc.rebarTool.mode === 'mesh' && !ui.fanOpen && vis('#subbar');   // (its modes — with «‹» back to the tools — stay at the top)
       ui.setQuiet(false);
       const normal = vis('.tools') && document.getElementById('fan').hidden;
       return { quiet, toolrow, modes, shown, picked, normal };
     });
-    check('quiet mode: panels hidden, tool modes in the fan, panels come back', q.quiet && q.toolrow && q.shown && q.picked && q.normal, JSON.stringify(q));
+    check('quiet mode: panels hidden; a tile folds the fan, the group\'s tabs and modes stay at the top; panels come back', q.quiet && q.toolrow && q.shown && q.picked && q.normal, JSON.stringify(q));
   }
   check(`${variant}: no console errors on start`, errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
