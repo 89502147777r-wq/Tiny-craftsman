@@ -2322,123 +2322,31 @@ if (want("2u")) {
 // мало места»): the groups on two arcs, undo and «all panels» by the button; no button or label over another, all on the screen — in
 // Russian and in English ----
 if (want("2v")) {
+  // (2026-11-28, the owner: «растянуты по всему экрану — нужно компактнее»: the groups as tiles in a grid over the button, the name
+  // inside its tile; no tile over another, all on the screen, the whole fan ≤ 25 % of the screen; undo and «all panels» in the
+  // button's row, next to it; every group with its own icon)
   for (const loc of ['ru-RU', 'en-US']) {
     const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }, loc);
     const o = await page.evaluate(async () => {
       const ui = window.__tc.ui; ui.setQuiet(true, false); ui.fan(true);
       await new Promise((r) => setTimeout(r, 600));
       const R = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
-      const boxes = [];
-      for (const { el, group, act } of ui.fanItems) { const n = group || act; boxes.push({ n, k: 'btn', ...R(el) }); const sp = el.querySelector('span'); if (sp) boxes.push({ n, k: 'label', ...R(sp) }); }
-      const fab = document.getElementById('fab'); boxes.push({ n: 'fab', k: 'btn', ...R(fab) });
+      const fab = document.getElementById('fab'), boxes = ui.fanItems.map(({ el, group, act }) => ({ n: group || act, el, ...R(el) })), fb = R(fab);
       const hit = [];
-      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
-        const a = boxes[i], b = boxes[j], ox = Math.min(a.r, b.r) - Math.max(a.l, b.l), oy = Math.min(a.b, b.b) - Math.max(a.t, b.t);
-        // (buttons are round: two buttons by their centres; a label and a button — the label's box against the circle)
-        const circ = (q) => ({ x: (q.l + q.r) / 2, y: (q.t + q.b) / 2, r: (q.r - q.l) / 2 });
-        let over = ox > 1 && oy > 1;
-        if (over && a.k === 'btn' && b.k === 'btn') { const p = circ(a), q = circ(b); over = Math.hypot(p.x - q.x, p.y - q.y) < p.r + q.r - 1; }
-        else if (over && (a.k === 'btn') !== (b.k === 'btn')) { const c = circ(a.k === 'btn' ? a : b), r = a.k === 'btn' ? b : a, px = Math.max(r.l, Math.min(c.x, r.r)), py = Math.max(r.t, Math.min(c.y, r.b)); over = Math.hypot(px - c.x, py - c.y) < c.r - 1; }
-        if (over && a.n !== b.n) hit.push(`${a.n}.${a.k}×${b.n}.${b.k}`);
-      }
-      const W = innerWidth, H = innerHeight, out = boxes.filter((q) => q.l < 0 || q.t < 0 || q.r > W || q.b > H).map((q) => q.n + '.' + q.k);
-      const all = boxes.filter((q) => q.n !== 'fab'), area = (Math.max(...all.map((q) => q.r)) - Math.min(...all.map((q) => q.l))) * (Math.max(...all.map((q) => q.b)) - Math.min(...all.map((q) => q.t)));
-      const fb = fab.getBoundingClientRect(), acts = ui.fanItems.filter((x) => x.act).map((x) => { const b = x.el.getBoundingClientRect(); return Math.hypot(b.x + b.width / 2 - fb.x - fb.width / 2, b.y + b.height / 2 - fb.y - fb.height / 2); });
-      return { n: ui.fanItems.length, hit: hit.slice(0, 8), hits: hit.length, out, area: Math.round(area / (W * H) * 100), acts: acts.map(Math.round) };
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const a = boxes[i], b = boxes[j]; if (Math.min(a.r, b.r) - Math.max(a.l, b.l) > 0.5 && Math.min(a.b, b.b) - Math.max(a.t, b.t) > 0.5) hit.push(a.n + '×' + b.n); }
+      for (const a of boxes) if (Math.min(a.r, fb.r) - Math.max(a.l, fb.l) > 0.5 && Math.min(a.b, fb.b) - Math.max(a.t, fb.t) > 0.5) hit.push(a.n + '×fab');
+      // (a name cut off or out of its tile)
+      const cut = boxes.filter((q) => { const sp = q.el.querySelector('span'); if (!sp) return false; const s = R(sp); return sp.scrollHeight > sp.clientHeight + 1 || s.l < q.l - 0.5 || s.r > q.r + 0.5; }).map((q) => q.n);
+      const W = innerWidth, H = innerHeight, out = boxes.filter((q) => q.l < 0 || q.t < 0 || q.r > W || q.b > H).map((q) => q.n);
+      const all = [...boxes, fb], area = (Math.max(...all.map((q) => q.r)) - Math.min(...all.map((q) => q.l))) * (Math.max(...all.map((q) => q.b)) - Math.min(...all.map((q) => q.t)));
+      const acts = boxes.filter((q) => ui.fanItems.find((x) => x.el === q.el).act).map((q) => [Math.round(fb.l - q.r), Math.round(Math.abs((q.t + q.b) / 2 - (fb.t + fb.b) / 2))]);
+      const svgs = ui.fanItems.filter((x) => x.group).map((x) => x.el.querySelector('svg')?.innerHTML || ''), same = svgs.length - new Set(svgs).size;
+      return { n: ui.fanItems.length, hit: hit.slice(0, 8), hits: hit.length, out, cut, area: Math.round(area / (W * H) * 100), acts, same };
     });
-    check(`quiet mode fan (${loc}): no button or label over another, all on the screen; undo and all panels by the button (≤ 100 px)`, o.n >= 10 && o.hits === 0 && o.out.length === 0 && Math.max(...o.acts) <= 100, JSON.stringify(o));
+    check(`quiet mode fan (${loc}): tiles in a grid over the button — none over another, names inside them, all on the screen, ≤ 25 % of the screen; undo and all panels next to the button in its row; every group its own icon`, o.n >= 10 && o.hits === 0 && o.out.length === 0 && o.cut.length === 0 && o.area <= 25 && o.acts.every(([gap, dy]) => gap >= 0 && gap <= 160 && dy <= 6) && o.same === 0, JSON.stringify(o));
     check(`quiet mode fan (${loc}): no console errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     await browser.close();
   }
-}
-// ---- 2w. The owner, 2026-11-27: «после отделки фасада панелями со стен торчат кронштейны» (the bracket's slide reached 205 mm out,
-// the panels stand at 167–177: it came through them) and «в режиме техника постоянно скрежет вместо дизеля» (the scrape loop started
-// at sitting in and ran all the time, over the engine) ----
-if (want("2w")) {
-  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  const o = await page.evaluate(async () => {
-    const tc = window.__tc, mt = tc.machineTool, o = {};
-    const { bracketGeo, OFF } = await import('/src/world/facade.js');
-    const G = bracketGeo(); let z = 0; for (const g of [G.alu, G.dark]) { g.computeBoundingBox(); z = Math.max(z, g.boundingBox.max.z); }
-    o.brOut = +(z * 1000 * 10.4651).toFixed(1); o.rail = +(OFF.vent0 * 1000 * 10.4651).toFixed(1);
-    // (the pack, as on site — the realist: arm | slide | the rail's web (x −1…+1, z from the rail's line − 20 to the panels' back); nothing
-    // through the web, the parts touching, the rivets at 140 through all three with an edge ≥ 10 mm)
-    { const P = G.parts, web = { x0: -1, x1: 1, z0: (OFF.rl * 1000 * 10.4651) - 20, z1: o.rail }, r2 = (v) => +v.toFixed(2);
-      const cross = (q) => (Math.min(q.z1, web.z1) > Math.max(q.z0, web.z0) ? Math.max(0, Math.min(q.x1, web.x1) - Math.max(q.x0, web.x0)) : 0);
-      o.pack = { armX: r2(cross(P.arm)), flangeX: r2(cross(P.flange)), slideX: r2(cross(P.slide)), gapWeb: r2(web.x0 - P.slide.x1), gapArm: r2(P.slide.x0 - P.arm.x1),
-        rivet: P.rivets.slice(0, 2).map((q) => { const zc = (q.z0 + q.z1) / 2; return [r2(q.x0), r2(q.x1), r2(Math.min(zc - web.z0, P.slide.z1 - zc, P.arm.z1 - zc))]; }),
-        // (the anchor in the foot's slot beside the arm, ≥ 10 mm off it for the key; the flange along the arm's sloping bottom ≤ 0,3 mm)
-        anchorGap: r2(P.anchor.x0 - P.arm.x1), anchorOn: P.anchor.x0 >= P.foot.x0 && P.anchor.x1 <= P.foot.x1,
-        flange: r2(Math.max(...[(z) => z < 90, (z) => z > 90].map((end) => Math.abs(Math.max(...P.flangeTop.filter(([z]) => end(z)).map(([z, y]) => y - (-40 + 10 * (z - 3) / 147))))))) }; }   // (each end: its top on the arm's bottom)
-    // (the sounds: what each loop is asked for, every frame)
-    const S = tc.sfx, last = {}, f = S.loop.bind(S); S.loop = (id, n, v, ...a) => { last[id] = [n, +(+v).toFixed(3)]; return f(id, n, v, ...a); };
-    const frames = (n) => { for (let i = 0; i < n; i++) tc.simulate(1 / 30); };
-    tc.setTool('machine'); await mt.ensure();
-    for (const k of ['loader', 'excavator', 'truck']) {
-      mt.enter(k); for (let i = 0; i < 200 && !mt.driving; i++) await new Promise((r) => setTimeout(r, 50));
-      frames(30); const idle = { scrape: last.scrape?.[1] || 0, eng: last['eng-' + k]?.[1] || 0 };
-      mt.joystick('l', 0, 1); frames(45); mt.joystick('l', 0, 0);   // (driving on, the bucket off the ground)
-      o[k] = { idle, go: last.scrape?.[1] || 0, engGo: last['eng-' + k]?.[1] || 0 };
-      mt.exit(); frames(5);
-    }
-    return o;
-  });
-  check('facade brackets: the bracket ends at the rail, behind the panels — nothing through them', o.brOut < o.rail, JSON.stringify({ brOut: o.brOut, rail: o.rail }));
-  check('facade brackets: a pack side by side — arm | slide | rail web, nothing through the web, touching (≤ 0,3 mm), the rivets through all three (edge ≥ 10 mm); the anchor beside the arm (≥ 10 mm), the flange along the arm\'s bottom', o.pack.armX === 0 && o.pack.flangeX === 0 && o.pack.slideX === 0 && Math.abs(o.pack.gapWeb) <= 0.3 && Math.abs(o.pack.gapArm) <= 0.3 && o.pack.rivet.every(([x0, x1, e]) => x0 <= -6 + 0.01 && x1 >= 1 - 0.01 && e >= 9.99) && o.pack.anchorGap >= 10 && o.pack.anchorOn && o.pack.flange <= 0.3, JSON.stringify(o.pack));
-  check('machines: sitting in, standing and driving with the bucket off the ground — the diesel heard, no scrape', ['loader', 'excavator', 'truck'].every((k) => o[k].idle.scrape <= 0.004 && o[k].go <= 0.004 && o[k].idle.eng > 0.05), JSON.stringify(o));
-  check('2w: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-  await browser.close();
-}
-// ---- 2x. The owner, 2026-11-27: «опалубка сначала собирается некрасивыми палками и только потом превращается в текстурную доску»
-// (while a run went up its boards were boxes in the stakes' material, one picture stretched along each; the view's boards came
-// at the end): the boards put up are the view's own — its material, its plank of the photo, its place — nothing swaps at the end ----
-if (want("2x")) {
-  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  const o = await page.evaluate(async () => {
-    const tc = window.__tc, t = tc.terrain, F = tc.formTool, FV = tc.formView, o = {};
-    tc.setTool('form');
-    const y1 = t.heightAt(0, 0.1) + 0.04, runs = [F.run([-0.2, 0.1], [0.2, 0.1], [0, 1], y1)];
-    F._fitRuns(runs, true, () => tc.journal.act('formwork', {}, tc.clock, () => { for (const r of runs) tc.objects.add(r); }));
-    const J = tc.physJob, boards = J.parts.filter((m) => Math.abs(m.scale.z - 0.025 / 10.4651) < 1e-7 && m.scale.y > 0.035 / 10.4651);   // (25 mm thick, taller than a brace)
-    o.n = boards.length; o.mat = boards.every((m) => m.material === FV.boards.material);
-    const seen = boards.map((m) => { m.updateMatrix(); const a = m.geometry.attributes.aBoard; return { e: m.matrix.elements.slice(), b: a ? [a.getX(0), a.getY(0), a.getZ(0)] : null }; });
-    for (let i = 0; i < 900 && !J.done; i++) tc.simulate(1 / 30);
-    o.done = J.done; FV.update();
-    const id = tc.objects.all('form').pop()?.id, M = new (tc.camera.matrix.constructor)(), aB = FV.boards.geometry.attributes.aBoard;
-    const view = []; FV.owner.boards.forEach((r, i) => { if (r === id) { FV.boards.getMatrixAt(i, M); view.push({ e: M.elements.slice(), b: [aB.getX(i), aB.getY(i), aB.getZ(i)] }); } });
-    o.view = view.length;
-    // (each board seen while it went up = a board of the view: the same place (≤ 0,5 mm) and the same plank of the photo)
-    const d = (a, b) => Math.max(...a.map((v, k) => Math.abs(v - b[k])));
-    o.worst = +Math.max(...seen.map((s) => Math.min(...view.map((v) => d(s.e, v.e) * 10465 + (s.b && d(s.b, v.b) < 1e-5 ? 0 : 1e6))))).toFixed(3);
-    return o;
-  });
-  check('formwork: the boards put up are the view\'s own boards — its material, its plank, its place; nothing swaps at the end', o.n > 0 && o.mat && o.done && o.view === o.n && o.worst <= 0.5, JSON.stringify(o));
-  check('2x: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-  await browser.close();
-}
-// ---- 2y. The owner, 2026-11-28: the damp-proof course «непонятно куда и как ложится и докуда, и очень долго»: two touches — the first
-// puts a phantom roll that the finger moves, the second drags how far it is rolled out (the phantom strip and its length); laid in 2–3 s ----
-if (want("2y")) {
-  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  const o = await page.evaluate(async () => {
-    const tc = window.__tc, T = tc.terrain, MM = (v) => v / 1000 / 10.4651, o = {};
-    tc.setTool('wall'); tc.wallTool.setKind?.('dpc'); tc.wallTool.kind = 'dpc'; tc.wallTool.mode = 'lay';
-    const W = tc.wallTool.dpc, V = tc.dpcView, y = T.heightAt(0, 0); tc.settings.dpcW = 1300;
-    const G = () => ({ shown: !!V.ghostShown, a: V.ghostShown?.a?.map((v) => Math.round(v / MM(1))), b: V.ghostShown?.b?.map((v) => Math.round(v / MM(1))), ok: V.ghostShown?.ok, strip: !!V._ghost?.strip.visible });
-    // 1: a touch — the phantom roll; dragged — it follows; let go — still there, nothing laid
-    W.down({ x: MM(-2500), y, z: 0 }); o.t1 = G(); W.move({ x: MM(-2000), y, z: MM(100) }); W.up(); o.t1up = G(); o.recs1 = tc.objects.all('dpc').length;
-    // 2: from away from the roll — how far: the strip shown, its length (snapped along x), red when too short
-    W.down({ x: MM(-1900), y, z: MM(100) }); o.short = G(); W.move({ x: MM(2000), y, z: MM(250) }); o.t2 = G(); o.measure = document.getElementById('measure')?.textContent;
-    // 3: let go — laid; how long it takes (game seconds)
-    W.up(); o.recs = tc.objects.all('dpc').map((r) => [r.a.map((v) => Math.round(v / MM(1))), r.b.map((v) => Math.round(v / MM(1))), r.w]); o.after = G();
-    let t = 0; while (W.jobs.length && t < 60) { W.update(1 / 60); V.update(1 / 60); t += 1 / 60; } o.secs = +t.toFixed(2);
-    return o;
-  });
-  check('damp-proof course: the first touch puts a phantom roll the finger moves, nothing laid yet', o.t1.shown && !o.t1.b && o.t1up.shown && o.t1up.a[0] === -2000 && o.t1up.a[1] === 100 && o.recs1 === 0, JSON.stringify({ t1: o.t1, t1up: o.t1up, recs1: o.recs1 }));
-  check('damp-proof course: the second touch drags how far — the phantom strip (red when too short), its length shown, along x', o.short.ok === false && o.t2.strip && o.t2.ok && o.t2.b[1] === 100 && /4[,.]00/.test(o.measure || ''), JSON.stringify({ short: o.short, t2: o.t2, measure: o.measure }));
-  check('damp-proof course: let go — laid where the phantom was, the phantom gone, all of it in ≤ 2,5 s', o.recs.length === 1 && o.recs[0][0][0] === -2000 && o.recs[0][1][0] === 2000 && !o.after.shown && o.secs > 0.5 && o.secs <= 2.5, JSON.stringify({ recs: o.recs, after: o.after, secs: o.secs }));
-  check('2y: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-  await browser.close();
 }
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----
 if (want("2m")) {

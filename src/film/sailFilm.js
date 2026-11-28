@@ -372,7 +372,7 @@ export function* sailFilm(d, app) {
   // ==== 6 · the damp-proof course under the box: the torch and the roll on the sail's top over the pavilion's walls ====
   phase('dpc', function* () {
     const b = sailRec(); if (!b) return;
-    st.dpcW = 400; st.wallKind = 'dpc'; app.setTool('wall'); W.setMode('lay'); d.menu(['masonry'], 'wall', null, true);
+    st.dpcW = 400; st.wallKind = 'dpc'; app.setTool('wall'); W.setMode('lay'); d.menu(['dpc'], 'wall', null, true);
     const dpc = W.dpc, y = b.top + b.H, lay = (a, c) => { dpc.line({ x: MM(a[0]), y, z: MM(a[1]) }, { x: MM(c[0]), y, z: MM(c[1]) }); };
     const lines = [[[2500 + 50, SL.z0 + 150], [SL.x1 - 50, SL.z0 + 150]], [[IN - 150, SL.z0 + 150], [0, SL.z0 + 150]], [[SL.x1 - 150, SL.z0 + 150], [SL.x1 - 150, SL.z1 - 150]], [[IN - 150, SL.z1 - 150], [SL.x1 - 50, SL.z1 - 150]], [[IN, SL.z0 + 150], [IN, SL.z1 - 150]]];
     lay(...lines[2]);

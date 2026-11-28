@@ -151,7 +151,7 @@ export function* stairFilm(d, app) {
   const say = (m) => { (d.notes = d.notes || []).push([+d.t.toFixed(1), m]); };
   // (the menu in the frame is the game's own, read from it after the film has set what it works with — the owner, 2026-11-17:
   // «актуальное меню», the material in the frame is the one chosen in it)
-  const mason = (kind) => { st.wallKind = kind; app.setTool('wall'); W.setMode('lay'); d.menu(['masonry'], 'wall'); };
+  const mason = (kind) => { st.wallKind = kind; app.setTool('wall'); W.setMode('lay'); d.menu([kind === 'dpc' ? 'dpc' : 'masonry'], 'wall'); };
   loadPhysics().catch(() => {});
   // ---- the camera (as in stage 1): a still shot list cut by the film's clock, or a tripod panning after the tool ----
   let shotN = 0, tool = () => null; d.toolAt = () => tool();   // (for scripts/check-film.mjs: where the work is)
