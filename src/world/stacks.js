@@ -44,11 +44,14 @@ export function buildStacks(tex) {
   geo.setAttribute('aRib', new THREE.InstancedBufferAttribute(new Float32Array(n).fill(L / (d * REBAR_TILE)), 1));
   const bars = new THREE.InstancedMesh(geo, makeRebarMaterial(), n);
   const cx = X0 - 0.2, cz = 0.35;
+  // (on two bearers across it at 0,2 and 0,8 of its length, 75 × 75 mm — a bundle is never laid in the mud — the realist)
+  const hb = 0.075 / MODEL_SCALE, bearer = new THREE.MeshStandardMaterial({ color: 0x8a6a48, roughness: 0.9 });
+  for (const t of [-0.3, 0.3]) { const b = new THREE.Mesh(new THREE.BoxGeometry(d * 12, hb, hb), bearer); b.position.set(cx, hb / 2, cz + t * L); b.castShadow = b.receiveShadow = true; g.add(b); }
   let i = 0;
   for (let row = 0; row < 4 && i < n; row++) {
     const cnt = [8, 7, 6, 5][row];
     for (let c = 0; c < cnt && i < n; c++, i++) {
-      p.set(cx + (c - (cnt - 1) / 2) * d * 1.05 + (rnd() - 0.5) * d * 0.2, d / 2 + row * d * 0.88, cz + (rnd() - 0.5) * 0.006);
+      p.set(cx + (c - (cnt - 1) / 2) * d * 1.05 + (rnd() - 0.5) * d * 0.2, hb + d / 2 + row * d * 0.88, cz + (rnd() - 0.5) * 0.006);
       q.setFromEuler(e.set(Math.PI / 2, (rnd() - 0.5) * 0.02, (rnd() - 0.5) * 0.01));
       s.set(d / 2, L, d / 2);
       bars.setMatrixAt(i, m.compose(p, q, s));
@@ -62,7 +65,7 @@ export function buildStacks(tex) {
   for (const t of [-0.35, 0, 0.35]) {
     const w = new THREE.Mesh(new THREE.TorusGeometry(d * 4.4, d * 0.12, 6, 28), wire);
     w.scale.set(1, 0.55, 1);
-    w.position.set(cx, d * 1.8, cz + t * L);
+    w.position.set(cx, hb + d * 1.8, cz + t * L);
     g.add(w);
   }
 
