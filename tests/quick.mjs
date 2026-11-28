@@ -1987,7 +1987,7 @@ if (want("2o")) {
     { const F = D.stripFrame({ a: [MM(-2000), 0], b: [MM(2000), 0], w: 1300 }, { off: 0, w: 1300 }), [bx, , bz] = V._bottleAt(F);
       const pr = tc.objects.add({ type: 'siteprop', kind: 'pallet', x: +((bx + MM(-500)) / 2).toFixed(5), z: +(bz / 2).toFixed(5), yaw: 0 });
       tc.siteProps.update?.(0); await tc.siteProps.meshes.get(pr.id)?.userData.ready; await new Promise((res) => setTimeout(res, 300)); tc.siteProps.update?.(0); }
-    W.down({ x: MM(-2000), y, z: 0 }); W.move({ x: MM(2000), y, z: MM(40) }); W.up();
+    W.line({ x: MM(-2000), y, z: 0 }, { x: MM(2000), y, z: MM(40) });
     const r = tc.objects.all('dpc')[0];
     let mid = null, mid2 = null, steps = 0, r0 = null, r1 = null, hose = null, hose0 = null;
     for (; W.jobs.length && steps < 20000; steps++) {
@@ -2010,7 +2010,7 @@ if (want("2o")) {
     tc.journal.undo(); V.update(0);
     const undone = tc.objects.all('dpc').length, left = V.meshes.size;
     // (on any base — the owner: on the ground too, not only on concrete)
-    const yg = T.heightAt(MM(3500), MM(3000)); tc.settings.dpcW = 400; W.down({ x: MM(3500), y: yg, z: MM(3000) }); W.move({ x: MM(3500), y: yg, z: MM(1500) }); W.up();
+    const yg = T.heightAt(MM(3500), MM(3000)); tc.settings.dpcW = 400; W.line({ x: MM(3500), y: yg, z: MM(3000) }, { x: MM(3500), y: yg, z: MM(1500) });
     const onGround = tc.objects.all('dpc').length; for (let i = 0; i < 2000 && W.jobs.length; i++) { W.update(1 / 30); V.update(1 / 30); }
     return { hose, onGround, strips: D.dpcStrips(r).length, snapped: Math.abs(r.b[1] - r.a[1]) < 1e-9, mid, mid2, r0: Math.round(r0), r1: Math.round(r1), secs: +secs.toFixed(1), done, meshes, bottleOff, bottleDist, undone, left };
   });
@@ -2018,8 +2018,8 @@ if (want("2o")) {
     o.snapped && o.strips === 2 && o.mid?.roll && o.mid.flame && o.mid.tongues === 3 && o.mid.melt && o.mid.smoke > 0, JSON.stringify(o));
   check('damp-proof course: the roll is the strip\'s own length (4 m: Ø ≈ 0,13 m) and thins to its core; the second strip is on the first only in the lap',
     o.r0 > 55 && o.r0 < 75 && o.r1 < 30 && o.mid2?.lap > 2.5 && o.mid2.beyond < 0.6, JSON.stringify(o));
-  check('damp-proof course: at the pace of its width (2 × 4 m × 700 at 0,06 m²/s ≈ 93 s); done — no roll, the torch out on its stand on the ground; a top, sides and 4 beads a strip; the bottle on the ground ≥ 3 m off; undo takes it off',
-    o.secs > 80 && o.secs < 105 && !o.done.roll && !o.done.flame && o.done.torchY < 120 && o.meshes === 12 && Math.abs(o.bottleOff) < 10 && o.bottleDist >= 3 && o.undone === 0 && o.left === 0, JSON.stringify(o));
+  check('damp-proof course: all of it in ≤ 2,5 s in the game (the owner, 2026-11-28; films keep the pace of its width); done — no roll, the torch out on its stand on the ground; a top, sides and 4 beads a strip; the bottle on the ground ≥ 3 m off; undo takes it off',
+    o.secs > 0.5 && o.secs <= 2.5 && !o.done.roll && !o.done.flame && o.done.torchY < 120 && o.meshes === 12 && Math.abs(o.bottleOff) < 10 && o.bottleDist >= 3 && o.undone === 0 && o.left === 0, JSON.stringify(o));
   check('damp-proof course: on any base — drawn on the bare ground it is laid too (the owner)', o.onGround === 1, JSON.stringify(o));
   check('damp-proof course: the torch\'s hose lies on what is under it — over the slab\'s edge, round a pallet, never through (the owner)', o.hose?.n > 50 && o.hose.through === 0, JSON.stringify(o.hose));
   check('damp-proof course: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
@@ -2414,6 +2414,30 @@ if (want("2x")) {
   });
   check('formwork: the boards put up are the view\'s own boards — its material, its plank, its place; nothing swaps at the end', o.n > 0 && o.mat && o.done && o.view === o.n && o.worst <= 0.5, JSON.stringify(o));
   check('2x: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+  await browser.close();
+}
+// ---- 2y. The owner, 2026-11-28: the damp-proof course «непонятно куда и как ложится и докуда, и очень долго»: two touches — the first
+// puts a phantom roll that the finger moves, the second drags how far it is rolled out (the phantom strip and its length); laid in 2–3 s ----
+if (want("2y")) {
+  const { browser, page, errors } = await open(pw.chromium, '', { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const o = await page.evaluate(async () => {
+    const tc = window.__tc, T = tc.terrain, MM = (v) => v / 1000 / 10.4651, o = {};
+    tc.setTool('wall'); tc.wallTool.setKind?.('dpc'); tc.wallTool.kind = 'dpc'; tc.wallTool.mode = 'lay';
+    const W = tc.wallTool.dpc, V = tc.dpcView, y = T.heightAt(0, 0); tc.settings.dpcW = 1300;
+    const G = () => ({ shown: !!V.ghostShown, a: V.ghostShown?.a?.map((v) => Math.round(v / MM(1))), b: V.ghostShown?.b?.map((v) => Math.round(v / MM(1))), ok: V.ghostShown?.ok, strip: !!V._ghost?.strip.visible });
+    // 1: a touch — the phantom roll; dragged — it follows; let go — still there, nothing laid
+    W.down({ x: MM(-2500), y, z: 0 }); o.t1 = G(); W.move({ x: MM(-2000), y, z: MM(100) }); W.up(); o.t1up = G(); o.recs1 = tc.objects.all('dpc').length;
+    // 2: from away from the roll — how far: the strip shown, its length (snapped along x), red when too short
+    W.down({ x: MM(-1900), y, z: MM(100) }); o.short = G(); W.move({ x: MM(2000), y, z: MM(250) }); o.t2 = G(); o.measure = document.getElementById('measure')?.textContent;
+    // 3: let go — laid; how long it takes (game seconds)
+    W.up(); o.recs = tc.objects.all('dpc').map((r) => [r.a.map((v) => Math.round(v / MM(1))), r.b.map((v) => Math.round(v / MM(1))), r.w]); o.after = G();
+    let t = 0; while (W.jobs.length && t < 60) { W.update(1 / 60); V.update(1 / 60); t += 1 / 60; } o.secs = +t.toFixed(2);
+    return o;
+  });
+  check('damp-proof course: the first touch puts a phantom roll the finger moves, nothing laid yet', o.t1.shown && !o.t1.b && o.t1up.shown && o.t1up.a[0] === -2000 && o.t1up.a[1] === 100 && o.recs1 === 0, JSON.stringify({ t1: o.t1, t1up: o.t1up, recs1: o.recs1 }));
+  check('damp-proof course: the second touch drags how far — the phantom strip (red when too short), its length shown, along x', o.short.ok === false && o.t2.strip && o.t2.ok && o.t2.b[1] === 100 && /4[,.]00/.test(o.measure || ''), JSON.stringify({ short: o.short, t2: o.t2, measure: o.measure }));
+  check('damp-proof course: let go — laid where the phantom was, the phantom gone, all of it in ≤ 2,5 s', o.recs.length === 1 && o.recs[0][0][0] === -2000 && o.recs[0][1][0] === 2000 && !o.after.shown && o.secs > 0.5 && o.secs <= 2.5, JSON.stringify({ recs: o.recs, after: o.after, secs: o.secs }));
+  check('2y: no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
 }
 // ---- 2m. The realist (.claude/agents/realist.md): checks of what the game shows against how it really is ----

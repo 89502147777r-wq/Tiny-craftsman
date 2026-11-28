@@ -175,7 +175,7 @@ export function* stairFilm(d, app) {
 
   // ---- 1 · the damp-proof course: the spine's strip 1300 (two strips lapped), the slab's edges 400 ----
   st.dpcW = 1300; mason('dpc');
-  const dpc = W.dpc, lay = (a, b, w) => { st.dpcW = w; const y = T.heightAt(MM(a[0]), MM(a[1])); dpc.down({ x: MM(a[0]), y, z: MM(a[1]) }); dpc.move({ x: MM(b[0]), y, z: MM(b[1]) }); dpc.up(); };
+  const dpc = W.dpc, lay = (a, b, w) => { st.dpcW = w; const y = T.heightAt(MM(a[0]), MM(a[1])); dpc.line({ x: MM(a[0]), y, z: MM(a[1]) }, { x: MM(b[0]), y, z: MM(b[1]) }); };
   lay([X0, ZB + 150], [X0, ZS - 150], 1300);
   const s0 = new V(MM(X0), T.heightAt(MM(X0), MM(ZB)) + MM(100), MM(ZB));   // (the roll's start: the camera there from the first frame)
   tool = () => { const Tt = app.dpcView?.work?.T; return Tt?.visible !== false && Tt ? Tt.position.clone() : s0.clone(); };

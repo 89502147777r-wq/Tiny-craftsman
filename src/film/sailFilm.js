@@ -373,7 +373,7 @@ export function* sailFilm(d, app) {
   phase('dpc', function* () {
     const b = sailRec(); if (!b) return;
     st.dpcW = 400; st.wallKind = 'dpc'; app.setTool('wall'); W.setMode('lay'); d.menu(['masonry'], 'wall', null, true);
-    const dpc = W.dpc, y = b.top + b.H, lay = (a, c) => { dpc.down({ x: MM(a[0]), y, z: MM(a[1]) }); dpc.move({ x: MM(c[0]), y, z: MM(c[1]) }); dpc.up(); };
+    const dpc = W.dpc, y = b.top + b.H, lay = (a, c) => { dpc.line({ x: MM(a[0]), y, z: MM(a[1]) }, { x: MM(c[0]), y, z: MM(c[1]) }); };
     const lines = [[[2500 + 50, SL.z0 + 150], [SL.x1 - 50, SL.z0 + 150]], [[IN - 150, SL.z0 + 150], [0, SL.z0 + 150]], [[SL.x1 - 150, SL.z0 + 150], [SL.x1 - 150, SL.z1 - 150]], [[IN - 150, SL.z1 - 150], [SL.x1 - 50, SL.z1 - 150]], [[IN, SL.z0 + 150], [IN, SL.z1 - 150]]];
     lay(...lines[2]);
     tool = () => { const Tt = app.dpcView?.work?.T; return Tt && Tt.visible !== false ? Tt.position.clone() : null; };
