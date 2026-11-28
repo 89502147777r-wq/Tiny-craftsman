@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { MAT, MODEL_SCALE, TRAY } from '../config.js';
 import { makeBoardMaterial } from './formwork.js';
-import { makeRebarMaterial } from './rebar.js';
+import { makeRebarMaterial, REBAR_TILE } from './rebar.js';
 import { mulberry32 } from '../core/rand.js';
 
 // Building materials waiting on the workbench next to the diorama:
@@ -41,7 +41,7 @@ export function buildStacks(tex) {
   // ---- rebar bundle -----------------------------------------------------------------------
   const d = 0.012 / MODEL_SCALE, n = 26;
   const geo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, false);
-  geo.setAttribute('aRib', new THREE.InstancedBufferAttribute(new Float32Array(n).fill(L / (d * 3)), 1));
+  geo.setAttribute('aRib', new THREE.InstancedBufferAttribute(new Float32Array(n).fill(L / (d * REBAR_TILE)), 1));
   const bars = new THREE.InstancedMesh(geo, makeRebarMaterial(), n);
   const cx = X0 - 0.2, cz = 0.35;
   let i = 0;

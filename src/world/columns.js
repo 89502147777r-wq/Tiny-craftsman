@@ -4,6 +4,7 @@ import { MODEL_SCALE } from '../config.js';
 import { makeCastConcreteMaterial } from './terrainMaterial.js';
 import { variant } from './assets.js';
 import { beltContains } from '../tools/belt.js';
+import { makeRebarMaterial, REBAR_TILE } from './rebar.js';
 
 // Cast columns (монолитные колонны) and bored piles (буронабивные сваи), as on site («Фундамент →
 // Колонны и сваи»; the concrete — «Бетон», the hose or the bucket):
@@ -108,6 +109,17 @@ function shear(r, y0, y1, half, round, seg = 20) {
 }
 // a rod between two points
 const _Y = new THREE.Vector3(0, 1, 0);
+// a bar of a cage with its ribs (the rebar material: uv along, aRib — tiles of the baked bar along it, REBAR_TILE d each)
+function barRod(a, b, r, seg = 8) {
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), L = A.distanceTo(B);
+  const g = new THREE.CylinderGeometry(r, r, L, seg, 1, true);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(_Y, B.clone().sub(A).normalize()));
+  g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
+  g.setAttribute('aRib', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count).fill(L / (2 * r * REBAR_TILE)), 1));
+  return g;
+}
+// (the rest merged with them: a uv and no ribs)
+const asBar = (g) => { const n = g.attributes.position.count; if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(n * 2), 2)); if (!g.attributes.aRib) g.setAttribute('aRib', new THREE.Float32BufferAttribute(new Float32Array(n), 1)); return g; };
 function rod(a, b, r, seg = 6) {
   const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), L = A.distanceTo(B);
   const g = new THREE.CylinderGeometry(r, r, L, seg, 1, true);
@@ -127,12 +139,12 @@ export function cageParts(r) {
   const offs = sec.round ? Array.from({ length: sec.bars }, (_, k) => [Math.cos(k / sec.bars * Math.PI * 2) * half, Math.sin(k / sec.bars * Math.PI * 2) * half])
     : sec.bars >= 8 ? squareRing(sec.bars / 4).map(([a, b]) => [a * half, b * half]) : [[-half, -half], [half, -half], [half, half], [-half, half]];
   const gs = [], pl = [];
-  for (const [ox, oz] of offs) { const [a0, b0] = axisAt(r, y0), [a1, b1] = axisAt(r, y1 + st); gs.push(rod([a0 + ox, y0, b0 + oz], [a1 + ox, y1 + st, b1 + oz], d / 2)); }
+  for (const [ox, oz] of offs) { const [a0, b0] = axisAt(r, y0), [a1, b1] = axisAt(r, y1 + st); gs.push(barRod([a0 + ox, y0, b0 + oz], [a1 + ox, y1 + st, b1 + oz], d / 2)); }
   // (tied into the foundation's cage: each bar's foot bent out 250 mm along its bottom bars — the «лапки» —
   // and wired to them)
   if (r.anc) for (const [ox, oz] of offs) {
     const L = Math.hypot(ox, oz) || 1, [a0, b0] = axisAt(r, y0), fx = a0 + ox, fz = b0 + oz;
-    gs.push(rod([fx, y0, fz], [fx + ox / L * MM(250), y0, fz + oz / L * MM(250)], d / 2));
+    gs.push(barRod([fx, y0, fz], [fx + ox / L * MM(250), y0, fz + oz / L * MM(250)], d / 2));
     for (const k of [0.3, 0.8]) { const t = new THREE.TorusGeometry(MM(7), MM(1.6), 3, 8); t.rotateX(Math.PI / 2); t.translate(fx + ox / L * MM(250) * k, y0 + MM(6), fz + oz / L * MM(250) * k); t.deleteAttribute('uv'); gs.push(t); }
   }
   // the stirrups (square / round), every 200 mm up the axis — the last 100 under the top
@@ -154,7 +166,7 @@ export function cageParts(r) {
       w.deleteAttribute('uv'); pl.push(w);
     }
   }
-  return { rebar: mergeGeometries(gs), plastic: pl.length ? mergeGeometries(pl) : null };
+  return { rebar: mergeGeometries(gs.map(asBar)), plastic: pl.length ? mergeGeometries(pl) : null };
 }
 export const cageGeo = (r) => cageParts(r).rebar;
 
@@ -297,7 +309,7 @@ export class ColumnView {
     // splashed with concrete — a drawn texture of stains over its paint / its zinc)
     const dirt = dirtTex(), T = (t, rx = 1, ry = rx) => (t ? variant(t, rx, ry) : null);
     this.mats = {
-      rebar: new THREE.MeshStandardMaterial({ color: 0x4f4338, roughness: 0.62, metalness: 0.55 }),
+      rebar: makeRebarMaterial(),   // (the bar baked from a real model, its ribs — rebar.js)
       plastic: new THREE.MeshStandardMaterial({ color: 0xd9d6cc, roughness: 0.6 }),
       // film-faced plywood: the dark brown phenolic film, a dull sheen, the grain under it
       ply: tex?.ply ? new THREE.MeshStandardMaterial({ map: T(tex.ply.diff, 0.8, 1.6), normalMap: T(tex.ply.nor, 0.8, 1.6), normalScale: new THREE.Vector2(0.35, 0.35), color: 0x8a5436, roughness: 0.4 }) : plyMat || new THREE.MeshStandardMaterial({ color: 0x7a4a2c, roughness: 0.45 }),

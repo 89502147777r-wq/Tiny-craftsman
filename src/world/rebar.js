@@ -59,7 +59,7 @@ export class RebarView {
       q.setFromUnitVectors(_up, D.divideScalar(L));
       s.set(d / 2, L, d / 2);
       this.rods.setMatrixAt(nr, m.compose(A, q, s));
-      aRib.setX(nr, L / (d * 0.75 * 4)); // 4 ribs per texture tile, a rib every 0.75 d
+      aRib.setX(nr, L / (d * REBAR_TILE)); // (tiles along the bar: one tile REBAR_TILE diameters — 12 ribs a side at ~0,79 d, as the model's)
       o.rods[nr++] = id;
     };
     for (const r of recs) {
@@ -291,6 +291,7 @@ function spread(a, b, step) {
 }
 
 // ---- materials & small parts -------------------------------------------------------------
+export const REBAR_TILE = 9.4966;   // (the baked tile: 4 × 2,374 d)
 export function makeRebarMaterial() {
   // periodic-profile rebar: two longitudinal ribs + crescent cross ribs, as a normal map
   const W = 64, H = 256;
@@ -333,12 +334,55 @@ export function makeRebarMaterial() {
   map.wrapS = map.wrapT = THREE.RepeatWrapping;
   map.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.MeshStandardMaterial({ map, normalMap: nor, normalScale: new THREE.Vector2(1.3, 1.3), roughness: 0.62, metalness: 0.55 });
+  // the real bar (the owner, 2026-11-28: «а арматуры нет разве качественной 3D-модели?»): its ribs, colour and roughness baked from the
+  // CC BY model «REBAR reinforced concrete» (sinnervoncrawsz) onto the cylinder's grid — 4 periods of 3 ribs a tile (REBAR_TILE d long);
+  // until it is in, the drawn one
+  const tl = new THREE.TextureLoader(), T = (f, srgb) => new Promise((res) => tl.load(`assets/textures/rebar/${f}`, (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; res(t); }, undefined, () => res(null)));
+  Promise.all([T('col.jpg', true), T('nor.png'), T('rm.jpg')]).then(([c, n, r]) => {
+    if (!c || !n || !r) return;
+    // (mill scale and rust are not bright metal: the model's colour as it is (its own factor 0,59 made the bar near black, the ribs seen
+    // only in the glints), metalness ×0,45 of its map, its roughness; the ribs a little deeper than the baked height — they read at a
+    // distance as the bar's own)
+    // (the realist, round 2: a bar on site is rusty brown in 1–3 weeks — patches 50–200 mm, more on its top, the dark scale left in the
+    // hollows; rust and scale are not metal: metalness ×0,15, the rust ones 0 and rough 0,9 — the sky no longer glints lilac in it)
+    m.map = c; m.normalMap = n; m.roughnessMap = r; m.metalnessMap = r; m.normalScale.set(2, 2); m.roughness = 1.15; m.metalness = 0.15;
+    m.color.setRGB(1.3, 1.1, 0.88);
+    m.userData.real = true; m.needsUpdate = true;
+  });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aRib;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvec2 ru = vec2(uv.x, uv.y * aRib);\nvMapUv = vec2(uv.x, uv.y * aRib * 0.05);\nvNormalMapUv = ru;');
+      .replace('#include <common>', '#include <common>\nattribute float aRib;\nvarying vec3 vRW;\nvarying float vRUp;')
+      .replace('#include <uv_vertex>', m.userData.real
+        ? '#include <uv_vertex>\nvec2 ru = vec2(uv.x, uv.y * aRib);\nvMapUv = ru; vNormalMapUv = ru; vRoughnessMapUv = ru; vMetalnessMapUv = ru;\nvec4 rwp = vec4(position, 1.0); vec3 rwn = normal;\n#ifdef USE_INSTANCING\nrwp = instanceMatrix * rwp; rwn = mat3(instanceMatrix) * rwn;\n#endif\nvRW = (modelMatrix * rwp).xyz; vRUp = normalize(mat3(modelMatrix) * rwn).y;'
+        : '#include <uv_vertex>\nvec2 ru = vec2(uv.x, uv.y * aRib * REBAR_K);\nvMapUv = vec2(uv.x, uv.y * aRib * REBAR_K * 0.05);\nvNormalMapUv = ru;')
+      .replace('#include <common>', `#include <common>\n#define REBAR_K ${(REBAR_TILE / (0.75 * 4)).toFixed(4)}`);
   };
-  m.customProgramCacheKey = () => 'tc-rebar';
+  // the rust: patches in world space (two octaves of value noise, ~0,1 and ~0,03 m), thicker on the bar's top; the hollows between the
+  // ribs (dark in the baked colour) keep the scale
+  const prevFS = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => {
+    prevFS(sh, r);
+    if (!m.userData.real) return;
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vRW;
+varying float vRUp;
+float rHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float rNoise(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(rHash(i), rHash(i + vec3(1,0,0)), f.x), mix(rHash(i + vec3(0,1,0)), rHash(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(rHash(i + vec3(0,0,1)), rHash(i + vec3(1,0,1)), f.x), mix(rHash(i + vec3(0,1,1)), rHash(i + vec3(1,1,1)), f.x), f.y), f.z); }
+float rRust = 0.0;`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+  { vec3 q = vRW * ${(MODEL_SCALE / 0.1).toFixed(3)};   // (a patch ~0,1 m)
+    float n = 0.65 * rNoise(q) + 0.35 * rNoise(q * 3.3 + 7.1);
+    float dark = 1.0 - smoothstep(0.08, 0.2, dot(diffuseColor.rgb, vec3(0.33)));
+    rRust = smoothstep(0.38, 0.62, n + 0.18 * vRUp) * (1.0 - 0.6 * dark);
+    vec3 rustC = mix(vec3(0.20, 0.075, 0.035), vec3(0.30, 0.12, 0.045), rNoise(q * 9.0));
+    diffuseColor.rgb = mix(diffuseColor.rgb, rustC, rRust * 0.85); }`)
+      .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n  metalnessFactor *= 1.0 - rRust;')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(clamp(roughnessFactor, 0.6, 0.75), 0.9, rRust);');
+  };
+  m.customProgramCacheKey = () => 'tc-rebar' + (m.userData.real ? '-real2' : '');
   return m;
 }
 
