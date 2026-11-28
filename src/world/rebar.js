@@ -338,8 +338,9 @@ export function makeRebarMaterial() {
   // CC BY model «REBAR reinforced concrete» (sinnervoncrawsz) onto the cylinder's grid — 4 periods of 3 ribs a tile (REBAR_TILE d long);
   // until it is in, the drawn one
   const tl = new THREE.TextureLoader(), T = (f, srgb) => new Promise((res) => tl.load(`assets/textures/rebar/${f}`, (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; res(t); }, undefined, () => res(null)));
-  Promise.all([T('col.jpg', true), T('nor.png'), T('rm.jpg')]).then(([c, n, r]) => {
-    if (!c || !n || !r) return;
+  Promise.all([T('col.jpg', true), T('nor.png'), T('rm.jpg'), T('h.png')]).then(([c, n, r, h]) => {
+    if (!c || !n || !r || !h) return;
+    m.userData.ribH = h;   // (the ribs' height, 0…1: the rust on the crests, the scale in the hollows, the jagged outline close up)
     // (mill scale and rust are not bright metal: the model's colour as it is (its own factor 0,59 made the bar near black, the ribs seen
     // only in the glints), metalness ×0,45 of its map, its roughness; the ribs a little deeper than the baked height — they read at a
     // distance as the bar's own)
@@ -363,6 +364,7 @@ export function makeRebarMaterial() {
   m.onBeforeCompile = (sh, r) => {
     prevFS(sh, r);
     if (!m.userData.real) return;
+    sh.uniforms.tRibH = { value: m.userData.ribH };
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vRW;
@@ -371,18 +373,29 @@ float rHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.
 float rNoise(vec3 x) { vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(rHash(i), rHash(i + vec3(1,0,0)), f.x), mix(rHash(i + vec3(0,1,0)), rHash(i + vec3(1,1,0)), f.x), f.y),
              mix(mix(rHash(i + vec3(0,0,1)), rHash(i + vec3(1,0,1)), f.x), mix(rHash(i + vec3(0,1,1)), rHash(i + vec3(1,1,1)), f.x), f.y), f.z); }
-float rRust = 0.0;`)
+float rRust = 0.0;
+uniform sampler2D tRibH;
+float rH = 0.5;`)
       .replace('#include <map_fragment>', `#include <map_fragment>
   { vec3 q = vRW * ${(MODEL_SCALE / 0.1).toFixed(3)};   // (a patch ~0,1 m)
+    rH = texture2D(tRibH, vNormalMapUv).r;
+    // (how far: the tile's length per pixel — far off the noise and the ribs blur into one light tone: the bar kept dark there)
+    float far = smoothstep(0.15, 1.2, fwidth(vNormalMapUv.y));
     float n = 0.65 * rNoise(q) + 0.35 * rNoise(q * 3.3 + 7.1);
     float dark = 1.0 - smoothstep(0.08, 0.2, dot(diffuseColor.rgb, vec3(0.33)));
-    rRust = smoothstep(0.38, 0.62, n + 0.18 * vRUp) * (1.0 - 0.6 * dark);
-    vec3 rustC = mix(vec3(0.20, 0.075, 0.035), vec3(0.30, 0.12, 0.045), rNoise(q * 9.0));
-    diffuseColor.rgb = mix(diffuseColor.rgb, rustC, rRust * 0.85); }`)
+    // (patches sharper; more on the top and on the ribs' crests, the dark scale left in the hollows between them — the realist)
+    rRust = smoothstep(0.44, 0.56, n + 0.18 * vRUp + 0.22 * smoothstep(0.55, 0.9, rH) - 0.15 * (1.0 - smoothstep(0.1, 0.3, rH))) * (1.0 - 0.6 * dark);
+    rRust *= mix(1.0, 0.6, far);
+    vec3 rustC = mix(vec3(0.20, 0.075, 0.035), vec3(0.30, 0.12, 0.045), rNoise(q * 9.0) * (1.0 - far));
+    diffuseColor.rgb = mix(diffuseColor.rgb, rustC, rRust * 0.85) * mix(1.0, 0.72, far); }`)
+      // (close up the outline jagged by the ribs: where the bar is seen edge-on, the hollows between the ribs are not there)
+      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+  { float rim = 1.0 - abs(dot(normalize(normal), normalize(vViewPosition)));
+    if (rim > 0.86 && rH < 0.3 && fwidth(vNormalMapUv.y) < 0.025) discard; }`)
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n  metalnessFactor *= 1.0 - rRust;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(clamp(roughnessFactor, 0.6, 0.75), 0.9, rRust);');
   };
-  m.customProgramCacheKey = () => 'tc-rebar' + (m.userData.real ? '-real2' : '');
+  m.customProgramCacheKey = () => 'tc-rebar' + (m.userData.real ? '-real3' : '');
   return m;
 }
 
