@@ -407,7 +407,7 @@ export class UI {
       el.addEventListener('click', () => {
         this.openGroup(g.id);
         this.toast(g.label);
-        if (this.groupTools(g.id).length < 2 && !this.chips().length) this.fan(false);
+        this.fan(false);   // (the grid folds away, the group's tabs stay at the top — the owner, 2026-11-28)
         this.refresh();
       });
       // (centres from the button's centre: the grid's right edge on the button's, its bottom 10 px over it)
