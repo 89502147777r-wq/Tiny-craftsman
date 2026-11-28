@@ -347,7 +347,7 @@ export class WallTool {
     }
   }
 
-  interrupt() { for (const w of [this.pool, this.land, this.fence, this.ext, this.col]) w.interrupt(); this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
+  interrupt() { for (const w of [this.pool, this.land, this.fence, this.ext, this.col, this.dpc]) w.interrupt(); this.drag = null; if (this.carry) this._carryCancel(); this._preview(true); this.app.ui.hideMeasure(); }
 
   update(dt) { if (this.rowJob) this._rowStep(); this.blind.update(dt); this.pool.update(dt); this.dpc.update(dt); }
 

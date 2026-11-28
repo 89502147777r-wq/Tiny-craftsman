@@ -17,7 +17,7 @@ import { loadModel } from './machines/models.js';
 // - the pace by the width: the same area a second (v · w = 0,06 m²/s).
 // Records { type: 'dpc', a: [x, z], b: [x, z], y, w (mm) } — strips side by side lapped 100 when wider than the roll (1 m).
 const S = 1 / 1000 / MODEL_SCALE, MM = (v) => v * S;
-export const DPC = { t: 3, roll: 1000, lap: 100, endLap: 150, len: 10000, core: 22, area: 60000, bead: 7, widths: [400, 480, 1300] };
+export const DPC = { t: 3, roll: 1000, lap: 100, endLap: 150, len: 10000, core: 22, area: 60000, bead: 7, widths: [400, 480, 1300], quick: 2.4 };   // (quick: s for all of a job in the game)
 export const dpcSpeed = (w) => DPC.area / Math.min(DPC.roll, w);   // mm/s
 
 // the strips of a record: [{ off (mm across from the axis), w (mm) }], laid one after another
@@ -270,6 +270,32 @@ export class DpcView {
     this.work = null; this._t = 0; this.smoke = []; this.rest = null;
   }
   frame(r) { const dx = r.b[0] - r.a[0], dz = r.b[1] - r.a[1], L = Math.hypot(dx, dz) || 1; return { x: r.a[0], z: r.a[1], y: r.y, ux: dx / L, uz: dz / L, L: L / S }; }
+  // the phantom of what is about to be laid (the owner, 2026-11-28: «непонятно куда и как ложится и докуда» — the first touch sets a
+  // phantom roll that the finger moves, the second drags how far it is rolled out): g = null | { a: [x, z], b?: [x, z], y, w, top, ok }.
+  // The roll stands at the start, its axis across the way (along x before the way is set), as big as it will be; the strip from the
+  // start to the end, its full width, on what it will lie on; green — it can go there, red — it cannot.
+  setGhost(g) {
+    const G = this._ghost ||= (() => {
+      const o = { group: new THREE.Group(), ok: new THREE.MeshBasicMaterial({ color: 0x35d06a, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide }),
+        bad: new THREE.MeshBasicMaterial({ color: 0xd03030, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide }) };
+      o.roll = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 32), o.ok); o.roll.rotation.order = 'YXZ';
+      o.strip = new THREE.Mesh(new THREE.BufferGeometry(), o.ok); o.group.add(o.roll, o.strip); o.group.name = 'dpc-ghost'; o.group.renderOrder = 5;
+      this.group.add(o.group); return o;
+    })();
+    G.group.visible = !!g; this.ghostShown = g ? { ...g } : null; if (!g) return;
+    const t = this.app.terrain, m = g.ok === false ? G.bad : G.ok, on = (x, z) => (g.top ? g.y : t.heightAt(x, z)) + MM(4);
+    const dx = g.b ? g.b[0] - g.a[0] : 1, dz = g.b ? g.b[1] - g.a[1] : 0, Lm = Math.hypot(dx, dz), ux = Lm > 1e-9 ? dx / Lm : 1, uz = Lm > 1e-9 ? dz / Lm : 0, L = g.b ? Lm / S : 0;
+    const rw = Math.min(DPC.roll, g.w), R = MM(rollR(Math.min(DPC.len, L || DPC.len)));
+    G.roll.material = m; G.roll.scale.set(R, MM(rw), R);
+    G.roll.position.set(g.a[0], on(g.a[0], g.a[1]) + R, g.a[1]); G.roll.rotation.set(Math.PI / 2, Math.atan2(-uz, ux), 0, 'YXZ');
+    G.strip.material = m; G.strip.visible = L > 1;
+    if (L > 1) {
+      // (its edges on what is under them, every 100 mm along)
+      const n = Math.max(2, Math.ceil(L / 100) + 1), nx = -uz, nz = ux, pos = [], idx = [];
+      for (let i = 0; i < n; i++) { const al = MM(L * i / (n - 1)); for (const sd of [-1, 1]) { const x = g.a[0] + ux * al + nx * MM(g.w / 2) * sd, z = g.a[1] + uz * al + nz * MM(g.w / 2) * sd; pos.push(x, on(x, z), z); } if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
+      G.strip.geometry.dispose(); const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gg.setIndex(idx); G.strip.geometry = gg;
+    }
+  }
   // what is under a point: the concrete and the strips laid before (other records before this one; this one's earlier strips)
   _under(id, k, x, z) {
     const me = this.app.objects.get(id);
