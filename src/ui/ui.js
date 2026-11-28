@@ -57,6 +57,30 @@ const GROUPS = [
   { id: 'machines', label: 'Техника', icon: 'machine' },
   { id: 'disaster', label: 'Катаклизмы', icon: 'disaster' },
 ];
+// the quiet mode's tiles: an icon each that says what the tab is at a glance (the owner, 2026-11-28: «некоторые иконки совсем
+// не понятно выглядят — продумай, чтобы по иконке было всё понятно»): the thing itself, drawn as it stands on site
+const V = (b) => `<svg viewBox="0 0 24 24">${b}</svg>`;
+const FAN_ICONS = {
+  camera: V('<path d="M3 8h4l1.6-2.5h6.8L17 8h4v11H3z"/><circle cx="12" cy="13.3" r="3.6"/>'),
+  mark: V('<path d="M2 21h20"/><path d="M5 21V9M19 21V9M5 9l1.6 1.2L5 11.4M19 9l1.6 1.2L19 11.4"/><path d="M5 12.5h14" stroke-dasharray="1.6 1.8"/><path d="M4 21l1-2 1 2M18 21l1-2 1 2"/>'),
+  earth: V('<path d="M2 21c3-5 7-6 10-6s7 1 10 6z"/><path d="M15.5 3l-2.8 9.5"/><path d="M14.4 2.4l2.4.7"/><path d="M11.2 11.6l3 .9-1.4 4.2c-1.1.4-2.2.1-2.9-.8z"/>'),
+  materials: V('<path d="M2 20c2.2-6.5 5.5-10 10-10s7.8 3.5 10 10z"/><path d="M8 16h.01M11.5 14h.01M15 16.5h.01M12 18h.01M17.5 18.5h.01M6 18.5h.01"/><path d="M2 20h20"/>'),
+  found: V('<path d="M7 4v9M17 4v9M7 7h10"/><rect x="3" y="13" width="18" height="6"/><path d="M6 16h.01M10 16h.01M14 16h.01M18 16h.01"/><path d="M1 13h2M21 13h2"/>'),
+  concrete: V('<path d="M5 6.5l12-2.5 3 8.5-12 3z"/><path d="M5 6.5c-1.6 1.4-1.2 6.6 3 8.5"/><path d="M9 15l-2.5 6M14 13.6L16.5 21M5.5 21h12"/><path d="M19.5 4.4l2-1.4"/>'),
+  walls: V('<rect x="3" y="4" width="18" height="16"/><path d="M3 9.3h18M3 14.7h18M9 4v5.3M15 4v5.3M6 9.3v5.4M12 9.3v5.4M18 9.3v5.4M9 14.7V20M15 14.7V20"/>'),
+  dpc: V('<path d="M2 19h20"/><rect x="2" y="14" width="20" height="5"/><path d="M2 12h13"/><circle cx="18" cy="11" r="3"/><circle cx="18" cy="11" r=".9"/>'),
+  winG: V('<rect x="5" y="3" width="14" height="17"/><path d="M12 3v17M5 11h14"/><path d="M3 21h18"/>'),
+  roofG: V('<path d="M1.5 13L12 4l10.5 9"/><path d="M4 11v9h16v-9"/><path d="M6 9.4h12M8.4 7.4h7.2"/><rect x="15" y="4.5" width="2.6" height="3.4"/>'),
+  facadeG: V('<path d="M3 21V5h11"/><rect x="7" y="5" width="14" height="16"/><path d="M7 10.3h14M7 15.6h14M14 5v16"/>'),
+  blindG: V('<rect x="8" y="3" width="8" height="12"/><path d="M1.5 19L8 15h8l6.5 4z"/><path d="M1.5 19h21"/><path d="M4 21l1.5-1M19 20l1.5 1"/>'),
+  poolG: V('<path d="M3 9h18v11H3z"/><path d="M3 14c1.5-1.2 3-1.2 4.5 0s3 1.2 4.5 0 3-1.2 4.5 0 3 1.2 4.5 0"/><path d="M15 3v8M19 3v8M15 5.5h4M15 8h4"/>'),
+  extG: V('<path d="M3 21V4h13v17"/><rect x="6.5" y="12" width="5" height="9"/><path d="M4.8 10.8h8.4L12 9.4H6z"/><path d="M19.5 7v3M18 11.5h3l-.6 2h-1.8z"/><path d="M17.3 15.6l-.9 1M21.7 15.6l.9 1M19.5 16v1.4"/>'),
+  fenceG: V('<path d="M5 21V7l2-3 2 3v14M15 21V7l2-3 2 3v14"/><path d="M3 10h18M3 16h18"/><path d="M2 21h20"/>'),
+  landG: V('<circle cx="7" cy="7.5" r="4.5"/><path d="M7 12v9"/><path d="M13 21l2.5-11h3L21 21z"/><path d="M14.3 15.5h5.4M13.6 18.5h6.8M17 10v11"/><path d="M2 21h20"/>'),
+  propG: V('<rect x="1.5" y="8" width="11" height="9"/><rect x="4" y="10.5" width="3.5" height="3"/><path d="M1.5 17v3M12.5 17v3"/><path d="M15.5 20L18 7l2.5 13"/><path d="M16.4 15.5h3.2M17.1 11.5h1.8M14 20h8"/>'),
+  machines: V('<rect x="2" y="16" width="12" height="4.5" rx="2.25"/><path d="M4 16v-5h6.5v5"/><path d="M6 11V8h3.5l1 3"/><path d="M10.5 12.5L16 5l4.5 4.5"/><path d="M20.5 9.5l1 3.5-3.4.6z"/>'),
+  disaster: V('<path d="M3 21V11l7-6 7 6v10z"/><path d="M8 21l1.2-4-1.6-2.6 2-3"/><path d="M19.5 2l-3.2 5.5h3l-3.2 5.5"/>'),
+};
 const m3 = (v) => `${String(v).replace('.', ',')} м³`;
 
 const HINTS = {
@@ -370,69 +394,34 @@ export class UI {
       { svg: $('btn-undo').innerHTML, label: 'Отменить', fn: () => app.undo(), keep: true, id: 'undo' },
       { svg: '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>', label: 'Все панели', fn: () => this.setQuiet(false), id: 'exit' },
     ];
-    // (the owner, 2026-11-27: «кнопки одна на одной в куче — читабельными, не в каше, но так же мало места»: the groups on two arcs — the
-    // first ones (the early stages) on the inner, «lowered» one, the rest on the outer; undo and «all panels» by the button, low on its
-    // left; every label outward from the button, on a dark pill — never over a neighbour or its label (measured as the fan opens: fan())
-    const R_IN = 140, R_OUT = 240, R_ACT = 85, nIn = Math.round(this.groups.length * 0.41), inner = this.groups.slice(0, nIn), outer = this.groups.slice(nIn);
-    this.fanItems = [];
-    const add = (el, r, a, size, item, k = 0) => { queueMicrotask(() => { const sp = el.querySelector('span'); if (sp) this._fanRO?.observe(sp); }); el.dataset.r = r; el.dataset.a = a; el.dataset.k = k; el.style.setProperty('--x', `${-r * Math.cos(a)}px`); el.style.setProperty('--y', `${-r * Math.sin(a)}px`); el.style.setProperty('--s', `${size}px`); box.appendChild(el); this.fanItems.push({ el, ...item }); };
-    for (const [ring, R, size] of [[inner, R_IN, 32], [outer, R_OUT, 34]]) ring.forEach((g, k) => {
+    // (the owner, 2026-11-28: the two arcs «растянуты по всему экрану — нужно компактнее»: the groups as tiles in a grid over the
+    // button — 6 across (fewer on a narrow screen), the icon big and its name under it, inside the tile (nothing to lay out round it); undo and «all panels» in a
+    // row left of the button)
+    const TW = 57, TH = 54, GAP = 2, COLS = Math.max(3, Math.min(6, Math.floor((innerWidth - 18 - 8) / (TW + GAP)))), n = this.groups.length, rows = Math.ceil(n / COLS);   // (6 across; fewer on a narrow screen)
+    this.fanItems = []; this._fanW = innerWidth;
+    const add = (el, x, y, w, h, item) => { el.style.setProperty('--x', `${x}px`); el.style.setProperty('--y', `${y}px`); el.style.setProperty('--w', `${w}px`); el.style.setProperty('--h', `${h}px`); box.appendChild(el); this.fanItems.push({ el, ...item }); };
+    this.groups.forEach((g, k) => {
       const el = document.createElement('button');
-      el.className = 'fan-item';
-      el.innerHTML = this.groupSvg(g) + `<span>${g.label}</span>`;
+      el.className = 'fan-item tile';
+      el.innerHTML = (FAN_ICONS[g.id] || FAN_ICONS[g.icon] || this.groupSvg(g)) + `<span>${g.label}</span>`;
       el.addEventListener('click', () => {
         this.openGroup(g.id);
         this.toast(g.label);
         if (this.groupTools(g.id).length < 2 && !this.chips().length) this.fan(false);
         this.refresh();
       });
-      add(el, R, (k / Math.max(1, ring.length - 1)) * Math.PI / 2, size, { group: g.id }, k);
+      // (centres from the button's centre: the grid's right edge on the button's, its bottom 10 px over it)
+      const c = k % COLS, r = Math.floor(k / COLS);
+      add(el, 25 - (COLS - c) * (TW + GAP) + GAP + TW / 2, -25 - 10 - (rows - r) * (TH + GAP) + GAP + TH / 2, TW, TH, { group: g.id });
     });
-    // (a label's size changes when it is put into the device's language, after this: set again then)
-    this._fanRO?.disconnect();
-    if (window.ResizeObserver) { let q = 0; this._fanRO = new ResizeObserver(() => { if (q) return; q = requestAnimationFrame(() => { q = 0; if (this.fanOpen) this._fanLabels(); }); }); }
     acts.forEach((a, k) => {
       const el = document.createElement('button');
-      el.className = 'fan-item act';
+      el.className = 'fan-item tile act';
       el.innerHTML = a.svg + `<span>${a.label}</span>`;
       el.addEventListener('click', () => { a.fn(); if (!a.keep) this.fan(false); this.refresh(); });
-      add(el, R_ACT, [0.35, 1.22][k], 32, { act: a.id });
+      add(el, -25 - 8 - (k + 1) * (TW + GAP) + GAP + TW / 2, 0, TW, 50, { act: a.id });
     });
   }
-  // each label set outward from its button (its near edge 4 px off the button's rim), by its own size — the language may change it;
-  // the two by the button keep theirs below
-  _fanLabels() {
-    const its = this.fanItems || []; if (!its.length) return;
-    const fb = $('fab').getBoundingClientRect(), fx = fb.left + fb.width / 2, fy = fb.top + fb.height / 2;
-    // the buttons where they open to (circles), then each label next to its own button, pushed out along its way only as far as
-    // it clears every button and every label set before it, and kept on the screen
-    const circ = its.map(({ el }) => { const r = +el.dataset.r, a = +el.dataset.a; return { x: fx - r * Math.cos(a), y: fy - r * Math.sin(a), r: (parseFloat(el.style.getPropertyValue('--s')) || 36) / 2 }; });
-    circ.push({ x: fx, y: fy, r: fb.width / 2 });
-    const placed = [], hitC = (q, skip) => circ.some((c, i) => { if (i === skip) return false; const px = Math.max(q.l, Math.min(c.x, q.r)), py = Math.max(q.t, Math.min(c.y, q.b)); return Math.hypot(px - c.x, py - c.y) < c.r + 2; });
-    const hitL = (q) => placed.some((p) => Math.min(p.r, q.r) - Math.max(p.l, q.l) > -2 && Math.min(p.b, q.b) - Math.max(p.t, q.t) > -2);
-    its.forEach(({ el, act }, i) => {
-      const sp = el.querySelector('span'); if (!sp) return;
-      const a = +el.dataset.a, c = circ[i], w = sp.offsetWidth, h = sp.offsetHeight;
-      // (outward first; where that runs into the screen's edge or the others — under the button, then over it)
-      const ways = act ? [[0, 1], [-1, 0]] : [[-Math.cos(a), -Math.sin(a)], [0, 1], [0, -1]];
-      let q = null, first = null;
-      for (const [dx, dy] of ways) {
-        let d = c.r + 4 + (w / 2) * Math.abs(dx) + (h / 2) * Math.abs(dy), ok = false;
-        for (let n = 0; n < 30; n++, d += 3) {
-          let x = c.x + dx * d; if (x + w / 2 > innerWidth - 4) x = innerWidth - 4 - w / 2; if (x - w / 2 < 4) x = 4 + w / 2;
-          const y = c.y + dy * d; q = { l: x - w / 2, r: x + w / 2, t: y - h / 2, b: y + h / 2 };
-          first ||= q;
-          if (q.b > innerHeight - 4) break;
-          if (!hitC(q, i) && !hitL(q)) { ok = true; break; }
-        }
-        if (ok) break; q = null;
-      }
-      q ||= first;
-      placed.push(q);
-      sp.style.setProperty('--lx', `${(q.l + w / 2 - c.x).toFixed(1)}px`); sp.style.setProperty('--ly', `${(q.t + h / 2 - c.y).toFixed(1)}px`);
-    });
-  }
-
   setQuiet(on, save = true) {
     const app = this.app;
     app.settings.quiet = on;
@@ -447,8 +436,8 @@ export class UI {
 
   fan(open) {
     this.fanOpen = !!open && !!this.app.settings.quiet;
+    if (this.fanOpen && this._fanW !== innerWidth) { this.buildFan(); this.renderFan?.(); }   // (the screen turned: the grid laid again)
     $('fan').classList.toggle('open', this.fanOpen);
-    if (this.fanOpen) { this._fanLabels(); setTimeout(() => requestAnimationFrame(() => this._fanLabels()), 0); }   // (again once the labels are in the device's language)
     $('fan-shade').hidden = !this.fanOpen;
     $('ui').classList.toggle('fan-open', this.fanOpen);
   }
@@ -565,7 +554,9 @@ export class UI {
         C('Забутовочный', has('brick') && !bf, () => lay({ wallKind: 'brick', brickFace: null })),
         G('brickF', 'Облицовочный', Object.entries(FACING).filter(([, F]) => !F.old).map(([k, F]) => C('◼ ' + F.name, has('brick') && bf === k, () => lay({ wallKind: 'brick', brickFace: k }))), null, C('', has('brick') && !!bf, () => lay({ wallKind: 'brick', brickFace: bf || 'red' }))),
       ], null, C('', has('brick'), () => lay({ wallKind: 'brick' })));
-      const masonry = [G('dpc', 'Гидроизоляция', [[400, 'Под газоблок 300 — 400 мм'], [480, 'Под кирпич 380 — 480 мм'], [1300, 'Под шлакоблок 1190 — 1300 мм']].map(([w, l]) => C(l, wk === 'dpc' && (+s.dpcW || 400) === w, () => lay({ wallKind: 'dpc', dpcW: w }))), null, C('', L && wk === 'dpc', () => lay({ wallKind: 'dpc' }))),
+      // (the damp-proof course: a tab of its own in the walls — the owner, 2026-11-28; it goes on before any course)
+      const dpcG = G('dpc', 'Гидроизоляция', [[400, 'Под газоблок 300 — 400 мм'], [480, 'Под кирпич 380 — 480 мм'], [1300, 'Под шлакоблок 1190 — 1300 мм']].map(([w, l]) => C(l, wk === 'dpc' && (+s.dpcW || 400) === w, () => lay({ wallKind: 'dpc', dpcW: w }))), null, C('', L && wk === 'dpc', () => lay({ wallKind: 'dpc' })));
+      const masonry = [
         K('block', 'Газоблок'), brickG, K('cinder', 'Шлакоблок'), K('ublock', 'U-блок')];
       // («↻ Повернуть»: a button on the right, over «Ряд»)
       if (has('block', 'brick', 'cinder')) masonry.push(C(wk === 'brick' ? '½ кирпича' : '½ блока', !!s.wallHalf, () => set({ wallHalf: !s.wallHalf })));
@@ -721,7 +712,8 @@ export class UI {
           ];
         })(), null, C('', has('fence'), () => lay({ wallKind: 'fence' })))),
         hid(G('land', 'Благоустройство', [G('path', 'Дорожка', paths, null, C('', has('land') && !isLawn, () => lset({}))), G('lawn', 'Газон', lawn, null, C('', has('land') && isLawn, () => gset({}))), G('plants', 'Растения', [['tree', 'Деревья'], ['bush', 'Кустарники'], ['flower', 'Цветы и клумбы'], ['pot', 'В кашпо']].map(([gq, gn]) => { const ks = Object.entries(PLANTS).filter(([, P]) => P.grp === gq); return G('pl' + gq, gn, ks.map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && PLANTS[lw.plantKind].grp === gq, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: ks[0][0] }))); }), null, C('', has('land') && lw.what === 'plant' && !PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'tree' }))), G('lights', 'Освещение', [['path', 'У дорожки'], ['accent', 'Подсветка'], ['deco', 'Декоративные'], ['post', 'Фонарные столбы']].map(([gq, gn]) => { const ks = Object.entries(PLANTS).filter(([, P]) => P.lgrp === gq); return G('li' + gq, gn, ks.map(([q, P]) => C(P.name, has('land') && lw.what === 'plant' && lw.plantKind === q, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: q }))), null, C('', has('land') && lw.what === 'plant' && PLANTS[lw.plantKind].lgrp === gq, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: ks[0][0] }))); }), null, C('', has('land') && lw.what === 'plant' && !!PLANTS[lw.plantKind].light, () => lay({ wallKind: 'land', landWhat: 'plant', plantKind: 'bollard' }))), del()], null, C('', has('land'), () => lay({ wallKind: 'land' })))),
-        G('masonry', 'Кладка', masonry, null, C('', has('dpc', 'block', 'brick', 'ublock', 'cinder'))),
+        dpcG,
+        G('masonry', 'Кладка', masonry, null, C('', has('block', 'brick', 'ublock', 'cinder'))),
         G('lintel', 'Перемычки', [K('lintel', 'Готовая перемычка'), K('lform', 'Опалубка перемычки'), K('prop', 'Подпорка'), K('ucage', 'Каркас')], null, C('', has('lintel', 'lform', 'prop', 'ucage'))),
         G('mono', 'Монолит', [K('belt', 'Опалубка пояса'), K('studs', 'Шпильки'), G('slab', 'Перекрытие', [[0, 'Без консоли'], [1500, 'Консоль 1,5 м'], [3000, 'Консоль 3 м'], [3500, 'Консоль 3,5 м']].map(([v, l]) => C(l, has('slab') && (s.slabCant || 0) === v, () => lay({ wallKind: 'slab', slabCant: v }))), null, K('slab', 'Перекрытие')), K('upstand', 'Парапет')], null, C('', has('belt', 'studs', 'slab', 'upstand'))),
         del(),
