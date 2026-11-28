@@ -17,7 +17,7 @@ jobs:
         run: |
           if [ -z "$TOKEN" ]; then echo "SKETCHFAB_TOKEN is not set"; exit 1; fi
           mkdir -p incoming
-          for pair in worker2:620e27e5126f40d080c5d4bffab9eedb man4:10cbeabee635483fae932f9e49f3cf7b; do
+          for pair in rebar:465ad1e439304aa0a16e6895f7e36a51; do
             name=${pair%%:*}; uid=${pair##*:}
             curl -sS -H "Authorization: Token $TOKEN" "https://api.sketchfab.com/v3/models/$uid/download" -o dl.json
             url=$(python3 -c "import json;d=json.load(open('dl.json'));print((d.get('glb') or d.get('gltf') or {}).get('url','') if isinstance(d,dict) else '')")
